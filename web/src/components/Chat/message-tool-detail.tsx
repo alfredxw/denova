@@ -1,7 +1,10 @@
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ToolContent } from '@/components/ai-elements/tool'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { ToolResultSeverity } from '@/lib/tool-result-envelope'
+import { toolDisplayName } from './tool-display-name'
 import { domainToolDetailAdapters } from './tool-detail/domain'
 import { generalToolDetailAdapters } from './tool-detail/general'
 import {
@@ -30,6 +33,17 @@ export function hasSpecializedToolDetail(name: string) {
   return Object.hasOwn(toolDetailAdapters, name)
 }
 
+export function toolDetailSummary(name: string, rawArgs: string, result: string, t: TFunction) {
+  const adapter = toolDetailAdapters[name]
+  if (!adapter?.summarize) return ''
+  return adapter.summarize({
+    input: parseRecord(rawArgs) || {},
+    rawInput: rawArgs,
+    result,
+    t,
+  })
+}
+
 export function ToolCallDetail({ name, rawArgs, result, resultSeverity }: ToolCallDetailProps) {
   const { t } = useTranslation()
   const adapter = toolDetailAdapters[name]
@@ -45,6 +59,32 @@ export function ToolCallDetail({ name, rawArgs, result, resultSeverity }: ToolCa
     rawInput: rawArgs,
     result,
     t,
+  }
+
+  if (adapter.layout === 'unified') {
+    return (
+      <ToolContent
+        data-nova-tool-detail={name}
+        className="min-w-0 max-w-full border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-xs leading-5"
+      >
+        <ScrollArea
+          data-nova-tool-detail-scroll
+          className="max-h-[min(30dvh,18rem)] overflow-hidden"
+          viewportProps={{
+            'aria-label': t('chat.tool.detail.scrollLabel', { name: toolDisplayName(name, t) }),
+            className: 'max-h-[min(30dvh,18rem)]',
+            tabIndex: 0,
+          }}
+        >
+          <section
+            data-nova-tool-detail-unified
+            className="flex min-w-0 flex-col gap-4 px-3 py-3 pr-5 text-[var(--nova-text-muted)]"
+          >
+            {input ? adapter.render(renderProps) : <DetailPre>{formatMaybeJSON(rawArgs)}</DetailPre>}
+          </section>
+        </ScrollArea>
+      </ToolContent>
+    )
   }
 
   return (

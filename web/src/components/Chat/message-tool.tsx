@@ -11,7 +11,7 @@ import { AgentSourceBadge } from './message-source-badge'
 import { ToolStatusIcon } from './message-tool-status'
 import { StreamingToolInput } from './StreamingToolInput'
 import { toolDisplayName } from './tool-display-name'
-import { formatMaybeJSON, hasSpecializedToolDetail, ToolCallDetail } from './message-tool-detail'
+import { formatMaybeJSON, hasSpecializedToolDetail, ToolCallDetail, toolDetailSummary } from './message-tool-detail'
 import { toolPresentationKind } from '@/lib/tool-presentation'
 import { workspaceFileName } from '@/lib/workspace-path'
 
@@ -60,6 +60,8 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
     }
   }
   const resultBody = stripToolResultMetadata(result)
+  const specializedSummary = canInterpretInput ? toolDetailSummary(name, rawArgs, resultBody, t) : ''
+  if (specializedSummary) summary = specializedSummary
   const resultEnvelope = decodeToolResultEnvelope(resultBody)
   const resultSeverity = status === 'error' ? 'error' : resultEnvelope?.severity || 'success'
   const showReadableOutcome = resultSeverity !== 'success'
@@ -76,7 +78,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   let displaySummary = summary
   if (status === 'cancelled') displaySummary = t('chat.tool.result.cancelled')
   if (status === 'error') displaySummary = buildPreview(resultBody, 160) || t('chat.tool.failed')
-  if (hasResult) displaySummary = commandDescription || fileResultSummary || resultPreview || t('chat.tool.done')
+  if (hasResult) displaySummary = specializedSummary || commandDescription || fileResultSummary || resultPreview || t('chat.tool.done')
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result)
   const canToggleDetail = hasDetail && !isInputStreaming
@@ -120,6 +122,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
               <span
                 data-nova-tool-summary
                 className={`min-w-0 flex-1 truncate ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}
+                title={headerSummary}
               >
                 {headerSummary}
               </span>

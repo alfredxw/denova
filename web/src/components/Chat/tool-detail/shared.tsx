@@ -12,11 +12,23 @@ export interface ToolDetailRenderProps {
   t: TFunction
 }
 
-export interface ToolDetailAdapter {
+export type ToolDetailRenderer = (props: ToolDetailRenderProps) => ReactNode
+export type ToolDetailSummarizer = (props: ToolDetailRenderProps) => string
+
+interface SplitToolDetailAdapter {
   layout: 'input' | 'output'
-  renderInput: (props: ToolDetailRenderProps) => ReactNode
-  renderOutput: (props: ToolDetailRenderProps) => ReactNode
+  renderInput: ToolDetailRenderer
+  renderOutput: ToolDetailRenderer
+  summarize?: ToolDetailSummarizer
 }
+
+interface UnifiedToolDetailAdapter {
+  layout: 'unified'
+  render: ToolDetailRenderer
+  summarize?: ToolDetailSummarizer
+}
+
+export type ToolDetailAdapter = SplitToolDetailAdapter | UnifiedToolDetailAdapter
 
 export function DetailPre({ children, className, ...props }: { children: ReactNode; className?: string } & ComponentProps<'pre'>) {
   return <pre className={cn(detailPreClass, className)} {...props}>{children}</pre>

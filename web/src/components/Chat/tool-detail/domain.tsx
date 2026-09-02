@@ -10,28 +10,28 @@ import {
   numericMeta,
   parseRecord,
   recordArray,
-  recordValue,
   stringArray,
   stringValue,
   ToolResourceLink,
   type ToolDetailAdapter,
+  type ToolDetailRenderer,
   type ToolDetailRenderProps,
 } from './shared'
+import { interactiveTurnToolDetailAdapters } from './interactive-turn'
 
 export const domainToolDetailAdapters: Record<string, ToolDetailAdapter> = {
   list_lore_items: outputAdapter(renderListLoreInput, renderLoreOutput),
   read_lore_items: outputAdapter(renderReadLoreInput, renderLoreOutput),
   write_lore_items: inputAdapter(renderWriteLoreInput, renderWriteLoreOutput),
   search_story_history: outputAdapter(renderHistoryInput, renderHistoryOutput),
-  prepare_interactive_turn: outputAdapter(renderPrepareTurnInput, renderPrepareTurnOutput),
-  submit_interactive_turn: inputAdapter(renderSubmitTurnInput, renderSubmitTurnOutput),
+  ...interactiveTurnToolDetailAdapters,
 }
 
-function outputAdapter(renderInput: ToolDetailAdapter['renderInput'], renderOutput: ToolDetailAdapter['renderOutput']): ToolDetailAdapter {
+function outputAdapter(renderInput: ToolDetailRenderer, renderOutput: ToolDetailRenderer): ToolDetailAdapter {
   return { layout: 'output', renderInput, renderOutput }
 }
 
-function inputAdapter(renderInput: ToolDetailAdapter['renderInput'], renderOutput: ToolDetailAdapter['renderOutput']): ToolDetailAdapter {
+function inputAdapter(renderInput: ToolDetailRenderer, renderOutput: ToolDetailRenderer): ToolDetailAdapter {
   return { layout: 'input', renderInput, renderOutput }
 }
 
@@ -167,112 +167,6 @@ function renderHistoryOutput({ result, t }: ToolDetailRenderProps) {
   )
 }
 
-function renderPrepareTurnInput({ input, t }: ToolDetailRenderProps) {
-  const bonuses = recordArray(input.bonuses)
-  const rule = recordValue(input.rule)
-  return (
-    <DetailStack>
-      <DetailPre className="text-[var(--nova-text)]">{stringValue(input.action)}</DetailPre>
-      <MetaLine items={[
-        stringValue(input.difficulty),
-        stringValue(rule.roll_mode),
-        bonuses.length ? t('chat.tool.detail.bonusCount', { count: bonuses.length }) : '',
-      ]} />
-      {bonuses.map((bonus, index) => (
-        <div key={`${stringValue(bonus.reason)}-${index}`} className="flex min-w-0 gap-2">
-          <span className="shrink-0 text-[var(--nova-text)]">{signedValue(bonus.value)}</span>
-          <span className="min-w-0 break-words">{stringValue(bonus.reason)}</span>
-        </div>
-      ))}
-      {stringValue(input.cost) ? <DetailBlock title={t('chat.tool.detail.cost')}><DetailPre>{stringValue(input.cost)}</DetailPre></DetailBlock> : null}
-      {stringValue(input.challenge) ? <DetailBlock title={t('chat.tool.detail.challenge')}><DetailPre>{stringValue(input.challenge)}</DetailPre></DetailBlock> : null}
-    </DetailStack>
-  )
-}
-
-function renderPrepareTurnOutput({ result, t }: ToolDetailRenderProps) {
-  const response = parseRecord(result)
-  if (!response) return <DetailPre>{formatMaybeJSON(result)}</DetailPre>
-  const rolls = Array.isArray(response.rolls) ? response.rolls.map(String) : []
-  const changes = recordArray(response.state_changes)
-  return (
-    <DetailStack>
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-        <span className="text-sm font-semibold text-[var(--nova-text)]">{stringValue(response.outcome)}</span>
-        <MetaLine items={[
-          rolls.length ? `${stringValue(response.dice) || '1d20'} [${rolls.join(', ')}]` : '',
-          response.kept_roll === undefined ? '' : `kept=${response.kept_roll}`,
-          response.bonus_total === undefined ? '' : `bonus=${signedValue(response.bonus_total)}`,
-          response.total === undefined ? '' : `total=${response.total}`,
-          response.target === undefined ? '' : `target=${response.target}`,
-        ]} />
-      </div>
-      {stringValue(response.result) ? <DetailPre className="text-[var(--nova-text)]">{stringValue(response.result)}</DetailPre> : null}
-      {changes.length ? <DetailBlock title={t('chat.tool.detail.stateChanges')}><StateChangeList values={changes} /></DetailBlock> : null}
-    </DetailStack>
-  )
-}
-
-function renderSubmitTurnInput({ input, t }: ToolDetailRenderProps) {
-  const changes = recordArray(input.state_changes)
-  const choices = stringArray(input.choices)
-  const planUpdate = stringValue(input.plan_update)
-  return (
-    <DetailStack>
-      {input.state_changes !== undefined ? <DetailBlock title={t('chat.tool.detail.stateChanges')}><StateChangeList values={changes} empty={t('chat.tool.detail.none')} /></DetailBlock> : null}
-      {input.choices !== undefined ? (
-        <DetailBlock title={t('chat.tool.detail.choices')}>
-          {choices.length ? <ol className="m-0 list-decimal space-y-0.5 pl-4">{choices.map((choice, index) => <li key={`${choice}-${index}`}>{choice}</li>)}</ol> : <span className="text-[var(--nova-text-faint)]">{t('chat.tool.detail.none')}</span>}
-        </DetailBlock>
-      ) : null}
-      {planUpdate ? <DetailBlock title={t('chat.tool.detail.planUpdate')}><DetailPre>{planUpdate}</DetailPre></DetailBlock> : null}
-    </DetailStack>
-  )
-}
-
-function renderSubmitTurnOutput({ result, t }: ToolDetailRenderProps) {
-  const receipt = parseRecord(result)
-  if (!receipt) return <DetailPre>{formatMaybeJSON(result)}</DetailPre>
-  const modules = recordValue(receipt.module_status)
-  const diagnostics = recordArray(receipt.diagnostics)
-  return (
-    <DetailStack>
-      <div className={receipt.ready === true ? 'text-[var(--nova-accent-green)]' : 'text-[var(--nova-warning)]'}>
-        {receipt.ready === true ? t('chat.tool.detail.ready') : t('chat.tool.detail.notReady')}
-      </div>
-      <MetaLine items={Object.entries(modules).map(([name, status]) => `${name}=${String(status)}`)} />
-      {diagnostics.map((diagnostic, index) => (
-        <DetailBlock key={`${stringValue(diagnostic.code)}-${index}`} title={[stringValue(diagnostic.module), stringValue(diagnostic.path), stringValue(diagnostic.code)].filter(Boolean).join(' · ')} tone="danger">
-          <DetailPre>{stringValue(diagnostic.message)}</DetailPre>
-        </DetailBlock>
-      ))}
-      {stringArray(receipt.retry_modules).length ? <MetaLine items={[`${t('chat.tool.detail.retry')}: ${stringArray(receipt.retry_modules).join(', ')}`]} /> : null}
-    </DetailStack>
-  )
-}
-
-function StateChangeList({ values, empty }: { values: Record<string, unknown>[]; empty?: string }) {
-  if (!values.length) return empty ? <span className="text-[var(--nova-text-faint)]">{empty}</span> : null
-  return (
-    <DetailStack className="space-y-1">
-      {values.map((change, index) => {
-        const target = [stringValue(change.actor_id), stringValue(change.field_id), ...stringArray(change.subpath)].filter(Boolean).join('.')
-        const value = change.value !== undefined
-          ? formatValue(change.value)
-          : change.change !== undefined
-            ? signedValue(change.change)
-            : stringValue(change.reason)
-        return (
-          <div key={`${target}-${index}`} className="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-2">
-            <span className="text-[var(--nova-text-faint)]">{stringValue(change.op)}</span>
-            <DetailPre><span className="text-[var(--nova-text)]">{target || stringValue(change.name)}</span>{value ? ` = ${value}` : ''}</DetailPre>
-          </div>
-        )
-      })}
-    </DetailStack>
-  )
-}
-
 function LoreLink({ id, name, children }: { id?: string; name?: string; children: string }) {
   return <ToolResourceLink target={{ kind: 'lore_item', id, name }}>{children}</ToolResourceLink>
 }
@@ -345,10 +239,4 @@ function parseJSONLine(result: string, field: string) {
   } catch {
     return []
   }
-}
-
-function signedValue(value: unknown) {
-  const number = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(number)) return String(value ?? '')
-  return number > 0 ? `+${number}` : String(number)
 }

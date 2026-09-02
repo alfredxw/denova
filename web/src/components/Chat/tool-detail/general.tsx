@@ -18,6 +18,7 @@ import {
   stringValue,
   ToolResourceLink,
   type ToolDetailAdapter,
+  type ToolDetailRenderer,
   type ToolDetailRenderProps,
 } from './shared'
 import { WorkspacePathText } from './path-text'
@@ -34,11 +35,11 @@ export const generalToolDetailAdapters: Record<string, ToolDetailAdapter> = {
   config_apply: inputAdapter(renderConfigApplyInput, renderConfigApplyOutput),
 }
 
-function outputAdapter(renderInput: ToolDetailAdapter['renderInput'], renderOutput: ToolDetailAdapter['renderOutput']): ToolDetailAdapter {
+function outputAdapter(renderInput: ToolDetailRenderer, renderOutput: ToolDetailRenderer): ToolDetailAdapter {
   return { layout: 'output', renderInput, renderOutput }
 }
 
-function inputAdapter(renderInput: ToolDetailAdapter['renderInput'], renderOutput: ToolDetailAdapter['renderOutput']): ToolDetailAdapter {
+function inputAdapter(renderInput: ToolDetailRenderer, renderOutput: ToolDetailRenderer): ToolDetailAdapter {
   return { layout: 'input', renderInput, renderOutput }
 }
 
