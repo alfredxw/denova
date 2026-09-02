@@ -62,6 +62,10 @@ func (h *Handlers) HandleInteractiveStoryUpdate(ctx context.Context, c *app.Requ
 	}
 	story, err := h.app.UpdateInteractiveStory(c.Param("id"), body)
 	if err != nil {
+		if errors.Is(err, appsvc.ErrAgentOperationActive) {
+			writeErrorKey(c, consts.StatusConflict, "api.interactive.storyStructureBusy")
+			return
+		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

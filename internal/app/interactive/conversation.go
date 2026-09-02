@@ -29,6 +29,7 @@ type Conversation struct {
 	user                        string
 	inputVisibility             agentrun.InputVisibility
 	replyTargetChars            int
+	cycleStoryConfig            *interactive.StoryMeta
 	modelContextAppendMu        sync.Mutex
 	turnCheckMu                 sync.Mutex
 	mu                          sync.Mutex
@@ -200,6 +201,18 @@ func NewConversation(store *interactive.Store, novaDir, workspace, storyID, bran
 	return &Conversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
 
+// WithCycleStoryConfig freezes mutable story tuning for this model cycle.
+// Branch metadata and committed story state remain live so queued execution
+// can still pin the actual parent immediately before context assembly.
+func (c *Conversation) WithCycleStoryConfig(meta interactive.StoryMeta) *Conversation {
+	if c != nil {
+		c.mu.Lock()
+		c.cycleStoryConfig = &meta
+		c.mu.Unlock()
+	}
+	return c
+}
+
 // WithInputVisibility binds the accepted input's player-facing projection.
 // Both visible and model-only inputs remain canonical game model context.
 func (c *Conversation) WithInputVisibility(visibility agentrun.InputVisibility) *Conversation {
@@ -254,10 +267,44 @@ func (c *Conversation) storyContextForCycle() (interactive.StoryContext, error) 
 	if c == nil || c.store == nil {
 		return interactive.StoryContext{}, fmt.Errorf("互动故事不存在")
 	}
+	var (
+		storyCtx interactive.StoryContext
+		err      error
+	)
 	if target := c.regenerateTargetSnapshot(); target != "" {
-		return c.store.StoryContextAtTurnParent(c.storyID, c.branchID, target)
+		storyCtx, err = c.store.StoryContextAtTurnParent(c.storyID, c.branchID, target)
+	} else {
+		storyCtx, err = c.store.StoryContext(c.storyID, c.branchID)
 	}
-	return c.store.StoryContext(c.storyID, c.branchID)
+	if err != nil {
+		return interactive.StoryContext{}, err
+	}
+	c.mu.Lock()
+	cycleConfig := c.cycleStoryConfig
+	c.mu.Unlock()
+	if cycleConfig != nil {
+		applyCycleStoryConfig(&storyCtx.Meta, *cycleConfig)
+	}
+	return storyCtx, nil
+}
+
+func applyCycleStoryConfig(target *interactive.StoryMeta, source interactive.StoryMeta) {
+	if target == nil {
+		return
+	}
+	target.Title = source.Title
+	target.TitleSource = source.TitleSource
+	target.Origin = source.Origin
+	target.StoryTellerID = source.StoryTellerID
+	target.PlanningTemplateID = source.PlanningTemplateID
+	target.StoryDirectorID = source.StoryDirectorID
+	target.PlanningMode = source.PlanningMode
+	target.ModuleRefs = source.ModuleRefs
+	target.ReplyTargetChars = source.ReplyTargetChars
+	target.ChoiceCount = source.ChoiceCount
+	target.Opening = source.Opening
+	target.ImageSettings = source.ImageSettings
+	target.CheckSettings = source.CheckSettings
 }
 
 func (c *Conversation) WithExecutionParentPinning() *Conversation {

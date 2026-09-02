@@ -102,6 +102,8 @@ Denova records only major user-visible features, important compatibility or data
 - User-initiated interruption of Writing or Game streams is now a resumable pause instead of an error; enter a new instruction or click Resume in an empty composer.
 - 修复游戏回合重生成失败后再次重试会丢失原回合定位、把原提示误提交为新回合的问题。
 - Fixed retrying a failed Game turn regeneration losing its target and submitting the original prompt as a new turn.
+- 修复游戏生成中修改故事控制项会中断当前回合并丢弃未落盘正文的问题；普通调校从下一回合生效，主角与状态结构改动须在当前回合结束后进行。
+- Fixed story-control changes aborting an active Game turn and discarding uncommitted prose. Ordinary tuning now takes effect on the next turn, while protagonist and state-structure changes require the current turn to finish.
 - 修复写作与资料编辑中的自动保存、外部修改合并、评论消费和版本恢复问题，避免草稿被覆盖或已提交反馈重复出现。
 - Fixed autosave, external-edit merging, comment consumption, and version restoration in Writing and Lore, preventing draft overwrites and submitted feedback from reappearing.
 - 修复游戏新故事空回合崩溃、历史回合跳转错位、回合数错误及刷新后重复回放已结算剧情的问题。

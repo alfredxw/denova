@@ -246,6 +246,18 @@ func (s *InteractiveAppService) UpdateInteractiveStory(storyID string, req inter
 	if store == nil {
 		return interactive.StorySummary{}, ErrNoWorkspace
 	}
+	a := s.app
+	// Runtime tuning is frozen by the active cycle and can be saved immediately.
+	// Opening structure changes affect live tools, so they require an idle story.
+	updatesOpeningStructure := req.Protagonist != nil || req.StateSchemaPolicy != nil
+	if updatesOpeningStructure {
+		a.mu.RLock()
+		active := interactiveTaskForScopeLocked(a, a.workspace, storyID, "")
+		a.mu.RUnlock()
+		if active != nil {
+			return interactive.StorySummary{}, ErrAgentOperationActive
+		}
+	}
 	if req.Protagonist != nil {
 		protagonist, err := s.resolveStoryProtagonist(context.Background(), *req.Protagonist)
 		if err != nil {
@@ -263,11 +275,18 @@ func (s *InteractiveAppService) UpdateInteractiveStory(storyID string, req inter
 	if strings.TrimSpace(req.StoryTellerID) != "" {
 		req.StoryTellerID = s.gameTellerID(req.StoryTellerID)
 	}
+	if !updatesOpeningStructure {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.interactive != store {
+			return interactive.StorySummary{}, ErrAgentContextChanged
+		}
+		return store.UpdateStory(storyID, req)
+	}
 	fence, err := s.drainInteractiveBinding(context.Background(), storyID, "")
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
-	a := s.app
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := fence.validateLocked(a); err != nil {

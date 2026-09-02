@@ -141,7 +141,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	cycle.conversation = interactiveapp.NewConversation(
 		cycle.store, cycle.novaDir, cycle.workspace, cycle.storyID, cycle.branchID,
 		cycle.request.Message, cycle.runtimeCfg.InteractiveReplyTargetChars, &cycle.runtimeCfg,
-	).WithInputVisibility(cycle.request.InputVisibility).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext).WithRequiredProtagonistSelection(requireProtagonistSelection)
+	).WithCycleStoryConfig(storyContext.Meta).WithInputVisibility(cycle.request.InputVisibility).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext).WithRequiredProtagonistSelection(requireProtagonistSelection)
 
 	var submitOpeningStateSchema func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	if interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyContext.Meta.StateSchemaPolicy) &&
