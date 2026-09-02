@@ -101,7 +101,7 @@ func (s *workspaceService) CreateVersion(ctx context.Context, message string) (b
 	if !runtime.matches(s.app) {
 		return book.VersionCommandResult{}, ErrWorkspaceChanged
 	}
-	changeService, err := workspaceChangeService(runtime.workspace, runtime.cfg.ProjectStateDir)
+	changeService, err := workspaceChangeService(runtime.workspace, runtime.cfg.ProjectStoreDir)
 	if err != nil {
 		return book.VersionCommandResult{}, err
 	}
@@ -330,7 +330,7 @@ func (a *App) acquireProjectVersionCreateRuntime(ctx context.Context, projectID 
 	}
 	runtimeConfig.Workspace = resources.Workspace
 	runtimeConfig.ProjectID = resources.ProjectID
-	runtimeConfig.ProjectStateDir = resources.StateRoot
+	runtimeConfig.ProjectStoreDir = resources.StateRoot
 	runtimeConfig, err = appsettings.RefreshProject(runtimeConfig, resources.Workspace, resources.StateRoot)
 	if err != nil {
 		return releaseWithError(fmt.Errorf("load Project settings for version creation: %w", err))

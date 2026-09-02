@@ -57,7 +57,7 @@ func TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	attachments, err := attachment.Materialize(
-		firstLayout.StateRoot,
+		firstLayout.StoreRoot,
 		attachment.SessionScope(sess.ID),
 		"portable-command",
 		[]attachment.Upload{{
@@ -74,7 +74,7 @@ func TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	createdTask, err := automation.NewProjectStore(
-		firstRoot, projectID, firstLayout.ContentRoot, firstLayout.StateRoot,
+		firstRoot, projectID, firstLayout.ContentRoot, firstLayout.StoreRoot,
 	).Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "Portable task", Template: automation.TemplateCustomPrompt,
 	})
@@ -113,7 +113,7 @@ func TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	meta, err := secondApp.bookMetaStore.Read(secondLayout.ContentRoot, secondLayout.StateRoot)
+	meta, err := secondApp.bookMetaStore.Read(secondLayout.ContentRoot, secondLayout.StoreRoot)
 	if err != nil || meta.Title != "Portable Book" || meta.Author != "Writer" {
 		t.Fatalf("moved Book metadata=%#v err=%v", meta, err)
 	}
@@ -129,12 +129,12 @@ func TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot(t *testing.T) {
 	if len(history) != 1 || history[0].Content != "Keep this conversation" || len(history[0].Attachments) != 1 {
 		t.Fatalf("moved Session history=%#v", history)
 	}
-	attachmentPath := filepath.Join(secondLayout.StateRoot, filepath.FromSlash(history[0].Attachments[0].Path))
+	attachmentPath := filepath.Join(secondLayout.StoreRoot, filepath.FromSlash(history[0].Attachments[0].Path))
 	if content, err := os.ReadFile(attachmentPath); err != nil || string(content) != "portable attachment" {
 		t.Fatalf("moved attachment=%q err=%v", content, err)
 	}
 	tasks, err := automation.NewProjectStore(
-		secondRoot, projectID, secondLayout.ContentRoot, secondLayout.StateRoot,
+		secondRoot, projectID, secondLayout.ContentRoot, secondLayout.StoreRoot,
 	).ListInScope(automation.ScopeWorkspace)
 	if err != nil || len(tasks) != 1 || tasks[0].ID != createdTask.ID || tasks[0].Target.Workspace != wantWorkspace {
 		t.Fatalf("moved automation tasks=%#v err=%v", tasks, err)

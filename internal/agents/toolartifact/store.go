@@ -27,7 +27,7 @@ type Store struct {
 	artifactRoot string
 }
 
-// NewStateStore creates a lazy store beneath one Project StateRoot for an
+// NewStateStore creates a lazy store beneath one Project Store root for an
 // opaque Session scope. The scope is hashed so user-controlled names never
 // become filesystem paths or model-visible metadata.
 func NewStateStore(stateRoot, scopeID string) (*Store, error) {

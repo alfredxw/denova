@@ -17,15 +17,15 @@ func newAgentCommandRunner(
 	shell agenttools.ShellKind,
 	executable string,
 	environment []string,
-	projectStateRoot string,
+	projectStoreRoot string,
 ) (agenttools.CommandRunner, error) {
 	if workspace == nil || workspace.Root() == "" {
 		return nil, fmt.Errorf("shell workspace is required")
 	}
 	var changes *workspacechange.Service
 	var err error
-	if strings.TrimSpace(projectStateRoot) != "" {
-		changes, err = workspacechange.ForWorkspaceAt(workspace.Root(), projectStateRoot)
+	if strings.TrimSpace(projectStoreRoot) != "" {
+		changes, err = workspacechange.ForWorkspaceAt(workspace.Root(), projectStoreRoot)
 	} else {
 		changes, err = workspacechange.ForWorkspace(workspace.Root())
 	}

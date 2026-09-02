@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/presetlayout"
 	"denova/internal/revisionfile"
 	"denova/internal/revisionjson"
 )
@@ -201,7 +202,7 @@ func (l *StoryDirectorLibrary) Delete(id string) error {
 }
 
 func (l *StoryDirectorLibrary) dir() string {
-	return filepath.Join(l.novaDir, "story-directors")
+	return presetlayout.LegacyGamePresets(l.novaDir)
 }
 
 func (l *StoryDirectorLibrary) ensureBuiltins() error {

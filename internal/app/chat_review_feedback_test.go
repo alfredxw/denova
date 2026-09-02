@@ -27,7 +27,7 @@ import (
 func bookReviewRuntime(workspace string, sess *session.Session) ideChatRuntime {
 	return ideChatRuntime{
 		agentKind: agentrun.AgentKindIDE, projectType: ProjectTypeBook,
-		workspace: workspace, projectState: workspacelayout.Dir(workspace), state: book.NewState(workspace),
+		workspace: workspace, projectStore: workspacelayout.Dir(workspace), state: book.NewState(workspace),
 		bookService: book.NewService(workspace), sess: sess,
 	}
 }

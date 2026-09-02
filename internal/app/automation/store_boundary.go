@@ -49,7 +49,7 @@ func (s *Service) runDueWithSnapshot(ctx context.Context, snap *automationWorksp
 }
 
 // storeAllWorkspaces builds the compatibility catalog over registered
-// Projects. Project state roots own persistence; workspace paths remain
+// Projects. Project Stores own persistence; workspace paths remain
 // execution targets only.
 func (s *Service) storeAllWorkspaces() *automation.Store {
 	if s == nil || s.host == nil {

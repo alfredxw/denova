@@ -6,9 +6,12 @@ import (
 	"strings"
 )
 
-const StateDirectoryName = "project-state"
+const (
+	storeDirectoryName              = "stores"
+	legacyProjectStateDirectoryName = "project-state"
+)
 
-func joinState(root string, elements ...string) string {
+func joinStore(root string, elements ...string) string {
 	parts := append([]string{root}, elements...)
 	return filepath.Join(parts...)
 }
@@ -20,7 +23,7 @@ func (registry *Registry) Layout(record Record) (Layout, error) {
 	if err := ValidateID(record.ID); err != nil {
 		return Layout{}, err
 	}
-	if err := validateStateDirName(record.StateDirName); err != nil {
+	if err := validateStoreDirName(record.StoreDirName); err != nil {
 		return Layout{}, err
 	}
 	workspace, err := registry.resolveLocation(record.Location)
@@ -31,7 +34,7 @@ func (registry *Registry) Layout(record Record) (Layout, error) {
 		ProjectID:   record.ID,
 		Type:        record.Type,
 		ContentRoot: workspace,
-		StateRoot:   filepath.Join(registry.denovaDir, StateDirectoryName, record.StateDirName),
+		StoreRoot:   filepath.Join(registry.denovaDir, storeDirectoryName, record.StoreDirName),
 	}, nil
 }
 

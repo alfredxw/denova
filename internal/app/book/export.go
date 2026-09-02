@@ -48,7 +48,7 @@ func (service *Service) Export(req BookExportRequest) (BookExportResult, error) 
 	if err != nil {
 		return BookExportResult{}, err
 	}
-	meta, err := service.metadata.Read(layout.ContentRoot, layout.StateRoot)
+	meta, err := service.metadata.Read(layout.ContentRoot, layout.StoreRoot)
 	if err != nil {
 		return BookExportResult{}, err
 	}

@@ -38,7 +38,7 @@ func (a *App) WorkspaceChangeService() (*workspacechange.Service, error) {
 	workspace := a.workspace
 	stateRoot := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 	}
 	a.mu.RUnlock()
 	if workspace == "" {
@@ -76,7 +76,7 @@ func (a *App) WithWorkspaceChangeService(
 	}
 	stateRoot := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 	}
 	service, err := workspaceChangeService(actualWorkspace, stateRoot)
 	if err != nil {
@@ -129,7 +129,7 @@ func (a *App) WithWorkspaceChangeMutation(
 	settings := versionAutoSettingsForConfig(a.cfg)
 	stateRoot := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 	}
 	a.mu.RUnlock()
 
@@ -166,7 +166,7 @@ func (a *App) WithProjectChangeService(
 	}
 	defer operation.Release()
 	layout := operation.Layout()
-	service, err := workspaceChangeService(layout.ContentRoot, layout.StateRoot)
+	service, err := workspaceChangeService(layout.ContentRoot, layout.StoreRoot)
 	if err != nil {
 		return projectdomain.Layout{}, err
 	}
@@ -193,7 +193,7 @@ func (a *App) WithProjectChangeMutation(
 	}
 	defer operation.Release()
 	layout := operation.Layout()
-	service, err := workspaceChangeService(layout.ContentRoot, layout.StateRoot)
+	service, err := workspaceChangeService(layout.ContentRoot, layout.StoreRoot)
 	if err != nil {
 		return projectdomain.Layout{}, err
 	}

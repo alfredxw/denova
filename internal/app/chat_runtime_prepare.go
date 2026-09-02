@@ -18,7 +18,7 @@ func (runtime ideChatRuntime) agentOptions(taskID string) agentrun.Options {
 	return agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE,
 		ProjectID: strings.TrimSpace(runtime.projectID),
-		StateRoot: strings.TrimSpace(runtime.projectState),
+		StateRoot: strings.TrimSpace(runtime.projectStore),
 		TaskID:    strings.TrimSpace(taskID),
 		SessionID: runtime.sess.ID,
 		Workspace: strings.TrimSpace(runtime.workspace),
@@ -35,7 +35,7 @@ func (service *ChatAppService) prepareIDEChatRuntime(ctx context.Context, reques
 	}
 	runtime := ideChatRuntime{
 		app: app, projectID: app.cfg.ProjectID, projectType: ProjectTypeBook,
-		projectState: app.cfg.ProjectStateDir, agentKind: config.AgentKindIDE,
+		projectStore: app.cfg.ProjectStoreDir, agentKind: config.AgentKindIDE,
 		sess: app.session, state: app.bookState, bookService: app.bookService,
 		executionRuntime: app.executionRuntime, workspace: app.workspace, versionService: app.versionService,
 		cfg: *app.cfg,

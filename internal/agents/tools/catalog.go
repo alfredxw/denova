@@ -89,7 +89,7 @@ func (catalog *Catalog) Workspace(settings config.ResolvedAgentToolSettings, rea
 			if cfg == nil {
 				return ""
 			}
-			return cfg.ProjectStateDir
+			return cfg.ProjectStoreDir
 		}(),
 		metadata,
 		executables,
@@ -287,7 +287,7 @@ func configurationToolsFactory(cfg *config.Config) Factory {
 // workspaceToolsFactory registers only executable tools. Disabled definitions
 // are never built, so a missing shell or mutation dependency cannot leak a
 // nil endpoint into the model-visible registry.
-func workspaceToolsFactory(workspace, projectStateRoot string, metadata WorkspaceMetadataProvider, executables RuntimeExecutables, maxResultBytes int, extraReadAdapters ...ReadAdapterBinding) Factory {
+func workspaceToolsFactory(workspace, projectStoreRoot string, metadata WorkspaceMetadataProvider, executables RuntimeExecutables, maxResultBytes int, extraReadAdapters ...ReadAdapterBinding) Factory {
 	if maxResultBytes <= 0 {
 		maxResultBytes = defaultToolResultMaxBytes
 	}
@@ -365,8 +365,8 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 		}
 		if writeEnabled {
 			var changes *workspacechange.Service
-			if strings.TrimSpace(projectStateRoot) != "" {
-				changes, err = workspacechange.ForWorkspaceAt(backend.Root(), projectStateRoot)
+			if strings.TrimSpace(projectStoreRoot) != "" {
+				changes, err = workspacechange.ForWorkspaceAt(backend.Root(), projectStoreRoot)
 			} else {
 				changes, err = workspacechange.ForWorkspace(backend.Root())
 			}
@@ -409,7 +409,7 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 				executable = shellRuntime.Pwsh
 				constructor = agenttools.Pwsh
 			}
-			runner, err := newAgentCommandRunner(backend, shellKind, executable, shellRuntime.Environment, projectStateRoot)
+			runner, err := newAgentCommandRunner(backend, shellKind, executable, shellRuntime.Environment, projectStoreRoot)
 			if err != nil {
 				return nil, fmt.Errorf("create %s runner: %w", shellKind, err)
 			}

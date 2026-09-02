@@ -35,7 +35,7 @@ func (h *Handlers) HandleAttachmentImage(ctx context.Context, c *app.RequestCont
 		writeErrorKey(c, consts.StatusBadRequest, "api.attachments.scopeRequired")
 		return
 	}
-	image, err := agentattachment.ReadImage(project.StateRoot, scope, attachmentID)
+	image, err := agentattachment.ReadImage(project.StoreRoot, scope, attachmentID)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if errors.Is(err, agentattachment.ErrImageNotFound) || errors.Is(err, agentattachment.ErrImagePreviewDisabled) {

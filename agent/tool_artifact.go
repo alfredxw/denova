@@ -79,7 +79,7 @@ func (storage identifiedToolArtifactStorage) ResolveToolArtifactPath(ctx context
 	resolver, ok := storage.ToolArtifactBackend.(ToolArtifactPathResolver)
 	if !ok {
 		// Backends that already publish a provider-readable path do not need a
-		// projection hook. Denova's Project State store implements the hook for
+		// projection hook. Denova's Project Store implements the hook for
 		// owner-relative durable references.
 		return path, nil
 	}

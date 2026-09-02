@@ -176,7 +176,7 @@ func (a *App) interactiveGoalRuntime(binding ConversationConfigBinding) (*agente
 		return nil, agentrun.Options{}, ErrNoWorkspace
 	}
 	return executionRuntime, agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStateDir,
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStoreDir,
 		Workspace: workspace, StoryID: binding.StoryID, BranchID: branchID, Mode: "interactive",
 	}, nil
 }
@@ -199,7 +199,7 @@ func (a *App) writingGoalRuntime(requestedSessionID string) (*agentexecution.Run
 		return nil, agentrun.Options{}, config.Config{}, ErrNoWorkspace
 	}
 	return executionRuntime, agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStateDir,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStoreDir,
 		Workspace: workspace, SessionID: sessionID, Mode: "ide",
 	}, runtimeCfg, nil
 }
@@ -342,6 +342,17 @@ func (a *App) interactiveConversationConfig(binding ConversationConfigBinding) (
 	service := a.interactiveService()
 	service.admission.Lock()
 	defer service.admission.Unlock()
+	if strings.TrimSpace(binding.StoryID) == "" {
+		store, runtimeCfg, err := a.interactiveStoreRuntime()
+		if err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+		seed, err := interactiveapp.RecentConversationSeed(store, &runtimeCfg, "")
+		if err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+		return conversationconfig.Snapshot{Config: seed}, nil
+	}
 	store, runtimeCfg, err := a.interactiveConversationRuntime(binding)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
@@ -391,7 +402,7 @@ func (a *App) foregroundConversationRuntime(requestedSessionID string) (*session
 	if store == nil || workspace == "" || sessionID == "" || isAgentSessionID(sessionID) {
 		return nil, config.Config{}, "", ErrNoWorkspace
 	}
-	fresh, err := refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStateDir)
+	fresh, err := refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStoreDir)
 	return store, fresh, sessionID, err
 }
 
@@ -399,6 +410,10 @@ func (a *App) interactiveConversationRuntime(binding ConversationConfigBinding) 
 	if strings.TrimSpace(binding.StoryID) == "" {
 		return nil, config.Config{}, errors.New("interactive story is required")
 	}
+	return a.interactiveStoreRuntime()
+}
+
+func (a *App) interactiveStoreRuntime() (*interactive.Store, config.Config, error) {
 	a.mu.RLock()
 	store := a.interactive
 	workspace := strings.TrimSpace(a.workspace)
@@ -410,7 +425,7 @@ func (a *App) interactiveConversationRuntime(binding ConversationConfigBinding) 
 	if store == nil || workspace == "" {
 		return nil, config.Config{}, ErrNoWorkspace
 	}
-	fresh, err := refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStateDir)
+	fresh, err := refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStoreDir)
 	return store, fresh, err
 }
 

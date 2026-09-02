@@ -175,7 +175,7 @@ func (a *App) sessionDirectoryForBinding(binding agentrun.RuntimeBinding) (strin
 			if err != nil {
 				return "", err
 			}
-			layout, err := a.projectRegistry.EnsureState(record)
+			layout, err := a.projectRegistry.EnsureStore(record)
 			if err != nil {
 				return "", err
 			}
@@ -187,7 +187,7 @@ func (a *App) sessionDirectoryForBinding(binding agentrun.RuntimeBinding) (strin
 				return "", err
 			}
 			if found {
-				layout, err := a.projectRegistry.EnsureState(record)
+				layout, err := a.projectRegistry.EnsureStore(record)
 				if err != nil {
 					return "", err
 				}

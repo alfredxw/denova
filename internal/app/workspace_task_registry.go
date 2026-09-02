@@ -38,7 +38,7 @@ func (a *App) registerProjectTask(task *apptask.Task, projectID, workspace, stat
 	}
 	layout := operation.Layout()
 	if lifecycleWorkspaceKey(layout.ContentRoot) != lifecycleWorkspaceKey(workspace) ||
-		strings.TrimSpace(layout.StateRoot) != strings.TrimSpace(stateRoot) {
+		strings.TrimSpace(layout.StoreRoot) != strings.TrimSpace(stateRoot) {
 		operation.Release()
 		return fmt.Errorf("%w: Project layout changed before task registration", ErrWorkspaceChanged)
 	}
@@ -107,7 +107,7 @@ func (registration *projectTaskRegistration) release() {
 func projectLayoutMatchesRuntime(layout projectdomain.Layout, runtimeProjectID, workspace, stateRoot string) bool {
 	return layout.ProjectID == strings.TrimSpace(runtimeProjectID) &&
 		lifecycleWorkspaceKey(layout.ContentRoot) == lifecycleWorkspaceKey(workspace) &&
-		strings.TrimSpace(layout.StateRoot) == strings.TrimSpace(stateRoot)
+		strings.TrimSpace(layout.StoreRoot) == strings.TrimSpace(stateRoot)
 }
 
 // registerWorkspaceTaskLocked records a background task against the exact

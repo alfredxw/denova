@@ -45,7 +45,7 @@ func (service *Service) ProjectVersions(projectID string) (VersionResources, err
 		return VersionResources{}, fmt.Errorf("Project version service is unavailable")
 	}
 	return VersionResources{
-		ProjectID: runtime.record.ID, Workspace: runtime.layout.ContentRoot, StateRoot: runtime.layout.StateRoot,
+		ProjectID: runtime.record.ID, Workspace: runtime.layout.ContentRoot, StateRoot: runtime.layout.StoreRoot,
 		Files: runtime.files, VersionService: versioning.Service, Settings: versioning.Settings,
 	}, nil
 }
@@ -189,7 +189,7 @@ func (service *Service) mutationVersioning(runtime projectRuntime) MutationVersi
 		hostVersioning := service.versioningProvider.ProjectFileMutationVersioning(
 			runtime.record.ID,
 			runtime.layout.ContentRoot,
-			runtime.layout.StateRoot,
+			runtime.layout.StoreRoot,
 		)
 		settings = hostVersioning.Settings
 		if hostVersioning.Service != nil {

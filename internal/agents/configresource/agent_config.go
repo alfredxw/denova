@@ -118,7 +118,7 @@ func loadAgentConfigLayered(cfg *config.Config) (config.LayeredSettings, error) 
 	if cfg != nil {
 		novaDir = cfg.DataDir()
 		workspace = cfg.Workspace
-		projectConfigPath = config.ProjectConfigPath(cfg.ProjectStateDir)
+		projectConfigPath = config.ProjectConfigPath(cfg.ProjectStoreDir)
 	}
 	layered, err := config.LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath)
 	if err != nil {
@@ -138,8 +138,8 @@ func writableAgentConfigPath(cfg *config.Config, scope string) (string, error) {
 	case "user":
 		return config.UserConfigPath(novaDir), nil
 	case "workspace":
-		if cfg != nil && strings.TrimSpace(cfg.ProjectStateDir) != "" {
-			return config.ProjectConfigPath(cfg.ProjectStateDir), nil
+		if cfg != nil && strings.TrimSpace(cfg.ProjectStoreDir) != "" {
+			return config.ProjectConfigPath(cfg.ProjectStoreDir), nil
 		}
 		if strings.TrimSpace(workspace) == "" {
 			return "", fmt.Errorf("cannot write workspace configuration because no workspace is open")

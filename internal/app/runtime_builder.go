@@ -25,7 +25,7 @@ const ProjectTypeBook = projectdomain.TypeBook
 
 type runtimeState struct {
 	projectID        string
-	projectStateRoot string
+	projectStoreRoot string
 	workspace        string
 	bookState        *book.State
 	bookService      *book.Service
@@ -41,7 +41,7 @@ type runtimeState struct {
 // session/story projections concurrently with a background write.
 func buildRuntimeExclusively(ctx context.Context, cfg *config.Config, layout ProjectLayout) (*runtimeState, error) {
 	workspace := layout.ContentRoot
-	changes, err := workspacechange.ForWorkspaceAt(workspace, layout.StateRoot)
+	changes, err := workspacechange.ForWorkspaceAt(workspace, layout.StoreRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = absWorkspace
 	runtimeCfg.ProjectID = layout.ProjectID
-	runtimeCfg.ProjectStateDir = layout.StateRoot
+	runtimeCfg.ProjectStoreDir = layout.StoreRoot
 	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtimeCfg.DataDir(), absWorkspace, layout.ConfigPath()); loadErr == nil {
 		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {
@@ -100,7 +100,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.DataDir())
 	runtime := &runtimeState{
 		projectID:        layout.ProjectID,
-		projectStateRoot: layout.StateRoot,
+		projectStoreRoot: layout.StoreRoot,
 		workspace:        absWorkspace,
 		bookState:        state,
 		bookService:      book.NewService(absWorkspace),

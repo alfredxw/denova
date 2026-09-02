@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/presetlayout"
 	"denova/internal/revisionfile"
 	"denova/internal/revisionjson"
 )
@@ -200,7 +201,7 @@ func (l *Library) restoreBuiltin(id string) error {
 }
 
 func (l *Library) dir() string {
-	return filepath.Join(l.novaDir, "image-presets")
+	return presetlayout.Image(l.novaDir)
 }
 
 func (l *Library) ensureBuiltins() error {

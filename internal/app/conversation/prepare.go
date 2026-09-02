@@ -39,15 +39,15 @@ func prepareGeneral(ctx context.Context, runtime Runtime, request agentchat.Chat
 	}
 	runtime.Config.Workspace = runtime.Workspace
 	runtime.Config.ProjectID = runtime.ProjectID
-	runtime.Config.ProjectStateDir = runtime.ProjectState
-	layered, err := config.LoadLayeredWithStartupConfigAt(runtime.Config.DataDir(), runtime.Workspace, config.ProjectConfigPath(runtime.ProjectState))
+	runtime.Config.ProjectStoreDir = runtime.ProjectStore
+	layered, err := config.LoadLayeredWithStartupConfigAt(runtime.Config.DataDir(), runtime.Workspace, config.ProjectConfigPath(runtime.ProjectStore))
 	if err != nil {
 		return Runtime{}, request, fmt.Errorf("load General Agent project settings: %w", err)
 	}
 	appsettings.ApplyLayered(&runtime.Config, layered)
 	runtime.Config.Workspace = runtime.Workspace
 	runtime.Config.ProjectID = runtime.ProjectID
-	runtime.Config.ProjectStateDir = runtime.ProjectState
+	runtime.Config.ProjectStoreDir = runtime.ProjectStore
 	appsettings.ApplyLocale(&runtime.Config, request.Locale)
 	if err := reviewapp.Resolve(ctx, ReviewRuntime(runtime), &request); err != nil {
 		return Runtime{}, request, err
@@ -62,7 +62,7 @@ func prepareWriting(ctx context.Context, runtime Runtime, request agentchat.Chat
 	runtime.Config.Workspace = runtime.Workspace
 	runtime.IDETeller = appagentruntime.WritingTellerForConfig(&runtime.Config)
 	dataDir := runtime.Config.DataDir()
-	projectConfigPath := config.ProjectConfigPath(runtime.Config.ProjectStateDir)
+	projectConfigPath := config.ProjectConfigPath(runtime.Config.ProjectStoreDir)
 	if layered, err := config.LoadLayeredWithStartupConfigAt(dataDir, runtime.Workspace, projectConfigPath); err == nil {
 		appsettings.ApplyLayered(&runtime.Config, layered)
 		appsettings.ApplyLocale(&runtime.Config, request.Locale)
@@ -133,7 +133,7 @@ func ReviewRuntime(runtime Runtime) reviewapp.Runtime {
 		sessionID = runtime.Session.ID
 	}
 	return reviewapp.Runtime{
-		Workspace: runtime.Workspace, StateRoot: runtime.ProjectState, SessionID: sessionID,
+		Workspace: runtime.Workspace, StateRoot: runtime.ProjectStore, SessionID: sessionID,
 		DocumentsEnabled: runtime.State != nil, BookService: runtime.BookService,
 	}
 }

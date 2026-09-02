@@ -106,6 +106,7 @@ export interface GamePlanningTemplate {
   sections: GamePlanningSection[]
   path?: string
   custom: boolean
+  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string

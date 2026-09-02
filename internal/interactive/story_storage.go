@@ -13,6 +13,7 @@ import (
 
 	"denova/internal/agents/conversationjournal"
 	"denova/internal/localfs"
+	"denova/internal/presetlayout"
 )
 
 const storyIndexSchemaVersion = 1
@@ -210,7 +211,7 @@ func (s *Store) migrateReleasedGamePresetLocked(storyID string, meta *StoryMeta)
 	settings := normalizeStoryCheckSettings(meta.CheckSettings)
 	var legacyPresetPath string
 	if strings.TrimSpace(s.novaDir) != "" && legacyID != "" {
-		legacyPresetPath = filepath.Join(s.novaDir, "story-directors", legacyID+".json")
+		legacyPresetPath = filepath.Join(presetlayout.LegacyGamePresets(s.novaDir), legacyID+".json")
 	}
 	if err := s.backupReleasedGamePresetStory(storyID, legacyID, legacyPresetPath); err != nil {
 		return err

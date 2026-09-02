@@ -25,7 +25,7 @@ func RefreshProject(runtimeCfg config.Config, workspace, stateRoot string) (conf
 	}
 	ApplyLayered(&runtimeCfg, layered)
 	runtimeCfg.Workspace = workspace
-	runtimeCfg.ProjectStateDir = stateRoot
+	runtimeCfg.ProjectStoreDir = stateRoot
 	return runtimeCfg, nil
 }
 

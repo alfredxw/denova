@@ -82,7 +82,7 @@ func projectLocationKey(location ProjectLocation) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return string(LocationManaged) + "\x00" + stateDirNameKey(managed), nil
+		return string(LocationManaged) + "\x00" + storeDirNameKey(managed), nil
 	case LocationExternal:
 		external := strings.TrimSpace(location.Path)
 		if external == "" {

@@ -18,7 +18,7 @@ const (
 	maxRunTraceRecordBytes   = 64 * 1024 * 1024
 )
 
-// TraceLocation identifies the durable Project state that owns Agent traces.
+// TraceLocation identifies the durable Project Store that owns Agent traces.
 // StateRoot is authoritative for registered Projects; Workspace remains a
 // read-only compatibility source for traces created before state migration.
 type TraceLocation struct {

@@ -69,7 +69,7 @@ func newEventStore(workspace string, durability *durabilityOps) (*eventStore, er
 }
 
 // newEventStoreAt keeps the mutable content root and the user-owned ledger
-// root separate. storageBoundary is normally project-state/<project-id>;
+// root separate. storageBoundary is normally stores/<store-dir>;
 // legacy callers continue to use the workspace itself as the boundary.
 func newEventStoreAt(workspace, storageBoundary, dir string, durability *durabilityOps) (*eventStore, error) {
 	storageBoundary = filepath.Clean(storageBoundary)

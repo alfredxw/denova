@@ -127,6 +127,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prepare portable Denova data migration: %w", err)
 	}
+	if err := migratePresetLayout(dataDir); err != nil {
+		return nil, fmt.Errorf("migrate Denova preset layout: %w", err)
+	}
 	if err := config.EnsureAgentProfiles(dataDir); err != nil {
 		return nil, fmt.Errorf("initialize Agents Project profiles: %w", err)
 	}
@@ -135,11 +138,11 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("register Agents Project: %w", err)
 	}
-	agentsLayout, err := registry.EnsureState(agentsRecord)
+	agentsLayout, err := registry.EnsureStore(agentsRecord)
 	if err != nil {
-		return nil, fmt.Errorf("initialize Agents Project State: %w", err)
+		return nil, fmt.Errorf("initialize Agents Project Store: %w", err)
 	}
-	trajectoryOutcomes, err := trajectory.NewOutcomeStore(agentsLayout.StateRoot)
+	trajectoryOutcomes, err := trajectory.NewOutcomeStore(agentsLayout.StoreRoot)
 	if err != nil {
 		return nil, fmt.Errorf("initialize trajectory outcomes: %w", err)
 	}
@@ -152,11 +155,11 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		if record.Type != projectdomain.TypeBook || record.Status != projectdomain.StatusAvailable {
 			continue
 		}
-		layout, layoutErr := registry.EnsureState(record)
+		layout, layoutErr := registry.EnsureStore(record)
 		if layoutErr != nil {
-			return nil, fmt.Errorf("prepare Book Project state for metadata migration: %w", layoutErr)
+			return nil, fmt.Errorf("prepare Book Project Store for metadata migration: %w", layoutErr)
 		}
-		if migrationErr := bookMetaStore.MigrateLegacy(layout.ContentRoot, layout.StateRoot); migrationErr != nil {
+		if migrationErr := bookMetaStore.MigrateLegacy(layout.ContentRoot, layout.StoreRoot); migrationErr != nil {
 			return nil, fmt.Errorf("migrate Book metadata: %w", migrationErr)
 		}
 	}
@@ -231,7 +234,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		app.Close()
 		return nil, err
 	}
-	layout, err := app.projectRegistry.EnsureState(projectRecord)
+	layout, err := app.projectRegistry.EnsureStore(projectRecord)
 	if err != nil {
 		app.Close()
 		return nil, err
@@ -361,7 +364,7 @@ func (a *App) Images() *imageapp.Service {
 }
 
 // TrajectoryOutcomes returns the read-only evidence feedback store owned by
-// Agents Project State. Profile content and feedback never share a directory.
+// the Agents Project Store. Profile content and feedback never share a directory.
 func (a *App) TrajectoryOutcomes() *trajectory.OutcomeStore { return a.trajectoryOutcomes }
 
 // Automation exposes the automation domain service without duplicating its API
@@ -414,7 +417,7 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.versionService = runtime.versionService
 	if a.cfg != nil {
 		a.cfg.ProjectID = runtime.projectID
-		a.cfg.ProjectStateDir = runtime.projectStateRoot
+		a.cfg.ProjectStoreDir = runtime.projectStoreRoot
 	}
 	a.activeTask = nil
 	a.activeWritingRun = nil
@@ -425,7 +428,7 @@ func (a *App) clearRuntime() {
 	a.workspace = ""
 	a.cfg.Workspace = ""
 	a.cfg.ProjectID = ""
-	a.cfg.ProjectStateDir = ""
+	a.cfg.ProjectStoreDir = ""
 	a.bookState = nil
 	a.bookService = nil
 	a.interactive = nil

@@ -36,7 +36,7 @@ func (service *Service) Books() []Record {
 		if service.metadata != nil {
 			layout, layoutErr := service.registry.Layout(project)
 			if layoutErr == nil {
-				if metadata, readErr := service.metadata.Read(layout.ContentRoot, layout.StateRoot); readErr == nil {
+				if metadata, readErr := service.metadata.Read(layout.ContentRoot, layout.StoreRoot); readErr == nil {
 					if metadata.Title != "" {
 						record.Name = metadata.Title
 					}
@@ -65,7 +65,7 @@ func (service *Service) Info(path string) (bookdomain.BookMeta, error) {
 	if err != nil {
 		return bookdomain.BookMeta{}, err
 	}
-	return service.metadata.Read(layout.ContentRoot, layout.StateRoot)
+	return service.metadata.Read(layout.ContentRoot, layout.StoreRoot)
 }
 
 func (service *Service) UpdateInfo(path, title, author, description string) (bookdomain.BookMeta, error) {
@@ -82,7 +82,7 @@ func (service *Service) UpdateInfo(path, title, author, description string) (boo
 	if err != nil {
 		return bookdomain.BookMeta{}, err
 	}
-	return service.metadata.Write(layout.ContentRoot, layout.StateRoot, metadata)
+	return service.metadata.Write(layout.ContentRoot, layout.StoreRoot, metadata)
 }
 
 func (service *Service) Reorder(paths []string) error {

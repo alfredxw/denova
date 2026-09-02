@@ -77,7 +77,7 @@
 
 - `.denova` 内的受管 Project 必须以稳定 `ProjectID` 作为身份；显示名、DataRoot 和运行时绝对路径不得参与持久化 identity、key 或恢复定位。
 - 受管 Project 的 location 及 `.denova` 内文件引用必须持久化为使用 `/` 的规范相对路径；宿主绝对路径只能在运行时投影，不得写入 Registry、Session、metadata、automation、receipt 或其他恢复事实源。External Project 路径保持不透明，不承诺跨系统可用。
-- `project-state/<state_dir>` 中的 `state_dir` 创建后不可变；Project 改名、DataRoot 搬迁或 External Project relink 不得移动或重新分配已有 Project State。
+- `stores/<store_dir>` 中的 `store_dir` 创建后不可变；Project 改名、DataRoot 搬迁或 External Project relink 不得移动或重新分配已有 Project Store。
 - Denova 创建的 `.denova` 内文件名必须符合 Windows、WSL、Linux、macOS 的共同规则；业务数据不得包含符号链接、特殊文件或大小写折叠后冲突的路径。
 - 宿主专属 shell 或工具路径在当前系统不可用时，应回退到当前宿主默认值，不能阻止数据目录加载。
 - `.denova` 格式变更只为最近一个 Release 提供小而明确、可重试且先备份的迁移；不要为此增加 dual-write、旧根目录 rebasing 或通用 VFS / StorageRef 抽象。

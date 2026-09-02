@@ -37,7 +37,7 @@ func (s *InteractiveAppService) CreateInteractiveBranch(storyID string, req inte
 		if a.cfg == nil || strings.TrimSpace(a.workspace) == "" {
 			return interactive.BranchSummary{}, ErrNoWorkspace
 		}
-		runtimeCfg, refreshErr := appsettings.RefreshProject(*a.cfg, a.workspace, a.cfg.ProjectStateDir)
+		runtimeCfg, refreshErr := appsettings.RefreshProject(*a.cfg, a.workspace, a.cfg.ProjectStoreDir)
 		if refreshErr != nil {
 			return interactive.BranchSummary{}, refreshErr
 		}

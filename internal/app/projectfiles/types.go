@@ -1,6 +1,6 @@
 // Package projectfiles owns explicit Project-scoped file browsing and editing.
 // It never changes the foreground Writing workspace: every operation resolves
-// one stable Project ID to its current content directory and state root.
+// one stable Project ID to its current content directory and Project Store.
 package projectfiles
 
 type EntryType string

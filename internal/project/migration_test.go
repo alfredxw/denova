@@ -14,7 +14,7 @@ import (
 	workspacelayout "denova/internal/workspace"
 )
 
-func TestEnsureStateCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
+func TestEnsureStoreCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
 	legacyRoot := workspacelayout.Dir(workspace)
@@ -41,7 +41,7 @@ func TestEnsureStateCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout, err := registry.EnsureState(record)
+	layout, err := registry.EnsureStore(record)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,10 +67,10 @@ func TestEnsureStateCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
 		}
 	}
 
-	if _, err := registry.EnsureState(record); err != nil {
+	if _, err := registry.EnsureStore(record); err != nil {
 		t.Fatalf("migration should be idempotent: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(layout.StateRoot, "migration.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(layout.StoreRoot, "migration.json")); err != nil {
 		t.Fatalf("migration receipt missing: %v", err)
 	}
 }
@@ -97,8 +97,8 @@ func TestResolveMissingProjectDefersStateMigrationUntilContentReturns(t *testing
 	if missing.Status != StatusMissing {
 		t.Fatalf("resolved Project status = %s, want %s", missing.Status, StatusMissing)
 	}
-	if _, err := os.Stat(layout.StateRoot); !os.IsNotExist(err) {
-		t.Fatalf("missing Project finalized state migration: %v", err)
+	if _, err := os.Stat(layout.StoreRoot); !os.IsNotExist(err) {
+		t.Fatalf("missing finalized Project Store migration: %v", err)
 	}
 
 	legacySession := workspacelayout.Path(workspace, "sessions", "session.jsonl")
@@ -114,7 +114,7 @@ func TestResolveMissingProjectDefersStateMigrationUntilContentReturns(t *testing
 	}
 	migratedSession := filepath.Join(restoredLayout.SessionsDir(), "session.jsonl")
 	if data, err := os.ReadFile(migratedSession); err != nil || string(data) != "history\n" {
-		t.Fatalf("deferred Project state migration data=%q err=%v", data, err)
+		t.Fatalf("deferred Project Store migration data=%q err=%v", data, err)
 	}
 }
 
@@ -128,7 +128,7 @@ func TestResolveMalformedExternalProjectForArchiveDoesNotOpenWorkspace(t *testin
 			ID:           projectID,
 			Type:         TypeBook,
 			Name:         "Book",
-			StateDirName: "Book",
+			StoreDirName: "Book",
 			Location: ProjectLocation{
 				Kind: LocationExternal,
 				Path: `D:\mnt\d\Code\denova\D:\mnt\d\Code\denova\.denova\projects\Book`,
@@ -145,7 +145,7 @@ func TestResolveMalformedExternalProjectForArchiveDoesNotOpenWorkspace(t *testin
 	if record.Status != StatusMissing {
 		t.Fatalf("malformed external Project status = %s, want %s", record.Status, StatusMissing)
 	}
-	if _, err := os.Stat(layout.StateRoot); !os.IsNotExist(err) {
+	if _, err := os.Stat(layout.StoreRoot); !os.IsNotExist(err) {
 		t.Fatalf("malformed external Project opened migration state: %v", err)
 	}
 	archived, err := registry.Archive(projectID)
@@ -157,7 +157,7 @@ func TestResolveMalformedExternalProjectForArchiveDoesNotOpenWorkspace(t *testin
 	}
 }
 
-func TestEnsureStateRejectsUnsupportedIntermediateReceipt(t *testing.T) {
+func TestEnsureStoreRejectsUnsupportedIntermediateReceipt(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
 	registry := NewRegistry(denovaDir)
@@ -169,18 +169,18 @@ func TestEnsureStateRejectsUnsupportedIntermediateReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(layout.StateRoot, 0o700); err != nil {
+	if err := os.MkdirAll(layout.StoreRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.StateRoot, "migration.json"), []byte("{\"version\":1}\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(layout.StoreRoot, "migration.json"), []byte("{\"version\":1}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.EnsureState(record); err == nil || !strings.Contains(err.Error(), "does not match supported version") {
+	if _, err := registry.EnsureStore(record); err == nil || !strings.Contains(err.Error(), "does not match supported version") {
 		t.Fatalf("unsupported receipt error = %v", err)
 	}
 }
 
-func TestEnsureStateMigratesReleasedReceiptWithoutRecopyingState(t *testing.T) {
+func TestEnsureStoreMigratesReleasedReceiptWithoutRecopyingData(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
 	registry := NewRegistry(denovaDir)
@@ -213,16 +213,16 @@ func TestEnsureStateMigratesReleasedReceiptWithoutRecopyingState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receiptPath := filepath.Join(layout.StateRoot, "migration.json")
+	receiptPath := filepath.Join(layout.StoreRoot, "migration.json")
 	if err := os.WriteFile(receiptPath, append(raw, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := registry.EnsureState(record); err != nil {
+	if _, err := registry.EnsureStore(record); err != nil {
 		t.Fatal(err)
 	}
 	if session, err := os.ReadFile(currentSession); err != nil || string(session) != "current\n" {
-		t.Fatalf("completed state migration was repeated: data=%q err=%v", session, err)
+		t.Fatalf("completed Store migration was repeated: data=%q err=%v", session, err)
 	}
 	migratedRaw, err := os.ReadFile(receiptPath)
 	if err != nil {
@@ -235,7 +235,7 @@ func TestEnsureStateMigratesReleasedReceiptWithoutRecopyingState(t *testing.T) {
 	if err := json.Unmarshal(migratedRaw, &migrated); err != nil {
 		t.Fatal(err)
 	}
-	if migrated.Version != stateMigrationVersion || !migrated.CompletedAt.Equal(completedAt) ||
+	if migrated.Version != storeMigrationVersion || !migrated.CompletedAt.Equal(completedAt) ||
 		len(migrated.Copied) != 1 || migrated.Copied[0] != "sessions" {
 		t.Fatalf("migrated receipt = %#v", migrated)
 	}
@@ -255,7 +255,7 @@ func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *test
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.MkdirAll(layout.StateRoot, 0o700); err != nil {
+		if err := os.MkdirAll(layout.StoreRoot, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		released := struct {
@@ -266,7 +266,7 @@ func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *test
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(layout.StateRoot, "migration.json"), append(raw, '\n'), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(layout.StoreRoot, "migration.json"), append(raw, '\n'), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		records = append(records, record)
@@ -290,7 +290,7 @@ func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *test
 		t.Fatalf("migrated Project statuses = %#v", statusByID)
 	}
 	for _, record := range records {
-		receiptPath := filepath.Join(denovaDir, StateDirectoryName, record.StateDirName, "migration.json")
+		receiptPath := filepath.Join(denovaDir, storeDirectoryName, record.StoreDirName, "migration.json")
 		raw, err := os.ReadFile(receiptPath)
 		if err != nil {
 			t.Fatal(err)
@@ -302,13 +302,13 @@ func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *test
 		if err := json.Unmarshal(raw, &receipt); err != nil {
 			t.Fatal(err)
 		}
-		if receipt.Version != stateMigrationVersion {
+		if receipt.Version != storeMigrationVersion {
 			t.Fatalf("Project %s receipt version = %d", record.ID, receipt.Version)
 		}
 	}
 }
 
-func TestEnsureStateMigratesReleasedVersionRepositoryWithoutDeletingSource(t *testing.T) {
+func TestEnsureStoreMigratesReleasedVersionRepositoryWithoutDeletingSource(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
 	chapter := filepath.Join(workspace, "chapters", "ch0001.md")
@@ -331,7 +331,7 @@ func TestEnsureStateMigratesReleasedVersionRepositoryWithoutDeletingSource(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout, err := registry.EnsureState(record)
+	layout, err := registry.EnsureStore(record)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,13 +343,13 @@ func TestEnsureStateMigratesReleasedVersionRepositoryWithoutDeletingSource(t *te
 	if _, err := os.Stat(legacyRepository); err != nil {
 		t.Fatalf("released version source must remain available: %v", err)
 	}
-	receipt, err := os.ReadFile(filepath.Join(layout.StateRoot, "migration.json"))
+	receipt, err := os.ReadFile(filepath.Join(layout.StoreRoot, "migration.json"))
 	if err != nil || !strings.Contains(string(receipt), `"versions"`) {
 		t.Fatalf("version migration receipt=%q err=%v", receipt, err)
 	}
 }
 
-func TestEnsureStateIsIdempotentForConcurrentProjectResolution(t *testing.T) {
+func TestEnsureStoreIsIdempotentForConcurrentProjectResolution(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
 	legacyChanges := workspacelayout.Path(workspace, "changes")
@@ -375,14 +375,14 @@ func TestEnsureStateIsIdempotentForConcurrentProjectResolution(t *testing.T) {
 		go func() {
 			defer waitGroup.Done()
 			<-start
-			_, errorsByCaller[index] = registry.EnsureState(record)
+			_, errorsByCaller[index] = registry.EnsureStore(record)
 		}()
 	}
 	close(start)
 	waitGroup.Wait()
 	for index, callErr := range errorsByCaller {
 		if callErr != nil {
-			t.Fatalf("concurrent state migration %d failed: %v", index, callErr)
+			t.Fatalf("concurrent Store migration %d failed: %v", index, callErr)
 		}
 	}
 
@@ -394,12 +394,12 @@ func TestEnsureStateIsIdempotentForConcurrentProjectResolution(t *testing.T) {
 	if err != nil || string(data) != "change\n" {
 		t.Fatalf("migrated state mismatch data=%q err=%v", data, err)
 	}
-	if _, err := os.Stat(filepath.Join(layout.StateRoot, "migration.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(layout.StoreRoot, "migration.json")); err != nil {
 		t.Fatalf("migration receipt missing: %v", err)
 	}
 }
 
-func TestEnsureStateRejectsLegacySymlinks(t *testing.T) {
+func TestEnsureStoreRejectsLegacySymlinks(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("requires optional Windows symlink privileges")
 	}
@@ -417,7 +417,7 @@ func TestEnsureStateRejectsLegacySymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.EnsureState(record); err == nil {
+	if _, err := registry.EnsureStore(record); err == nil {
 		t.Fatal("expected legacy state symlink migration to fail")
 	}
 }

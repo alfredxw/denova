@@ -50,7 +50,7 @@ type ideChatRuntime struct {
 	app              *App
 	projectID        string
 	projectType      ProjectType
-	projectState     string
+	projectStore     string
 	agentKind        string
 	sess             *session.Session
 	state            *book.State
@@ -64,7 +64,7 @@ type ideChatRuntime struct {
 
 func sharedConversationRuntime(runtime ideChatRuntime) conversationapp.Runtime {
 	return conversationapp.Runtime{
-		ProjectID: runtime.projectID, ProjectType: runtime.projectType, ProjectState: runtime.projectState,
+		ProjectID: runtime.projectID, ProjectType: runtime.projectType, ProjectStore: runtime.projectStore,
 		AgentKind: runtime.agentKind, Session: runtime.sess, State: runtime.state,
 		BookService: runtime.bookService, ExecutionRuntime: runtime.executionRuntime, Workspace: runtime.workspace,
 		VersionService: runtime.versionService, Config: runtime.cfg, IDETeller: runtime.ideTeller,
@@ -74,7 +74,7 @@ func sharedConversationRuntime(runtime ideChatRuntime) conversationapp.Runtime {
 func applySharedConversationRuntime(runtime ideChatRuntime, shared conversationapp.Runtime) ideChatRuntime {
 	runtime.projectID = shared.ProjectID
 	runtime.projectType = shared.ProjectType
-	runtime.projectState = shared.ProjectState
+	runtime.projectStore = shared.ProjectStore
 	runtime.agentKind = shared.AgentKind
 	runtime.sess = shared.Session
 	runtime.state = shared.State

@@ -49,7 +49,7 @@ func (host automationHost) CurrentRuntime() (automationapp.Runtime, error) {
 	runtime := automationapp.Runtime{
 		ProjectID:        cfg.ProjectID,
 		ProjectType:      projectdomain.TypeBook,
-		StateRoot:        cfg.ProjectStateDir,
+		StateRoot:        cfg.ProjectStoreDir,
 		Workspace:        host.app.workspace,
 		DataDir:          cfg.DataDir(),
 		Config:           cfg,
@@ -127,7 +127,7 @@ func (host automationHost) RuntimeForTarget(ctx context.Context, target automati
 	return automationapp.Runtime{
 		ProjectID:        runtime.ProjectID,
 		ProjectType:      runtime.ProjectType,
-		StateRoot:        runtime.ProjectState,
+		StateRoot:        runtime.ProjectStore,
 		Workspace:        runtime.Workspace,
 		DataDir:          runtime.Config.DataDir(),
 		Config:           runtime.Config,
@@ -158,7 +158,7 @@ func (host automationHost) Catalog() (automationapp.Catalog, error) {
 		catalog.Projects = append(catalog.Projects, automation.ProjectLocation{
 			ProjectID: record.ID,
 			Workspace: record.WorkspacePath,
-			StateRoot: layout.StateRoot,
+			StateRoot: layout.StoreRoot,
 		})
 	}
 	return catalog, nil

@@ -8,8 +8,8 @@ import (
 	"denova/internal/automation"
 )
 
-func newAutomationResource(novaDir, projectID, workspace, projectStateDir string) Adapter {
-	store := automation.NewProjectStore(novaDir, projectID, workspace, projectStateDir)
+func newAutomationResource(novaDir, projectID, workspace, projectStoreDir string) Adapter {
+	store := automation.NewProjectStore(novaDir, projectID, workspace, projectStoreDir)
 	return configResourceAdapter{
 		descriptor: Descriptor{
 			Name: "automation", Description: "Automation definitions owned by the Config Manager's current Project, without runtime history fields.",

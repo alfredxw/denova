@@ -80,7 +80,7 @@ export function StoryProtagonistSelector({ projectId, value, loreItems, onChange
       </RadioGroup>
 
       {value.mode === 'custom' ? (
-        <div className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-[minmax(10rem,0.7fr)_minmax(0,1.6fr)]">
+        <div className="mt-3 grid gap-3 border-t border-border pt-3">
           <label className="text-xs font-medium text-foreground">
             {t('storyPicker.setup.protagonist.custom.name')}
             <Input value={value.name || ''} maxLength={120} className="mt-1 bg-background" placeholder={t('storyPicker.setup.protagonist.custom.namePlaceholder')} onChange={(event) => { const next = { ...value, name: event.target.value }; customDraftRef.current = next; onChange(next) }} />

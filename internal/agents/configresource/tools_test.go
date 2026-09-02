@@ -253,7 +253,7 @@ func TestConfigApplyRejectsUnknownResourceValueFields(t *testing.T) {
 func TestConfigAutomationResourceUsesDefinitionRevisionForCRUD(t *testing.T) {
 	cfg := &config.Config{
 		NovaDir: t.TempDir(), ProjectID: "project-contract",
-		Workspace: t.TempDir(), ProjectStateDir: t.TempDir(),
+		Workspace: t.TempDir(), ProjectStoreDir: t.TempDir(),
 	}
 	applyTool := configManagerToolByName(t, cfg, "config_apply")
 	readTool := configManagerToolByName(t, cfg, "config_read")
@@ -298,11 +298,11 @@ func TestConfigAutomationResourceUsesDefinitionRevisionForCRUD(t *testing.T) {
 func TestConfigAutomationResourceBindsCurrentProjectAndRejectsUserScope(t *testing.T) {
 	novaDir := t.TempDir()
 	workspace := filepath.Join(t.TempDir(), "current-workspace")
-	projectStateDir := filepath.Join(t.TempDir(), "project-state")
+	projectStoreDir := filepath.Join(t.TempDir(), "stores")
 	outside := filepath.Join(t.TempDir(), "outside-workspace")
 	cfg := &config.Config{
 		NovaDir: novaDir, ProjectID: "project-current", Workspace: workspace,
-		ProjectStateDir: projectStateDir,
+		ProjectStoreDir: projectStoreDir,
 	}
 	applyTool := configManagerToolByName(t, cfg, "config_apply")
 	readTool := configManagerToolByName(t, cfg, "config_read")
@@ -330,8 +330,8 @@ func TestConfigAutomationResourceBindsCurrentProjectAndRejectsUserScope(t *testi
 	if !strings.HasPrefix(workspaceReceipt.ID, "project-current:") {
 		t.Fatalf("automation receipt did not use the bound Project identity: %#v", workspaceReceipt)
 	}
-	if _, err := os.Stat(filepath.Join(projectStateDir, "automations", "tasks.json")); err != nil {
-		t.Fatalf("Project-owned automation was not stored in central Project state: %v", err)
+	if _, err := os.Stat(filepath.Join(projectStoreDir, "automations", "tasks.json")); err != nil {
+		t.Fatalf("Project-owned automation was not stored in the central Project Store: %v", err)
 	}
 	if _, err := os.Stat(workspacelayout.Path(workspace, "automations", "tasks.json")); !os.IsNotExist(err) {
 		t.Fatalf("Project-owned automation leaked into the content workspace: %v", err)

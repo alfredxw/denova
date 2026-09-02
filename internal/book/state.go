@@ -38,7 +38,7 @@ func (s *State) NovaDir() string {
 }
 
 // SessionDir returns the released workspace-private session path for migration
-// and recovery only. New Project runtimes store sessions under Project state.
+// and recovery only. New Project runtimes store sessions in the Project Store.
 func (s *State) SessionDir() string {
 	return workspacelayout.Path(s.workspace, "sessions")
 }

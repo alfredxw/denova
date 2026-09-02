@@ -128,9 +128,9 @@ func TestListReplaceCandidateFilesFiltersLikeSearch(t *testing.T) {
 	}
 }
 
-func TestListReplaceCandidateFilesExcludesExplicitProjectState(t *testing.T) {
+func TestListReplaceCandidateFilesExcludesExplicitProjectStore(t *testing.T) {
 	workspace := t.TempDir()
-	stateRoot := filepath.Join(workspace, "project-state", "project-1")
+	stateRoot := filepath.Join(workspace, "stores", "project-1")
 	if err := os.MkdirAll(stateRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}

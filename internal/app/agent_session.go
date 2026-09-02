@@ -149,7 +149,7 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	stateRoot := ""
 	projectID := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 		projectID = a.cfg.ProjectID
 	}
 	a.mu.RUnlock()
@@ -355,7 +355,7 @@ func (a *App) globalTrajectorySources(ctx context.Context) ([]trajectory.Source,
 			continue
 		}
 		sources = append(sources, trajectory.Source{
-			ProjectID: record.ID, Name: name, Workspace: layout.ContentRoot, StateRoot: layout.StateRoot,
+			ProjectID: record.ID, Name: name, Workspace: layout.ContentRoot, StateRoot: layout.StoreRoot,
 		})
 	}
 	return sources, issues, nil
@@ -415,7 +415,7 @@ func (a *App) projectAgentRunTraceLocation(projectID string) (agentrun.TraceLoca
 	if err != nil {
 		return agentrun.TraceLocation{}, err
 	}
-	return agentrun.TraceLocation{Workspace: layout.ContentRoot, StateRoot: layout.StateRoot}, nil
+	return agentrun.TraceLocation{Workspace: layout.ContentRoot, StateRoot: layout.StoreRoot}, nil
 }
 
 func (a *App) agentRunTraceLocation() (agentrun.TraceLocation, bool) {
@@ -427,7 +427,7 @@ func (a *App) agentRunTraceLocation() (agentrun.TraceLocation, bool) {
 	}
 	stateRoot := ""
 	if a.cfg != nil {
-		stateRoot = strings.TrimSpace(a.cfg.ProjectStateDir)
+		stateRoot = strings.TrimSpace(a.cfg.ProjectStoreDir)
 	}
 	return agentrun.TraceLocation{Workspace: workspace, StateRoot: stateRoot}, true
 }

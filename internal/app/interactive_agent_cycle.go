@@ -85,7 +85,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	cycle.novaDir = cycle.runtimeCfg.DataDir()
 
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
-		cycle.novaDir, cycle.workspace, config.ProjectConfigPath(cycle.runtimeCfg.ProjectStateDir),
+		cycle.novaDir, cycle.workspace, config.ProjectConfigPath(cycle.runtimeCfg.ProjectStoreDir),
 	); err == nil {
 		appsettings.ApplyLayered(&cycle.runtimeCfg, layered)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] loaded settings workspace=%s story_id=%s", cycle.workspace, cycle.storyID))
@@ -184,7 +184,7 @@ func (c *interactiveAgentCycle) options(taskID string) agentrun.Options {
 	return agentrun.Options{
 		AgentKind:          agentrun.AgentKindInteractiveStory,
 		ProjectID:          c.runtimeCfg.ProjectID,
-		StateRoot:          c.runtimeCfg.ProjectStateDir,
+		StateRoot:          c.runtimeCfg.ProjectStoreDir,
 		TaskID:             strings.TrimSpace(taskID),
 		StoryID:            c.storyID,
 		BranchID:           c.branchID,

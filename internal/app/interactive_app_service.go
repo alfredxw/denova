@@ -107,7 +107,7 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 		if workspace == "" {
 			return interactive.StorySummary{}, ErrNoWorkspace
 		}
-		runtimeCfg, err = refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStateDir)
+		runtimeCfg, err = refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStoreDir)
 		if err != nil {
 			return interactive.StorySummary{}, err
 		}
@@ -120,6 +120,21 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 		}
 		if seedErr != nil {
 			return interactive.StorySummary{}, seedErr
+		}
+		profileID := strings.TrimSpace(req.ProfileID)
+		thinkingLevel := strings.TrimSpace(req.ThinkingLevel)
+		if profileID != "" || thinkingLevel != "" {
+			patch := conversationconfig.Patch{}
+			if profileID != "" {
+				patch.ProfileID = &profileID
+			}
+			if thinkingLevel != "" {
+				patch.ThinkingLevel = &thinkingLevel
+			}
+			seed, seedErr = conversationconfig.Merge(&runtimeCfg, seed, patch)
+			if seedErr != nil {
+				return interactive.StorySummary{}, seedErr
+			}
 		}
 		req.RuntimeConfig = &seed
 	}
@@ -333,7 +348,7 @@ func (s *InteractiveAppService) DeleteInteractiveStory(storyID string) error {
 	sessionStore := a.sessionStore
 	stateRoot := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 	}
 	if store == nil {
 		return ErrNoWorkspace
@@ -489,7 +504,7 @@ func (s *InteractiveAppService) interactiveRuntimeConfig() (*interactive.Store, 
 	a.mu.RUnlock()
 
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
-		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStoreDir),
 	); err == nil {
 		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {

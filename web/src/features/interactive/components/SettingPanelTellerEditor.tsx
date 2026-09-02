@@ -122,7 +122,7 @@ export function TellerEditor({ projectId, draft, setDraft, activeSlotId, setActi
   }
 
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
-  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
+  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInEditHint')
   return (
     <div data-testid="teller-editor" className="teller-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div data-testid="teller-content-scroll" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">

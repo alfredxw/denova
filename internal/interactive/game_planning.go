@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
 
+	"denova/internal/presetlayout"
 	"denova/internal/revisionfile"
 	"denova/internal/revisionjson"
 )
@@ -37,18 +39,19 @@ type GamePlanningSection struct {
 // deliberately owns no narrative, rule, state, image, or event module choices;
 // those selections belong to each story.
 type GamePlanningTemplate struct {
-	Version     int                   `json:"version"`
-	ID          string                `json:"id"`
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	Sections    []GamePlanningSection `json:"sections"`
-	Path        string                `json:"path,omitempty"`
-	Custom      bool                  `json:"custom"`
-	Invalid     bool                  `json:"invalid,omitempty"`
-	Error       string                `json:"error,omitempty"`
-	CreatedAt   string                `json:"created_at,omitempty"`
-	UpdatedAt   string                `json:"updated_at,omitempty"`
-	Revision    string                `json:"revision,omitempty"`
+	Version           int                   `json:"version"`
+	ID                string                `json:"id"`
+	Name              string                `json:"name"`
+	Description       string                `json:"description"`
+	Sections          []GamePlanningSection `json:"sections"`
+	Path              string                `json:"path,omitempty"`
+	Custom            bool                  `json:"custom"`
+	BuiltinOverridden bool                  `json:"builtin_overridden,omitempty"`
+	Invalid           bool                  `json:"invalid,omitempty"`
+	Error             string                `json:"error,omitempty"`
+	CreatedAt         string                `json:"created_at,omitempty"`
+	UpdatedAt         string                `json:"updated_at,omitempty"`
+	Revision          string                `json:"revision,omitempty"`
 }
 
 type GamePlanningTemplateLibrary struct {
@@ -60,29 +63,42 @@ func NewGamePlanningTemplateLibrary(novaDir string) *GamePlanningTemplateLibrary
 }
 
 func (l *GamePlanningTemplateLibrary) List() ([]GamePlanningTemplate, error) {
-	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
+	if err := l.ensureBuiltins(); err != nil {
 		return nil, err
 	}
-	items := builtinGamePlanningTemplates()
 	files, err := filepath.Glob(filepath.Join(l.dir(), "*.json"))
 	if err != nil {
 		return nil, err
 	}
-	custom := make([]GamePlanningTemplate, 0, len(files))
+	items := make([]GamePlanningTemplate, 0, len(files))
 	for _, path := range files {
 		item, readErr := readGamePlanningTemplate(path)
 		if readErr != nil {
-			custom = append(custom, GamePlanningTemplate{
+			items = append(items, GamePlanningTemplate{
 				ID: strings.TrimSuffix(filepath.Base(path), ".json"), Path: path,
-				Custom: true, Invalid: true, Error: readErr.Error(),
+				Custom:  !IsBuiltinGamePlanningTemplateID(strings.TrimSuffix(filepath.Base(path), ".json")),
+				Invalid: true, Error: readErr.Error(),
 			})
 			continue
 		}
-		item.Custom, item.Path = true, path
-		custom = append(custom, item)
+		items = append(items, applyGamePlanningTemplateOwnership(item))
 	}
-	sort.Slice(custom, func(i, j int) bool { return custom[i].ID < custom[j].ID })
-	return append(items, custom...), nil
+	builtinOrder := make(map[string]int, len(builtinGamePlanningTemplates()))
+	for index, item := range builtinGamePlanningTemplates() {
+		builtinOrder[item.ID] = index
+	}
+	sort.Slice(items, func(i, j int) bool {
+		leftOrder, leftBuiltin := builtinOrder[items[i].ID]
+		rightOrder, rightBuiltin := builtinOrder[items[j].ID]
+		if leftBuiltin != rightBuiltin {
+			return leftBuiltin
+		}
+		if leftBuiltin {
+			return leftOrder < rightOrder
+		}
+		return items[i].ID < items[j].ID
+	})
+	return items, nil
 }
 
 func (l *GamePlanningTemplateLibrary) Get(id string) (GamePlanningTemplate, error) {
@@ -90,22 +106,21 @@ func (l *GamePlanningTemplateLibrary) Get(id string) (GamePlanningTemplate, erro
 	if id == "" {
 		id = DefaultGamePlanningTemplateID
 	}
-	if builtin, ok := builtinGamePlanningTemplateByID(id); ok {
-		return builtin, nil
-	}
 	if err := validateGamePlanningTemplateID(id); err != nil {
+		return GamePlanningTemplate{}, err
+	}
+	if err := l.ensureBuiltins(); err != nil {
 		return GamePlanningTemplate{}, err
 	}
 	item, err := readGamePlanningTemplate(filepath.Join(l.dir(), id+".json"))
 	if err != nil {
 		return GamePlanningTemplate{}, err
 	}
-	item.Custom = true
-	return item, nil
+	return applyGamePlanningTemplateOwnership(item), nil
 }
 
 func (l *GamePlanningTemplateLibrary) Create(item GamePlanningTemplate) (GamePlanningTemplate, error) {
-	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
+	if err := l.ensureBuiltins(); err != nil {
 		return GamePlanningTemplate{}, err
 	}
 	if err := validateGamePlanningTemplateWriteBounds(item); err != nil {
@@ -119,8 +134,9 @@ func (l *GamePlanningTemplateLibrary) Create(item GamePlanningTemplate) (GamePla
 		return GamePlanningTemplate{}, err
 	}
 	if IsBuiltinGamePlanningTemplateID(item.ID) {
-		return GamePlanningTemplate{}, fmt.Errorf("built-in planning templates must be copied before editing: %s", item.ID)
+		return GamePlanningTemplate{}, fmt.Errorf("built-in planning templates must be updated in place: %s", item.ID)
 	}
+	item.BuiltinOverridden = false
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item.CreatedAt = firstNonEmptyString(item.CreatedAt, now)
 	item.UpdatedAt = now
@@ -133,8 +149,8 @@ func (l *GamePlanningTemplateLibrary) Create(item GamePlanningTemplate) (GamePla
 		return GamePlanningTemplate{}, err
 	}
 	item = document.Value
-	item.Path, item.Revision, item.Custom = path, document.Revision, true
-	return item, nil
+	item.Path, item.Revision = path, document.Revision
+	return applyGamePlanningTemplateOwnership(item), nil
 }
 
 func (l *GamePlanningTemplateLibrary) Update(id string, item GamePlanningTemplate, baseRevision string) (GamePlanningTemplate, error) {
@@ -142,8 +158,8 @@ func (l *GamePlanningTemplateLibrary) Update(id string, item GamePlanningTemplat
 	if err := validateGamePlanningTemplateID(id); err != nil {
 		return GamePlanningTemplate{}, err
 	}
-	if IsBuiltinGamePlanningTemplateID(id) {
-		return GamePlanningTemplate{}, fmt.Errorf("built-in planning templates must be copied before editing: %s", id)
+	if err := l.ensureBuiltins(); err != nil {
+		return GamePlanningTemplate{}, err
 	}
 	if err := validateGamePlanningTemplateWriteBounds(item); err != nil {
 		return GamePlanningTemplate{}, err
@@ -152,8 +168,10 @@ func (l *GamePlanningTemplateLibrary) Update(id string, item GamePlanningTemplat
 	item.ID = id
 	path := filepath.Join(l.dir(), id+".json")
 	document, err := gamePlanningTemplateStore(path).Update(context.Background(), baseRevision, func(current GamePlanningTemplate) (GamePlanningTemplate, error) {
-		item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
-		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt, now)
+		item.UpdatedAt = now
+		item.BuiltinOverridden = IsBuiltinGamePlanningTemplateID(id)
 		return item, validateGamePlanningTemplate(item)
 	})
 	if err != nil {
@@ -163,8 +181,8 @@ func (l *GamePlanningTemplateLibrary) Update(id string, item GamePlanningTemplat
 		return GamePlanningTemplate{}, err
 	}
 	item = document.Value
-	item.Path, item.Revision, item.Custom = path, document.Revision, true
-	return item, nil
+	item.Path, item.Revision = path, document.Revision
+	return applyGamePlanningTemplateOwnership(item), nil
 }
 
 func (l *GamePlanningTemplateLibrary) Delete(id string) error {
@@ -173,13 +191,24 @@ func (l *GamePlanningTemplateLibrary) Delete(id string) error {
 		return err
 	}
 	if IsBuiltinGamePlanningTemplateID(id) {
-		return fmt.Errorf("built-in planning templates cannot be deleted: %s", id)
+		return l.restoreBuiltin(id)
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
 }
 
+func (l *GamePlanningTemplateLibrary) restoreBuiltin(id string) error {
+	item, ok := builtinGamePlanningTemplateByID(id)
+	if !ok {
+		return fmt.Errorf("built-in planning template does not exist: %s", id)
+	}
+	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
+		return err
+	}
+	return writeGamePlanningTemplateFile(filepath.Join(l.dir(), id+".json"), item)
+}
+
 func (l *GamePlanningTemplateLibrary) dir() string {
-	return filepath.Join(l.novaDir, "game-planning-templates")
+	return presetlayout.GamePlanning(l.novaDir)
 }
 
 func readGamePlanningTemplate(path string) (GamePlanningTemplate, error) {
@@ -190,6 +219,24 @@ func readGamePlanningTemplate(path string) (GamePlanningTemplate, error) {
 	item := document.Value
 	item.Path, item.Revision = path, document.Revision
 	return item, nil
+}
+
+func writeGamePlanningTemplateFile(path string, item GamePlanningTemplate) error {
+	_, err := gamePlanningTemplateStore(path).Replace(context.Background(), item)
+	return err
+}
+
+func (l *GamePlanningTemplateLibrary) ensureBuiltins() error {
+	return ensureBuiltinModuleFiles(
+		l.dir(),
+		builtinGamePlanningTemplates(),
+		func(item GamePlanningTemplate) string { return item.ID },
+		readGamePlanningTemplate,
+		func(current, builtin GamePlanningTemplate) bool {
+			return current.BuiltinOverridden || current.Version == builtin.Version
+		},
+		writeGamePlanningTemplateFile,
+	)
 }
 
 func gamePlanningTemplateStore(path string) revisionjson.Store[GamePlanningTemplate] {
@@ -222,6 +269,35 @@ func NormalizeGamePlanningTemplateID(id string) string {
 func IsBuiltinGamePlanningTemplateID(id string) bool {
 	_, ok := builtinGamePlanningTemplateByID(NormalizeGamePlanningTemplateID(id))
 	return ok
+}
+
+func applyGamePlanningTemplateOwnership(item GamePlanningTemplate) GamePlanningTemplate {
+	if !IsBuiltinGamePlanningTemplateID(item.ID) {
+		item.Custom = true
+		item.BuiltinOverridden = false
+		return item
+	}
+	item.Custom = false
+	item.BuiltinOverridden = item.BuiltinOverridden || gamePlanningTemplateDiffersFromBuiltin(item)
+	return item
+}
+
+func gamePlanningTemplateDiffersFromBuiltin(item GamePlanningTemplate) bool {
+	builtin, ok := builtinGamePlanningTemplateByID(item.ID)
+	return ok && !reflect.DeepEqual(gamePlanningTemplateComparable(item), gamePlanningTemplateComparable(builtin))
+}
+
+func gamePlanningTemplateComparable(item GamePlanningTemplate) GamePlanningTemplate {
+	item = normalizeGamePlanningTemplate(item)
+	item.Path = ""
+	item.Custom = false
+	item.BuiltinOverridden = false
+	item.Invalid = false
+	item.Error = ""
+	item.CreatedAt = ""
+	item.UpdatedAt = ""
+	item.Revision = ""
+	return item
 }
 
 func validateGamePlanningTemplateID(id string) error {

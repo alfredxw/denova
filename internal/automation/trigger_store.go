@@ -311,7 +311,7 @@ func (s *Store) readInboxScope(scope string) ([]TriggerInboxItem, error) {
 
 func (s *Store) bindProjectInboxWorkspace(item TriggerInboxItem) TriggerInboxItem {
 	if item.Scope == ScopeWorkspace && strings.TrimSpace(s.workspaceStateRoot) != "" {
-		// Project state owns workspace-scoped inbox records. Binding the stable ID
+		// The Project Store owns workspace-scoped inbox records. Binding the stable ID
 		// here is also the read-time migration for released records that only
 		// persisted a workspace path before Project identities were introduced.
 		item.ProjectID = s.projectID

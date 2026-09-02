@@ -98,7 +98,7 @@ func TestAppDeleteActiveSessionSwitchesToRemainingSession(t *testing.T) {
 	app := &App{
 		sessionStore: store, session: first, workspace: workspace,
 		executionRuntime: executionRuntime,
-		cfg:              &config.Config{ProjectID: "project-test", Workspace: workspace, ProjectStateDir: t.TempDir()},
+		cfg:              &config.Config{ProjectID: "project-test", Workspace: workspace, ProjectStoreDir: t.TempDir()},
 	}
 	second, err := app.CreateSession("会话 B")
 	if err != nil {

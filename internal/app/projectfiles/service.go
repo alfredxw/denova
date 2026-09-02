@@ -634,7 +634,7 @@ func (service *Service) resolve(projectID string) (projectRuntime, error) {
 	if err != nil {
 		return projectRuntime{}, err
 	}
-	changes, err := workspacechange.ForWorkspaceAt(layout.ContentRoot, layout.StateRoot)
+	changes, err := workspacechange.ForWorkspaceAt(layout.ContentRoot, layout.StoreRoot)
 	if err != nil {
 		return projectRuntime{}, err
 	}

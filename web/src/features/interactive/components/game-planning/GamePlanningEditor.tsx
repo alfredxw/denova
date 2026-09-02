@@ -1,15 +1,15 @@
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Copy, GripVertical, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { GripVertical, Plus, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
-import { EmptyState } from '@/components/common/EmptyState'
+import { cn } from '@/lib/utils'
 import {
   gamePlanningSectionDescription,
   gamePlanningSectionTitle,
@@ -17,15 +17,17 @@ import {
   gamePlanningTemplateName,
 } from '../../game-planning'
 import type { GamePlanningSection, GamePlanningTemplate } from '../../types'
+import { presetActionButtonClassName, presetInputClassName } from '../preset-config/editor-styles'
+import { PresetEmptyState } from '../preset-config/PresetEmptyState'
+import { PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
 
 interface GamePlanningEditorProps {
   draft: GamePlanningTemplate | null
   setDraft: (draft: GamePlanningTemplate | null) => void
-  onCopy: (template: GamePlanningTemplate) => void | Promise<void>
   onValidityChange: (valid: boolean) => void
 }
 
-export function GamePlanningEditor({ draft, setDraft, onCopy, onValidityChange }: GamePlanningEditorProps) {
+export function GamePlanningEditor({ draft, setDraft, onValidityChange }: GamePlanningEditorProps) {
   const { t } = useTranslation()
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -33,7 +35,6 @@ export function GamePlanningEditor({ draft, setDraft, onCopy, onValidityChange }
   )
   const validation = useMemo(() => validateSections(draft?.sections || []), [draft?.sections])
   const nameValid = Boolean(draft?.name.trim())
-  const readOnly = !draft?.custom
 
   useEffect(
     () => onValidityChange(Boolean(draft) && nameValid && validation.valid),
@@ -42,221 +43,230 @@ export function GamePlanningEditor({ draft, setDraft, onCopy, onValidityChange }
 
   if (!draft) {
     return (
-      <EmptyState
+      <PresetEmptyState
         title={t('settingPanel.editor.noGamePlanningSelected')}
         description={t('settingPanel.editor.noGamePlanningSelectedDesc')}
       />
     )
   }
 
-  const patch = (next: Partial<GamePlanningTemplate>) => setDraft({ ...draft, ...next })
-  const patchSection = (id: string, next: Partial<GamePlanningSection>) => patch({ sections: draft.sections.map((section) => section.id === id ? { ...section, ...next } : section) })
-  const addSection = () => patch({ sections: [...draft.sections, { id: createSectionID(), title: '', description: '' }] })
-  const removeSection = (id: string) => patch({ sections: draft.sections.filter((section) => section.id !== id) })
+  const displayName = gamePlanningTemplateName(draft, t)
+  const displayDescription = gamePlanningTemplateDescription(draft, t)
+  const editableSnapshot = (): GamePlanningTemplate => {
+    if (draft.custom || draft.builtin_overridden) return draft
+    return {
+      ...draft,
+      name: displayName,
+      description: displayDescription,
+      sections: draft.sections.map((section) => ({
+        ...section,
+        title: gamePlanningSectionTitle(draft, section, t),
+        description: gamePlanningSectionDescription(draft, section, t),
+      })),
+      builtin_overridden: true,
+    }
+  }
+  const patch = (next: Partial<GamePlanningTemplate>) => setDraft({ ...editableSnapshot(), ...next })
+  const patchSection = (id: string, next: Partial<GamePlanningSection>) => {
+    const editable = editableSnapshot()
+    setDraft({
+      ...editable,
+      sections: editable.sections.map((section) => section.id === id ? { ...section, ...next } : section),
+    })
+  }
+  const addSection = () => {
+    const editable = editableSnapshot()
+    setDraft({
+      ...editable,
+      sections: [...editable.sections, { id: createSectionID(), title: '', description: '' }],
+    })
+  }
+  const removeSection = (id: string) => {
+    const editable = editableSnapshot()
+    if (editable.sections.length <= 1) return
+    setDraft({ ...editable, sections: editable.sections.filter((section) => section.id !== id) })
+  }
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return
-    const from = draft.sections.findIndex((section) => section.id === active.id)
-    const to = draft.sections.findIndex((section) => section.id === over.id)
-    if (from >= 0 && to >= 0) patch({ sections: arrayMove(draft.sections, from, to) })
+    const editable = editableSnapshot()
+    const from = editable.sections.findIndex((section) => section.id === active.id)
+    const to = editable.sections.findIndex((section) => section.id === over.id)
+    if (from >= 0 && to >= 0) setDraft({ ...editable, sections: arrayMove(editable.sections, from, to) })
   }
+  let status = t('settingPanel.builtIn')
+  if (draft.custom) status = t('settingPanel.custom')
+  else if (draft.builtin_overridden) status = t('settingPanel.builtInOverridden')
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        {!draft.custom ? (
-          <Card className="border-border bg-muted/30 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-sm">{t('settingPanel.gamePlanning.builtinTitle')}</CardTitle>
-              <CardDescription>{t('settingPanel.gamePlanning.builtinDescription')}</CardDescription>
-              <CardAction>
-                <Button type="button" variant="outline" size="sm" onClick={() => void onCopy(draft)}>
-                  <Copy data-icon="inline-start" />
-                  {t('settingPanel.gamePlanning.copy')}
-                </Button>
-              </CardAction>
-            </CardHeader>
-          </Card>
-        ) : null}
+    <div data-testid="game-planning-editor" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+      <PresetMetadataPanel
+        name={displayName}
+        description={displayDescription}
+        status={status}
+        hint={t(draft.custom ? 'settingPanel.storyDirector.customEditable' : 'settingPanel.storyDirector.builtInEditHint')}
+        onNameChange={(name) => patch({ name })}
+        onDescriptionChange={(description) => patch({ description })}
+      />
+      {!nameValid ? (
+        <p role="alert" className="border-b border-[var(--preset-line)] px-3 py-2 text-xs text-[var(--nova-danger)] sm:px-4">
+          {t('settingPanel.gamePlanning.nameRequired')}
+        </p>
+      ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('settingPanel.gamePlanning.details')}</CardTitle>
-            <CardDescription>{t('settingPanel.gamePlanning.detailsDescription')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FieldGroup>
-              <Field data-invalid={!nameValid || undefined}>
-                <FieldLabel htmlFor="game-planning-name">{t('settingPanel.editor.name')}</FieldLabel>
-                <Input
-                  id="game-planning-name"
-                  value={gamePlanningTemplateName(draft, t)}
-                  disabled={readOnly}
-                  aria-invalid={!nameValid || undefined}
-                  onChange={(event) => patch({ name: event.target.value })}
-                />
-                {!nameValid ? (
-                  <FieldDescription className="text-destructive">
-                    {t('settingPanel.gamePlanning.nameRequired')}
-                  </FieldDescription>
-                ) : null}
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="game-planning-description">{t('settingPanel.editor.description')}</FieldLabel>
-                <Textarea
-                  id="game-planning-description"
-                  value={gamePlanningTemplateDescription(draft, t)}
-                  disabled={readOnly}
-                  rows={3}
-                  onChange={(event) => patch({ description: event.target.value })}
-                />
-              </Field>
-            </FieldGroup>
-          </CardContent>
-        </Card>
-
-        <section className="flex flex-col gap-3" aria-labelledby="game-planning-sections-title">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h3 id="game-planning-sections-title" className="text-base font-semibold text-foreground">
-                {t('settingPanel.gamePlanning.sections')}
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">{t('settingPanel.gamePlanning.sectionsDescription')}</p>
-            </div>
-            {draft.custom ? (
-              <Button type="button" variant="outline" size="sm" onClick={addSection}>
-                <Plus data-icon="inline-start" />
-                {t('settingPanel.gamePlanning.addSection')}
-              </Button>
-            ) : null}
+      <section className="shrink-0 bg-[var(--preset-surface)]" aria-labelledby="game-planning-sections-title">
+        <header className="flex items-center justify-between gap-3 p-3 sm:p-4">
+          <div className="min-w-0">
+            <h3 id="game-planning-sections-title" className="text-xs font-medium text-[var(--nova-text)]">
+              {t('settingPanel.gamePlanning.sections')}
+            </h3>
+            <p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+              {t('settingPanel.gamePlanning.sectionsDescription')}
+            </p>
           </div>
+          <Button className={presetActionButtonClassName} type="button" variant="outline" size="sm" onClick={addSection}>
+            <Plus data-icon="inline-start" />
+            {t('settingPanel.gamePlanning.addSection')}
+          </Button>
+        </header>
+        <Separator />
 
-          {!validation.valid ? <p role="alert" className="text-sm text-destructive">{t(validation.messageKey)}</p> : null}
-
+        {draft.sections.length === 0 ? (
+          <p role="alert" className="px-3 py-4 text-xs text-[var(--nova-danger)] sm:px-4">
+            {t('settingPanel.gamePlanning.sectionsRequired')}
+          </p>
+        ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={draft.sections.map((section) => section.id)} strategy={verticalListSortingStrategy}>
-              <div className="flex flex-col gap-3">
-                {draft.sections.map((section, index) => (
-                  <PlanningSectionCard
-                    key={section.id}
+              {draft.sections.map((section, index) => (
+                <Fragment key={section.id}>
+                  {index > 0 ? <Separator /> : null}
+                  <PlanningSectionItem
                     section={section}
-                    index={index}
-                    readOnly={readOnly}
                     displayTitle={gamePlanningSectionTitle(draft, section, t)}
                     displayDescription={gamePlanningSectionDescription(draft, section, t)}
-                    duplicateTitle={validation.duplicateTitles.has(section.title.trim().toLocaleLowerCase())}
+                    duplicateTitle={validation.duplicateSectionIDs.has(section.id)}
+                    canRemove={draft.sections.length > 1}
                     onChange={(next) => patchSection(section.id, next)}
                     onRemove={() => removeSection(section.id)}
                   />
-                ))}
-              </div>
+                </Fragment>
+              ))}
             </SortableContext>
           </DndContext>
-        </section>
-      </div>
+        )}
+      </section>
     </div>
   )
 }
 
-interface PlanningSectionCardProps {
+interface PlanningSectionItemProps {
   section: GamePlanningSection
-  index: number
-  readOnly: boolean
   displayTitle: string
   displayDescription: string
   duplicateTitle: boolean
+  canRemove: boolean
   onChange: (next: Partial<GamePlanningSection>) => void
   onRemove: () => void
 }
 
-function PlanningSectionCard({
+function PlanningSectionItem({
   section,
-  index,
-  readOnly,
   displayTitle,
   displayDescription,
   duplicateTitle,
+  canRemove,
   onChange,
   onRemove,
-}: PlanningSectionCardProps) {
+}: PlanningSectionItemProps) {
   const { t } = useTranslation()
-  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id, disabled: readOnly })
+  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
+  const titleMissing = !section.title.trim()
+
   return (
-    <Card ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={isDragging ? 'relative z-10 border-primary/40 shadow-lg' : undefined}>
-      <CardHeader>
-        <CardTitle className="text-sm">{t('settingPanel.gamePlanning.sectionNumber', { number: index + 1 })}</CardTitle>
-        <CardDescription>{displayTitle.trim() || t('settingPanel.gamePlanning.untitledSection')}</CardDescription>
-        {!readOnly ? (
-          <CardAction className="flex items-center gap-1">
-            <Button
-              ref={setActivatorNodeRef}
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t('settingPanel.gamePlanning.reorderSection')}
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t('settingPanel.gamePlanning.removeSection')}
-              onClick={onRemove}
-            >
-              <Trash2 />
-            </Button>
-          </CardAction>
-        ) : null}
-      </CardHeader>
-      <CardContent>
-        <FieldGroup>
-          <Field data-invalid={!section.title.trim() || duplicateTitle || undefined}>
-            <FieldLabel htmlFor={`planning-section-title-${section.id}`}>{t('settingPanel.gamePlanning.sectionTitle')}</FieldLabel>
-            <Input
-              id={`planning-section-title-${section.id}`}
-              value={displayTitle}
-              disabled={readOnly}
-              aria-invalid={!section.title.trim() || duplicateTitle || undefined}
-              onChange={(event) => onChange({ title: event.target.value })}
-            />
-            {duplicateTitle ? <FieldDescription className="text-destructive">{t('settingPanel.gamePlanning.duplicateSectionTitle')}</FieldDescription> : null}
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`planning-section-description-${section.id}`}>{t('settingPanel.gamePlanning.sectionDescription')}</FieldLabel>
-            <Textarea
-              id={`planning-section-description-${section.id}`}
-              value={displayDescription}
-              disabled={readOnly}
-              rows={4}
-              onChange={(event) => onChange({ description: event.target.value })}
-            />
-            <FieldDescription>{t('settingPanel.gamePlanning.sectionDescriptionHint')}</FieldDescription>
-          </Field>
-        </FieldGroup>
-      </CardContent>
-    </Card>
+    <article
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        'grid grid-cols-[1.75rem_minmax(0,1fr)_1.75rem] items-start gap-x-2 px-2 py-2.5 transition-colors sm:gap-x-3 sm:px-3 sm:py-3',
+        isDragging && 'relative z-10 bg-[var(--nova-active)] shadow-lg',
+      )}
+    >
+      <Button
+        ref={setActivatorNodeRef}
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={t('settingPanel.gamePlanning.reorderSection')}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical />
+      </Button>
+
+      <FieldGroup className="gap-2">
+        <Field className="gap-1" data-invalid={titleMissing || duplicateTitle || undefined}>
+          <FieldLabel className="sr-only" htmlFor={`planning-section-title-${section.id}`}>
+            {t('settingPanel.gamePlanning.sectionTitle')}
+          </FieldLabel>
+          <Input
+            id={`planning-section-title-${section.id}`}
+            className={cn(presetInputClassName, 'font-medium')}
+            value={displayTitle}
+            placeholder={t('settingPanel.gamePlanning.sectionTitle')}
+            aria-invalid={titleMissing || duplicateTitle || undefined}
+            onChange={(event) => onChange({ title: event.target.value })}
+          />
+          {titleMissing ? <FieldError>{t('settingPanel.gamePlanning.sectionTitleRequired')}</FieldError> : null}
+          {duplicateTitle ? <FieldError>{t('settingPanel.gamePlanning.duplicateSectionTitle')}</FieldError> : null}
+        </Field>
+        <Field className="gap-1">
+          <FieldLabel className="sr-only" htmlFor={`planning-section-description-${section.id}`}>
+            {t('settingPanel.gamePlanning.sectionDescription')}
+          </FieldLabel>
+          <Textarea
+            id={`planning-section-description-${section.id}`}
+            value={displayDescription}
+            placeholder={t('settingPanel.gamePlanning.sectionDescription')}
+            minRows={1}
+            maxRows={6}
+            className="nova-field min-h-0 text-xs leading-5 focus-visible:ring-0"
+            onChange={(event) => onChange({ description: event.target.value })}
+          />
+        </Field>
+      </FieldGroup>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        disabled={!canRemove}
+        aria-label={t('settingPanel.gamePlanning.removeSection')}
+        onClick={onRemove}
+      >
+        <Trash2 />
+      </Button>
+    </article>
   )
 }
 
 interface SectionValidation {
   valid: boolean
-  messageKey: string
-  duplicateTitles: Set<string>
+  duplicateSectionIDs: Set<string>
 }
 
 function validateSections(sections: GamePlanningSection[]): SectionValidation {
-  const counts = new Map<string, number>()
+  const seenTitles = new Set<string>()
+  const duplicateSectionIDs = new Set<string>()
   for (const section of sections) {
     const key = section.title.trim().toLocaleLowerCase()
-    if (key) counts.set(key, (counts.get(key) || 0) + 1)
+    if (!key) continue
+    if (seenTitles.has(key)) duplicateSectionIDs.add(section.id)
+    else seenTitles.add(key)
   }
-  const duplicateTitles = new Set([...counts.entries()].filter(([, count]) => count > 1).map(([title]) => title))
-  if (sections.length === 0) return { valid: false, messageKey: 'settingPanel.gamePlanning.sectionsRequired', duplicateTitles }
-  if (sections.some((section) => !section.title.trim())) return { valid: false, messageKey: 'settingPanel.gamePlanning.sectionTitleRequired', duplicateTitles }
-  if (duplicateTitles.size > 0) return { valid: false, messageKey: 'settingPanel.gamePlanning.duplicateSectionTitle', duplicateTitles }
-  return { valid: true, messageKey: '', duplicateTitles }
+  return {
+    valid: sections.length > 0 && sections.every((section) => Boolean(section.title.trim())) && duplicateSectionIDs.size === 0,
+    duplicateSectionIDs,
+  }
 }
 
 function createSectionID(): string {

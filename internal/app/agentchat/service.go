@@ -72,7 +72,7 @@ func (runtime *projectRuntime) conversation(sess *session.Session) conversationa
 		return conversationapp.Runtime{}
 	}
 	return conversationapp.Runtime{
-		ProjectID: runtime.projectID, ProjectType: runtime.projectType, ProjectState: runtime.stateRoot,
+		ProjectID: runtime.projectID, ProjectType: runtime.projectType, ProjectStore: runtime.stateRoot,
 		AgentKind: runtime.agentKind, Session: sess, State: runtime.state,
 		BookService: runtime.bookService, ExecutionRuntime: runtime.executionRuntime, Workspace: runtime.workspace,
 		VersionService: runtime.versionService, Config: runtime.cfg,
@@ -232,7 +232,7 @@ func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 	}
 	binding.ProjectID = record.ID
 	binding.Workspace = layout.ContentRoot
-	binding.stateRoot = layout.StateRoot
+	binding.stateRoot = layout.StoreRoot
 	switch record.Type {
 	case projectdomain.TypeBook:
 		binding.agentKind = agentrun.AgentKindIDE
@@ -287,7 +287,7 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 		return nil, err
 	}
 	workspace := layout.ContentRoot
-	changes, err := workspacechange.ForWorkspaceAt(workspace, layout.StateRoot)
+	changes, err := workspacechange.ForWorkspaceAt(workspace, layout.StoreRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -322,8 +322,8 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	}
 	runtimeCfg.Workspace = workspace
 	runtimeCfg.ProjectID = record.ID
-	runtimeCfg.ProjectStateDir = layout.StateRoot
-	runtimeCfg, err = appsettings.RefreshProject(runtimeCfg, workspace, layout.StateRoot)
+	runtimeCfg.ProjectStoreDir = layout.StoreRoot
+	runtimeCfg, err = appsettings.RefreshProject(runtimeCfg, workspace, layout.StoreRoot)
 	if err != nil {
 		service.evictProjectSessionStore(record.ID, store)
 		_ = store.Close()
@@ -331,7 +331,7 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	}
 	runtimeCfg.ProjectID = record.ID
 	project = &projectRuntime{
-		projectID: record.ID, projectType: record.Type, agentKind: agentKind, stateRoot: layout.StateRoot,
+		projectID: record.ID, projectType: record.Type, agentKind: agentKind, stateRoot: layout.StoreRoot,
 		workspace: workspace, state: state, store: store, bookService: book.NewService(workspace),
 		versionService: versionService, executionRuntime: executionRuntime, cfg: runtimeCfg,
 	}

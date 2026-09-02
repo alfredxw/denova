@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"denova/internal/presetlayout"
 	"denova/internal/revisionfile"
 	"denova/internal/revisionjson"
 )
@@ -136,7 +137,7 @@ func (l *ActorStateLibrary) Delete(id string) error {
 }
 
 func (l *ActorStateLibrary) dir() string {
-	return filepath.Join(l.novaDir, "story-director-modules", "actor-states")
+	return presetlayout.ActorStates(l.novaDir)
 }
 
 func (l *ActorStateLibrary) ensureBuiltins() error {

@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	releasedStateMigrationVersion = 3
-	stateMigrationVersion         = 4
+	releasedStoreMigrationVersion = 3
+	storeMigrationVersion         = 4
 )
 
 type migrationReceipt struct {
@@ -26,25 +26,25 @@ type migrationReceipt struct {
 	Copied      []string  `json:"copied"`
 }
 
-// EnsureState creates the user-owned state root and performs a copy-only
-// migration from legacy workspace-private state. Source files are retained as
+// EnsureStore creates the user-owned Project Store and performs a copy-only
+// migration from v0.3.3 workspace-private state. Source files are retained as
 // an explicit rollback path; subsequent calls are idempotent.
-func (registry *Registry) EnsureState(record Record) (Layout, error) {
+func (registry *Registry) EnsureStore(record Record) (Layout, error) {
 	// Multiple project surfaces can resolve the same project concurrently. Keep
 	// the one-time legacy migration serialized so each caller observes either the
 	// legacy source or the completed atomic destination, never a competing rename.
-	registry.stateMu.Lock()
-	defer registry.stateMu.Unlock()
+	registry.storeMu.Lock()
+	defer registry.storeMu.Unlock()
 
 	layout, err := registry.Layout(record)
 	if err != nil {
 		return Layout{}, err
 	}
-	if err := os.MkdirAll(layout.StateRoot, 0o700); err != nil {
-		return Layout{}, fmt.Errorf("create project state root: %w", err)
+	if err := os.MkdirAll(layout.StoreRoot, 0o700); err != nil {
+		return Layout{}, fmt.Errorf("create Project Store: %w", err)
 	}
-	receiptPath := filepath.Join(layout.StateRoot, "migration.json")
-	complete, err := ensureCurrentStateMigrationReceipt(receiptPath, record.ID)
+	receiptPath := filepath.Join(layout.StoreRoot, "migration.json")
+	complete, err := ensureCurrentStoreMigrationReceipt(receiptPath, record.ID)
 	if err != nil {
 		return Layout{}, err
 	}
@@ -81,78 +81,78 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 		if _, statErr := os.Lstat(item.source); errors.Is(statErr, os.ErrNotExist) {
 			continue
 		} else if statErr != nil {
-			return Layout{}, fmt.Errorf("inspect legacy project state %s: %w", item.name, statErr)
+			return Layout{}, fmt.Errorf("inspect legacy workspace state %s: %w", item.name, statErr)
 		}
 		if _, statErr := os.Lstat(item.destination); statErr == nil {
 			continue
 		} else if !errors.Is(statErr, os.ErrNotExist) {
-			return Layout{}, fmt.Errorf("inspect project state destination %s: %w", item.name, statErr)
+			return Layout{}, fmt.Errorf("inspect Project Store destination %s: %w", item.name, statErr)
 		}
 		if err := copyStateEntry(item.source, item.destination); err != nil {
-			return Layout{}, fmt.Errorf("migrate project state %s: %w", item.name, err)
+			return Layout{}, fmt.Errorf("migrate Project Store data %s: %w", item.name, err)
 		}
 		copied = append(copied, item.name)
 	}
 	receipt := migrationReceipt{
-		Version: stateMigrationVersion, CompletedAt: time.Now().UTC(), Copied: copied,
+		Version: storeMigrationVersion, CompletedAt: time.Now().UTC(), Copied: copied,
 	}
 	raw, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return Layout{}, err
 	}
 	if err := writeFileAtomic(receiptPath, append(raw, '\n'), 0o600); err != nil {
-		return Layout{}, fmt.Errorf("write project state migration receipt: %w", err)
+		return Layout{}, fmt.Errorf("write Project Store migration receipt: %w", err)
 	}
 	return layout, nil
 }
 
-// ensureCurrentStateMigrationReceipt accepts the current receipt, upgrades the
+// ensureCurrentStoreMigrationReceipt accepts the current receipt, upgrades the
 // v0.3.3 receipt without replaying its completed copy, and reports false only
 // when no receipt exists yet.
-func ensureCurrentStateMigrationReceipt(receiptPath, projectID string) (bool, error) {
+func ensureCurrentStoreMigrationReceipt(receiptPath, projectID string) (bool, error) {
 	raw, err := os.ReadFile(receiptPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("read project state migration receipt: %w", err)
+		return false, fmt.Errorf("read Project Store migration receipt: %w", err)
 	}
 	var receipt migrationReceipt
 	if err := json.Unmarshal(raw, &receipt); err != nil {
-		return false, fmt.Errorf("decode project state migration receipt: %w", err)
+		return false, fmt.Errorf("decode Project Store migration receipt: %w", err)
 	}
 	switch receipt.Version {
-	case stateMigrationVersion:
+	case storeMigrationVersion:
 		return true, nil
-	case releasedStateMigrationVersion:
-		receipt.Version = stateMigrationVersion
+	case releasedStoreMigrationVersion:
+		receipt.Version = storeMigrationVersion
 		migrated, err := json.MarshalIndent(receipt, "", "  ")
 		if err != nil {
-			return false, fmt.Errorf("encode migrated project state receipt: %w", err)
+			return false, fmt.Errorf("encode migrated Project Store receipt: %w", err)
 		}
 		if err := writeFileAtomic(receiptPath, append(migrated, '\n'), 0o600); err != nil {
-			return false, fmt.Errorf("migrate released project state receipt: %w", err)
+			return false, fmt.Errorf("migrate released Project Store receipt: %w", err)
 		}
-		slog.Info("[internal/project/migration.go] migrated released Project state receipt",
+		slog.Info("[internal/project/migration.go] migrated released Project Store receipt",
 			"project_id", projectID,
-			"from_version", releasedStateMigrationVersion,
-			"to_version", stateMigrationVersion,
+			"from_version", releasedStoreMigrationVersion,
+			"to_version", storeMigrationVersion,
 		)
 		return true, nil
 	default:
 		return false, fmt.Errorf(
-			"project state migration receipt version %d does not match supported version %d",
+			"Project Store migration receipt version %d does not match supported version %d",
 			receipt.Version,
-			stateMigrationVersion,
+			storeMigrationVersion,
 		)
 	}
 }
 
-func (registry *Registry) migrateReleasedStateReceipts(projects []Record) error {
+func (registry *Registry) migrateReleasedStoreReceipts(projects []Record) error {
 	for _, record := range projects {
-		receiptPath := filepath.Join(registry.denovaDir, StateDirectoryName, record.StateDirName, "migration.json")
-		if _, err := ensureCurrentStateMigrationReceipt(receiptPath, record.ID); err != nil {
-			return fmt.Errorf("migrate Project %s state receipt: %w", record.ID, err)
+		receiptPath := filepath.Join(registry.denovaDir, storeDirectoryName, record.StoreDirName, "migration.json")
+		if _, err := ensureCurrentStoreMigrationReceipt(receiptPath, record.ID); err != nil {
+			return fmt.Errorf("migrate Project %s Store receipt: %w", record.ID, err)
 		}
 	}
 	return nil

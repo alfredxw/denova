@@ -61,7 +61,7 @@ type pendingSaveIntent struct {
 	RedoInvalidated bool
 }
 
-// StateRoot returns the durable Project-state boundary associated with this
+// StateRoot returns the durable Project Store boundary associated with this
 // content mutation service. Callers use it to keep internal journals out of
 // user-content scans when a configured data directory sits below workspace.
 func (service *Service) StateRoot() string {
@@ -80,11 +80,11 @@ func ForWorkspace(workspace string) (*Service, error) {
 
 // ForWorkspaceAt returns the process-wide content mutation service while
 // placing its durable review ledger beneath stateRoot. Conflicting roots are
-// rejected instead of silently writing Project state back into the workspace.
+// rejected instead of silently writing Project Store data back into the workspace.
 func ForWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 	stateRoot = strings.TrimSpace(stateRoot)
 	if stateRoot == "" {
-		return nil, newError(ErrorCodeConflict, "project state root is empty", nil)
+		return nil, newError(ErrorCodeConflict, "Project Store root is empty", nil)
 	}
 	absoluteStateRoot, err := filepath.Abs(stateRoot)
 	if err != nil {
@@ -95,7 +95,7 @@ func ForWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 
 // ForgetWorkspace removes the process cache entry for a content directory.
 // Project relink/archive calls this after its lifecycle has drained. Durable
-// ledgers remain untouched beneath the Project state root and are reopened for
+// ledgers remain untouched beneath the Project Store and are reopened for
 // the new directory on demand.
 func ForgetWorkspace(workspace string) error {
 	workspace = strings.TrimSpace(workspace)

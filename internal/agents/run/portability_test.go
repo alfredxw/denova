@@ -10,7 +10,7 @@ import (
 func TestRunLedgerOmitsRuntimeFilesystemRoots(t *testing.T) {
 	container := t.TempDir()
 	workspace := filepath.Join(container, "projects", "portable")
-	stateRoot := filepath.Join(container, "project-state", "portable")
+	stateRoot := filepath.Join(container, "stores", "portable")
 	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		t.Fatal(err)
 	}

@@ -191,19 +191,54 @@ func TestGamePlanningTemplateLibraryCustomCRUD(t *testing.T) {
 	}
 }
 
-func TestGamePlanningTemplateRejectsDuplicateTitlesAndBuiltinMutation(t *testing.T) {
+func TestGamePlanningTemplateRejectsDuplicateTitles(t *testing.T) {
 	duplicate := GamePlanningTemplate{ID: "duplicate", Name: "Duplicate", Sections: []GamePlanningSection{
 		{Title: "Threads"}, {Title: " threads "},
 	}}
 	if err := validateGamePlanningTemplate(normalizeGamePlanningTemplate(duplicate)); err == nil {
 		t.Fatal("duplicate section titles were accepted")
 	}
-	library := NewGamePlanningTemplateLibrary(t.TempDir())
-	builtin := DefaultGamePlanningTemplate()
-	if _, err := library.Update(builtin.ID, builtin, ""); err == nil {
-		t.Fatal("builtin planning template update was accepted")
+	if _, err := NewGamePlanningTemplateLibrary(t.TempDir()).Create(DefaultGamePlanningTemplate()); err == nil {
+		t.Fatal("built-in planning template was accepted through create")
 	}
-	if err := library.Delete(builtin.ID); err == nil {
-		t.Fatal("builtin planning template delete was accepted")
+}
+
+func TestGamePlanningTemplateBuiltinOverrideAndRestore(t *testing.T) {
+	library := NewGamePlanningTemplateLibrary(t.TempDir())
+	builtin, err := library.Get(DefaultGamePlanningTemplateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if builtin.Custom || builtin.BuiltinOverridden || builtin.Revision == "" {
+		t.Fatalf("initial built-in metadata = %#v", builtin)
+	}
+
+	builtin.Name = "My classic adventure"
+	builtin.Sections[0].Description = "Track my preferred long-term direction."
+	overridden, err := library.Update(builtin.ID, builtin, builtin.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overridden.Custom || !overridden.BuiltinOverridden || overridden.Name != builtin.Name {
+		t.Fatalf("overridden built-in = %#v", overridden)
+	}
+	reloaded, err := NewGamePlanningTemplateLibrary(library.novaDir).Get(builtin.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.BuiltinOverridden || reloaded.Sections[0].Description != builtin.Sections[0].Description {
+		t.Fatalf("reloaded override = %#v", reloaded)
+	}
+
+	if err := library.Delete(builtin.ID); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := library.Get(builtin.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := DefaultGamePlanningTemplate()
+	if restored.Custom || restored.BuiltinOverridden || restored.Name != want.Name || restored.Sections[0] != want.Sections[0] {
+		t.Fatalf("restored built-in = %#v, want %#v", restored, want)
 	}
 }

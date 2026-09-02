@@ -233,3 +233,61 @@ func TestConversationConfigPreviewDoesNotPersistDraftSession(t *testing.T) {
 		t.Fatalf("persisted draft configuration = %#v", persisted)
 	}
 }
+
+func TestInteractiveConversationConfigPreviewUsesRecentGameSelectionWithoutCreatingStory(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	application.mu.RLock()
+	projectID := application.cfg.ProjectID
+	application.mu.RUnlock()
+
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{
+		Title: "Configured opening", StoryTellerID: "classic", ProfileID: "default", ThinkingLevel: "high",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := application.InteractiveStories()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	preview, err := application.ConversationConfig(context.Background(), ConversationConfigBinding{
+		Mode: ConversationModeInteractive, ProjectID: projectID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Revision != 0 || preview.ProfileID != "default" || preview.ThinkingLevel != "high" {
+		t.Fatalf("new story runtime preview = %#v", preview)
+	}
+	after, err := application.InteractiveStories()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Stories) != len(before.Stories) || after.CurrentStoryID != story.ID {
+		t.Fatalf("preview changed story index: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestInteractiveStoryCreationPersistsOpeningRuntimeSelection(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	application.mu.RLock()
+	projectID := application.cfg.ProjectID
+	application.mu.RUnlock()
+
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{
+		Title: "Explicit opening runtime", StoryTellerID: "classic", ProfileID: "default", ThinkingLevel: "max",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := application.ConversationConfig(context.Background(), ConversationConfigBinding{
+		Mode: ConversationModeInteractive, ProjectID: projectID, StoryID: story.ID, BranchID: "main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Revision != 1 || snapshot.ProfileID != "default" || snapshot.ThinkingLevel != "max" {
+		t.Fatalf("created story runtime config = %#v", snapshot)
+	}
+}

@@ -114,7 +114,7 @@ func runtimeCommandID(runtime agentrun.RuntimeStatus) string {
 }
 
 // PrepareCycle rebuilds one queued or recovered AgentChat cycle from the
-// latest canonical Project state. The durable descriptor remains authoritative
+// latest canonical Project Store. The durable descriptor remains authoritative
 // for caller input and binding identity.
 func (service *Service) PrepareCycle(
 	ctx context.Context,

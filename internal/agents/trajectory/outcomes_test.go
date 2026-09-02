@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestOutcomeStorePersistsInAgentsProjectStateAndListsNewestFirst(t *testing.T) {
+func TestOutcomeStorePersistsInAgentsProjectStoreAndListsNewestFirst(t *testing.T) {
 	stateRoot := t.TempDir()
 	store, err := NewOutcomeStore(stateRoot)
 	if err != nil {

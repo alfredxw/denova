@@ -17,11 +17,11 @@ import (
 	workspacelayout "denova/internal/workspace"
 )
 
-const registryVersion = 4
+const registryVersion = 5
 
 // AgentsProjectID is the stable identity of the single system-managed Agents
 // Project. Its editable content contains user Agent Profiles, while Sessions,
-// Runs, Outcomes, Automations, and Git history live in ordinary Project State.
+// Runs, Outcomes, Automations, and Git history live in its Project Store.
 const AgentsProjectID = "agents"
 
 type registryData struct {
@@ -36,12 +36,12 @@ type registryData struct {
 // Filesystem availability is projected at read time rather than persisted as
 // an event, so moving a directory never destroys its user-owned state.
 type Registry struct {
-	mu                            sync.Mutex
-	stateMu                       sync.Mutex
-	stateStorageMigrationComplete bool
-	path                          string
-	legacyBooksPath               string
-	denovaDir                     string
+	mu                     sync.Mutex
+	storeMu                sync.Mutex
+	storeMigrationComplete bool
+	path                   string
+	legacyBooksPath        string
+	denovaDir              string
 }
 
 func NewRegistry(denovaDir string) *Registry {
@@ -117,7 +117,7 @@ func (registry *Registry) Resolve(id string, requireAvailable bool) (Record, Lay
 		layout, layoutErr := registry.Layout(record)
 		return record, layout, layoutErr
 	}
-	layout, err := registry.EnsureState(record)
+	layout, err := registry.EnsureStore(record)
 	if err != nil {
 		return Record{}, Layout{}, err
 	}
@@ -299,7 +299,7 @@ func (registry *Registry) EnsureAgents(path string) (Record, error) {
 		return Record{}, err
 	}
 	record := Record{
-		ID: AgentsProjectID, Type: TypeAgents, Name: "Agents", StateDirName: agentsStateDirName,
+		ID: AgentsProjectID, Type: TypeAgents, Name: "Agents", StoreDirName: agentsStoreDirName,
 		Location: location, WorkspacePath: canonical,
 		Status: StatusAvailable, CreatedAt: now, UpdatedAt: now,
 	}
@@ -687,7 +687,7 @@ func (registry *Registry) normalizeRegistryData(data *registryData) error {
 		projects = append(projects, record)
 	}
 	data.Projects = projects
-	return validateStateDirNames(data.Projects)
+	return validateStoreDirNames(data.Projects)
 }
 
 func orderedRecords(data registryData, includeArchived bool) []Record {
@@ -755,16 +755,16 @@ func (registry *Registry) newRecordAtLocation(
 	if err != nil {
 		return Record{}, fmt.Errorf("generate project ID: %w", err)
 	}
-	stateDirName, err := registry.nextStateDirName(name, data.Projects)
+	storeDirName, err := registry.nextStoreDirName(name, data.Projects)
 	if err != nil {
-		return Record{}, fmt.Errorf("allocate project state directory: %w", err)
+		return Record{}, fmt.Errorf("allocate Project Store directory: %w", err)
 	}
 	workspace, err := registry.resolveLocation(location)
 	if err != nil {
 		return Record{}, fmt.Errorf("resolve Project content directory: %w", err)
 	}
 	return Record{
-		ID: id, Type: kind, Name: name, StateDirName: stateDirName,
+		ID: id, Type: kind, Name: name, StoreDirName: storeDirName,
 		Location: location, WorkspacePath: workspace,
 		CreatedAt: now, UpdatedAt: now,
 	}, nil
@@ -853,7 +853,7 @@ func normalizedSortMode(mode SortMode, hasOrder bool) SortMode {
 
 func isUserDataDirectory(name string) bool {
 	switch name {
-	case "book_meta", "styles", ContentDirectoryName, StateDirectoryName, "automations":
+	case "book_meta", "styles", ContentDirectoryName, storeDirectoryName, legacyProjectStateDirectoryName, "automations":
 		return true
 	default:
 		return strings.HasPrefix(name, ".")

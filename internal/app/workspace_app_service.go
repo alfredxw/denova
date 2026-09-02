@@ -141,7 +141,7 @@ func (s *workspaceService) SwitchWorkspace(ctx context.Context, path string) (st
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
 		return "", err
 	}
-	layout, err := a.projectRegistry.EnsureState(projectRecord)
+	layout, err := a.projectRegistry.EnsureStore(projectRecord)
 	if err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
 		return "", err
@@ -341,11 +341,11 @@ func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, aut
 	if err != nil {
 		return BookCreationResult{}, fmt.Errorf("注册书籍 Project 失败: %w", err)
 	}
-	layout, err := a.projectRegistry.EnsureState(project)
+	layout, err := a.projectRegistry.EnsureStore(project)
 	if err != nil {
 		return BookCreationResult{}, fmt.Errorf("初始化书籍状态失败: %w", err)
 	}
-	meta, err = a.bookMetaStore.Write(layout.ContentRoot, layout.StateRoot, meta)
+	meta, err = a.bookMetaStore.Write(layout.ContentRoot, layout.StoreRoot, meta)
 	if err != nil {
 		return BookCreationResult{}, fmt.Errorf("写入书籍元信息失败: %w", err)
 	}

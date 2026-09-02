@@ -16,6 +16,7 @@ import (
 	"denova/internal/book/lore"
 	"denova/internal/interactive"
 	interactivestate "denova/internal/interactive/state"
+	"denova/internal/presetlayout"
 
 	agent "github.com/alfredxw/denova/agent"
 	publiccontext "github.com/alfredxw/denova/agent/context"
@@ -524,7 +525,7 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
-	tellerDir := filepath.Join(novaDir, "story-tellers")
+	tellerDir := presetlayout.NarrativeStyles(novaDir)
 	if err := os.MkdirAll(tellerDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

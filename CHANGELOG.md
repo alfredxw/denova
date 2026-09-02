@@ -58,10 +58,12 @@ Denova records only major user-visible features, important compatibility or data
 - Writing now selects editors by file type: Markdown can switch between the document editor and Monaco source editing, images use preview, and other text such as JSON and JSONL uses Monaco with the same autosave and conflict protection.
 - 工作台改为统一且可自定义的一级导航：写作与游戏成为并列入口，菜单支持调整顺序和显隐；资料库、方案预设和版本管理不再按创作入口重复。方案预设统一展示全部类型，并标明通用、游戏专用或写作专用。
 - The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
+- 用户级方案统一收纳到 `.denova/presets`；v0.3.3 的叙事、图像与游戏方案目录会在保留原始备份后自动迁移。
+- User-wide presets now live under `.denova/presets`; v0.3.3 narrative, image, and Game preset directories migrate automatically after preserving their originals.
 - 新增“游戏规划”：内置经典冒险、主线长篇、角色关系、悬念恐怖、单元开放五种规划方式，也可复制后维护自定义模板；Game Agent 将规划作为面向未来的冒险书与故事细纲，按故事开关并只更新受影响章节，避免复述历史、状态或推荐选项。
 - Added Game Planning with five planning approaches—Classic Adventure, Directed Long-form, Character and Relationships, Mystery and Dread, and Episodic and Emergent—plus copyable custom templates. The Game Agent maintains a future-facing adventure book and detailed outline per story, updating only affected sections without duplicating history, state, or recommended choices.
-- 新故事线采用单页开局流程，可从资料库全部角色中选择主角（“主角”标签只作默认推荐，未命中时由 Game Agent 开局识别）或自定义角色，并统一配置开场来源、规划模板及完整初始化选项；叙事风格、事件包、TRPG 检定、状态系统和图像方案由故事直接选择，不再由组合预设继承。
-- New Game stories use a single-page start flow for choosing any Lore character as the protagonist (the protagonist tag is only the default recommendation, with opening-time Game Agent identification when none matches) or defining a custom character, together with the opening source, Planning Template, and full initialization options. Stories now select narrative style, event packages, TRPG Checks, State Systems, and image presets directly instead of inheriting them from a composition preset.
+- 新故事线采用单页开局流程，可从资料库全部角色中选择主角（“主角”标签只作默认推荐，未命中时由 Game Agent 开局识别）或自定义角色，并在生成首幕前明确选择开场来源、模型配置、思考强度、规划模板及完整初始化选项；叙事风格、事件包、TRPG 检定、状态系统和图像方案由故事直接选择，不再由组合预设继承。
+- New Game stories use a single-page start flow for choosing any Lore character as the protagonist (the protagonist tag is only the default recommendation, with opening-time Game Agent identification when none matches) or defining a custom character, with an explicit opening source, model profile, thinking level, Planning Template, and full initialization options before the first scene is generated. Stories now select narrative style, event packages, TRPG Checks, State Systems, and image presets directly instead of inheriting them from a composition preset.
 - 右侧故事控制台重组为总览、调校与路线；当前分支规划可展开预览并直接编辑，保存带版本冲突保护，且不会改动剧情回合、状态或推荐选项；故事级规划模板、Game Agent 叙事、判定、图像与状态设置也集中于此。
 - The right-side Story Console is reorganized into Overview, Tuning, and Routes. The current branch plan expands into an inline preview/editor with revision-conflict protection and never changes story turns, state, or recommended choices; story-level planning, narration, checks, images, and state settings live alongside it.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在游戏控制台集中预览、切换和管理故事线。
@@ -81,8 +83,8 @@ Denova records only major user-visible features, important compatibility or data
 - User-level global Automation task files from v0.3.3 are retained but are no longer displayed, triggered, or executed. Tasks that remain needed must be recreated under the relevant Project.
 - v0.3.3 中的 `enable_thinking`、`reasoning_effort`、`max_output_tokens`、`tool_result_retention_enabled` 和低层 Cleanup 参数不再生效；升级后需重新选择 `thinking_level` 与当前上下文选项，输出上限则改由模型能力决定。
 - The v0.3.3 `enable_thinking`, `reasoning_effort`, `max_output_tokens`, `tool_result_retention_enabled`, and low-level Cleanup settings no longer take effect. Select `thinking_level` and the current context options again after upgrading; model capabilities now determine output limits.
-- v0.3.3 的 `labs.continual_learning` 开关不再生效；用户级有效 Agent 设置会先备份原配置，再迁入 `.denova/agents` Profile 文件，Project 覆盖仍保留在对应 Project State 中。
-- The v0.3.3 `labs.continual_learning` switch no longer takes effect. Active user-level Agent settings are backed up before migration into `.denova/agents` Profile files, while Project overrides remain in their corresponding Project State.
+- v0.3.3 的 `labs.continual_learning` 开关不再生效；用户级有效 Agent 设置会先备份原配置，再迁入 `.denova/agents` Profile 文件，Project 覆盖仍保留在对应 Project Store 中。
+- The v0.3.3 `labs.continual_learning` switch no longer takes effect. Active user-level Agent settings are backed up before migration into `.denova/agents` Profile files, while Project overrides remain in their corresponding Project Store.
 
 ### Major fixes / 重要修复
 

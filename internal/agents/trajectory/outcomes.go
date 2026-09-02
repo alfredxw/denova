@@ -40,7 +40,7 @@ type OutcomeStore struct {
 func NewOutcomeStore(stateRoot string) (*OutcomeStore, error) {
 	stateRoot = strings.TrimSpace(stateRoot)
 	if stateRoot == "" {
-		return nil, errors.New("trajectory outcome Project State directory is required")
+		return nil, errors.New("trajectory outcome Project Store directory is required")
 	}
 	if err := os.MkdirAll(stateRoot, 0o700); err != nil {
 		return nil, fmt.Errorf("create trajectory outcome directory: %w", err)

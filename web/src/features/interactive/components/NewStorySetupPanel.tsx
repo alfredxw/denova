@@ -9,6 +9,8 @@ import { Spinner } from '@/components/ui/spinner'
 import type { LoreItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { hasLoreProtagonistTag } from '@/features/lore/tags'
+import type { ConversationConfigController, ConversationConfigSnapshot } from '@/features/conversation-config/types'
+import { normalizeThinkingLevel } from '@/features/settings/thinking-levels'
 import { gamePlanningTemplateName } from '../game-planning'
 import { normalizeStoryImageSettings } from '../image-settings'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
@@ -27,6 +29,7 @@ interface NewStorySetupPanelProps {
   bookOpeningPresets?: BookOpeningPreset[]
   recentNarrativeStyleID?: string
   narrativeStyleLoading?: boolean
+  conversationConfig: ConversationConfigController
   story?: StorySummary
   onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   onRequestLoreInit?: () => void
@@ -44,6 +47,7 @@ export function NewStorySetupPanel({
   bookOpeningPresets = [],
   recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID,
   narrativeStyleLoading = false,
+  conversationConfig,
   story,
   onNarrativeStyleChange,
   onRequestLoreInit,
@@ -58,11 +62,12 @@ export function NewStorySetupPanel({
   const [planningTemplateId, setPlanningTemplateId] = useState(initialTemplate?.id || 'default')
   const [protagonist, setProtagonist] = useState<StoryProtagonist>(initialProtagonist)
   const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'custom' })
-  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, recentTeller?.id))
+  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, recentTeller?.id, conversationConfig.snapshot))
   const [advancedOpen, setAdvancedOpen] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const initialProtagonistRef = useRef<StoryProtagonist>(initialProtagonist)
+  const runtimeSelectionInitializedRef = useRef(Boolean(conversationConfig.snapshot))
   const protagonistSelectionTouchedRef = useRef(false)
   const narrativeStyleSelectionLockedRef = useRef(Boolean(story))
   const planningTemplate = planningTemplates.find((item) => item.id === planningTemplateId) || planningTemplates[0]
@@ -72,6 +77,12 @@ export function NewStorySetupPanel({
     checks: settings.moduleRefs.rule_system_disabled ? t('storyPicker.setup.advanced.checksOff') : t('storyPicker.setup.advanced.checksOn'),
     images: settings.imageSettings.mode === 'interval' ? t('storyPicker.setup.advanced.imagesOn') : t('storyPicker.setup.advanced.imagesOff'),
   }), [settings.imageSettings.mode, settings.moduleRefs.rule_system_disabled, settings.planningEnabled, t])
+  const runtimeConfigLoading = conversationConfig.loading || (!conversationConfig.error && !settings.modelProfileId)
+  const runtimeConfigReady = conversationConfig.initialized && Boolean(settings.modelProfileId)
+  const startButtonLoading = creating || narrativeStyleLoading || runtimeConfigLoading
+  let startButtonLabel = t('storyPicker.setup.start')
+  if (narrativeStyleLoading || runtimeConfigLoading) startButtonLabel = t('common.loading')
+  if (creating) startButtonLabel = t('storyPicker.setup.starting')
 
   useEffect(() => {
     if (story || narrativeStyleSelectionLockedRef.current || !recentTeller) return
@@ -80,6 +91,17 @@ export function NewStorySetupPanel({
       moduleRefs: { ...current.moduleRefs, narrative_style_id: recentTeller.id },
     }))
   }, [recentTeller, story])
+
+  useEffect(() => {
+    const snapshot = conversationConfig.snapshot
+    if (!snapshot || runtimeSelectionInitializedRef.current) return
+    runtimeSelectionInitializedRef.current = true
+    setSettings((current) => ({
+      ...current,
+      modelProfileId: snapshot.profile_id || 'default',
+      thinkingLevel: normalizeThinkingLevel(snapshot.thinking_level) || 'default',
+    }))
+  }, [conversationConfig.snapshot])
 
   useEffect(() => {
     if (protagonistSelectionTouchedRef.current || protagonist.mode !== 'default') return
@@ -95,6 +117,10 @@ export function NewStorySetupPanel({
   const submit = async () => {
     if (creating) return
     setError('')
+    if (!conversationConfig.initialized || !settings.modelProfileId) {
+      setError(t('storyPicker.setup.model.loadFailed'))
+      return
+    }
     const validationError = validateDraft(protagonist, opening, loreItems, t)
     if (validationError) {
       setError(validationError)
@@ -113,6 +139,8 @@ export function NewStorySetupPanel({
       await onCreate({
         title: story?.title_source === 'pending' ? '' : story?.title || '',
         ...(!story && settings.customAgentId ? { custom_agent_id: settings.customAgentId } : {}),
+        profile_id: settings.modelProfileId,
+        thinking_level: settings.thinkingLevel,
         origin: story?.origin || '',
         ...(includeProtagonist ? { protagonist: protagonistInput } : {}),
         story_teller_id: tellerID,
@@ -143,10 +171,8 @@ export function NewStorySetupPanel({
           </header>
 
           <div className="flex flex-col gap-4">
-            <div className="grid items-start gap-4 lg:grid-cols-[minmax(20rem,0.92fr)_minmax(0,1.08fr)]">
-              <StoryProtagonistSelector projectId={projectId} value={protagonist} loreItems={loreItems} onChange={changeProtagonist} onRequestLoreInit={onRequestLoreInit} />
-              <StoryOpeningSelector value={opening} presets={bookOpeningPresets} onChange={setOpening} />
-            </div>
+            <StoryProtagonistSelector projectId={projectId} value={protagonist} loreItems={loreItems} onChange={changeProtagonist} onRequestLoreInit={onRequestLoreInit} />
+            <StoryOpeningSelector value={opening} presets={bookOpeningPresets} onChange={setOpening} />
 
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="overflow-hidden rounded-xl border border-border bg-card">
               <CollapsibleTrigger asChild>
@@ -187,6 +213,9 @@ export function NewStorySetupPanel({
                   imagePresets={imagePresets}
                   value={settings}
                   onChange={setSettings}
+                  runtimeConfigLoading={runtimeConfigLoading}
+                  runtimeConfigError={conversationConfig.error}
+                  onRuntimeConfigReload={() => void conversationConfig.reload()}
                   onNarrativeStyleChange={(id) => {
                     narrativeStyleSelectionLockedRef.current = true
                     return onNarrativeStyleChange?.(id)
@@ -203,9 +232,13 @@ export function NewStorySetupPanel({
       <footer data-testid="story-setup-footer" className="shrink-0 border-t border-border bg-[var(--nova-surface-2)] px-4 py-3 sm:px-7 lg:px-10">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-end gap-2">
           {!story ? <Button type="button" variant="ghost" disabled={creating} onClick={onCancel}>{t('common.cancel')}</Button> : null}
-          <Button type="button" disabled={creating || narrativeStyleLoading} onClick={() => void submit()}>
-            {creating || narrativeStyleLoading ? <Spinner /> : <Play data-icon="inline-start" />}
-            {creating ? t('storyPicker.setup.starting') : narrativeStyleLoading ? t('common.loading') : t('storyPicker.setup.start')}
+          <Button
+            type="button"
+            disabled={creating || narrativeStyleLoading || runtimeConfigLoading || conversationConfig.saving || !runtimeConfigReady}
+            onClick={() => void submit()}
+          >
+            {startButtonLoading ? <Spinner /> : <Play data-icon="inline-start" />}
+            {startButtonLabel}
           </Button>
         </div>
       </footer>
@@ -213,7 +246,11 @@ export function NewStorySetupPanel({
   )
 }
 
-function initialSettings(story: StorySummary | undefined, recentTellerID?: string): StorySetupSettings {
+function initialSettings(
+  story: StorySummary | undefined,
+  recentTellerID: string | undefined,
+  runtimeConfig: ConversationConfigSnapshot | null,
+): StorySetupSettings {
   const moduleRefs = {
     narrative_style_id: 'rhythm',
     event_package_ids: ['default'],
@@ -226,6 +263,8 @@ function initialSettings(story: StorySummary | undefined, recentTellerID?: strin
   const imageSettings = normalizeStoryImageSettings(story?.image_settings || { mode: 'manual', interval_turns: 3, preset_id: moduleRefs.image_preset_id || 'game-cg' })
   return {
     customAgentId: '',
+    modelProfileId: runtimeConfig ? runtimeConfig.profile_id || 'default' : '',
+    thinkingLevel: normalizeThinkingLevel(runtimeConfig?.thinking_level) || 'default',
     planningEnabled: story ? story.planning_mode === 'enabled' : true,
     moduleRefs,
     replyTargetChars: story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS,

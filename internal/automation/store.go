@@ -113,7 +113,7 @@ func NewStore(userNovaDir, workspace string) *Store {
 	}
 }
 
-// NewProjectStore binds one content directory to its central Project state.
+// NewProjectStore binds one content directory to its central Project Store.
 // NewStore remains the legacy path-based constructor for imports and callers
 // that do not yet have a registered Project identity.
 func NewProjectStore(userNovaDir, projectID, workspace, stateRoot string) *Store {
@@ -562,7 +562,7 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 	}
 	if normalized.Target.Kind == TargetKindWorkspace {
 		if strings.TrimSpace(s.workspaceStateRoot) != "" {
-			// The state root owns exactly one registered Project. Its current path
+			// The Project Store owns exactly one registered Project. Its current path
 			// is authoritative even when a persisted task predates a relink.
 			normalized.Target.Workspace = s.workspace
 		} else if strings.TrimSpace(normalized.Target.Workspace) == "" {

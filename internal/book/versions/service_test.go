@@ -661,7 +661,7 @@ func TestProjectRepositoryMigratesReleasedHistoryAndSurvivesRelink(t *testing.T)
 	}
 	legacy.Close()
 
-	stateRepository := filepath.Join(t.TempDir(), "project-state", "versions", "repository")
+	stateRepository := filepath.Join(t.TempDir(), "stores", "versions", "repository")
 	migrated, err := MigrateLegacyRepository(workspaceA, stateRepository)
 	if err != nil || !migrated {
 		t.Fatalf("migrate released version repository: migrated=%v err=%v", migrated, err)

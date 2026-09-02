@@ -23,7 +23,7 @@ func TestProjectsAndHistoryShareEveryProjectSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout, err := registry.EnsureState(record)
+	layout, err := registry.EnsureStore(record)
 	if err != nil {
 		t.Fatal(err)
 	}

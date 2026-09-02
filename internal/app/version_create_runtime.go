@@ -58,7 +58,7 @@ func (s *workspaceService) acquireVersionCreateRuntime(ctx context.Context) (*ve
 		return nil, ErrWorkspaceChanged
 	}
 	runtime.cfg.Workspace = workspace
-	projectConfigPath := config.ProjectConfigPath(runtime.cfg.ProjectStateDir)
+	projectConfigPath := config.ProjectConfigPath(runtime.cfg.ProjectStoreDir)
 	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtime.cfg.DataDir(), workspace, projectConfigPath); loadErr == nil {
 		appsettings.ApplyLayered(&runtime.cfg, layered)
 	} else {

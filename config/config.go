@@ -51,10 +51,10 @@ type Config struct {
 	DenovaDir                string                       `toml:"denova_dir"`
 	NovaDir                  string                       `toml:"nova_dir"`
 	Workspace                string                       `toml:"workspace"`
-	// ProjectID and ProjectStateDir are runtime-owned bindings. They never
+	// ProjectID and ProjectStoreDir are runtime-owned bindings. They never
 	// persist into user configuration or enter the content workspacelayout.
 	ProjectID                   string                    `toml:"-"`
-	ProjectStateDir             string                    `toml:"-"`
+	ProjectStoreDir             string                    `toml:"-"`
 	ActiveCustomAgentID         string                    `toml:"-"`
 	ActiveCustomAgentName       string                    `toml:"-"`
 	ActiveCustomAgentRevision   string                    `toml:"-"`
@@ -104,7 +104,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 }
 
 // LoadWithProject constructs a clean runtime configuration for an explicit
-// Project state path. It is the Project-ID-era equivalent of
+// Project Store path. It is the Project-ID-era equivalent of
 // LoadWithWorkspace and prevents a background Project from inheriting fields
 // already merged into the foreground runtime.
 func LoadWithProject(novaDir, workspace, projectConfigPath string) (*Config, LayeredSettings, error) {

@@ -86,7 +86,7 @@ func (service *Service) Replace(ctx context.Context, projectID string, request R
 		}
 	}
 
-	candidates, err := book.ListReplaceCandidateFiles(runtime.layout.ContentRoot, runtime.layout.StateRoot)
+	candidates, err := book.ListReplaceCandidateFiles(runtime.layout.ContentRoot, runtime.layout.StoreRoot)
 	if err != nil {
 		return ReplaceResult{}, err
 	}
@@ -130,7 +130,7 @@ func (service *Service) Replace(ctx context.Context, projectID string, request R
 }
 
 func projectHasReplacement(runtime projectRuntime, replacer *book.Replacer) (bool, error) {
-	candidates, err := book.ListReplaceCandidateFiles(runtime.layout.ContentRoot, runtime.layout.StateRoot)
+	candidates, err := book.ListReplaceCandidateFiles(runtime.layout.ContentRoot, runtime.layout.StoreRoot)
 	if err != nil {
 		return false, err
 	}

@@ -316,7 +316,7 @@ func TestServiceOwnsVersionSchedulerForBackgroundBookSaves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.EnsureState(record); err != nil {
+	if _, err := registry.EnsureStore(record); err != nil {
 		t.Fatal(err)
 	}
 	service := NewService(registry)
@@ -354,7 +354,7 @@ func TestServiceBookVersionHistoryFollowsStableProjectRelink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout, err := registry.EnsureState(record)
+	layout, err := registry.EnsureStore(record)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestServiceBookVersionHistoryFollowsStableProjectRelink(t *testing.T) {
 	}
 }
 
-func TestServiceVersionsAgentsProjectProfilesInProjectState(t *testing.T) {
+func TestServiceVersionsAgentsProjectProfilesInProjectStore(t *testing.T) {
 	root := t.TempDir()
 	dataDir := filepath.Join(root, "denova")
 	profiles := filepath.Join(dataDir, "agents")
@@ -405,7 +405,7 @@ func TestServiceVersionsAgentsProjectProfilesInProjectState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout, err := registry.EnsureState(record)
+	layout, err := registry.EnsureStore(record)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -556,7 +556,7 @@ func projectFilesTestServiceWithOptions(t *testing.T, options ...ServiceOption) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.EnsureState(record); err != nil {
+	if _, err := registry.EnsureStore(record); err != nil {
 		t.Fatal(err)
 	}
 	return NewService(registry, options...), record.ID, workspace

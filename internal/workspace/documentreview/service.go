@@ -66,7 +66,7 @@ func ForWorkspace(workspace string) (*Service, error) {
 }
 
 // ForWorkspaceAt returns the process-wide review service identified by the
-// stable Project state root. The content path is presentation context and may
+// stable Project Store. The content path is presentation context and may
 // be rebound after a Project directory is relinked.
 func ForWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 	canonical, err := normalizeWorkspace(workspace)
@@ -161,7 +161,7 @@ func normalizeWorkspace(workspace string) (string, error) {
 func normalizeStateRoot(stateRoot string) (string, error) {
 	stateRoot = strings.TrimSpace(stateRoot)
 	if stateRoot == "" {
-		return "", newError(ErrorCodeConflict, "project state root is empty", nil)
+		return "", newError(ErrorCodeConflict, "Project Store root is empty", nil)
 	}
 	abs, err := filepath.Abs(stateRoot)
 	if err != nil {
@@ -175,7 +175,7 @@ func normalizeStateRoot(stateRoot string) (string, error) {
 		return "", err
 	}
 	if !info.IsDir() {
-		return "", newError(ErrorCodeConflict, "project state root is not a directory", map[string]any{"state_root": abs})
+		return "", newError(ErrorCodeConflict, "Project Store root is not a directory", map[string]any{"state_root": abs})
 	}
 	canonical, err := filepath.EvalSymlinks(abs)
 	if err != nil {
@@ -193,7 +193,7 @@ func (s *Service) Workspace() string {
 	return s.workspace
 }
 
-// StateRoot returns the stable Project-state boundary holding the ledger.
+// StateRoot returns the stable Project Store boundary holding the ledger.
 func (s *Service) StateRoot() string {
 	if s == nil {
 		return ""

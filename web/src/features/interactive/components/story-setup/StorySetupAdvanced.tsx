@@ -1,8 +1,13 @@
 import { Bot, Dices, ImagePlus, UserRound } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
+import { fetchSettings } from '@/features/settings/api'
+import { buildModelProfileOptions } from '@/features/settings/model-profile-options'
+import { THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
+import type { LayeredSettings } from '@/features/settings/types'
 import { getActorStates, getEventPackages, getRuleSystems } from '../../api'
 import { normalizeImageIntervalTurns } from '../../image-settings'
 import { narrativeStyleName } from '../../narrative-style'
@@ -24,6 +29,8 @@ import { EventPackagesRow, ModuleSelectRow } from '../director-console/StoryTuni
 
 export interface StorySetupSettings {
   customAgentId: string
+  modelProfileId: string
+  thinkingLevel: ThinkingLevel
   planningEnabled: boolean
   moduleRefs: StoryDirectorModuleRefs
   replyTargetChars: number
@@ -40,6 +47,9 @@ interface StorySetupAdvancedProps {
   imagePresets: ImagePreset[]
   value: StorySetupSettings
   onChange: (value: StorySetupSettings) => void
+  runtimeConfigLoading?: boolean
+  runtimeConfigError?: string | null
+  onRuntimeConfigReload?: () => void
   onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   onOpenPresets?: () => void
 }
@@ -54,6 +64,9 @@ export function StorySetupAdvanced({
   imagePresets,
   value,
   onChange,
+  runtimeConfigLoading = false,
+  runtimeConfigError,
+  onRuntimeConfigReload,
   onNarrativeStyleChange,
   onOpenPresets,
 }: StorySetupAdvancedProps) {
@@ -61,6 +74,10 @@ export function StorySetupAdvanced({
   const [eventPackages, setEventPackages] = useState<EventPackageModule[]>([])
   const [ruleSystems, setRuleSystems] = useState<RuleSystemModule[]>([])
   const [actorStates, setActorStates] = useState<ActorStateModule[]>([])
+  const [modelCatalog, setModelCatalog] = useState<LayeredSettings | null>(null)
+  const [modelCatalogLoading, setModelCatalogLoading] = useState(true)
+  const [modelCatalogFailed, setModelCatalogFailed] = useState(false)
+  const modelCatalogRequestRef = useRef(0)
   const refs = value.moduleRefs
 
   useEffect(() => {
@@ -78,6 +95,29 @@ export function StorySetupAdvanced({
     }
   }, [])
 
+  const loadModelCatalog = useCallback(() => {
+    const request = ++modelCatalogRequestRef.current
+    setModelCatalogLoading(true)
+    setModelCatalogFailed(false)
+    void fetchSettings()
+      .then((settings) => {
+        if (request === modelCatalogRequestRef.current) setModelCatalog(settings)
+      })
+      .catch((error) => {
+        if (request !== modelCatalogRequestRef.current) return
+        console.error('[story-setup] Failed to load model profiles', error)
+        setModelCatalogFailed(true)
+      })
+      .finally(() => {
+        if (request === modelCatalogRequestRef.current) setModelCatalogLoading(false)
+      })
+  }, [])
+
+  useEffect(() => {
+    loadModelCatalog()
+    return () => { modelCatalogRequestRef.current += 1 }
+  }, [loadModelCatalog])
+
   const narrativeOptions = useMemo<TuningSelectOption[]>(
     () => tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) })),
     [t, tellers],
@@ -85,7 +125,22 @@ export function StorySetupAdvanced({
   const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map(moduleOption), [imagePresets])
   const ruleOptions = useMemo<TuningSelectOption[]>(() => ruleSystems.map(moduleOption), [ruleSystems])
   const stateOptions = useMemo<TuningSelectOption[]>(() => actorStates.map(moduleOption), [actorStates])
+  const modelOptions = useMemo<TuningSelectOption[]>(() => {
+    const options: TuningSelectOption[] = buildModelProfileOptions(modelCatalog, t)
+      .map(({ id, label }) => ({ id, label }))
+    const currentID = value.modelProfileId.trim()
+    if (currentID && !options.some((option) => option.id === currentID)) {
+      options.unshift({ id: currentID, label: currentID })
+    }
+    return options
+  }, [modelCatalog, t, value.modelProfileId])
   const ruleEnabled = !refs.rule_system_disabled
+  const modelSelectionUnavailable = runtimeConfigLoading || Boolean(runtimeConfigError) || modelCatalogLoading || modelCatalogFailed
+  const runtimeSelectionUnavailable = runtimeConfigLoading || Boolean(runtimeConfigError)
+  let modelDescription = t('storyPicker.setup.model.description')
+  if (runtimeConfigLoading) modelDescription = t('storyPicker.setup.model.loading')
+  if (modelCatalogFailed) modelDescription = t('storyPicker.setup.model.catalogFailed')
+  if (runtimeConfigError) modelDescription = t('storyPicker.setup.model.loadFailed')
 
   const patch = (next: Partial<StorySetupSettings>) => onChange({ ...value, ...next })
   const patchRefs = (next: StoryDirectorModuleRefs) => patch({ moduleRefs: next })
@@ -133,6 +188,43 @@ export function StorySetupAdvanced({
             />
           </TuningRow>
         ) : null}
+        <TuningRow
+          title={t('storyPicker.setup.model.profile')}
+          description={modelDescription}
+          busy={runtimeConfigLoading || modelCatalogLoading}
+          disabled={modelSelectionUnavailable}
+        >
+          {runtimeConfigError || modelCatalogFailed ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => {
+                if (runtimeConfigError) onRuntimeConfigReload?.()
+                if (modelCatalogFailed) loadModelCatalog()
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          ) : (
+            <TuningSelect
+              value={value.modelProfileId}
+              options={modelOptions}
+              label={t('storyPicker.setup.model.profile')}
+              disabled={modelSelectionUnavailable}
+              onChange={(modelProfileId) => patch({ modelProfileId })}
+            />
+          )}
+        </TuningRow>
+        <TuningRow title={t('storyPicker.setup.model.thinking')} disabled={runtimeSelectionUnavailable}>
+          <TuningSelect
+            value={value.thinkingLevel}
+            options={thinkingLevelOptions(t)}
+            label={t('storyPicker.setup.model.thinking')}
+            disabled={runtimeSelectionUnavailable}
+            onChange={(thinkingLevel) => patch({ thinkingLevel: thinkingLevel as ThinkingLevel })}
+          />
+        </TuningRow>
         <TuningRow title={t('directorPanel.tuning.agent.planning')}>
           <Switch
             checked={value.planningEnabled}
@@ -324,6 +416,13 @@ function difficultyOptions(t: ReturnType<typeof useTranslation>['t']): TuningSel
   return [-2, -1, 0, 1, 2].map((value) => ({
     id: String(value),
     label: t(`directorPanel.tuning.check.difficulty.${value}`),
+  }))
+}
+
+function thinkingLevelOptions(t: ReturnType<typeof useTranslation>['t']): TuningSelectOption[] {
+  return THINKING_LEVELS.map((level) => ({
+    id: level,
+    label: t(`chat.modelProfile.thinking.${level}`),
   }))
 }
 

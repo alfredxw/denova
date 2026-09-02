@@ -227,7 +227,7 @@ func (a *App) finishProjectTransition(projectID string, active bool) {
 }
 
 // RelinkProject changes only the content directory behind a stable Project
-// identity. Durable Project state stays at the existing state root.
+// identity. The durable Project Store stays at its existing root.
 func (a *App) RelinkProject(ctx context.Context, projectID, path string) (projectdomain.Record, error) {
 	projectID = strings.TrimSpace(projectID)
 	record, oldLayout, err := a.resolveProject(projectID, false)
@@ -267,20 +267,20 @@ func (a *App) RelinkProject(ctx context.Context, projectID, path string) (projec
 	if err != nil {
 		return projectdomain.Record{}, err
 	}
-	if _, err := a.projectRegistry.EnsureState(relinked); err != nil {
+	if _, err := a.projectRegistry.EnsureStore(relinked); err != nil {
 		// Registry records are user-owned durable data. Restore the old content
 		// link if state preparation fails after the record was changed.
 		_, rollbackErr := a.projectRegistry.Relink(projectID, oldLayout.ContentRoot)
 		if rollbackErr != nil {
-			return projectdomain.Record{}, fmt.Errorf("prepare relinked Project state: %w (rollback failed: %v)", err, rollbackErr)
+			return projectdomain.Record{}, fmt.Errorf("prepare relinked Project Store: %w (rollback failed: %v)", err, rollbackErr)
 		}
-		return projectdomain.Record{}, fmt.Errorf("prepare relinked Project state: %w", err)
+		return projectdomain.Record{}, fmt.Errorf("prepare relinked Project Store: %w", err)
 	}
 	return relinked, nil
 }
 
 // ArchiveProject drains Project-owned work before hiding the registry record.
-// User files and durable Project state are never deleted.
+// User files and durable Project Stores are never deleted.
 func (a *App) ArchiveProject(ctx context.Context, projectID string) (projectdomain.Record, error) {
 	projectID = strings.TrimSpace(projectID)
 	record, layout, err := a.resolveProject(projectID, false)

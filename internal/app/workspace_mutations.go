@@ -36,7 +36,7 @@ func (s *workspaceService) withExclusiveWorkspaceMutation(
 	}
 	stateRoot := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 	}
 	changeService, err := workspaceChangeService(a.workspace, stateRoot)
 	if err != nil {

@@ -699,14 +699,14 @@ func WorkspaceConfigPath(workspace string) string {
 	return workspacelayout.Path(workspace, WorkspaceConfigFilename)
 }
 
-// ProjectConfigPath returns the user-owned Agent override file for a Project
-// state root. It intentionally has no dependency on the content directory.
-func ProjectConfigPath(projectStateRoot string) string {
-	projectStateRoot = strings.TrimSpace(projectStateRoot)
-	if projectStateRoot == "" {
+// ProjectConfigPath returns the user-owned Agent override file in a Project
+// Store. It intentionally has no dependency on the content directory.
+func ProjectConfigPath(projectStoreRoot string) string {
+	projectStoreRoot = strings.TrimSpace(projectStoreRoot)
+	if projectStoreRoot == "" {
 		return ""
 	}
-	return filepath.Join(projectStateRoot, WorkspaceConfigFilename)
+	return filepath.Join(projectStoreRoot, WorkspaceConfigFilename)
 }
 
 // LoadLayered 读取用户设置 + 工作区 Agent 定制并与默认值合并。

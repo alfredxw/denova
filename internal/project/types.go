@@ -6,6 +6,7 @@
 package project
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -13,8 +14,8 @@ import (
 var (
 	// ErrNotFound means no durable Project owns the requested stable identity.
 	ErrNotFound = errors.New("project not found")
-	// ErrArchived means the Project still owns durable user state but is hidden
-	// from active use until explicitly restored or relinked.
+	// ErrArchived means the Project still owns a durable Project Store but is
+	// hidden from active use until explicitly restored or relinked.
 	ErrArchived = errors.New("project is archived")
 	// ErrUnavailable means the Project record exists but its content directory
 	// cannot currently be opened.
@@ -76,10 +77,10 @@ type Record struct {
 	ID   string `json:"id"`
 	Type Type   `json:"type"`
 	Name string `json:"name"`
-	// StateDirName is the immutable, human-readable directory segment below
-	// project-state. It is deliberately separate from both stable identity and
+	// StoreDirName is the immutable, human-readable directory segment below
+	// stores. It is deliberately separate from both stable identity and
 	// the mutable display name.
-	StateDirName string          `json:"state_dir"`
+	StoreDirName string          `json:"store_dir"`
 	Location     ProjectLocation `json:"location"`
 	// WorkspacePath is resolved from Location for the current host. It remains
 	// in API responses for existing clients but is never authoritative on disk.
@@ -91,22 +92,39 @@ type Record struct {
 	ArchivedAt    *time.Time `json:"archived_at,omitempty"`
 }
 
-// Layout separates content owned by a Project from state owned by the user.
+// UnmarshalJSON accepts the unreleased state_dir field only long enough to
+// rewrite the current Project Registry using the Project Store terminology.
+func (record *Record) UnmarshalJSON(data []byte) error {
+	type wireRecord Record
+	decoded := struct {
+		*wireRecord
+		LegacyStateDirName string `json:"state_dir"`
+	}{wireRecord: (*wireRecord)(record)}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if record.StoreDirName == "" {
+		record.StoreDirName = decoded.LegacyStateDirName
+	}
+	return nil
+}
+
+// Layout separates content owned by a Project from its Denova Project Store.
 // Interactive story content intentionally remains beneath ContentRoot.
 type Layout struct {
 	ProjectID   string
 	Type        Type
 	ContentRoot string
-	StateRoot   string
+	StoreRoot   string
 }
 
-func (layout Layout) SessionsDir() string    { return joinState(layout.StateRoot, "sessions") }
-func (layout Layout) ConfigPath() string     { return joinState(layout.StateRoot, "config.toml") }
-func (layout Layout) ChangesDir() string     { return joinState(layout.StateRoot, "changes") }
-func (layout Layout) ReviewsDir() string     { return joinState(layout.StateRoot, "reviews") }
-func (layout Layout) RunsDir() string        { return joinState(layout.StateRoot, "runs") }
-func (layout Layout) ArtifactsDir() string   { return joinState(layout.StateRoot, "artifacts") }
-func (layout Layout) AutomationsDir() string { return joinState(layout.StateRoot, "automations") }
+func (layout Layout) SessionsDir() string    { return joinStore(layout.StoreRoot, "sessions") }
+func (layout Layout) ConfigPath() string     { return joinStore(layout.StoreRoot, "config.toml") }
+func (layout Layout) ChangesDir() string     { return joinStore(layout.StoreRoot, "changes") }
+func (layout Layout) ReviewsDir() string     { return joinStore(layout.StoreRoot, "reviews") }
+func (layout Layout) RunsDir() string        { return joinStore(layout.StoreRoot, "runs") }
+func (layout Layout) ArtifactsDir() string   { return joinStore(layout.StoreRoot, "artifacts") }
+func (layout Layout) AutomationsDir() string { return joinStore(layout.StoreRoot, "automations") }
 func (layout Layout) VersionRepositoryDir() string {
-	return joinState(layout.StateRoot, "versions", "repository")
+	return joinStore(layout.StoreRoot, "versions", "repository")
 }

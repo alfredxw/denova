@@ -17,7 +17,7 @@ import (
 type Runtime struct {
 	ProjectID        string
 	ProjectType      projectdomain.Type
-	ProjectState     string
+	ProjectStore     string
 	AgentKind        string
 	Session          *session.Session
 	State            *book.State

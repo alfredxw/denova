@@ -145,7 +145,7 @@ func (service *Service) WithDocumentReview(
 	if err != nil {
 		return "", err
 	}
-	reviews, err := documentreview.ForWorkspaceAt(runtime.layout.ContentRoot, runtime.layout.StateRoot)
+	reviews, err := documentreview.ForWorkspaceAt(runtime.layout.ContentRoot, runtime.layout.StoreRoot)
 	if err != nil {
 		return "", err
 	}

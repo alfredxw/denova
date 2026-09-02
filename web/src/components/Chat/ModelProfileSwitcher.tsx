@@ -10,8 +10,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { fetchSettings } from '@/features/settings/api'
 import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
-import type { LayeredSettings, ModelProfileSettings } from '@/features/settings/types'
-import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { buildModelProfileOptions, type ModelProfileOption } from '@/features/settings/model-profile-options'
+import type { LayeredSettings } from '@/features/settings/types'
 import { normalizeThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import type { ConversationConfigController } from '@/features/conversation-config/types'
@@ -22,12 +22,6 @@ interface ModelProfileSwitcherProps {
   conversationConfig?: ConversationConfigController
   disabled?: boolean
   runActive?: boolean
-}
-
-interface ModelProfileOption {
-  id: string
-  label: string
-  modelLabel: string
 }
 
 interface SavingSelection {
@@ -89,7 +83,6 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
     </DropdownMenu>
   )
 }
-
 interface ModelProfileSelectorInput extends ModelProfileSwitcherProps {}
 
 interface ModelProfileSelector {
@@ -278,23 +271,4 @@ function ModelProfileOptions({
       ) : null}
     </>
   )
-}
-
-export function buildModelProfileOptions(settings: LayeredSettings | null, t: (key: string, options?: Record<string, unknown>) => string): ModelProfileOption[] {
-  if (!settings) return []
-  const profiles = new Map<string, string>()
-  const add = (profile?: ModelProfileSettings) => {
-    const id = modelProfileID(profile)
-    if (!id) return
-    profiles.set(id, modelProfileLabel(profile))
-  }
-  modelProfilesWithDefault(settings.effective).forEach(add)
-  if (!profiles.has('default')) profiles.set('default', t('chat.modelProfile.defaultModel'))
-  return Array.from(profiles.entries()).map(([id, label]) => ({
-    id,
-    modelLabel: label,
-    label: id === 'default'
-      ? t('chat.modelProfile.defaultProfile', { label })
-      : t('chat.modelProfile.profile', { id, label }),
-  }))
 }

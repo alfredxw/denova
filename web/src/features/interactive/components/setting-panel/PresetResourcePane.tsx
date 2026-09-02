@@ -19,7 +19,6 @@ interface PresetResourcePaneProps {
   setActiveSlotId: (value: string) => void
   storyDirectorDraft: GamePlanningTemplate | null
   setStoryDirectorDraft: (draft: GamePlanningTemplate | null) => void
-  onCopyPlanningTemplate: (template: GamePlanningTemplate) => void | Promise<void>
   imagePresetDraft: ImagePreset | null
   setImagePresetDraft: (draft: ImagePreset | null) => void
   eventPackageDraft: EventPackageModule | null
@@ -44,7 +43,6 @@ export function PresetResourcePane(props: PresetResourcePaneProps) {
       <GamePlanningPane
         draft={props.storyDirectorDraft}
         setDraft={props.setStoryDirectorDraft}
-        onCopy={props.onCopyPlanningTemplate}
         onValidityChange={props.onValidityChange}
       />
     )
@@ -72,6 +70,6 @@ function ActorStatePane(props: { draft: ActorStateModule | null; ruleSystems: Ru
   return <ActorStateEditor {...props} />
 }
 
-function GamePlanningPane(props: { draft: GamePlanningTemplate | null; setDraft: (draft: GamePlanningTemplate | null) => void; onCopy: (template: GamePlanningTemplate) => void | Promise<void>; onValidityChange: (valid: boolean) => void }) {
+function GamePlanningPane(props: { draft: GamePlanningTemplate | null; setDraft: (draft: GamePlanningTemplate | null) => void; onValidityChange: (valid: boolean) => void }) {
   return <GamePlanningEditor {...props} />
 }

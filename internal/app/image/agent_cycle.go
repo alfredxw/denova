@@ -31,7 +31,7 @@ func (service *Service) prepareAgentCycle(runtime *Runtime, request AgentGenerat
 	cfg := runtime.Config
 	novaDir := cfg.DataDir()
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
-		novaDir, runtime.Workspace, config.ProjectConfigPath(cfg.ProjectStateDir),
+		novaDir, runtime.Workspace, config.ProjectConfigPath(cfg.ProjectStoreDir),
 	); err == nil {
 		appsettings.ApplyLayered(&cfg, layered)
 	} else {
@@ -95,7 +95,7 @@ func (service *Service) prepareAgentCycle(runtime *Runtime, request AgentGenerat
 		Request:     agentchat.ChatRequest{CommandID: request.CommandID, Message: conversation.message},
 		Options: agentrun.Options{
 			AgentKind: config.AgentKindImage, ProjectID: runtime.ProjectID,
-			StateRoot: cfg.ProjectStateDir, SessionID: sess.ID, Workspace: runtime.Workspace,
+			StateRoot: cfg.ProjectStoreDir, SessionID: sess.ID, Workspace: runtime.Workspace,
 			StoryID: request.StoryID, BranchID: request.BranchID, TurnID: request.TurnID,
 			Mode: "image", RestoreData: restoreData,
 			IdleTimeout: appagentruntime.IdleTimeout(cfg), ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(cfg),

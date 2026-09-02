@@ -55,7 +55,7 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 	}
 	if a.cfg != nil {
 		fence.projectID = strings.TrimSpace(a.cfg.ProjectID)
-		fence.stateRoot = a.cfg.ProjectStateDir
+		fence.stateRoot = a.cfg.ProjectStoreDir
 	}
 	fence.task = writingTaskForSessionLocked(a, fence.workspace, sessionID)
 	a.mu.RUnlock()

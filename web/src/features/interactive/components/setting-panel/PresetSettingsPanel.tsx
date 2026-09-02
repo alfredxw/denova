@@ -38,12 +38,6 @@ import {
   updateInteractiveTeller,
   updateRuleSystem,
 } from '../../api'
-import {
-  gamePlanningSectionDescription,
-  gamePlanningSectionTitle,
-  gamePlanningTemplateDescription,
-  gamePlanningTemplateName,
-} from '../../game-planning'
 import { PRESET_RESOURCE_SCOPE, type PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
@@ -209,7 +203,7 @@ export function PresetSettingsPanel({
   >({
     draft: storyDirectorDraft,
     scopeKey: PRESET_RESOURCE_SCOPE,
-    active: presetResourceKind === 'director' && Boolean(storyDirectorDraft?.custom),
+    active: presetResourceKind === 'director',
     valid: presetConfigValid,
     makePayload: makeStoryDirectorPayload,
     baselineFromSaved: (saved) => saved,
@@ -439,32 +433,6 @@ export function PresetSettingsPanel({
       setPresetResourceKind('director')
       await refreshStoryDirectors(director.id)
       closeDirectoryRef.current()
-    })
-  }
-
-  const handleCopyPlanningTemplate = async (source: GamePlanningTemplate) => {
-    if (!(await flushPresetResourceAutoSave())) return
-    await runPresetMutation('[preset-settings] Failed to copy Planning Template', t('settingPanel.presetCreateFailed'), async () => {
-      const stamp = Date.now()
-      const created = await createGamePlanningTemplate({
-        ...source,
-        id: `custom-planning-${stamp}`,
-        name: t('settingPanel.gamePlanning.copyName', { name: gamePlanningTemplateName(source, t) }),
-        description: gamePlanningTemplateDescription(source, t),
-        sections: source.sections.map((section, index) => ({
-          ...section,
-          id: `${section.id || 'section'}-${stamp}-${index + 1}`,
-          title: gamePlanningSectionTitle(source, section, t),
-          description: gamePlanningSectionDescription(source, section, t),
-        })),
-        custom: true,
-        revision: undefined,
-        path: undefined,
-        created_at: undefined,
-        updated_at: undefined,
-      })
-      setPresetResourceKind('director')
-      await refreshStoryDirectors(created.id)
     })
   }
 
@@ -781,7 +749,6 @@ export function PresetSettingsPanel({
                 setActiveSlotId={setActiveSlotId}
                 storyDirectorDraft={storyDirectorDraft}
                 setStoryDirectorDraft={setStoryDirectorDraft}
-                onCopyPlanningTemplate={handleCopyPlanningTemplate}
                 imagePresetDraft={imagePresetDraft}
                 setImagePresetDraft={setImagePresetDraft}
                 eventPackageDraft={eventPackageDraft}

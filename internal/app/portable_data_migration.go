@@ -146,7 +146,7 @@ func completePortableDataMigration(dataRoot string, backups []string, projectCou
 	if err != nil {
 		return fmt.Errorf("encode portable data migration receipt: %w", err)
 	}
-	if err := writePortableMigrationFileAtomic(portableDataMigrationReceiptPath(dataRoot), append(raw, '\n')); err != nil {
+	if err := writeMigrationFileAtomic(portableDataMigrationReceiptPath(dataRoot), append(raw, '\n')); err != nil {
 		return fmt.Errorf("write portable data migration receipt: %w", err)
 	}
 	return nil
@@ -176,41 +176,6 @@ func readPortableDataMigrationReceipt(dataRoot string) (portableDataMigrationRec
 
 func portableDataMigrationReceiptPath(dataRoot string) string {
 	return filepath.Join(dataRoot, "backups", portableDataBackupDirectory, "migration.json")
-}
-
-func writePortableMigrationFileAtomic(path string, content []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".portable-migration-*.tmp")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	committed := false
-	defer func() {
-		_ = temporary.Close()
-		if !committed {
-			_ = os.Remove(temporaryPath)
-		}
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(content); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return err
-	}
-	committed = true
-	return nil
 }
 
 func compactStrings(values []string) []string {

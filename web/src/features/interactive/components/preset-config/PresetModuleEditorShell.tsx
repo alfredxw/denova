@@ -18,7 +18,7 @@ export function PresetModuleEditorShell<T extends { name: string; description: s
   children,
 }: PresetModuleEditorShellProps<T>) {
   const { t } = useTranslation()
-  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
+  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInEditHint')
 
   return (
     <div className="preset-module-editor flex min-h-0 flex-1 flex-col overflow-hidden">

@@ -1,8 +1,11 @@
 import type { InitialActorTraitRoll, StoryCheckSettings, StoryDirectorModuleRefs, StoryImageSettings, StoryOpeningConfig, StoryPlanningMode, StoryProtagonist, StoryStateSchemaPolicy } from './types'
+import type { ThinkingLevel } from '@/features/settings/thinking-levels'
 
 export interface StoryCreateInput {
   title: string
   custom_agent_id?: string
+  profile_id: string
+  thinking_level: ThinkingLevel
   origin: string
   protagonist?: StoryProtagonist
   story_teller_id: string

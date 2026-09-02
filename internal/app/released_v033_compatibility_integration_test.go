@@ -139,7 +139,7 @@ func TestReleasedV033WritingSessionMigratesAndContinues(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.HasPrefix(migratedBeforeContinuation, legacySourceBefore) {
-		t.Fatal("Project state did not preserve the released session journal as its prefix")
+		t.Fatal("Project Store did not preserve the released session journal as its prefix")
 	}
 	if sourceAfterMigration, readErr := os.ReadFile(legacyMainPath); readErr != nil || !bytes.Equal(sourceAfterMigration, legacySourceBefore) {
 		t.Fatalf("released session source changed during migration: err=%v", readErr)
@@ -156,7 +156,7 @@ func TestReleasedV033WritingSessionMigratesAndContinues(t *testing.T) {
 		application.BookService(),
 		agentchat.ChatRequest{CommandID: "continue-v033-session", Message: "根据旧线索继续：钥匙是什么颜色？", Locale: "zh-CN"},
 		agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, ProjectID: application.ProjectID(), StateRoot: layout.StateRoot,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: application.ProjectID(), StateRoot: layout.StoreRoot,
 			SessionID: active.ID, Workspace: workspace, Mode: "ide",
 		},
 		nil,

@@ -12,7 +12,7 @@ func TestMetaStoreMigratesForeignRootAndSurvivesDataRootMove(t *testing.T) {
 	firstRoot := filepath.Join(parent, "first")
 	secondRoot := filepath.Join(parent, "second")
 	contentRoot := filepath.Join(firstRoot, "projects", "portable-book")
-	stateRoot := filepath.Join(firstRoot, "project-state", "Portable-Book")
+	stateRoot := filepath.Join(firstRoot, "stores", "Portable-Book")
 	if err := os.MkdirAll(filepath.Join(firstRoot, "book_meta"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestMetaStoreMigratesForeignRootAndSurvivesDataRootMove(t *testing.T) {
 	}
 	read, err := NewMetaStore(secondRoot).Read(
 		filepath.Join(secondRoot, "projects", "portable-book"),
-		filepath.Join(secondRoot, "project-state", "Portable-Book"),
+		filepath.Join(secondRoot, "stores", "Portable-Book"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestMetaStoreMigratesForeignRootAndSurvivesDataRootMove(t *testing.T) {
 	if read.Title != "Portable" || read.Author != "Writer" {
 		t.Fatalf("relocated metadata = %#v", read)
 	}
-	finalData, err := os.ReadFile(filepath.Join(secondRoot, "project-state", "Portable-Book", "meta.json"))
+	finalData, err := os.ReadFile(filepath.Join(secondRoot, "stores", "Portable-Book", "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestMetaStoreWriteAndRead(t *testing.T) {
 	}
 
 	store := NewMetaStore(filepath.Join(root, "denova"))
-	stateRoot := filepath.Join(root, "denova", "project-state", "book")
+	stateRoot := filepath.Join(root, "denova", "stores", "book")
 	written, err := store.Write(bookDir, stateRoot, BookMeta{
 		Title: "Test Book", Author: "Author", Description: "Description",
 	})
@@ -101,7 +101,7 @@ func TestMetaStorePrefersUserDataOverLegacyBookJSON(t *testing.T) {
 	}
 
 	store := NewMetaStore(filepath.Join(root, "denova"))
-	stateRoot := filepath.Join(root, "denova", "project-state", "book")
+	stateRoot := filepath.Join(root, "denova", "stores", "book")
 	if _, err := store.Write(bookDir, stateRoot, BookMeta{Title: "Current", Author: "Current Author"}); err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestMetaStorePreservesCreatedAtOnUpdate(t *testing.T) {
 	}
 
 	store := NewMetaStore(filepath.Join(root, "denova"))
-	stateRoot := filepath.Join(root, "denova", "project-state", "book")
+	stateRoot := filepath.Join(root, "denova", "stores", "book")
 	first, err := store.Write(bookDir, stateRoot, BookMeta{Title: "First"})
 	if err != nil {
 		t.Fatal(err)

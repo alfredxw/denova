@@ -75,7 +75,7 @@ export function ImagePresetEditor({
 
   const selectedTarget = activeSlot?.target || 'tool_request'
   const contentValue = activeSlot?.content || ''
-  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
+  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInEditHint')
 
   return (
     <div data-testid="image-preset-editor" className="image-preset-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

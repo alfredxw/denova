@@ -45,7 +45,7 @@ func TestActiveViewProjectsPendingInterruptionForIdleAgentChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout, err := registry.EnsureState(record)
+	layout, err := registry.EnsureStore(record)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestActiveViewProjectsPendingInterruptionForIdleAgentChat(t *testing.T) {
 	service := NewService(activeViewTestHost{}, registry)
 	service.projects[record.ID] = &projectRuntime{
 		projectID: record.ID, projectType: projectdomain.TypeGeneral,
-		agentKind: "general", stateRoot: layout.StateRoot, workspace: workspace,
+		agentKind: "general", stateRoot: layout.StoreRoot, workspace: workspace,
 		store: store,
 	}
 

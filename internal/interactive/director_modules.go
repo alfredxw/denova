@@ -15,6 +15,7 @@ import (
 
 	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive/teller"
+	"denova/internal/presetlayout"
 	"denova/internal/revisionfile"
 	"denova/internal/revisionjson"
 	"denova/internal/style"
@@ -248,7 +249,7 @@ func (l *EventPackageLibrary) Delete(id string) error {
 }
 
 func (l *EventPackageLibrary) dir() string {
-	return filepath.Join(l.novaDir, "story-director-modules", "event-packages")
+	return presetlayout.EventPackages(l.novaDir)
 }
 
 func (l *EventPackageLibrary) ensureBuiltins() error {
@@ -354,7 +355,7 @@ func (l *RuleSystemLibrary) Delete(id string) error {
 }
 
 func (l *RuleSystemLibrary) dir() string {
-	return filepath.Join(l.novaDir, "story-director-modules", "rule-systems")
+	return presetlayout.RuleSystems(l.novaDir)
 }
 
 func (l *RuleSystemLibrary) ensureBuiltins() error {

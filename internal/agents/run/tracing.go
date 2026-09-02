@@ -154,7 +154,7 @@ func WithStandaloneTrace(ctx context.Context, cfg *config.Config, agentKind, sou
 	options := Options{
 		AgentKind: strings.TrimSpace(agentKind),
 		ProjectID: cfg.ProjectID,
-		StateRoot: cfg.ProjectStateDir,
+		StateRoot: cfg.ProjectStoreDir,
 		Workspace: cfg.Workspace,
 		Mode:      strings.TrimSpace(mode),
 	}

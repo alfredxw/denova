@@ -11,7 +11,7 @@ import (
 func TestProjectStoreKeepsAutomationStateOutsideContentDirectory(t *testing.T) {
 	userDir := t.TempDir()
 	workspace := t.TempDir()
-	stateRoot := filepath.Join(userDir, "project-state", "project-one")
+	stateRoot := filepath.Join(userDir, "stores", "project-one")
 	store := NewProjectStore(userDir, "project-one", workspace, stateRoot)
 	task, err := store.Create(TaskDefinition{
 		Scope: ScopeWorkspace, Name: "Project task", Template: TemplateCustomPrompt,
@@ -48,7 +48,7 @@ func TestProjectStoreFollowsRelinkWithoutChangingTaskIdentity(t *testing.T) {
 	userDir := t.TempDir()
 	firstWorkspace := t.TempDir()
 	secondWorkspace := t.TempDir()
-	stateRoot := filepath.Join(userDir, "project-state", "project-relinked")
+	stateRoot := filepath.Join(userDir, "stores", "project-relinked")
 	created, err := NewProjectStore(userDir, "project-relinked", firstWorkspace, stateRoot).Create(TaskDefinition{
 		Scope: ScopeWorkspace, Name: "Relinked task", Template: TemplateCustomPrompt,
 	})
@@ -74,7 +74,7 @@ func TestProjectStoreMigratesReleasedPathOnlyInboxRecordsOnRead(t *testing.T) {
 	userDir := t.TempDir()
 	oldWorkspace := t.TempDir()
 	relinkedWorkspace := t.TempDir()
-	stateRoot := filepath.Join(userDir, "project-state", "project-inbox-migration")
+	stateRoot := filepath.Join(userDir, "stores", "project-inbox-migration")
 	inboxPath := filepath.Join(stateRoot, "automations", "inbox.json")
 	if err := os.MkdirAll(filepath.Dir(inboxPath), 0o755); err != nil {
 		t.Fatal(err)

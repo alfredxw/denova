@@ -24,11 +24,11 @@ func TestRegistryManagedProjectSurvivesDataDirectoryRelocation(t *testing.T) {
 	if created.Location.Kind != LocationManaged || created.Location.Path != "projects/Portable Book" {
 		t.Fatalf("managed Project location = %#v", created.Location)
 	}
-	firstLayout, err := firstRegistry.EnsureState(created)
+	firstLayout, err := firstRegistry.EnsureStore(created)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(firstLayout.StateRoot, "marker.txt"), []byte("portable\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(firstLayout.StoreRoot, "marker.txt"), []byte("portable\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,8 +48,8 @@ func TestRegistryManagedProjectSurvivesDataDirectoryRelocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data, err := os.ReadFile(filepath.Join(secondLayout.StateRoot, "marker.txt")); err != nil || string(data) != "portable\n" {
-		t.Fatalf("relocated Project state data=%q err=%v", data, err)
+	if data, err := os.ReadFile(filepath.Join(secondLayout.StoreRoot, "marker.txt")); err != nil || string(data) != "portable\n" {
+		t.Fatalf("relocated Project Store data=%q err=%v", data, err)
 	}
 
 	var persisted registryData
@@ -71,7 +71,7 @@ func TestRegistryPreservesForeignExternalLocationVerbatim(t *testing.T) {
 			ID:           "project-external",
 			Type:         TypeGeneral,
 			Name:         "External",
-			StateDirName: "External",
+			StoreDirName: "External",
 			Location:     ProjectLocation{Kind: LocationExternal, Path: foreignPath},
 		}},
 	}
@@ -108,7 +108,7 @@ func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testi
 		t.Fatal(err)
 	}
 	originalID := record.ID
-	originalStateDir := record.StateDirName
+	originalStoreDir := record.StoreDirName
 	if record.Type != TypeGeneral || record.Status != StatusAvailable {
 		t.Fatalf("unexpected new Project: %#v", record)
 	}
@@ -125,15 +125,15 @@ func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.ID != originalID || record.StateDirName != originalStateDir || record.Name != "Renamed" || record.WorkspacePath != canonicalSecond {
+	if record.ID != originalID || record.StoreDirName != originalStoreDir || record.Name != "Renamed" || record.WorkspacePath != canonicalSecond {
 		t.Fatalf("Project identity changed across relink: %#v", record)
 	}
 	layout, err := registry.Layout(record)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(layout.StateRoot) != originalStateDir {
-		t.Fatalf("Project state directory changed across rename and relink: %#v", layout)
+	if filepath.Base(layout.StoreRoot) != originalStoreDir {
+		t.Fatalf("Project Store directory changed across rename and relink: %#v", layout)
 	}
 
 	if err := os.Remove(second); err != nil {
@@ -155,7 +155,7 @@ func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testi
 	}
 }
 
-func TestRegistryAllocatesReadableUniqueStateDirectories(t *testing.T) {
+func TestRegistryAllocatesReadableUniqueStoreDirectories(t *testing.T) {
 	registry := NewRegistry(t.TempDir())
 	add := func(name string) Record {
 		t.Helper()
@@ -175,22 +175,22 @@ func TestRegistryAllocatesReadableUniqueStateDirectories(t *testing.T) {
 	third := add("我的小说")
 	reserved := add("CON")
 
-	if first.StateDirName != "我的-小说" {
-		t.Fatalf("first readable state directory = %q", first.StateDirName)
+	if first.StoreDirName != "我的-小说" {
+		t.Fatalf("first readable Store directory = %q", first.StoreDirName)
 	}
-	if second.StateDirName != "我的-小说-2" {
-		t.Fatalf("second readable state directory = %q", second.StateDirName)
+	if second.StoreDirName != "我的-小说-2" {
+		t.Fatalf("second readable Store directory = %q", second.StoreDirName)
 	}
-	if third.StateDirName != "我的小说" {
-		t.Fatalf("distinct Project name state directory = %q", third.StateDirName)
+	if third.StoreDirName != "我的小说" {
+		t.Fatalf("distinct Project name Store directory = %q", third.StoreDirName)
 	}
-	if reserved.StateDirName != "Project-CON" {
-		t.Fatalf("Windows reserved state directory = %q", reserved.StateDirName)
+	if reserved.StoreDirName != "Project-CON" {
+		t.Fatalf("Windows reserved Store directory = %q", reserved.StoreDirName)
 	}
 
 	fourth := add("我的 小说")
-	if fourth.StateDirName != "我的-小说-3" {
-		t.Fatalf("archived state directory was reused: %q", fourth.StateDirName)
+	if fourth.StoreDirName != "我的-小说-3" {
+		t.Fatalf("archived Store directory was reused: %q", fourth.StoreDirName)
 	}
 }
 
@@ -323,7 +323,7 @@ func TestRegistryRejectsRelinkOntoArchivedProjectPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(records) != 2 {
-		t.Fatalf("relink conflict discarded Project state: %#v", records)
+		t.Fatalf("relink conflict discarded Project Store: %#v", records)
 	}
 }
 

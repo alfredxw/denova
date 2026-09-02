@@ -49,7 +49,7 @@ func (service *Service) GenerateCover(ctx context.Context, request CoverGenerate
 	if err != nil {
 		return imageasset.CoverResult{}, err
 	}
-	meta, err := service.metadata.Read(layout.ContentRoot, layout.StateRoot)
+	meta, err := service.metadata.Read(layout.ContentRoot, layout.StoreRoot)
 	if err != nil {
 		return imageasset.CoverResult{}, err
 	}

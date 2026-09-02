@@ -11,6 +11,8 @@ import (
 type CreateStoryRequest struct {
 	Title                     string                            `json:"title"`
 	CustomAgentID             *string                           `json:"custom_agent_id,omitempty"`
+	ProfileID                 string                            `json:"profile_id,omitempty"`
+	ThinkingLevel             string                            `json:"thinking_level,omitempty"`
 	Origin                    string                            `json:"origin"`
 	Protagonist               StoryProtagonist                  `json:"protagonist,omitempty"`
 	StoryTellerID             string                            `json:"story_teller_id"`

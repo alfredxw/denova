@@ -243,7 +243,7 @@ export function isPresetConfigResourceKind(kind: PresetResourceKind) {
 }
 
 export function currentPresetBuiltinOverridden(kind: PresetResourceKind, drafts: PresetDrafts) {
-  if (kind === 'director') return false
+  if (kind === 'director') return Boolean(drafts.director?.builtin_overridden)
   if (kind === 'image') return Boolean(drafts.image?.builtin_overridden)
   if (kind === 'event') return Boolean(drafts.event?.builtin_overridden)
   if (kind === 'rule') return Boolean(drafts.rule?.builtin_overridden)

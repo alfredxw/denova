@@ -48,7 +48,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 	stateRoot := ""
 	projectID := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 		projectID = a.cfg.ProjectID
 	}
 	a.mu.RUnlock()
@@ -78,7 +78,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 
 	runtime := ideChatRuntime{
 		app: a, projectID: projectID, sess: sess, bookService: bookService,
-		executionRuntime: executionRuntime, workspace: workspace, projectState: stateRoot,
+		executionRuntime: executionRuntime, workspace: workspace, projectStore: stateRoot,
 	}
 	options := runtime.agentOptions("")
 	recovery, err := executionRuntime.OpenRecoveryObservation(operation.Context(), options)

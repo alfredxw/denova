@@ -109,7 +109,7 @@ func newConfigResourceRegistry(cfg *config.Config) (*Registry, error) {
 		newRuleSystemResource(novaDir),
 		newStateSystemResource(novaDir),
 		newImagePresetResource(novaDir),
-		newAutomationResource(novaDir, cfg.ProjectID, workspace, cfg.ProjectStateDir),
+		newAutomationResource(novaDir, cfg.ProjectID, workspace, cfg.ProjectStoreDir),
 		newSkillConfigResource(cfg),
 		newAgentProfileResource(cfg),
 	)

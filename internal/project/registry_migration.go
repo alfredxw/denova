@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	projectIDStateDirectoryRegistryVersion = 2
-	readableStateDirectoryRegistryVersion  = 3
+	projectIDStoreDirectoryRegistryVersion = 2
+	readableStoreDirectoryRegistryVersion  = 3
+	legacyProjectStateRegistryVersion      = 4
 )
 
 type legacyBookRecord struct {
@@ -38,15 +39,39 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 			return registryData{}, false, fmt.Errorf("decode project registry: %w", err)
 		}
 		switch data.Version {
+		case registryVersion, legacyProjectStateRegistryVersion,
+			readableStoreDirectoryRegistryVersion, projectIDStoreDirectoryRegistryVersion:
+		default:
+			return registryData{}, false, fmt.Errorf(
+				"project registry version %d does not match supported version %d",
+				data.Version,
+				registryVersion,
+			)
+		}
+		if err := registry.migrateLegacyProjectStoreRoot(); err != nil {
+			return registryData{}, false, err
+		}
+		switch data.Version {
 		case registryVersion:
 			if err := registry.normalizeRegistryData(&data); err != nil {
 				return registryData{}, false, err
 			}
-			if err := registry.migrateProjectStateStorageOnce(data.Projects); err != nil {
+			if err := registry.migrateProjectStoresOnce(data.Projects); err != nil {
 				return registryData{}, false, err
 			}
 			return data, false, nil
-		case readableStateDirectoryRegistryVersion:
+		case legacyProjectStateRegistryVersion:
+			if err := registry.normalizeRegistryData(&data); err != nil {
+				return registryData{}, false, err
+			}
+			if err := registry.saveLocked(data); err != nil {
+				return registryData{}, false, fmt.Errorf("persist Project Store Registry: %w", err)
+			}
+			if err := registry.migrateProjectStoresOnce(data.Projects); err != nil {
+				return registryData{}, false, err
+			}
+			return data, false, nil
+		case readableStoreDirectoryRegistryVersion:
 			if err := registry.assignLegacyProjectLocations(&data); err != nil {
 				return registryData{}, false, err
 			}
@@ -56,38 +81,35 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 			if err := registry.saveLocked(data); err != nil {
 				return registryData{}, false, fmt.Errorf("persist portable Project locations: %w", err)
 			}
-			if err := registry.migrateProjectStateStorageOnce(data.Projects); err != nil {
+			if err := registry.migrateProjectStoresOnce(data.Projects); err != nil {
 				return registryData{}, false, err
 			}
 			return data, false, nil
-		case projectIDStateDirectoryRegistryVersion:
+		case projectIDStoreDirectoryRegistryVersion:
 			if err := registry.assignLegacyProjectLocations(&data); err != nil {
 				return registryData{}, false, err
 			}
-			if err := registry.assignReadableStateDirNames(&data); err != nil {
+			if err := registry.assignReadableStoreDirNames(&data); err != nil {
 				return registryData{}, false, err
 			}
 			if err := registry.normalizeRegistryData(&data); err != nil {
 				return registryData{}, false, err
 			}
-			// Persist the mapping before moving state. If a move fails, the next
-			// load reads the new mapping and safely resumes the remaining moves.
+			// Persist the mapping before moving the Project Stores. If a move
+			// fails, the next load safely resumes the remaining moves.
 			if err := registry.saveLocked(data); err != nil {
-				return registryData{}, false, fmt.Errorf("persist readable project state directories: %w", err)
+				return registryData{}, false, fmt.Errorf("persist readable Project Store directories: %w", err)
 			}
-			if err := registry.migrateProjectStateStorageOnce(data.Projects); err != nil {
+			if err := registry.migrateProjectStoresOnce(data.Projects); err != nil {
 				return registryData{}, false, err
 			}
 			return data, false, nil
-		default:
-			return registryData{}, false, fmt.Errorf(
-				"project registry version %d does not match supported version %d",
-				data.Version,
-				registryVersion,
-			)
 		}
 	}
 	if !errors.Is(err, os.ErrNotExist) {
+		return registryData{}, false, err
+	}
+	if err := registry.migrateLegacyProjectStoreRoot(); err != nil {
 		return registryData{}, false, err
 	}
 	data = registryData{Version: registryVersion, SortMode: SortRecent, Projects: []Record{}}
@@ -253,7 +275,7 @@ func (registry *Registry) existingManagedLegacyLocation(relative string) (string
 		}
 		match := ""
 		for _, entry := range entries {
-			if stateDirNameKey(entry.Name()) != stateDirNameKey(component) {
+			if storeDirNameKey(entry.Name()) != storeDirNameKey(component) {
 				continue
 			}
 			if match != "" && match != entry.Name() {

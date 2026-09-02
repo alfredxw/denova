@@ -75,7 +75,7 @@ func (service *Service) GenerateItemImage(ctx context.Context, projectID, id str
 
 	cfg := runtime.Config
 	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(
-		cfg.DataDir(), runtime.Workspace, config.ProjectConfigPath(cfg.ProjectStateDir),
+		cfg.DataDir(), runtime.Workspace, config.ProjectConfigPath(cfg.ProjectStoreDir),
 	); loadErr == nil {
 		appsettings.ApplyLayered(&cfg, layered)
 	} else {

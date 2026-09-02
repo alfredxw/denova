@@ -93,7 +93,7 @@ func TestRegistryMigrationKeepsOneManagedOwnerForDuplicatedLegacyPaths(t *testin
 		currentID = "project-current"
 	)
 	legacy := registryData{
-		Version:       projectIDStateDirectoryRegistryVersion,
+		Version:       projectIDStoreDirectoryRegistryVersion,
 		CurrentBookID: currentID,
 		Projects: []Record{
 			{ID: staleID, Type: TypeBook, Name: "Portable Book", WorkspacePath: stalePath},
@@ -108,7 +108,7 @@ func TestRegistryMigrationKeepsOneManagedOwnerForDuplicatedLegacyPaths(t *testin
 		t.Fatal(err)
 	}
 	for _, id := range []string{staleID, currentID} {
-		stateRoot := filepath.Join(denovaDir, StateDirectoryName, id)
+		stateRoot := filepath.Join(denovaDir, storeDirectoryName, id)
 		if err := os.MkdirAll(stateRoot, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +142,7 @@ func TestRegistryMigrationKeepsOneManagedOwnerForDuplicatedLegacyPaths(t *testin
 		t.Fatalf("current Book path = %q, want %q", registry.CurrentBookPath(), workspace)
 	}
 	for _, record := range projects {
-		identityPath := filepath.Join(denovaDir, StateDirectoryName, record.StateDirName, "identity.txt")
+		identityPath := filepath.Join(denovaDir, storeDirectoryName, record.StoreDirName, "identity.txt")
 		if identity, err := os.ReadFile(identityPath); err != nil || string(identity) != record.ID {
 			t.Fatalf("Project %s state identity=%q err=%v", record.ID, identity, err)
 		}
@@ -193,15 +193,15 @@ func TestRegistryLegacyMigrationArchivesMissingAndHiddenBooks(t *testing.T) {
 		t.Fatalf("registry version = %d, want %d", persisted.Version, registryVersion)
 	}
 	for _, record := range persisted.Projects {
-		if record.StateDirName == "" {
-			t.Fatalf("legacy Project missing readable state directory: %#v", record)
+		if record.StoreDirName == "" {
+			t.Fatalf("legacy Project missing readable Store directory: %#v", record)
 		}
 	}
 }
 
 func TestRegistryRejectsUnsupportedIntermediateVersion(t *testing.T) {
 	denovaDir := t.TempDir()
-	raw, err := json.Marshal(registryData{Version: projectIDStateDirectoryRegistryVersion - 1, Projects: []Record{}})
+	raw, err := json.Marshal(registryData{Version: projectIDStoreDirectoryRegistryVersion - 1, Projects: []Record{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,14 +213,14 @@ func TestRegistryRejectsUnsupportedIntermediateVersion(t *testing.T) {
 	}
 }
 
-func TestRegistryMigratesProjectIDStateDirectoriesWithoutChangingIdentity(t *testing.T) {
+func TestRegistryMigratesProjectIDStoreDirectoriesWithoutChangingIdentity(t *testing.T) {
 	denovaDir := t.TempDir()
 	firstWorkspace := t.TempDir()
 	secondWorkspace := t.TempDir()
 	firstID := "project-first"
 	secondID := "project-second"
 	legacy := registryData{
-		Version: projectIDStateDirectoryRegistryVersion,
+		Version: projectIDStoreDirectoryRegistryVersion,
 		Projects: []Record{
 			{ID: firstID, Type: TypeGeneral, Name: "我的 项目", WorkspacePath: firstWorkspace},
 			{ID: secondID, Type: TypeGeneral, Name: "我的-项目", WorkspacePath: secondWorkspace},
@@ -233,7 +233,7 @@ func TestRegistryMigratesProjectIDStateDirectoriesWithoutChangingIdentity(t *tes
 	if err := os.WriteFile(filepath.Join(denovaDir, "projects.json"), append(raw, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	legacyState := filepath.Join(denovaDir, StateDirectoryName, firstID, "sessions")
+	legacyState := filepath.Join(denovaDir, storeDirectoryName, firstID, "sessions")
 	if err := os.MkdirAll(legacyState, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -249,15 +249,15 @@ func TestRegistryMigratesProjectIDStateDirectoriesWithoutChangingIdentity(t *tes
 	for _, record := range projects {
 		byID[record.ID] = record
 	}
-	if byID[firstID].StateDirName != "我的-项目" || byID[secondID].StateDirName != "我的-项目-2" {
-		t.Fatalf("readable state directory migration = %#v", byID)
+	if byID[firstID].StoreDirName != "我的-项目" || byID[secondID].StoreDirName != "我的-项目-2" {
+		t.Fatalf("readable Store directory migration = %#v", byID)
 	}
-	if _, err := os.Stat(filepath.Join(denovaDir, StateDirectoryName, firstID)); !os.IsNotExist(err) {
-		t.Fatalf("legacy ID state directory still exists: %v", err)
+	if _, err := os.Stat(filepath.Join(denovaDir, storeDirectoryName, firstID)); !os.IsNotExist(err) {
+		t.Fatalf("legacy ID Store directory still exists: %v", err)
 	}
-	migratedHistory := filepath.Join(denovaDir, StateDirectoryName, "我的-项目", "sessions", "history.jsonl")
+	migratedHistory := filepath.Join(denovaDir, storeDirectoryName, "我的-项目", "sessions", "history.jsonl")
 	if data, err := os.ReadFile(migratedHistory); err != nil || string(data) != "history\n" {
-		t.Fatalf("migrated Project state data=%q err=%v", data, err)
+		t.Fatalf("migrated Project Store data=%q err=%v", data, err)
 	}
 
 	var persisted registryData
@@ -266,7 +266,7 @@ func TestRegistryMigratesProjectIDStateDirectoriesWithoutChangingIdentity(t *tes
 		t.Fatalf("migrated registry version = %d, want %d", persisted.Version, registryVersion)
 	}
 	if len(persisted.Projects) != 2 || persisted.Projects[0].ID != firstID || persisted.Projects[1].ID != secondID {
-		t.Fatalf("Project identity changed during state migration: %#v", persisted.Projects)
+		t.Fatalf("Project identity changed during Store migration: %#v", persisted.Projects)
 	}
 	for _, record := range persisted.Projects {
 		if record.Location.Kind != LocationExternal || record.Location.Path == "" || record.WorkspacePath != "" {

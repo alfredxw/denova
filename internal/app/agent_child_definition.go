@@ -40,11 +40,11 @@ func (a *App) prepareChildDefinition(
 		if err != nil {
 			return agent.Definition{}, err
 		}
-		layout, err := a.projectRegistry.EnsureState(record)
+		layout, err := a.projectRegistry.EnsureStore(record)
 		if err != nil {
 			return agent.Definition{}, err
 		}
-		definition.AttachmentRoot = layout.StateRoot
+		definition.AttachmentRoot = layout.StoreRoot
 		return definition, nil
 	}
 	switch binding.AgentKind {

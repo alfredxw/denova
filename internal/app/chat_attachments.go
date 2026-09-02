@@ -12,7 +12,7 @@ import (
 )
 
 // MaterializeWritingAttachments persists transport payloads in the selected
-// Session's project state before the durable Agent command is admitted.
+// Session's Project Store before the durable Agent command is admitted.
 func (a *App) MaterializeWritingAttachments(sessionID, commandID string, request *chatagent.ChatRequest) error {
 	if request == nil || len(request.AttachmentUploads) == 0 {
 		return nil
@@ -31,7 +31,7 @@ func (a *App) MaterializeWritingAttachments(sessionID, commandID string, request
 	if err != nil {
 		return err
 	}
-	return materializeChatAttachments(layout.StateRoot, agentattachment.SessionScope(activeSessionID), commandID, request)
+	return materializeChatAttachments(layout.StoreRoot, agentattachment.SessionScope(activeSessionID), commandID, request)
 }
 
 // MaterializeInteractiveAttachments binds game copies to the Story so deleting
@@ -57,7 +57,7 @@ func (a *App) MaterializeInteractiveAttachments(storyID, commandID string, reque
 	if err != nil {
 		return err
 	}
-	return materializeChatAttachments(layout.StateRoot, agentattachment.StoryScope(storyID), commandID, request)
+	return materializeChatAttachments(layout.StoreRoot, agentattachment.StoryScope(storyID), commandID, request)
 }
 
 func attachmentDescriptors(files []agent.Attachment) []agent.Attachment {

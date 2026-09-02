@@ -37,7 +37,7 @@ func (service *Service) AddProject(path string) (projectdomain.Record, error) {
 	if err != nil {
 		return projectdomain.Record{}, err
 	}
-	if _, err := service.registry.EnsureState(record); err != nil {
+	if _, err := service.registry.EnsureStore(record); err != nil {
 		return projectdomain.Record{}, err
 	}
 	return record, nil

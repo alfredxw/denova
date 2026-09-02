@@ -91,7 +91,7 @@ func (host settingsHost) SettingsRuntime(target appsettings.Target) (appsettings
 	runtimeConfig.DevMode = devMode
 	runtimeConfig.ImagePresetToolPrompt = imagePresetToolPrompt
 	runtimeConfig.ProjectID = projectID
-	runtimeConfig.ProjectStateDir = layout.StateRoot
+	runtimeConfig.ProjectStoreDir = layout.StoreRoot
 	runtimeConfig.Workspace = workspace
 	return appsettings.Runtime{
 		Config:            *runtimeConfig,

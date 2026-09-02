@@ -35,7 +35,7 @@ func (a *App) toolAgentConfig() (config.Config, string) {
 
 	runtimeCfg.Workspace = workspace
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
-		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStoreDir),
 	); err == nil {
 		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {

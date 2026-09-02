@@ -34,7 +34,7 @@ function localizedBuiltinValue(
   field: 'name' | 'description',
   fallback: string,
 ): string {
-  if (template.custom) return fallback
+  if (template.custom || template.builtin_overridden) return fallback
   return t(`storyPicker.planningTemplates.${template.id}.${field}`, { defaultValue: fallback })
 }
 
@@ -45,6 +45,6 @@ function localizedBuiltinSectionValue(
   field: 'title' | 'description',
   fallback: string,
 ): string {
-  if (template.custom) return fallback
+  if (template.custom || template.builtin_overridden) return fallback
   return t(`storyPicker.planningTemplates.${template.id}.sections.${section.id}.${field}`, { defaultValue: fallback })
 }

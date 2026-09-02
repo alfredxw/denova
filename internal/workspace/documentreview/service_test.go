@@ -113,7 +113,7 @@ func TestProjectDocumentReviewStorageFollowsStateRootAcrossRelink(t *testing.T) 
 	if err := os.Mkdir(workspace, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stateRoot := filepath.Join(t.TempDir(), "project-state")
+	stateRoot := filepath.Join(t.TempDir(), "stores")
 	service, err := ForWorkspaceAt(workspace, stateRoot)
 	if err != nil {
 		t.Fatalf("create project review service: %v", err)
@@ -141,7 +141,7 @@ func TestProjectDocumentReviewStorageFollowsStateRootAcrossRelink(t *testing.T) 
 		t.Fatalf("rebind project review service: %v", err)
 	}
 	if rebound != service {
-		t.Fatal("relink created a second service for the same Project state")
+		t.Fatal("relink created a second service for the same Project Store")
 	}
 	canonicalRelinkedWorkspace, err := filepath.EvalSymlinks(relinkedWorkspace)
 	if err != nil {

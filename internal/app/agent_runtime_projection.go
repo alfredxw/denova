@@ -63,7 +63,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	selectedSession := a.session
 	stateRoot := ""
 	if a.cfg != nil {
-		stateRoot = a.cfg.ProjectStateDir
+		stateRoot = a.cfg.ProjectStoreDir
 	}
 	task := activeWritingTaskLocked(a)
 	a.mu.RUnlock()

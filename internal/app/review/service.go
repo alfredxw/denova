@@ -212,7 +212,7 @@ func withRuntimeReviewFeedbackServices(
 			return invalidReviewFeedbackError("document review is available only in Book projects", nil)
 		}
 		if strings.TrimSpace(runtime.StateRoot) == "" {
-			return errors.New("review runtime project state root is unavailable")
+			return errors.New("review runtime Project Store is unavailable")
 		}
 		documents, err = documentreview.ForWorkspaceAt(workspace, runtime.StateRoot)
 		if err != nil {

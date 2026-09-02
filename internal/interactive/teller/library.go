@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/presetlayout"
 	"denova/internal/revisionfile"
 	"denova/internal/revisionjson"
 	"denova/internal/style"
@@ -209,7 +210,7 @@ func (l *Library) restoreBuiltin(id string) error {
 }
 
 func (l *Library) dir() string {
-	return filepath.Join(l.novaDir, "story-tellers")
+	return presetlayout.NarrativeStyles(l.novaDir)
 }
 
 func (l *Library) ensureBuiltins() error {

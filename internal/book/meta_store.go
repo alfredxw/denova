@@ -13,7 +13,7 @@ import (
 )
 
 // StoredMeta is the v0.3.3 Book metadata representation. New metadata is a
-// plain BookMeta at <Project StateRoot>/meta.json; this type exists only for
+// plain BookMeta at <Project StoreRoot>/meta.json; this type exists only for
 // the explicit release migration.
 type StoredMeta struct {
 	Path string `json:"path"`
@@ -67,7 +67,7 @@ func (store *MetaStore) Write(contentRoot, stateRoot string, meta BookMeta) (Boo
 }
 
 // MigrateLegacy copies the one matching v0.3.3 metadata record into final
-// Project state. It never deletes or rewrites the release source and refuses
+// Project Store. It never deletes or rewrites the release source and refuses
 // ambiguous matches.
 func (store *MetaStore) MigrateLegacy(contentRoot, stateRoot string) error {
 	if _, err := os.Stat(store.metaPath(stateRoot)); err == nil {

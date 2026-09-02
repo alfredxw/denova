@@ -16,7 +16,7 @@ import { agentMessageDisplayText, createAgentDataMessage } from '@/lib/agent-ui-
 import { agentSubAgentSessionKey, agentViewContent, type AgentMessageView } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
-import type { ConversationConfigBinding } from '@/features/conversation-config/types'
+import type { ConversationConfigBinding, ConversationConfigChanges } from '@/features/conversation-config/types'
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
 import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
 import { sanitizeStoredNarrative } from '../stream-parser'
@@ -52,11 +52,15 @@ const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
 export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], planningTemplates = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
+  const [creatingStory, setCreatingStory] = useState(false)
   const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
     mode: 'interactive', project_id: projectId, story_id: storyId,
     branch_id: branchId || snapshot?.branch_id || 'main',
   } : undefined, [branchId, projectId, snapshot?.branch_id, storyId])
-  const conversationConfig = useConversationConfig(conversationBinding)
+  const setupConversationBinding = useMemo<ConversationConfigBinding | undefined>(() => creatingStory
+    ? { mode: 'interactive', project_id: projectId }
+    : conversationBinding, [conversationBinding, creatingStory, projectId])
+  const conversationConfig = useConversationConfig(setupConversationBinding)
   const approvalReady = conversationConfig.initialized && !conversationConfig.saving
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
@@ -105,7 +109,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   } | null>(null)
   const [switchingVersionTurnId, setSwitchingVersionTurnId] = useState<string | null>(null)
   const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
-  const [creatingStory, setCreatingStory] = useState(false)
   const [pendingOpeningStoryId, setPendingOpeningStoryId] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
@@ -700,6 +703,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 bookOpeningPresets={bookOpeningPresets}
                 recentNarrativeStyleID={recentNarrativeStyleID}
                 narrativeStyleLoading={narrativeStyleLoading}
+                conversationConfig={conversationConfig}
                 story={creatingStory ? undefined : story}
                 onNarrativeStyleChange={onNarrativeStyleChange}
                 onRequestLoreInit={onRequestLoreInit}
@@ -708,6 +712,13 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 onCreate={async (input) => {
                   if (story && !creatingStory) {
                     await onStorySetupUpdate(input)
+                    const runtimeChanges: ConversationConfigChanges = {}
+                    if (conversationConfig.snapshot?.profile_id !== input.profile_id) runtimeChanges.profile_id = input.profile_id
+                    if (conversationConfig.snapshot?.thinking_level !== input.thinking_level) runtimeChanges.thinking_level = input.thinking_level
+                    if (Object.keys(runtimeChanges).length > 0) {
+                      const saved = await conversationConfig.patch(runtimeChanges)
+                      if (!saved) throw new Error(t('storyPicker.setup.model.saveFailed'))
+                    }
                     const started = await send({ startOpening: true })
                     if (!started) throw new Error(t('storyPicker.setup.startFailed'))
                   } else {
