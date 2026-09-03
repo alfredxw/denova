@@ -108,7 +108,7 @@ func (manager *denovaManager) Plan(
 		CheckpointOutputReserve: max(1024, min(8192, window/25)),
 		SafetyMarginTokens:      max(512, window/100),
 	}
-	if !ForkCapacityPressure(request.ModelRequest, options.Tools, policy, options) {
+	if !ForkCapacityPressure(request.ModelRequest, options.Tools, policy) {
 		return plan, nil
 	}
 	forced := request

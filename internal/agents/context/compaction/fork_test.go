@@ -66,7 +66,7 @@ func TestContextCompactionForkAppendsOnlyStableTailToExactPrimaryRequest(t *test
 	if len(resolved.Tools) != 2 || resolved.Tools[0].Name != "read" || resolved.Tools[1].Name != "search" {
 		t.Fatalf("tool order/schema changed: %#v", resolved.Tools)
 	}
-	if resolved.MaxTokens == nil || *resolved.MaxTokens != 2048 || resolved.ToolChoice == nil || *resolved.ToolChoice != agent.ToolChoiceAllowed {
+	if resolved.MaxTokens == nil || *resolved.MaxTokens != 4000 || resolved.ToolChoice == nil || *resolved.ToolChoice != agent.ToolChoiceAllowed {
 		t.Fatalf("cache-sensitive options changed: %#v", resolved)
 	}
 	if !reflect.DeepEqual(resolved.AllowedToolNames, []string{"read", "search"}) {
@@ -189,8 +189,8 @@ func TestOversizedManualCompactionUsesLayeredFallback(t *testing.T) {
 	}
 }
 
-func TestCompactionForkReserveHonorsLargePrimaryCompletionBudget(t *testing.T) {
-	output, _ := compactionForkReserves(0, 160_000, Policy{CheckpointOutputReserve: 24_000}, &agent.Options{})
+func TestCompactionForkReserveHonorsExplicitCheckpointOutputBudget(t *testing.T) {
+	output, _ := compactionForkReserves(0, 160_000, Policy{CheckpointOutputReserve: 24_000})
 	if output != 24_000 {
 		t.Fatalf("fork output reserve = %d, want primary completion reserve 24000", output)
 	}
@@ -198,7 +198,7 @@ func TestCompactionForkReserveHonorsLargePrimaryCompletionBudget(t *testing.T) {
 		AgentKind: config.AgentKindInteractiveStory, ContextWindowTokens: 30_000,
 		CheckpointOutputReserve: 24_000, CompactionPromptTokens: 2_000, SafetyMarginTokens: 1_000,
 	}
-	if !ForkCapacityPressure([]*agent.Message{agent.UserMessage(strings.Repeat("story context ", 1200))}, nil, policy, &agent.Options{}) {
+	if !ForkCapacityPressure([]*agent.Message{agent.UserMessage(strings.Repeat("story context ", 1200))}, nil, policy) {
 		t.Fatal("large Game completion reserve did not advance compaction pressure")
 	}
 }
@@ -361,7 +361,7 @@ func TestContextCompactionForkDeniesToolCallsWithoutExecutingAnotherAgentLoop(t 
 	}
 }
 
-func TestContextCompactionForkFallsBackColdOnlyWhenCapacityDoesNotFit(t *testing.T) {
+func TestContextCompactionForkOverridesLargePrimaryOutputCapWithCheckpointBudget(t *testing.T) {
 	model := &compactionForkCaptureModel{response: agent.AssistantMessage("unused", nil)}
 	primary := []*agent.Message{
 		agent.SystemMessage(strings.Repeat("s", 2600)),
@@ -386,12 +386,15 @@ func TestContextCompactionForkFallsBackColdOnlyWhenCapacityDoesNotFit(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary != "cold checkpoint" || coldCalls != 1 || model.requests != 0 {
+	if summary != "unused" || coldCalls != 0 || model.requests != 1 {
 		t.Fatalf("fallback calls = summary:%q cold:%d primary:%d", summary, coldCalls, model.requests)
 	}
-	if execution.Mode != ExecutionLayeredCold || execution.FallbackReason != FallbackCapacity ||
-		execution.CacheIdentityStatus != CacheIdentityCold || execution.CacheUsageStatus != CacheUsageCold || execution.CacheMissReason != FallbackCapacity {
-		t.Fatalf("fallback execution = %#v", execution)
+	if execution.Mode != ExecutionCacheSafeFork || execution.FallbackReason != "" || execution.CheckpointOutputReserve != 1024 {
+		t.Fatalf("cache-safe execution = %#v", execution)
+	}
+	resolved := model.options[0]
+	if resolved.MaxTokens == nil || *resolved.MaxTokens != execution.CheckpointOutputReserve {
+		t.Fatalf("fork max tokens = %#v, want checkpoint reserve %d", resolved.MaxTokens, execution.CheckpointOutputReserve)
 	}
 }
 

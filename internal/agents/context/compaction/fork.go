@@ -113,7 +113,7 @@ func summarizeContextWithPrimaryFork(
 	}
 	options := snapshot.ResolvedOptions()
 	tools := options.Tools
-	outputReserve, safetyMargin := compactionForkReserves(sourceTokens, policy.ContextWindowTokens, policy, options)
+	outputReserve, safetyMargin := compactionForkReserves(sourceTokens, policy.ContextWindowTokens, policy)
 	// The checkpoint and deterministic reference context are already part of
 	// the captured primary request. Re-embedding them in the appended prompt
 	// would duplicate tokens, shrink fork headroom, and weaken prefix-cache reuse.
@@ -123,7 +123,7 @@ func summarizeContextWithPrimaryFork(
 		return "", inputChars, contextCompactionSummaryExecution{PromptTokens: promptTokens}, true,
 			fmt.Errorf("context compaction fork prompt requires %d tokens; maximum is %d", promptTokens, ForkPromptReserve)
 	}
-	fork := snapshot.Append(agent.UserMessage(prompt))
+	fork := snapshot.Append(agent.UserMessage(prompt)).WithOptions(agent.WithMaxTokens(outputReserve))
 	execution := contextCompactionSummaryExecution{
 		Mode:                       ExecutionCacheSafeFork,
 		CacheIdentityStatus:        CacheIdentityExact,
@@ -206,7 +206,7 @@ func executeCompactionForkOnce(ctx context.Context, snapshot *agent.ModelRequest
 	return agent.ConcatMessages(chunks)
 }
 
-func compactionForkReserves(_ int, contextWindow int, policy Policy, options *agent.Options) (output, safety int) {
+func compactionForkReserves(_ int, contextWindow int, policy Policy) (output, safety int) {
 	output = contextCompactionForkDefaultOutput
 	safety = 1024
 	if contextWindow > 0 {
@@ -215,9 +215,6 @@ func compactionForkReserves(_ int, contextWindow int, policy Policy, options *ag
 		// mathematically impossible even though a compact fixed checkpoint fits.
 		output = max(1024, min(contextCompactionForkMaxOutput, contextWindow/25))
 		safety = max(512, contextWindow/100)
-	}
-	if options != nil && options.MaxTokens != nil && *options.MaxTokens > output {
-		output = *options.MaxTokens
 	}
 	if policy.CheckpointOutputReserve > output {
 		output = policy.CheckpointOutputReserve
@@ -240,12 +237,9 @@ func compactionForkFits(
 	return modelio.ValidateInput(agentKind, messages, tools, resolved.MaxProviderInputBytes, contextWindow) == nil
 }
 
-// compactionForkCapacityPressure advances checkpoint maintenance before the
-// static side-fork reserve would stop fitting. It uses exact snapshot input
-// options when available and never reacts to a provider overflow response.
 // ForkCapacityPressure reports when a cache-safe fork needs to run before its
 // fixed output and safety reserves stop fitting the model window.
-func ForkCapacityPressure(messages []*agent.Message, tools []*agent.ToolInfo, policy ForkCapacityPolicy, options *agent.Options) bool {
+func ForkCapacityPressure(messages []*agent.Message, tools []*agent.ToolInfo, policy ForkCapacityPolicy) bool {
 	if policy.ContextWindowTokens <= 0 {
 		return false
 	}
@@ -254,7 +248,7 @@ func ForkCapacityPressure(messages []*agent.Message, tools []*agent.ToolInfo, po
 		AgentKind: policy.AgentKind, ContextWindowTokens: policy.ContextWindowTokens,
 		CheckpointOutputReserve: policy.CheckpointOutputReserve,
 	}
-	outputReserve, safetyMargin := compactionForkReserves(0, policy.ContextWindowTokens, forkPolicy, options)
+	outputReserve, safetyMargin := compactionForkReserves(0, policy.ContextWindowTokens, forkPolicy)
 	promptTokens := max(policy.CompactionPromptTokens, EstimateForkPromptTokens(messages, forkPolicy))
 	return inputTokens+promptTokens+outputReserve+max(policy.SafetyMarginTokens, safetyMargin) >= policy.ContextWindowTokens
 }

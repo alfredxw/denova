@@ -885,7 +885,8 @@ loopControlsStopped:
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	_, incomplete := modelFinishReasonIncomplete(final.ResponseMeta)
+	_, finishClass := classifyResponseFinishReason(final.ResponseMeta)
+	incomplete := finishClass.Incomplete()
 	var continuation *runstate.EngineContinuation
 	if !incomplete {
 		continuation, err = engine.evaluateGoal(
@@ -910,7 +911,7 @@ loopControlsStopped:
 		return runstate.EngineResult{}, err
 	}
 	if incomplete {
-		return runstate.EngineResult{Status: runstate.EngineIncomplete, Reason: ModelOutputTruncatedReason}, nil
+		return runstate.EngineResult{Status: runstate.EngineIncomplete, Reason: finishClass.TerminalReason()}, nil
 	}
 	return runstate.EngineResult{Status: runstate.EngineCompleted}, nil
 }

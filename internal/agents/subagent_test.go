@@ -11,6 +11,7 @@ import (
 	agenttoolruntime "denova/internal/agents/toolruntime"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
@@ -249,6 +250,31 @@ func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 	}
 	if got := orchestrator.Configuration().ToolResultMaxBytes; got != 64*1024 {
 		t.Fatalf("tool result limit bytes = %d, want %d", got, 64*1024)
+	}
+}
+
+func TestBuildChatModelAgentAssemblyProjectsProfileMaxTokensIntoFinalCall(t *testing.T) {
+	profileMax := 4096
+	assembly, err := buildChatModelAgentAssembly(context.Background(), &config.Config{}, chatModelAgentAssemblySpec{
+		Kind:         config.AgentKindIDE,
+		ModelCfg:     providers.ModelConfig{MaxOutputTokens: &profileMax},
+		ToolSettings: config.ResolvedAgentToolSettings{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := &agent.ModelCall{Messages: []*agent.Message{agent.UserMessage("inspect")}}
+	modelContext := &agent.ModelContext{}
+	ctx := context.Background()
+	for _, middleware := range assembly.Middlewares {
+		ctx, call, err = middleware.BeforeModelCall(ctx, call, modelContext)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := agent.GetCommonOptions(&agent.Options{}, call.Options...)
+	if options.MaxTokens == nil || *options.MaxTokens != profileMax {
+		t.Fatalf("final model-call max tokens = %#v, want %d", options.MaxTokens, profileMax)
 	}
 }
 

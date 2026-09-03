@@ -385,9 +385,12 @@ func (ContextLimitReached) eventPayload() {}
 type ResultStatus string
 
 const (
-	// ModelOutputTruncatedReason is the stable terminal reason used when a model
-	// returns only a partial response because generation reached a provider limit.
-	ModelOutputTruncatedReason = "agent_runtime.model_output_truncated"
+	// Model incomplete reasons are stable terminal codes for partial responses;
+	// clients localize them without discarding the provider's raw finish reason.
+	ModelOutputTruncatedReason       = "agent_runtime.model_output_truncated"
+	ModelContextWindowExceededReason = "agent_runtime.model_context_window_exceeded"
+	ModelOutputFilteredReason        = "agent_runtime.model_output_filtered"
+	ModelOutputIncompleteReason      = "agent_runtime.model_output_incomplete"
 
 	ResultCompleted  ResultStatus = "completed"
 	ResultFailed     ResultStatus = "failed"

@@ -146,7 +146,7 @@ func TestAgentManagerCompactionForkPreservesFinalModelRequestIdentity(t *testing
 		t.Fatalf("compaction fork changed provider prefix: %#v", model.inputs[0])
 	}
 	resolved := model.options[0]
-	if len(resolved.Tools) != 1 || resolved.Tools[0].Name != "read" || resolved.MaxTokens == nil || *resolved.MaxTokens != 2048 ||
+	if len(resolved.Tools) != 1 || resolved.Tools[0].Name != "read" || resolved.MaxTokens == nil || *resolved.MaxTokens != 4000 ||
 		resolved.ToolChoice == nil || *resolved.ToolChoice != agent.ToolChoiceAllowed ||
 		!reflect.DeepEqual(resolved.AllowedToolNames, []string{"read"}) {
 		t.Fatalf("compaction fork changed model options: %#v", resolved)

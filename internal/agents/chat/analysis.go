@@ -308,6 +308,13 @@ func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, mes
 	estimatedMessages = append(estimatedMessages, messages...)
 	tokens := agentcontext.EstimateTokens(estimatedMessages, nil)
 	completionReserve, toolResultReserve := agentcompaction.EstimateProjectionReserves(cfg, agentKind, expectedOutputChars)
+	if maxTokens := modelSettings.MaxTokens; maxTokens != nil {
+		totalReserve := agent.CapacityAwareTokenReserve(
+			completionReserve+toolResultReserve, *maxTokens,
+			modelSettings.ContextWindowTokens, contextSettings.CompactionThreshold,
+		)
+		completionReserve = max(0, totalReserve-toolResultReserve)
+	}
 	usage := contextUsageAnalysis{
 		tokens:            tokens,
 		projectedTokens:   tokens + completionReserve + toolResultReserve,

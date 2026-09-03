@@ -78,8 +78,10 @@ Denova records only major user-visible features, important compatibility or data
 - Fixed embedded-terminal exit, reconnect, theme, and PTY lifecycle issues so interactive tools reliably return to the shell in the original working directory.
 - 修复 DeepSeek、MiniMax、Claude 等模型及游戏回合输出上限过低，以及 DeepSeek 思考模式在工具结果投影或启动 SubAgent 后未回传 `reasoning_content` 而失败的问题。
 - Fixed incorrectly low output limits for DeepSeek, MiniMax, Claude, and Game turns, plus DeepSeek thinking-mode failures when `reasoning_content` was not replayed after tool-result projection or SubAgent startup.
-- 模型回复达到输出限制时会保留已生成内容并明确标记为未完成；应用内更新在 Release 缺少 `checksums.txt` 时会拒绝安装，不再跳过完整性校验。
-- Model responses that reach their output limit now retain generated content and are marked incomplete. In-app updates now refuse releases without `checksums.txt` instead of skipping integrity verification.
+- 模型回复达到输出或上下文限制、被内容过滤或被服务商标记未完成时，会保留已生成内容、按真实原因提示并阻止执行可能残缺的工具参数；模型最大输出 Token 现在同时参与上下文预算，压缩摘要使用独立的有界输出。
+- Model responses that reach output or context limits, are content-filtered, or are marked incomplete now retain generated content, report the actual reason, and block potentially partial tool arguments. Model output caps now also participate in context budgeting, while checkpoint summaries use their own bounded output.
+- 应用内更新在 Release 缺少 `checksums.txt` 时会拒绝安装，不再跳过完整性校验。
+- In-app updates now refuse releases without `checksums.txt` instead of skipping integrity verification.
 - 升级 Go、`go-git` 与 `x/image` 安全基线，修复标准库、Git 路径/符号链接和 WebP 解码相关漏洞。
 - Upgraded Go, `go-git`, and `x/image` security baselines to address standard-library, Git path/symlink, and WebP decoding vulnerabilities.
 

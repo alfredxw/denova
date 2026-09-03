@@ -435,15 +435,23 @@ func TestPublicEventProjectorEmitsStableRunTimingBeforeEveryTerminalEvent(t *tes
 	}
 }
 
-func TestPublicEventProjectorEmitsTruncatedModelOutputCode(t *testing.T) {
-	var events []agentrun.Event
-	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{}, func(event agentrun.Event) {
-		events = append(events, event)
-	})
-	projector.Finalize(agent.ResultIncomplete, agent.ModelOutputTruncatedReason)
-	if len(events) != 1 || events[0].Type != "error" ||
-		events[0].DataString("code") != agent.ModelOutputTruncatedReason {
-		t.Fatalf("truncated terminal event = %#v", events)
+func TestPublicEventProjectorEmitsIncompleteModelOutputCodes(t *testing.T) {
+	for _, reason := range []string{
+		agent.ModelOutputTruncatedReason,
+		agent.ModelContextWindowExceededReason,
+		agent.ModelOutputFilteredReason,
+		agent.ModelOutputIncompleteReason,
+	} {
+		t.Run(reason, func(t *testing.T) {
+			var events []agentrun.Event
+			projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{}, func(event agentrun.Event) {
+				events = append(events, event)
+			})
+			projector.Finalize(agent.ResultIncomplete, reason)
+			if len(events) != 1 || events[0].Type != "error" || events[0].DataString("code") != reason {
+				t.Fatalf("incomplete terminal event = %#v", events)
+			}
+		})
 	}
 }
 

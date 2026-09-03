@@ -486,6 +486,11 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	middlewares = append(middlewares, agentchat.NewModelContextMiddlewares(
 		toolresult.ResolveContextPolicy(cfg, firstNonEmpty(spec.ToolPolicyKind, spec.Kind)),
 	)...)
+	// Keep profile defaults visible to lifecycle inspection, Cleanup, and
+	// Compaction while preserving explicit options on bounded side forks.
+	if maxOutputTokens := spec.ModelCfg.MaxOutputTokens; maxOutputTokens != nil && *maxOutputTokens > 0 {
+		middlewares = append(middlewares, agentchat.NewDefaultMaxTokensMiddleware(*maxOutputTokens))
+	}
 	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
 	skillTools := skills.Tools
 	readAdapters := skills.ReadAdapters

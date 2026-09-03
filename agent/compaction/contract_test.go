@@ -87,6 +87,35 @@ func TestStandardIncludesLifecycleSideForkReserveInTriggerAndValidation(t *testi
 	}
 }
 
+func TestStandardUsesCapacityAwareModelOutputReserve(t *testing.T) {
+	manager := compaction.Standard(compaction.StandardConfig{
+		Summarizer: compaction.SummarizerFunc{
+			Capability: agent.CapabilityIdentity{Kind: "compaction.output-cap-summary", Version: 1},
+			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
+				return compaction.Summary{Content: "summary", TokenEstimate: 2}, nil
+			},
+		},
+		TriggerBytes: 1024, KeepRecentBytes: 128, HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
+		ContextWindowTokens: 10_000, ReservedTokens: 1000, TriggerRatio: .85, RecoveryBand: .8,
+	})
+	messages := []*agent.Message{
+		agent.UserMessage("old request"),
+		agent.AssistantMessage("old answer", nil),
+		agent.UserMessage("current request"),
+	}
+	call := &agent.ModelCall{Messages: messages, Options: []agent.ModelOption{agent.WithMaxTokens(4000)}}
+	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
+		Messages: messages, ModelRequest: messages, ModelSnapshot: call.Snapshot(), Force: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Validation.ReservedTokens != 2500 || plan.Metrics.ReservedTokens != 2500 {
+		t.Fatalf("capacity-aware Compaction reserve = validation:%d metrics:%d, want 2500",
+			plan.Validation.ReservedTokens, plan.Metrics.ReservedTokens)
+	}
+}
+
 func TestStandardPlansOnlyCompleteTurnAndToolBatchBoundaries(t *testing.T) {
 	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{

@@ -746,29 +746,11 @@ func toolErrorContent(call ToolCall, err error) string {
 	return string(payload)
 }
 
-// modelFinishReasonIncomplete normalizes provider-specific terminal reasons
-// that mean the assistant response is not complete. A tool call can contain
-// valid JSON while still being only a truncated or filtered prefix of the
-// model's intended arguments.
-func modelFinishReasonIncomplete(meta *ResponseMeta) (string, bool) {
-	if meta == nil {
-		return "", false
-	}
-	reason := strings.TrimSpace(meta.FinishReason)
-	normalized := strings.ToLower(reason)
-	normalized = strings.NewReplacer("-", "_", " ", "_").Replace(normalized)
-	switch normalized {
-	case "length", "max_tokens", "max_output_tokens", "token_limit", "content_filter", "incomplete":
-		return reason, true
-	default:
-		return reason, false
-	}
-}
-
 // modelFinishReasonBlocksToolExecution keeps the side-effect boundary explicit
 // at the call site while sharing the same provider-neutral completion rule.
 func modelFinishReasonBlocksToolExecution(meta *ResponseMeta) (string, bool) {
-	return modelFinishReasonIncomplete(meta)
+	reason, class := classifyResponseFinishReason(meta)
+	return reason, class.Incomplete()
 }
 
 func (agent *modelToolLoop) incompleteModelToolResults(

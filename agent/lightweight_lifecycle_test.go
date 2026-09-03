@@ -177,6 +177,48 @@ func TestRunMarksTruncatedTextIncompleteAndKeepsPartialOutput(t *testing.T) {
 	}
 }
 
+func TestRunPreservesDistinctIncompleteModelReasons(t *testing.T) {
+	tests := []struct {
+		finishReason string
+		wantReason   string
+	}{
+		{finishReason: "model_context_window_exceeded", wantReason: ModelContextWindowExceededReason},
+		{finishReason: "content_filter", wantReason: ModelOutputFilteredReason},
+		{finishReason: "incomplete", wantReason: ModelOutputIncompleteReason},
+	}
+	for _, test := range tests {
+		t.Run(test.finishReason, func(t *testing.T) {
+			response := AssistantMessage("partial answer", nil)
+			response.ResponseMeta = &ResponseMeta{FinishReason: test.finishReason}
+			model := &lifecycleModel{responses: []*Message{response}}
+			owner, err := New(context.Background(), Definition{Name: "test", Model: model}, WithSessionStore(agentsession.Memory()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = owner.Close(context.Background()) })
+			session, err := owner.Session(context.Background(), NamedSession(test.finishReason))
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := session.Run(context.Background(), Text("answer fully"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, waitErr := run.Wait(context.Background())
+			if result.Status != ResultIncomplete || result.Reason != test.wantReason || waitErr == nil {
+				t.Fatalf("incomplete result = %#v, err = %v", result, waitErr)
+			}
+			snapshot, err := session.Snapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(snapshot.RecentRuns) != 1 || snapshot.RecentRuns[0].Output != "partial answer" {
+				t.Fatalf("partial output was not retained: %#v", snapshot.RecentRuns)
+			}
+		})
+	}
+}
+
 func TestActiveRunDoesNotPersistPartialTranscript(t *testing.T) {
 	store := newObservingSessionStore()
 	model := &gatedLifecycleModel{started: make(chan struct{}), release: make(chan struct{})}

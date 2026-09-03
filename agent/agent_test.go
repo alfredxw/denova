@@ -381,6 +381,26 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 			},
 			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
 		},
+		{
+			name: "context window exceeded", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"path\":\"chapter.md\"}`}}, finish: "model_context_window_exceeded",
+			tools: func(count *atomic.Int32) []ToolDefinition {
+				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
+					count.Add(1)
+					return "unexpected", nil
+				}})}
+			},
+			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
+		},
+		{
+			name: "generic incomplete", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"path\":\"chapter.md\"}`}}, finish: "incomplete",
+			tools: func(count *atomic.Int32) []ToolDefinition {
+				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
+					count.Add(1)
+					return "unexpected", nil
+				}})}
+			},
+			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

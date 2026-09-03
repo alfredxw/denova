@@ -22,6 +22,30 @@ func TestModelContextMiddlewaresContainProjectionThenNormalizer(t *testing.T) {
 	}
 }
 
+func TestDefaultMaxTokensMiddlewareAppliesProfileCapUnlessCallOverridesIt(t *testing.T) {
+	middleware := NewDefaultMaxTokensMiddleware(4096)
+
+	_, defaulted, err := middleware.BeforeModelCall(context.Background(), &agent.ModelCall{}, &agent.ModelContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultOptions := agent.GetCommonOptions(&agent.Options{}, defaulted.Options...)
+	if defaultOptions.MaxTokens == nil || *defaultOptions.MaxTokens != 4096 {
+		t.Fatalf("default max tokens = %#v, want 4096", defaultOptions.MaxTokens)
+	}
+
+	_, overridden, err := middleware.BeforeModelCall(context.Background(), &agent.ModelCall{
+		Options: []agent.ModelOption{agent.WithMaxTokens(512)},
+	}, &agent.ModelContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overriddenOptions := agent.GetCommonOptions(&agent.Options{}, overridden.Options...)
+	if overriddenOptions.MaxTokens == nil || *overriddenOptions.MaxTokens != 512 {
+		t.Fatalf("explicit max tokens = %#v, want 512", overriddenOptions.MaxTokens)
+	}
+}
+
 func TestModelHistoryProjectionHidesDisabledSettledToolsButPreservesProviderReasoning(t *testing.T) {
 	call := agent.ToolCall{ID: "historical", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}
 	current := agent.ToolCall{ID: "current", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}

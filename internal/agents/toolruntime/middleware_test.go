@@ -279,12 +279,21 @@ func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
 	}
 }
 
-func TestToolOrchestratorBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.T) {
-	for _, finishReason := range []string{"length", "max_tokens"} {
-		t.Run(finishReason, func(t *testing.T) {
+func TestToolOrchestratorBlocksValidArgumentsWhenModelOutputIsIncomplete(t *testing.T) {
+	tests := []struct {
+		finishReason string
+		reason       string
+	}{
+		{finishReason: "length", reason: "model_output_token_limit"},
+		{finishReason: "max_tokens", reason: "model_output_token_limit"},
+		{finishReason: "model_context_window_exceeded", reason: "model_context_window_exceeded"},
+		{finishReason: "incomplete", reason: "model_output_incomplete"},
+	}
+	for _, test := range tests {
+		t.Run(test.finishReason, func(t *testing.T) {
 			observer := agentrun.NewObserver(nil, "root-span")
 			observer.RecordLLMOutcome(agentrun.LLMOutcome{
-				FinishReason: finishReason, RequestedTools: []string{"write"},
+				FinishReason: test.finishReason, RequestedTools: []string{"write"},
 			})
 			ctx := agentrun.ContextWithObserver(context.Background(), observer)
 			middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE}
@@ -307,8 +316,8 @@ func TestToolOrchestratorBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.
 				t.Fatal("output-limited tool call executed even though complete intent was unknowable")
 			}
 			for _, want := range []string{
-				"reason: model_output_token_limit", "retryable: true", "workspace_mutated: false",
-				"args_complete: false", "model_finish_reason: " + finishReason,
+				"reason: " + test.reason, "retryable: true", "workspace_mutated: false",
+				"args_complete: false", "model_finish_reason: " + test.finishReason,
 			} {
 				if !strings.Contains(result, want) {
 					t.Fatalf("output-limit result missing %q:\n%s", want, result)

@@ -55,9 +55,6 @@ func BuildInspectedContextAnalysis(
 	systemPrompt, systemParts := inspectedSystemPrompt(composition, systemMessages)
 	tokens := agentcleanup.EstimateInspectedTokens(messages, inspection.ModelRequest)
 	completionReserve, toolResultReserve := agentcompaction.EstimateProjectionReserves(cfg, agentKind, 0)
-	if inspection.ModelRequest.Options.MaxTokens != nil {
-		completionReserve = max(0, *inspection.ModelRequest.Options.MaxTokens)
-	}
 	window := config.ResolveAgentModel(cfg, agentKind).ContextWindowTokens
 	threshold := config.ResolveAgentContext(cfg, agentKind).CompactionThreshold
 	if inspection.Compaction != nil {
@@ -67,6 +64,12 @@ func BuildInspectedContextAnalysis(
 		if inspection.Compaction.Metrics.Threshold > 0 {
 			threshold = inspection.Compaction.Metrics.Threshold
 		}
+	}
+	if maxTokens := inspection.ModelRequest.Options.MaxTokens; maxTokens != nil {
+		totalReserve := agent.CapacityAwareTokenReserve(
+			completionReserve+toolResultReserve, *maxTokens, window, threshold,
+		)
+		completionReserve = max(0, totalReserve-toolResultReserve)
 	}
 	projected := tokens + completionReserve + toolResultReserve
 	ratio := 0.0

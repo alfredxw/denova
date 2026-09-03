@@ -200,6 +200,13 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 		return agent.CompactionPlan{}, errors.New("Compaction lifecycle token reserve is invalid")
 	}
 	reservedTokens := manager.config.ReservedTokens + request.LifecycleReservedTokens
+	if request.ModelSnapshot != nil {
+		if maxTokens := request.ModelSnapshot.ResolvedOptions().MaxTokens; maxTokens != nil {
+			reservedTokens = agent.CapacityAwareTokenReserve(
+				reservedTokens, *maxTokens, manager.config.ContextWindowTokens, manager.config.TriggerRatio,
+			)
+		}
+	}
 	bytes := messageBytes(request.ModelRequest)
 	if len(request.ModelRequest) == 0 {
 		bytes = messageBytes(request.Messages)

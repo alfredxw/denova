@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/run"
 	"denova/internal/agents/tool"
@@ -15,9 +17,8 @@ import (
 // The core scheduler still creates exactly one paired synthetic result.
 func applyModelOutputToolSafety(decision agenttool.Decision, outcome agentrun.LLMOutcome) agenttool.Decision {
 	reason := strings.TrimSpace(outcome.FinishReason)
-	outputLimited := isOutputTokenLimitFinishReason(reason)
-	contentFiltered := strings.EqualFold(reason, "content_filter")
-	if !outputLimited && !contentFiltered {
+	class := agent.ClassifyModelFinishReason(reason)
+	if !class.Incomplete() {
 		return decision
 	}
 	argsComplete := false
@@ -27,61 +28,46 @@ func applyModelOutputToolSafety(decision agenttool.Decision, outcome agentrun.LL
 		return decision
 	}
 	decision.Action = "blocked"
-	if contentFiltered {
-		decision.Reason = contentFilteredModelToolArgumentsMessage(decision, reason)
-	} else {
-		decision.Reason = truncatedModelToolArgumentsMessage(decision, reason)
-	}
+	decision.Reason = incompleteModelToolArgumentsMessage(decision, reason, class)
 	return decision
 }
 
-func isOutputTokenLimitFinishReason(reason string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(reason))
-	normalized = strings.NewReplacer("-", "_", " ", "_").Replace(normalized)
-	switch normalized {
-	case "length", "max_tokens", "max_output_tokens", "token_limit":
-		return true
-	default:
-		return false
-	}
-}
-
-func truncatedModelToolArgumentsMessage(decision agenttool.Decision, finishReason string) string {
+func incompleteModelToolArgumentsMessage(
+	decision agenttool.Decision,
+	finishReason string,
+	class agent.ModelFinishReasonClass,
+) string {
 	target := strings.TrimSpace(decision.Target)
 	if target == "" {
 		target = "(unknown)"
 	}
+	reason := "model_output_incomplete"
+	retryable := true
+	explanation := "The provider returned an incomplete model response, so the tool arguments may be incomplete. Denova blocked execution with no side effects; retry the model step."
+	switch class {
+	case agent.ModelFinishReasonOutputLimit:
+		reason = "model_output_token_limit"
+		explanation = "The model reached its output-token limit, so the tool arguments are incomplete. Denova blocked execution with no side effects; retry with shorter arguments or split the task."
+	case agent.ModelFinishReasonContextLimit:
+		reason = "model_context_window_exceeded"
+		explanation = "The model reached its context-window limit, so the tool arguments may be incomplete. Denova blocked execution with no side effects; reduce the request or output limit before retrying."
+	case agent.ModelFinishReasonContentFilter:
+		reason = "model_output_interrupted_by_content_filter"
+		retryable = false
+		explanation = "Content filtering interrupted the model response, so the tool arguments are incomplete. Denova blocked execution with no side effects."
+	}
 	return fmt.Sprintf(`[tool error]
 type: incomplete_tool_arguments
 tool: %s
-reason: model_output_token_limit
-retryable: true
+reason: %s
+retryable: %t
 workspace_mutated: false
 args_complete: false
 args_bytes: %d
 model_finish_reason: %s
 target: %s
 
-The model reached its output-token limit, so the tool arguments are incomplete. Denova blocked execution with no side effects; retry with shorter arguments or split the task.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
-}
-
-func contentFilteredModelToolArgumentsMessage(decision agenttool.Decision, finishReason string) string {
-	target := strings.TrimSpace(decision.Target)
-	if target == "" {
-		target = "(unknown)"
-	}
-	return fmt.Sprintf(`[tool error]
-type: incomplete_tool_arguments
-tool: %s
-reason: model_output_interrupted_by_content_filter
-retryable: false
-workspace_mutated: false
-args_complete: false
-args_bytes: %d
-model_finish_reason: %s
-target: %s
-
-Content filtering interrupted the model response, so the tool arguments are incomplete. Denova blocked execution with no side effects.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
+%s`, decision.ToolName, reason, retryable, decision.ArgsBytes, finishReason, target, explanation)
 }
 
 func applyToolArgumentValidation(decision agenttool.Decision, args string, outcome agentrun.LLMOutcome) agenttool.Decision {

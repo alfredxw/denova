@@ -167,14 +167,18 @@ func (manager *standardManager) Plan(_ context.Context, request agent.CleanupPla
 		messages = request.Messages
 	}
 	config := manager.config
-	local := EstimateInspectedTokens(messages, request.ModelInspection) + max(0, config.ReservedTokens)
+	maxOutputTokens := 0
+	if maxTokens := request.ModelInspection.Options.MaxTokens; maxTokens != nil {
+		maxOutputTokens = *maxTokens
+	}
+	reservedTokens := agent.CapacityAwareTokenReserve(
+		config.ReservedTokens, maxOutputTokens, config.ContextWindowTokens, config.CompactionThreshold,
+	)
+	local := EstimateInspectedTokens(messages, request.ModelInspection) + reservedTokens
 	observed, observedCache := latestPromptUsage(messages)
 	observed = max(config.ObservedPromptTokens, observed)
-	effective := max(local, observed+max(0, config.ReservedTokens))
+	effective := max(local, observed+reservedTokens)
 	checkpointOutputReserve := max(0, config.CheckpointOutputReserve)
-	if maxTokens := request.ModelInspection.Options.MaxTokens; maxTokens != nil {
-		checkpointOutputReserve = max(checkpointOutputReserve, *maxTokens)
-	}
 	stablePrefix := stablePrefixTokens(messages, request.ModelInspection)
 	pressure, fullPressure, budget := pressureRatios(effective, stablePrefix, config)
 	plan := agent.CleanupPlan{Action: agent.CleanupNone, Reason: "below_cleanup_threshold", Renderer: RendererVersion,
