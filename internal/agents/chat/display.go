@@ -130,12 +130,34 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		meta := eventMetadataFromData(ev.Data)
 		source := r.source(meta)
 		r.flushAssistant(source)
+		content := eventDataString(ev.Data, "content")
+		if content == "" {
+			return
+		}
 		if source.thinking.Len() == 0 {
 			source.thinking.id = r.nextTextSegmentID(meta, "thinking")
 		}
 		setEventDataString(ev.Data, displaySegmentIDEventKey, source.thinking.id)
 		source.thinking.meta = meta
-		source.thinking.WriteString(eventDataString(ev.Data, "content"))
+		source.thinking.WriteString(content)
+		if strings.TrimSpace(source.thinking.String()) == "" {
+			return
+		}
+		contentAppender, ok := r.appender.(displayEventContentAppender)
+		if !ok {
+			return
+		}
+		if !source.thinking.persisted {
+			if err := r.appender.AppendDisplayEvent(r.thinkingDisplayEvent(source, source.thinking.String())); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist initial display thinking segment failed bytes=%d err=%v", source.thinking.Len(), err))
+				return
+			}
+			source.thinking.persisted = true
+			return
+		}
+		if err := contentAppender.AppendDisplayEventContent(source.thinking.id, "thinking", content); err != nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] append display thinking segment failed id=%s bytes=%d err=%v", source.thinking.id, len(content), err))
+		}
 	case "chunk":
 		meta := eventMetadataFromData(ev.Data)
 		source := r.source(meta)
@@ -433,13 +455,25 @@ func (r *displayEventRecorder) flushThinking(source *displaySourceRecorder) {
 		return
 	}
 	content := source.thinking.String()
-	source.thinking.Reset()
+	defer func() { source.thinking = displayTextSegment{} }()
 	if strings.TrimSpace(content) == "" {
-		source.thinking.id = ""
-		source.thinking.meta = agentEventMetadata{}
 		return
 	}
-	if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+	if source.thinking.persisted {
+		if flusher, ok := r.appender.(displayEventContentFlusher); ok {
+			if err := flusher.FlushDisplayEventContent(source.thinking.id, "thinking"); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] flush display thinking segment failed id=%s err=%v", source.thinking.id, err))
+			}
+		}
+		return
+	}
+	if err := r.appender.AppendDisplayEvent(r.thinkingDisplayEvent(source, content)); err != nil {
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err))
+	}
+}
+
+func (r *displayEventRecorder) thinkingDisplayEvent(source *displaySourceRecorder, content string) session.DisplayEvent {
+	return session.DisplayEvent{
 		ID:                source.thinking.id,
 		Role:              "thinking",
 		Content:           content,
@@ -451,11 +485,7 @@ func (r *displayEventRecorder) flushThinking(source *displaySourceRecorder) {
 		SubAgent:          source.thinking.meta.SubAgent,
 		SubAgentSessionID: source.thinking.meta.SubAgentSessionID,
 		SubAgentType:      source.thinking.meta.SubAgentType,
-	}); err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err))
 	}
-	source.thinking.id = ""
-	source.thinking.meta = agentEventMetadata{}
 }
 
 func (r *displayEventRecorder) flushAssistant(source *displaySourceRecorder) {

@@ -1,7 +1,8 @@
 import { expect, test } from '../support/fixtures'
-import { createAndOpenBook, createStory, getStoryBranches, getStorySnapshot } from '../support/api'
+import { createAndOpenBook, createStartedStory, getStoryBranches, getStorySnapshot } from '../support/api'
 import { allowGameRegeneration, getModelStatus, releaseDelayedRequest } from '../support/model'
 
+const gameOpeningNarrative = '暮色落在旧车站外，石门后的轨道传来遥远的回声。'
 const gameFollowUpDelayMarker = 'E2E_GAME_FOLLOW_UP_DELAY'
 const gameFollowUpMarker = 'E2E_GAME_FOLLOW_UP_STEER'
 const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
@@ -9,7 +10,7 @@ const gameBranchPlanMarker = 'E2E_GAME_BRANCH_PLAN'
 
 test('submits, streams, and persists a complete Game turn', async ({ page, request }) => {
   await createAndOpenBook(request, 'Game E2E Book')
-  const story = await createStory(request, 'Game E2E Story')
+  const story = await createStartedStory(request, 'Game E2E Story')
 
   await page.goto('/')
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
@@ -34,20 +35,20 @@ test('submits, streams, and persists a complete Game turn', async ({ page, reque
   await page.getByText('走进旧车站', { exact: true }).click()
   await composer.press('Enter')
 
-  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toHaveLength(2)
-  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns[1]?.user).toBe('走进旧车站')
+  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toHaveLength(3)
+  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns[2]?.user).toBe('走进旧车站')
 })
 
 test('creates and switches to a branch from a persisted Game turn', async ({ page, request }) => {
   await createAndOpenBook(request, 'Game Branch E2E Book')
-  const story = await createStory(request, 'Game Branch E2E Story')
+  const story = await createStartedStory(request, 'Game Branch E2E Story')
 
   await page.goto('/')
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
   const composer = page.getByPlaceholder(/你要做什么/)
   await composer.fill('推开石门')
   await composer.press('Enter')
-  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toHaveLength(1)
+  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toHaveLength(2)
 
   await page.getByRole('button', { name: '从此处创建分支' }).last().click()
   const dialog = page.getByRole('dialog')
@@ -61,7 +62,7 @@ test('creates and switches to a branch from a persisted Game turn', async ({ pag
 
 test('lets the Game Agent maintain a branch plan and keeps planning user-controllable', async ({ page, request }) => {
   await createAndOpenBook(request, 'Game Planning E2E Book')
-  const story = await createStory(request, 'Game Planning E2E Story', { planningMode: 'enabled' })
+  const story = await createStartedStory(request, 'Game Planning E2E Story', { planningMode: 'enabled' })
 
   await page.goto('/')
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
@@ -72,25 +73,30 @@ test('lets the Game Agent maintain a branch plan and keeps planning user-control
   await expect(page.getByText('你在站台地图上发现一条通往钟楼的维护通道。', { exact: true })).toBeVisible()
   await expect.poll(async () => (await getStorySnapshot(request, story.id)).branch_plan?.markdown).toContain('保留玩家离开车站的自由')
 
-  await page.getByRole('tab', { name: '规划', exact: true }).click()
+  await page.getByRole('button', { name: /当前分支规划/ }).click()
   await expect(page.getByRole('heading', { name: '当前意图', exact: true })).toBeVisible()
   await expect(page.getByText(/保留玩家离开车站的自由/)).toBeVisible()
 
-  const planningSwitch = page.getByRole('switch', { name: '切换 Game Agent 规划功能' })
+  await page.getByRole('tab', { name: '控制', exact: true }).click()
+  const planningSwitch = page.getByRole('switch', { name: '游戏规划' })
   await expect(planningSwitch).toBeChecked()
   await planningSwitch.click()
   await expect(planningSwitch).not.toBeChecked()
+  await page.getByRole('tab', { name: '总览', exact: true }).click()
   await expect(page.getByText('规划已关闭').first()).toBeVisible()
 
   await page.reload()
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
-  await expect(page.getByRole('switch', { name: '切换 Game Agent 规划功能' })).not.toBeChecked()
+  await page.getByRole('tab', { name: '控制', exact: true }).click()
+  await expect(page.getByRole('switch', { name: '游戏规划' })).not.toBeChecked()
+  await page.getByRole('tab', { name: '总览', exact: true }).click()
+  await page.getByRole('button', { name: /当前分支规划/ }).click()
   await expect(page.getByText(/保留玩家离开车站的自由/)).toBeVisible()
 })
 
 test('preserves the settled turn after a failed regeneration and replaces it on retry', async ({ page, request }) => {
   await createAndOpenBook(request, 'Game Regeneration E2E Book')
-  const story = await createStory(request, 'Game Regeneration E2E Story')
+  const story = await createStartedStory(request, 'Game Regeneration E2E Story')
 
   await page.goto('/')
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
@@ -98,7 +104,7 @@ test('preserves the settled turn after a failed regeneration and replaces it on 
   await composer.fill('聆听旧车站的广播 E2E_GAME_REGENERATE_FAILURE')
   await composer.press('Enter')
   await expect(page.getByText('第一次生成的钟声从旧车站深处传来。', { exact: true })).toBeVisible()
-  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toHaveLength(1)
+  await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toHaveLength(2)
 
   await page.getByRole('button', { name: '重新生成这一轮' }).last().click()
   await expect.poll(async () => (await getModelStatus(request)).game_regeneration_failure_requests, { timeout: 20_000 })
@@ -106,13 +112,14 @@ test('preserves the settled turn after a failed regeneration and replaces it on 
   await expect(page.getByRole('alert')).toBeVisible({ timeout: 20_000 })
   await expect(composer).toBeEnabled()
   const failedSnapshot = await getStorySnapshot(request, story.id)
-  expect(failedSnapshot.turns).toHaveLength(1)
-  expect(failedSnapshot.turns[0]?.narrative).toContain('第一次生成的钟声')
+  expect(failedSnapshot.turns).toHaveLength(2)
+  expect(failedSnapshot.turns[1]?.narrative).toContain('第一次生成的钟声')
 
   await allowGameRegeneration(request)
   await page.getByRole('button', { name: '重新生成这一轮' }).last().click()
   await expect(page.getByText('重试后，月台广播给出了全新的撤离路线。', { exact: true })).toBeVisible()
   await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toEqual([
+    expect.objectContaining({ narrative: expect.stringContaining(gameOpeningNarrative) }),
     expect.objectContaining({
       user: '聆听旧车站的广播 E2E_GAME_REGENERATE_FAILURE',
       narrative: expect.stringContaining('重试后，月台广播给出了全新的撤离路线'),
@@ -122,7 +129,7 @@ test('preserves the settled turn after a failed regeneration and replaces it on 
 
 test('queues a Game Follow Up and steers the active turn through the real runtime', async ({ page, request }) => {
   await createAndOpenBook(request, 'Game Follow Up E2E Book')
-  const story = await createStory(request, 'Game Follow Up E2E Story')
+  const story = await createStartedStory(request, 'Game Follow Up E2E Story')
 
   await page.goto('/')
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
@@ -144,6 +151,7 @@ test('queues a Game Follow Up and steers the active turn through the real runtim
     await expect(page.getByText(gameFollowUpNarrative, { exact: true })).toBeVisible()
     await expect.poll(async () => (await getModelStatus(request)).request_counts[gameFollowUpMarker] ?? 0).toBe(1)
     await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toEqual([
+      expect.objectContaining({ narrative: expect.stringContaining(gameOpeningNarrative) }),
       expect.objectContaining({ user: followUp, narrative: expect.stringContaining(gameFollowUpNarrative) }),
     ])
   } finally {

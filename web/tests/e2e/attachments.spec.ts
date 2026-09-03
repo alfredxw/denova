@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '../support/fixtures'
-import { createAndOpenBook, createStory } from '../support/api'
+import { createAndOpenBook, createStartedStory } from '../support/api'
 import { openWritingAgent } from '../support/agent-chat'
 
 const image = Buffer.from(
@@ -9,7 +9,7 @@ const image = Buffer.from(
 
 test('uploads, previews, sends, and restores image attachments in Writing and Game', async ({ page, request }) => {
   await createAndOpenBook(request, 'Attachment E2E Book')
-  await createStory(request, 'Attachment E2E Story')
+  await createStartedStory(request, 'Attachment E2E Story')
   await page.goto('/')
 
   let composer = await openWritingAgent(page)

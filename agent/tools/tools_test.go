@@ -339,9 +339,23 @@ func TestReadSupportsExternalPathsAndRejectsBinaryContent(t *testing.T) {
 		t.Fatal("binary read succeeded")
 	}
 	parentRead, err := definition.Tool.Run(context.Background(), `{"path":"../external.txt"}`)
-	if err != nil || !strings.Contains(parentRead.ModelContent, "external through parent") ||
-		!strings.Contains(parentRead.ModelContent, filepath.ToSlash(siblingPath)) {
+	if err != nil || !strings.Contains(parentRead.ModelContent, "external through parent") {
 		t.Fatalf("parent external read = %#v, %v", parentRead, err)
+	}
+	var parentEnvelope readEnvelope
+	if err := json.Unmarshal(parentRead.Details, &parentEnvelope); err != nil {
+		t.Fatalf("decode parent external read envelope: %v", err)
+	}
+	reportedInfo, err := os.Stat(filepath.FromSlash(parentEnvelope.Source.Path))
+	if err != nil {
+		t.Fatalf("stat reported parent external path %q: %v", parentEnvelope.Source.Path, err)
+	}
+	expectedInfo, err := os.Stat(siblingPath)
+	if err != nil {
+		t.Fatalf("stat expected parent external path %q: %v", siblingPath, err)
+	}
+	if !os.SameFile(reportedInfo, expectedInfo) {
+		t.Fatalf("parent external read source = %q, want file %q", parentEnvelope.Source.Path, siblingPath)
 	}
 	first, err := definition.Tool.Run(context.Background(), `{"path":"long.txt"}`)
 	if err != nil {

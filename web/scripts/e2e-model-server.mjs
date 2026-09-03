@@ -4,6 +4,8 @@ import process from 'node:process'
 
 const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
+const gameOpeningMarker = '[Source: story opening configuration; purpose: generate the first playable turn]'
+const gameOpeningNarrative = '暮色落在旧车站外，石门后的轨道传来遥远的回声。'
 const agentEditMarker = 'E2E_EDIT_CHAPTER'
 const delayedReplyMarker = 'E2E_DELAYED_AGENT_REPLY'
 const sessionADelayMarker = 'E2E_SESSION_A_DELAY'
@@ -46,23 +48,26 @@ const agentEditArguments = JSON.stringify({
   path: 'chapters/e2e-agent-chapter.md',
   edits: [{ old_string: 'Agent 修改前。', new_string: 'Agent 已通过工具完成修改。' }],
 })
-const turnSubmission = JSON.stringify({
+const branchPlanUpdate = {
+  mode: 'replace_document',
+  markdown: '## 当前意图\n\n围绕 [[旧车站]] 的钟楼信号展开，但保留玩家离开车站的自由。',
+}
+const turnSubmissionPayload = {
   state_changes: [
     { op: 'replace', actor_id: 'story', field_id: '当前详细地点', value: '旧车站入口' },
     { op: 'replace', actor_id: 'story', field_id: '当前事件', value: '石门已经开启，前方出现一座旧车站' },
   ],
   choices: ['走进旧车站', '留在门外观察'],
-})
+}
+const turnSubmission = JSON.stringify(turnSubmissionPayload)
+const openingTurnSubmission = JSON.stringify({ ...turnSubmissionPayload, plan_update: branchPlanUpdate })
 const planningTurnSubmission = JSON.stringify({
   state_changes: [
     { op: 'replace', actor_id: 'story', field_id: '当前详细地点', value: '旧车站站台' },
     { op: 'replace', actor_id: 'story', field_id: '当前事件', value: '发现通往钟楼的维护通道' },
   ],
   choices: ['调查维护通道', '继续查看站台地图'],
-  plan_update: {
-    mode: 'replace_document',
-    markdown: '## 当前意图\n\n围绕 [[旧车站]] 的钟楼信号展开，但保留玩家离开车站的自由。',
-  },
+  plan_update: branchPlanUpdate,
 })
 
 const delayedResponses = new Map([
@@ -137,6 +142,14 @@ function requestIncludesTool(body, toolName) {
 
 function requestIncludesMarker(body, marker) {
   return JSON.stringify(body.messages ?? []).includes(marker)
+}
+
+function latestUserMessageIncludesMarker(body, marker) {
+  const messages = Array.isArray(body.messages) ? body.messages : []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') return JSON.stringify(messages[index]).includes(marker)
+  }
+  return false
 }
 
 function requestHasToolResult(body) {
@@ -341,6 +354,10 @@ const server = createServer(async (request, response) => {
   if (requestIncludesMarker(body, gameBranchPlanMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
     recordRequest(gameBranchPlanMarker)
     writeChatCompletion(response, chatCompletionFrames(gameBranchPlanNarrative, planningTurnSubmission))
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, gameOpeningMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
+    writeChatCompletion(response, chatCompletionFrames(gameOpeningNarrative, openingTurnSubmission))
     return
   }
   if (requestIncludesMarker(body, gameAttachmentMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {

@@ -1,6 +1,6 @@
 import type { ContextAnalysis } from '../../src/lib/api'
 import { expect, test, type APIRequestContext, type Page } from '../support/fixtures'
-import { createAndOpenBook, createStory } from '../support/api'
+import { createAndOpenBook, createStartedStory } from '../support/api'
 import { openWritingAgent } from '../support/agent-chat'
 import { getCapturedModelRequest, type E2EModelRequest } from '../support/model'
 
@@ -12,7 +12,7 @@ const gameContextMarker = 'E2E_GAME_PROMPT_CONTEXT_PARITY'
 
 test('keeps Agents prompts, context analysis, and real model input aligned for Writing and Game', async ({ page, request }) => {
   const book = await createAndOpenBook(request, 'Agent Prompt Context E2E Book')
-  await createStory(request, 'Agent Prompt Context E2E Story')
+  await createStartedStory(request, 'Agent Prompt Context E2E Story')
 
   await page.goto('/')
   const sidebar = page.getByLabel('工作台侧边栏')
@@ -130,10 +130,7 @@ function expectPromptContextParity(
   modelRequest: E2EModelRequest,
   configured: PromptConfiguration,
 ): void {
-  const messages = modelRequest.messages.map((message) => {
-    expect(typeof message.content).toBe('string')
-    return { role: message.role, content: message.content as string }
-  })
+  const messages = modelRequest.messages.map(comparableCapturedMessage)
   const systemPrompt = messages
     .filter((message) => message.role === 'system')
     .map((message) => message.content)
@@ -150,6 +147,27 @@ function expectPromptContextParity(
     .toBe(configured.flow_prompt)
   expect(analysis.system_prompt_parts.find((part) => part.id === 'agent_custom_rules')?.content)
     .toBe(`\n\n## Agent Custom Rules\n\n${configured.system_prompt}`)
+}
+
+function comparableCapturedMessage(message: E2EModelRequest['messages'][number]): ComparableModelMessage {
+  const toolCalls = message.tool_calls || []
+  if (toolCalls.length === 0) {
+    expect(typeof message.content).toBe('string')
+    return { role: message.role, content: message.content as string }
+  }
+
+  const renderedCalls = toolCalls.map((call, index) => {
+    const name = call.function?.name?.trim() || 'unknown_tool'
+    const id = call.id?.trim()
+    const suffix = id ? ` (id: ${id})` : ''
+    return `${index + 1}. ${name}${suffix}\narguments:\n${call.function?.arguments?.trim() || ''}`
+  }).join('\n')
+  const renderedToolCalls = `[工具调用]\n${renderedCalls}`
+  const content = typeof message.content === 'string' ? message.content : ''
+  return {
+    role: message.role,
+    content: content.trim() ? `${content.replace(/\n+$/, '')}\n\n${renderedToolCalls}` : renderedToolCalls,
+  }
 }
 
 function normalizeRuntimeCapture(messages: ComparableModelMessage[]): ComparableModelMessage[] {

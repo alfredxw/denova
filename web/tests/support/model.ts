@@ -16,6 +16,13 @@ export interface E2EModelRequest {
   messages: Array<{
     role: string
     content?: unknown
+    tool_calls?: Array<{
+      id?: string
+      function?: {
+        name?: string
+        arguments?: string
+      }
+    }>
   }>
 }
 

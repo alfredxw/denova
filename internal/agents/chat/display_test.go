@@ -42,6 +42,15 @@ func TestDisplayEventRecorderKeepsInterleavedSubAgentTextInStableSegments(t *tes
 	if eventDataString(bThinking1, displaySegmentIDEventKey) == "" || eventDataString(bThinking1, displaySegmentIDEventKey) != eventDataString(bThinking2, displaySegmentIDEventKey) {
 		t.Fatalf("child B thinking segment IDs = %q, %q", eventDataString(bThinking1, displaySegmentIDEventKey), eventDataString(bThinking2, displaySegmentIDEventKey))
 	}
+	thinkingBySession := map[string]string{}
+	for _, entry := range sess.History() {
+		if entry.SubAgent && entry.Role == "thinking" {
+			thinkingBySession[entry.SubAgentSessionID] = entry.Content
+		}
+	}
+	if thinkingBySession["child-a"] != "A thinks again" || thinkingBySession["child-b"] != "B thinks again" {
+		t.Fatalf("live subagent thinking was not durable before an assistant segment: %#v", thinkingBySession)
+	}
 
 	aAssistant1 := eventData("child-a", "A answer ")
 	bAssistant1 := eventData("child-b", "B answer ")
