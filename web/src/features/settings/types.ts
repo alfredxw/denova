@@ -127,6 +127,7 @@ export interface ModelProfileSettings {
   model?: string
   temperature?: number | null
   context_window_tokens?: number | null
+  max_tokens?: number | null
 }
 
 export type AgentQuickPromptBehavior = 'fill' | 'send'

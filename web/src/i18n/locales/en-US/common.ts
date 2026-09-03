@@ -16,6 +16,7 @@ const common = {
   'common.loading': 'Loading...',
   'common.model': 'Model',
   'common.notSet': 'Not set',
+  'common.modelOutputTruncated': 'The response reached its output limit and may be incomplete.',
   'common.yes': 'Yes',
   'common.no': 'No',
   'common.save': 'Save',

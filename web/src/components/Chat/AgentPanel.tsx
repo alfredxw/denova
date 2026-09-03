@@ -22,6 +22,7 @@ import type {
   TextSelection,
 } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
+import { localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
 import {
   agentSubAgentSessionKey,
   agentViewAskID,
@@ -327,7 +328,7 @@ function AgentPanelComponent({
     return ''
   }, [isExecutionActive, messages, runtimeProjection?.active_operation_id])
   const lastRuntimeFailure = !runtimeProjection?.active && runtimeProjection?.last_operation?.status === 'failed'
-    ? runtimeProjection.last_operation.reason?.trim() || ''
+    ? localizeAgentRuntimeReason(runtimeProjection.last_operation.reason, '', t)
     : ''
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
   const styleSceneSuggestions = useMemo(() => {

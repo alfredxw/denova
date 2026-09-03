@@ -28,6 +28,17 @@ func TestChatModelConfigFromResolvedKeepsNeutralThinkingLevel(t *testing.T) {
 	}
 }
 
+func TestConfigFromResolvedKeepsProfileMaxTokens(t *testing.T) {
+	maxTokens := 16384
+	modelCfg, err := ConfigFromResolved(config.ResolvedModelSettings{MaxTokens: &maxTokens})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modelCfg.MaxOutputTokens == nil || *modelCfg.MaxOutputTokens != maxTokens {
+		t.Fatalf("max output tokens = %#v, want %d", modelCfg.MaxOutputTokens, maxTokens)
+	}
+}
+
 func TestConfigFromResolvedRejectsUnencodableProtocolOptions(t *testing.T) {
 	_, err := ConfigFromResolved(config.ResolvedModelSettings{
 		ProtocolOptions: map[string]any{"invalid": func() {}},

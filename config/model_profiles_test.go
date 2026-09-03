@@ -266,6 +266,23 @@ func TestResolveAgentModelContextWindowDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestResolveAgentModelKeepsProfileMaxTokens(t *testing.T) {
+	maxTokens := 32768
+	resolved := ResolveAgentModel(&Config{
+		ModelProfiles: []ModelProfileSettings{{ID: "writer", MaxTokens: &maxTokens}},
+		AgentModels: AgentModelSettings{
+			IDE: AgentModelOverride{ProfileID: "writer"},
+		},
+	}, AgentKindIDE)
+	if resolved.MaxTokens == nil || *resolved.MaxTokens != maxTokens {
+		t.Fatalf("profile max tokens = %#v, want %d", resolved.MaxTokens, maxTokens)
+	}
+
+	if inherited := ResolveAgentModel(&Config{}, AgentKindIDE); inherited.MaxTokens != nil {
+		t.Fatalf("unset max tokens should preserve provider/model defaults: %#v", inherited.MaxTokens)
+	}
+}
+
 func TestResolveAgentModelUsesUnifiedThinkingLevel(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -585,6 +602,21 @@ func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 	}
 	if settings.ModelProfiles[1].ContextWindowTokens != nil {
 		t.Fatalf("invalid context window should be cleared: %#v", settings.ModelProfiles[1])
+	}
+}
+
+func TestSanitizeModelProfilesClearsInvalidMaxTokens(t *testing.T) {
+	invalid := 0
+	valid := 16384
+	settings := sanitizeEditableSettings(Settings{ModelProfiles: []ModelProfileSettings{
+		{ID: "invalid", MaxTokens: &invalid},
+		{ID: "valid", MaxTokens: &valid},
+	}})
+	if settings.ModelProfiles[0].MaxTokens != nil {
+		t.Fatalf("invalid max tokens should be cleared: %#v", settings.ModelProfiles[0])
+	}
+	if settings.ModelProfiles[1].MaxTokens == nil || *settings.ModelProfiles[1].MaxTokens != valid {
+		t.Fatalf("valid max tokens were not preserved: %#v", settings.ModelProfiles[1])
 	}
 }
 

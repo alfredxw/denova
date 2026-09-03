@@ -111,6 +111,7 @@ func modelProfileWithEndpoint(cfg *Config, profile ModelProfileSettings) ModelPr
 	connection.Model = profile.Model
 	connection.Temperature = profile.Temperature
 	connection.ContextWindowTokens = profile.ContextWindowTokens
+	connection.MaxTokens = profile.MaxTokens
 	return connection
 }
 

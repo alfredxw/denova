@@ -52,6 +52,30 @@ func TestDefaultServiceUsesDenovaReleaseRepository(t *testing.T) {
 	}
 }
 
+func TestVerifyChecksumRequiresChecksumsAsset(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(githubRelease{
+			TagName: "v0.2.0",
+			Assets:  []githubAsset{{Name: "denova-v0.2.0-linux-x64.tar.gz"}},
+		})
+	}))
+	defer server.Close()
+
+	archivePath := filepath.Join(t.TempDir(), "denova-v0.2.0-linux-x64.tar.gz")
+	if err := os.WriteFile(archivePath, []byte("archive"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{
+		repository:    "owner/repo",
+		httpClient:    server.Client(),
+		githubAPIBase: server.URL,
+	}
+	err := service.verifyChecksum(context.Background(), filepath.Base(archivePath), archivePath)
+	if err == nil || !strings.Contains(err.Error(), "checksums.txt") {
+		t.Fatalf("missing checksums.txt error = %v", err)
+	}
+}
+
 func TestValidateReleasePackageRequiresUpdater(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "denova"), []byte("exe"), 0o755); err != nil {

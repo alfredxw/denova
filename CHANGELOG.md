@@ -40,8 +40,8 @@ Denova records only major user-visible features, important compatibility or data
 - Configuration and automation now use Project Agent conversations. General and Writing Agents manage configuration through `/configuration` with shared history and recovery, Automations run as ordinary Project conversations, and Writing or configuration pages can maintain separate quick-prompt groups.
 - Agents 页面支持独立自定义主 Agent、会话 Goal、JavaScript `script` 编排、Project `AGENTS.md`、稀疏 Skill、上下文与压缩策略、委派策略以及 Ask、Write、Full access 安全模式；主 Agent 默认仍自行处理任务，仅在用户或 Skill 明确要求时并行委派，等待可被新指令安全打断。
 - The Agents page supports independent custom main Agents, session Goals, JavaScript `script` orchestration, Project `AGENTS.md`, sparse Skills, context and compaction policies, delegation policies, and Ask, Write, or Full access safety modes. Main Agents still delegate only when requested by the user or a Skill, with parallel work and interruptible waits.
-- 语言模型接入拆分为服务商预设与协议适配器，支持 OpenAI Chat Completions、Responses、Anthropic Messages、自定义兼容端点、模型发现和连接测试；思考设置统一为 `thinking_level`，模型输出上限改由模型与协议能力决定。
-- Split language-model setup into provider presets and protocol adapters, with OpenAI Chat Completions, Responses, Anthropic Messages, custom-compatible endpoints, model discovery, and connection tests. Thinking settings now use `thinking_level`, while model and protocol capabilities determine output limits.
+- 语言模型接入拆分为服务商预设与协议适配器，支持 OpenAI Chat Completions、Responses、Anthropic Messages、自定义兼容端点、模型发现和连接测试；思考设置统一为 `thinking_level`，每个模型可单独配置最大输出 Token。
+- Split language-model setup into provider presets and protocol adapters, with OpenAI Chat Completions, Responses, Anthropic Messages, custom-compatible endpoints, model discovery, and connection tests. Thinking settings now use `thinking_level`, and each model can configure its own maximum output tokens.
 - 语言与图像模型配置改为可复用的“连接 + 模型”结构；语言模型支持服务端发现和批量添加，图像生成支持 OpenAI Images、xAI/Grok、火山方舟 Seedream、Google Gemini Image 与 ComfyUI Workflow，多图任务会保留部分成功结果，v0.3.3 配置会在备份后迁移。
 - Language and image settings now use reusable connections plus model profiles. Language models support provider discovery and batch addition, while image generation supports OpenAI Images, xAI/Grok, Volcengine Ark Seedream, Google Gemini Image, and ComfyUI Workflow with partial success preserved for multi-image jobs. v0.3.3 settings migrate after backup.
 - 工作台统一为可排序、可隐藏的一级导航与可持久化双栏布局；文件树、面包屑、Skill 与版本 Diff 共享搜索、Git 状态、文件图标和上下文操作，版本管理支持历史搜索、按版本浏览及恢复整个版本或单个文件，界面和阅读字体按统一档位缩放并支持本机字体。
@@ -78,6 +78,8 @@ Denova records only major user-visible features, important compatibility or data
 - Fixed embedded-terminal exit, reconnect, theme, and PTY lifecycle issues so interactive tools reliably return to the shell in the original working directory.
 - 修复 DeepSeek、MiniMax、Claude 等模型及游戏回合输出上限过低，以及 DeepSeek 思考模式在工具结果投影或启动 SubAgent 后未回传 `reasoning_content` 而失败的问题。
 - Fixed incorrectly low output limits for DeepSeek, MiniMax, Claude, and Game turns, plus DeepSeek thinking-mode failures when `reasoning_content` was not replayed after tool-result projection or SubAgent startup.
+- 模型回复达到输出限制时会保留已生成内容并明确标记为未完成；应用内更新在 Release 缺少 `checksums.txt` 时会拒绝安装，不再跳过完整性校验。
+- Model responses that reach their output limit now retain generated content and are marked incomplete. In-app updates now refuse releases without `checksums.txt` instead of skipping integrity verification.
 - 升级 Go、`go-git` 与 `x/image` 安全基线，修复标准库、Git 路径/符号链接和 WebP 解码相关漏洞。
 - Upgraded Go, `go-git`, and `x/image` security baselines to address standard-library, Git path/symlink, and WebP decoding vulnerabilities.
 

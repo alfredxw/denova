@@ -211,6 +211,22 @@ describe('story stage stream event contract', () => {
     expect(outcome).toMatchObject({ streamFailed: true, terminalStatus: 'error', terminalEventReceived: true })
   })
 
+  it('localizes a truncated model response in Game mode', async () => {
+    const fixture = consumerFixture()
+
+    await fixture.consumer.consume(
+      eventStream([{
+        id: '1',
+        event: 'error',
+        data: JSON.stringify({ code: 'agent_runtime.model_output_truncated' }),
+      }]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    const error = buildAgentMessageViews(fixture.messages()).find((view) => view.kind === 'error')
+    expect(error?.content).toBe('common.modelOutputTruncated')
+  })
+
   it('shows a Goal evaluation failure without failing the completed primary turn', async () => {
     const fixture = consumerFixture()
     const outcome = await fixture.consumer.consume(

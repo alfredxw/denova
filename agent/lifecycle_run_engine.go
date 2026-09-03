@@ -38,6 +38,9 @@ func (run *Run) execute() {
 			}
 			run.finish(Result{Status: ResultIncomplete, Reason: "Agent Run interrupted"}, &RunError{Result: Result{Status: ResultIncomplete, Reason: "Agent Run interrupted"}})
 			return
+		case runstate.EngineIncomplete:
+			run.finish(Result{Status: ResultIncomplete, Reason: result.Reason}, nil)
+			return
 		case runstate.EngineCompleted:
 			if continuation != nil {
 				next, decodeErr := decodeInput(continuation.Input)

@@ -70,6 +70,7 @@ type safeModelProfileSettings struct {
 	Model               string   `json:"model,omitempty"`
 	Temperature         *float64 `json:"temperature,omitempty"`
 	ContextWindowTokens *int     `json:"context_window_tokens,omitempty"`
+	MaxTokens           *int     `json:"max_tokens,omitempty"`
 }
 
 type safeImageAPIEndpointSettings struct {
@@ -269,6 +270,7 @@ func safeModelProfiles(profiles []config.ModelProfileSettings) []safeModelProfil
 			Model:               profile.Model,
 			Temperature:         profile.Temperature,
 			ContextWindowTokens: profile.ContextWindowTokens,
+			MaxTokens:           profile.MaxTokens,
 		})
 	}
 	return out

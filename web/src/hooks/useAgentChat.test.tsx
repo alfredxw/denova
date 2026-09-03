@@ -625,6 +625,19 @@ describe('useAgentChat', () => {
     expect(result.current.messages).toEqual([])
   })
 
+  it('localizes a truncated model response', () => {
+    const errorPart = {
+      type: 'data-agent-error',
+      id: 'error-part-truncated',
+      data: { code: 'agent_runtime.model_output_truncated', message: 'agent_runtime.model_output_truncated' },
+    }
+    renderHook(() => useAgentChat())
+
+    act(() => chatMock.options?.onData?.(errorPart))
+
+    expect(toastMock.error).toHaveBeenCalledWith('回复已达到输出上限，内容可能不完整。')
+  })
+
   it('shows the stream request ID when an Agent error uses localized fallback copy', () => {
     const errorPart = {
       type: 'data-agent-error',

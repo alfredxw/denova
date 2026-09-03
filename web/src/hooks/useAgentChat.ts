@@ -8,6 +8,7 @@ import { withErrorLogID } from '@/lib/api-client'
 import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
+import { localizeAgentRuntimeError, localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
 import { AgentChatTransport, AgentUIMessageNormalizer, buildAgentChatRequestBody, type AgentUIMessage } from '@/lib/agent-ui'
 import { agentViewContent, type AgentPartRef } from '@/lib/agent-message-view'
 import { STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
@@ -104,9 +105,8 @@ export function useAgentChat(options: ChatOptions = {}) {
     onData: (part) => {
       if (part.type === 'data-agent-error') {
         const data = part.data as Record<string, unknown>
-        const content = [data.content, data.message, data.error]
-          .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-        toast.error(withErrorLogID(content?.trim() || t('chat.activity.unknownError'), data))
+        const content = localizeAgentRuntimeError(data, t('chat.activity.unknownError'), t)
+        toast.error(withErrorLogID(content, data))
         return
       }
       if (part.type === 'data-agent-activity') {
@@ -255,7 +255,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     (request: WritingDisplayRehydrateRequest) => {
       switch (request.status) {
         case 'error':
-          toast.error(request.terminalReason || t('chat.activity.unknownError'))
+          toast.error(localizeAgentRuntimeReason(request.terminalReason, t('chat.activity.unknownError'), t))
           return
         case 'aborted':
           toast.info(t('chat.activity.abortMessage'))

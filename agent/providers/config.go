@@ -89,8 +89,8 @@ type ModelConfig struct {
 	// retain it, so callers must not mutate the client after registration.
 	HTTPClient  *http.Client
 	Temperature *float32
-	// MaxOutputTokens is an internal request capability resolved by the provider
-	// registry or a bounded operation. It is not a user Profile preference.
+	// MaxOutputTokens is the model output cap supplied by a Profile, the provider
+	// registry, or a bounded operation. Protocol adapters map it to their wire field.
 	MaxOutputTokens *int
 	ThinkingLevel   ThinkingLevel
 	OutputFormat    *OutputFormat

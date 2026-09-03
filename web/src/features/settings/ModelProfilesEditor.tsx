@@ -262,7 +262,10 @@ export function ModelProfilesEditor({
                           <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-3">
                             <Input type="number" step={0.01} min={0} max={1} value={profile.temperature ?? ''} placeholder="0-1" onChange={(event) => updateProfile(index, { temperature: event.target.value === '' ? null : Number(event.target.value) })} className="max-w-24" />
                           </ModelProfileField>
-                          <ModelProfileField label={t('settings.model.contextWindow')} className="md:col-span-9">
+                          <ModelProfileField label={t('settings.model.maxTokens')} className="md:col-span-3">
+                            <Input type="number" min={1} step={1024} value={profile.max_tokens ?? ''} placeholder={t('settings.model.maxTokensPlaceholder')} onChange={(event) => updateProfile(index, { max_tokens: event.target.value === '' ? null : Math.trunc(Number(event.target.value)) })} />
+                          </ModelProfileField>
+                          <ModelProfileField label={t('settings.model.contextWindow')} className="md:col-span-6">
                             <ContextWindowInput value={profile.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS} onChange={(value) => updateProfile(index, { context_window_tokens: value })} />
                           </ModelProfileField>
                         </div>

@@ -885,11 +885,15 @@ loopControlsStopped:
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	continuation, err := engine.evaluateGoal(
-		ctx, request, input, prepared, capabilities, finalModelRequest, final, emit,
-	)
-	if err != nil {
-		return runstate.EngineResult{}, err
+	_, incomplete := modelFinishReasonIncomplete(final.ResponseMeta)
+	var continuation *runstate.EngineContinuation
+	if !incomplete {
+		continuation, err = engine.evaluateGoal(
+			ctx, request, input, prepared, capabilities, finalModelRequest, final, emit,
+		)
+		if err != nil {
+			return runstate.EngineResult{}, err
+		}
 	}
 	if len(transcript) == 0 || transcript[len(transcript)-1] == nil || transcript[len(transcript)-1].Role != Assistant {
 		return runstate.EngineResult{}, errors.New("Agent transcript lost the final assistant message")
@@ -904,6 +908,9 @@ loopControlsStopped:
 		CapabilityUpdates: finalCapabilityUpdates, CleanupCompleted: finalCleanupCompleted, Continuation: continuation,
 	}); err != nil {
 		return runstate.EngineResult{}, err
+	}
+	if incomplete {
+		return runstate.EngineResult{Status: runstate.EngineIncomplete, Reason: ModelOutputTruncatedReason}, nil
 	}
 	return runstate.EngineResult{Status: runstate.EngineCompleted}, nil
 }

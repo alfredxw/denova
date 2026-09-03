@@ -36,6 +36,7 @@ type ModelProfileSettings struct {
 	SessionKeyMapping   *providers.SessionKeyMapping `toml:"session_key_mapping,omitempty" json:"session_key_mapping,omitempty"`
 	Temperature         *float64                     `toml:"temperature,omitempty" json:"temperature,omitempty"`
 	ContextWindowTokens *int                         `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
+	MaxTokens           *int                         `toml:"max_tokens,omitempty" json:"max_tokens,omitempty"`
 }
 
 // ModelEndpointSettings owns one language-model network route and its
@@ -84,6 +85,7 @@ type ResolvedModelSettings struct {
 	SessionKeyMapping   *providers.SessionKeyMapping
 	Temperature         *float64
 	ContextWindowTokens int
+	MaxTokens           *int
 	ThinkingLevel       string
 }
 
@@ -190,6 +192,7 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		SessionKeyMapping:   cloneModelProfileSessionKeyMapping(profile.SessionKeyMapping),
 		Temperature:         temperature,
 		ContextWindowTokens: *profile.ContextWindowTokens,
+		MaxTokens:           profile.MaxTokens,
 		ThinkingLevel:       resolvedThinkingLevel(agentOverride.ThinkingLevel),
 	}
 }
@@ -351,6 +354,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 			profile.Name = strings.TrimSpace(profile.Name)
 			profile.BaseURL = strings.TrimSpace(profile.BaseURL)
 			profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
+			profile.MaxTokens = normalizeModelProfileMaxTokens(profile.MaxTokens)
 			out = append(out, profile)
 			continue
 		}
@@ -359,6 +363,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 		}
 		profile.Name = strings.TrimSpace(profile.Name)
 		profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
+		profile.MaxTokens = normalizeModelProfileMaxTokens(profile.MaxTokens)
 		out = append(out, profile)
 	}
 	return out
@@ -392,7 +397,8 @@ func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
 		len(profile.ProtocolOptions) != 0 ||
 		profile.SessionKeyMapping != nil ||
 		profile.Temperature != nil ||
-		profile.ContextWindowTokens != nil
+		profile.ContextWindowTokens != nil ||
+		profile.MaxTokens != nil
 }
 
 func normalizeModelProfileContextWindow(tokens *int) *int {
@@ -404,6 +410,13 @@ func normalizeModelProfileContextWindow(tokens *int) *int {
 	}
 	if *tokens > MaxContextWindowTokens {
 		*tokens = MaxContextWindowTokens
+	}
+	return tokens
+}
+
+func normalizeModelProfileMaxTokens(tokens *int) *int {
+	if tokens == nil || *tokens <= 0 {
+		return nil
 	}
 	return tokens
 }
@@ -485,6 +498,9 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	}
 	if child.ContextWindowTokens != nil {
 		out.ContextWindowTokens = child.ContextWindowTokens
+	}
+	if child.MaxTokens != nil {
+		out.MaxTokens = child.MaxTokens
 	}
 	return out
 }

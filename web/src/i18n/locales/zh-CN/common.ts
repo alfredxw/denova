@@ -16,6 +16,7 @@ const common = {
   'common.loading': '加载中...',
   'common.model': '模型',
   'common.notSet': '未设置',
+  'common.modelOutputTruncated': '回复已达到输出上限，内容可能不完整。',
   'common.yes': '是',
   'common.no': '否',
   'common.save': '保存',

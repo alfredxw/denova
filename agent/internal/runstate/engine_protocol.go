@@ -435,12 +435,16 @@ func (EngineToolFinished) engineEvent() {}
 type EngineStatus string
 
 const (
-	EngineCompleted EngineStatus = "completed"
-	EnginePreempted EngineStatus = "preempted"
-	EngineAborted   EngineStatus = "aborted"
+	EngineCompleted  EngineStatus = "completed"
+	EngineIncomplete EngineStatus = "incomplete"
+	EnginePreempted  EngineStatus = "preempted"
+	EngineAborted    EngineStatus = "aborted"
 )
 
-type EngineResult struct{ Status EngineStatus }
+type EngineResult struct {
+	Status EngineStatus
+	Reason string
+}
 
 type EngineEventSink func(EngineEvent) error
 

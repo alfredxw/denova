@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next'
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
 import { withErrorLogID } from '@/lib/api-client'
+import { localizeAgentRuntimeError, localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
 import { agentMessageHasDataPart, createAgentDataMessage } from '@/lib/agent-ui-message'
 import { createInteractiveNarrativeFilter } from '../../stream-parser'
 import type { StoryStageRunState } from '../../stores/interactive-store'
@@ -89,7 +90,7 @@ export function createStoryStageStreamConsumer({
     if (next.streamFailed) return next
     switch (next.terminalStatus) {
       case 'error':
-        setMessages([errorMessage(next.terminalReason || t('storyStage.activity.unknownError'))])
+        setMessages([errorMessage(localizeAgentRuntimeReason(next.terminalReason, t('storyStage.activity.unknownError'), t))])
         next.streamFailed = true
         return next
       case 'aborted':
@@ -379,7 +380,7 @@ export function createStoryStageStreamConsumer({
           setActivity('')
           streamFailed = true
           terminalStatus = 'error'
-          const message = withErrorLogID(data.message || data.error || t('storyStage.activity.unknownError'), data)
+          const message = withErrorLogID(localizeAgentRuntimeError(data, t('storyStage.activity.unknownError'), t), data)
           terminalReason = message
           terminalEventReceived = true
           setMessages((current) => [

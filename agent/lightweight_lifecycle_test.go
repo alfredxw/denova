@@ -147,6 +147,36 @@ func TestLightweightSessionRetainsTranscriptAcrossRuns(t *testing.T) {
 	}
 }
 
+func TestRunMarksTruncatedTextIncompleteAndKeepsPartialOutput(t *testing.T) {
+	response := AssistantMessage("partial answer", nil)
+	response.ResponseMeta = &ResponseMeta{FinishReason: "length"}
+	model := &lifecycleModel{responses: []*Message{response}}
+	owner, err := New(context.Background(), Definition{Name: "test", Model: model}, WithSessionStore(agentsession.Memory()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("truncated"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := session.Run(context.Background(), Text("answer fully"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, waitErr := run.Wait(context.Background())
+	if result.Status != ResultIncomplete || result.Reason != ModelOutputTruncatedReason || waitErr == nil {
+		t.Fatalf("truncated result = %#v, err = %v", result, waitErr)
+	}
+	snapshot, err := session.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.RecentRuns) != 1 || snapshot.RecentRuns[0].Output != "partial answer" {
+		t.Fatalf("truncated output was not retained: %#v", snapshot.RecentRuns)
+	}
+}
+
 func TestActiveRunDoesNotPersistPartialTranscript(t *testing.T) {
 	store := newObservingSessionStore()
 	model := &gatedLifecycleModel{started: make(chan struct{}), release: make(chan struct{})}

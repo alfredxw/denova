@@ -847,7 +847,11 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 	case agent.ResultAborted:
 		projector.emitEvent(agentrun.NewAbortedEvent(reason))
 	default:
-		projector.emitEvent(agentrun.Event{Type: "error", Data: map[string]string{"message": reason}})
+		data := map[string]string{"message": reason}
+		if reason == agent.ModelOutputTruncatedReason {
+			data["code"] = reason
+		}
+		projector.emitEvent(agentrun.Event{Type: "error", Data: data})
 	}
 }
 

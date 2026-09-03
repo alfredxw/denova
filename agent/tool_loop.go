@@ -746,12 +746,11 @@ func toolErrorContent(call ToolCall, err error) string {
 	return string(payload)
 }
 
-// modelFinishReasonBlocksToolExecution normalizes provider-specific terminal
-// reasons that make an assistant tool-call batch unsafe to execute. A tool call
-// can contain valid JSON while still being only a truncated or filtered prefix
-// of the model's intended arguments, so this check must happen before any tool
-// middleware or implementation can produce side effects.
-func modelFinishReasonBlocksToolExecution(meta *ResponseMeta) (string, bool) {
+// modelFinishReasonIncomplete normalizes provider-specific terminal reasons
+// that mean the assistant response is not complete. A tool call can contain
+// valid JSON while still being only a truncated or filtered prefix of the
+// model's intended arguments.
+func modelFinishReasonIncomplete(meta *ResponseMeta) (string, bool) {
 	if meta == nil {
 		return "", false
 	}
@@ -764,6 +763,12 @@ func modelFinishReasonBlocksToolExecution(meta *ResponseMeta) (string, bool) {
 	default:
 		return reason, false
 	}
+}
+
+// modelFinishReasonBlocksToolExecution keeps the side-effect boundary explicit
+// at the call site while sharing the same provider-neutral completion rule.
+func modelFinishReasonBlocksToolExecution(meta *ResponseMeta) (string, bool) {
+	return modelFinishReasonIncomplete(meta)
 }
 
 func (agent *modelToolLoop) incompleteModelToolResults(

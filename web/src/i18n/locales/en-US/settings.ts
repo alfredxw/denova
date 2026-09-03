@@ -196,6 +196,8 @@ const settings = {
   'settings.model.profileTemperatureLabel': 'Temperature',
   'settings.model.profileTemperaturePlaceholder': 'Temperature (optional)',
   'settings.model.profileTemperatureDefaultPlaceholder': 'Temperature; empty uses provider default',
+  'settings.model.maxTokens': 'Max output tokens',
+  'settings.model.maxTokensPlaceholder': 'Provider default',
   'settings.model.contextWindow': 'Context Length (tokens)',
   'settings.model.contextWindow200k': '200K',
   'settings.model.contextWindow400k': '400K (default)',

@@ -30,6 +30,7 @@ func ConfigFromResolved(resolved config.ResolvedModelSettings) (providers.ModelC
 		BaseURL:           resolved.BaseURL,
 		Headers:           resolved.Headers,
 		SessionKeyMapping: resolved.SessionKeyMapping,
+		MaxOutputTokens:   resolved.MaxTokens,
 		ThinkingLevel:     providers.ThinkingLevel(resolved.ThinkingLevel),
 	}
 	if len(resolved.ProtocolOptions) != 0 {

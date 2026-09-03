@@ -196,6 +196,8 @@ const settings = {
   'settings.model.profileTemperatureLabel': 'Temperature',
   'settings.model.profileTemperaturePlaceholder': 'Temperature（可空）',
   'settings.model.profileTemperatureDefaultPlaceholder': 'Temperature，空为平台默认',
+  'settings.model.maxTokens': '最大输出 Token',
+  'settings.model.maxTokensPlaceholder': '平台默认值',
   'settings.model.contextWindow': '上下文长度 (Token)',
   'settings.model.contextWindow200k': '200K',
   'settings.model.contextWindow400k': '400K（默认）',
