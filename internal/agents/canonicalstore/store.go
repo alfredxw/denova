@@ -197,6 +197,28 @@ func (store *Store) resolve(key agentsession.Key, requireAvailable bool) (agentr
 }
 
 func (store *Store) discover(ctx context.Context, selector agentsession.Selector, result map[string]agentsession.Key) error {
+	scope, err := discoveryScopeForSelector(selector)
+	if err != nil {
+		return err
+	}
+	if scope != nil && scope.ProjectID != "" {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		record, getErr := store.registry.Get(scope.ProjectID)
+		if errors.Is(getErr, project.ErrNotFound) {
+			return nil
+		}
+		if getErr != nil {
+			return getErr
+		}
+		layout, layoutErr := store.registry.Layout(record)
+		if layoutErr != nil {
+			return layoutErr
+		}
+		return store.discoverLayout(ctx, layout, selector, result, scope)
+	}
+
 	records, err := store.registry.List(true)
 	if err != nil {
 		return err
@@ -209,17 +231,92 @@ func (store *Store) discover(ctx context.Context, selector agentsession.Selector
 		if layoutErr != nil {
 			continue
 		}
-		if err := discoverChildKeys(ctx, layout.SessionsDir(), selector, result); err != nil {
-			return err
-		}
-		if err := discoverProductKeys(layout.SessionsDir(), selector, result); err != nil {
-			return err
-		}
-		if err := discoverStoryKeys(layout.ContentRoot, store.dataDir, selector, result); err != nil {
+		if err := store.discoverLayout(ctx, layout, selector, result, scope); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+type discoveryScope struct {
+	agentrun.SessionStorageScope
+	childrenOnly bool
+}
+
+func discoveryScopeForSelector(selector agentsession.Selector) (*discoveryScope, error) {
+	if _, hasParent := selector.Attributes[agent.ParentSessionAttribute]; hasParent {
+		parent, err := agent.ParentSessionKey(agentsession.Key{Attributes: selector.Attributes})
+		if err != nil {
+			return nil, err
+		}
+		root, _, err := rootSessionKey(parent)
+		if err != nil {
+			return nil, err
+		}
+		binding, err := agentrun.RuntimeBindingFromAgentSessionKey(root)
+		if err != nil {
+			return nil, err
+		}
+		journal := agentrun.SessionJournalProduct
+		if binding.StoryID != "" {
+			journal = agentrun.SessionJournalStory
+		}
+		return &discoveryScope{
+			SessionStorageScope: agentrun.SessionStorageScope{
+				ProjectID: binding.ProjectID,
+				SessionID: binding.SessionID,
+				StoryID:   binding.StoryID,
+				Journal:   journal,
+			},
+			childrenOnly: true,
+		}, nil
+	}
+	if scope, ok := agentrun.StorageScopeFromSessionSelector(selector); ok {
+		return &discoveryScope{
+			SessionStorageScope: scope,
+			childrenOnly:        strings.HasPrefix(selector.Namespace, "task."),
+		}, nil
+	}
+	if strings.HasPrefix(selector.Namespace, "task.") {
+		return &discoveryScope{childrenOnly: true}, nil
+	}
+	return nil, nil
+}
+
+func (store *Store) discoverLayout(
+	ctx context.Context,
+	layout project.Layout,
+	selector agentsession.Selector,
+	result map[string]agentsession.Key,
+	scope *discoveryScope,
+) error {
+	if scope == nil || scope.childrenOnly {
+		if err := discoverChildKeys(ctx, layout.SessionsDir(), selector, result); err != nil {
+			return err
+		}
+		if scope != nil {
+			return nil
+		}
+	}
+	if scope == nil {
+		if err := discoverProductKeys(layout.SessionsDir(), "", selector, result); err != nil {
+			return err
+		}
+		return discoverStoryKeys(layout.ContentRoot, store.dataDir, "", selector, result)
+	}
+	switch scope.Journal {
+	case agentrun.SessionJournalAny:
+		if err := discoverProductKeys(layout.SessionsDir(), scope.SessionID, selector, result); err != nil {
+			return err
+		}
+		return discoverStoryKeys(layout.ContentRoot, store.dataDir, scope.StoryID, selector, result)
+	case agentrun.SessionJournalProduct:
+		return discoverProductKeys(layout.SessionsDir(), scope.SessionID, selector, result)
+	case agentrun.SessionJournalStory:
+		return discoverStoryKeys(layout.ContentRoot, store.dataDir, scope.StoryID, selector, result)
+	default:
+		return fmt.Errorf("unsupported Agent Session journal scope %d", scope.Journal)
+	}
 }
 
 func discoverChildKeys(ctx context.Context, sessionsDir string, selector agentsession.Selector, result map[string]agentsession.Key) error {
@@ -241,12 +338,20 @@ func discoverChildKeys(ctx context.Context, sessionsDir string, selector agentse
 	return nil
 }
 
-func discoverProductKeys(sessionsDir string, selector agentsession.Selector, result map[string]agentsession.Key) error {
+func discoverProductKeys(
+	sessionsDir string,
+	sessionID string,
+	selector agentsession.Selector,
+	result map[string]agentsession.Key,
+) error {
 	paths, err := filepath.Glob(filepath.Join(sessionsDir, "*.jsonl"))
 	if err != nil {
 		return err
 	}
 	for _, path := range paths {
+		if sessionID != "" && strings.TrimSuffix(filepath.Base(path), ".jsonl") != sessionID {
+			continue
+		}
 		keys, readErr := productsession.AgentSessionKeys(path)
 		if readErr != nil {
 			return readErr
@@ -256,7 +361,13 @@ func discoverProductKeys(sessionsDir string, selector agentsession.Selector, res
 	return nil
 }
 
-func discoverStoryKeys(contentRoot, dataDir string, selector agentsession.Selector, result map[string]agentsession.Key) error {
+func discoverStoryKeys(
+	contentRoot string,
+	dataDir string,
+	storyID string,
+	selector agentsession.Selector,
+	result map[string]agentsession.Key,
+) error {
 	paths, err := filepath.Glob(filepath.Join(contentRoot, "interactive", "story", "story-*.jsonl"))
 	if err != nil {
 		return err
@@ -264,6 +375,9 @@ func discoverStoryKeys(contentRoot, dataDir string, selector agentsession.Select
 	for _, path := range paths {
 		name := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "story-"), ".jsonl")
 		if name == "" {
+			continue
+		}
+		if storyID != "" && name != storyID {
 			continue
 		}
 		keys, readErr := interactive.AgentSessionKeys(contentRoot, dataDir, name)

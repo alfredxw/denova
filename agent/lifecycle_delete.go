@@ -24,28 +24,58 @@ func (agent *Agent) DeleteSessions(ctx context.Context, selector SessionSelector
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	keys, err := agent.store.List(ctx, SessionSelector{All: true})
+	keys, err := agent.store.List(ctx, selector)
 	if err != nil {
 		return err
 	}
 	byCanonical := make(map[string]SessionKey, len(keys))
-	for _, key := range keys {
-		if !sessionSelectorMatchesTree(selector, key) {
-			continue
-		}
+	queue := make([]string, 0, len(keys))
+	remember := func(key SessionKey) error {
 		canonical, canonicalErr := agentsession.CanonicalKey(key)
 		if canonicalErr != nil {
 			return canonicalErr
 		}
+		if _, exists := byCanonical[canonical]; exists {
+			return nil
+		}
 		byCanonical[canonical] = key
+		queue = append(queue, canonical)
+		return nil
+	}
+	for _, key := range keys {
+		if err := remember(key); err != nil {
+			return err
+		}
 	}
 	agent.mu.RLock()
-	for canonical, session := range agent.sessions {
-		if sessionSelectorMatchesTree(selector, session.key) {
-			byCanonical[canonical] = session.key
+	for _, session := range agent.sessions {
+		key := session.key
+		if !sessionSelectorMatchesTree(selector, key) {
+			continue
+		}
+		if err := remember(key); err != nil {
+			agent.mu.RUnlock()
+			return err
 		}
 	}
 	agent.mu.RUnlock()
+	for next := 0; next < len(queue); next++ {
+		canonical := queue[next]
+		parent := byCanonical[canonical]
+		attributes, attributeErr := ChildSessionAttributes(parent)
+		if attributeErr != nil {
+			return attributeErr
+		}
+		children, listErr := agent.store.List(ctx, SessionSelector{Attributes: attributes})
+		if listErr != nil {
+			return listErr
+		}
+		for _, child := range children {
+			if err := remember(child); err != nil {
+				return err
+			}
+		}
+	}
 	ordered := make([]string, 0, len(byCanonical))
 	for canonical := range byCanonical {
 		ordered = append(ordered, canonical)

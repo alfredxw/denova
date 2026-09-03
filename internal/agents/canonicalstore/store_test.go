@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -145,6 +146,148 @@ func TestStoreEmbedsRootRecordsAndKeepsChildrenInProjectState(t *testing.T) {
 	keys, err := store.List(ctx, agentsession.Selector{All: true})
 	if err != nil || len(keys) != 2 {
 		t.Fatalf("canonical Store keys=%#v err=%v", keys, err)
+	}
+}
+
+func TestStoreScopesDiscoveryToTheSelectedSessionTree(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	registry := project.NewRegistry(dataDir)
+	addProject := func(name string) (project.Record, project.Layout) {
+		t.Helper()
+		workspace := filepath.Join(t.TempDir(), name)
+		if err := os.MkdirAll(workspace, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		record, err := registry.Add(workspace, project.TypeGeneral, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		layout, err := registry.EnsureStore(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(layout.SessionsDir(), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return record, layout
+	}
+	targetProject, targetLayout := addProject("target")
+	_, otherLayout := addProject("other")
+
+	productStore, err := productsession.NewStore(targetLayout.SessionsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	productSession, err := productStore.GetOrCreate("target-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := productSession.Append(agent.UserMessage("target input")); err != nil {
+		t.Fatal(err)
+	}
+	if err := productStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	root, err := (agentrun.RuntimeBinding{
+		AgentKind: agentrun.AgentKindIDE, ProjectID: targetProject.ID, SessionID: productSession.ID,
+	}).AgentSessionKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := New(dataDir, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootLog, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rootLog.Append(ctx, 0, agentsession.Record{
+		Kind: "session.capability_set", Version: 1,
+		Data: json.RawMessage(`{"capability":"agent.todo","state":{"revision":1}}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rootLog.Close(); err != nil {
+		t.Fatal(err)
+	}
+	childAttributes, err := agent.ChildSessionAttributes(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childAttributes["agent"] = "researcher"
+	child := agentsession.Key{Namespace: "task.researcher", ID: "child", Attributes: childAttributes}
+	childLog, err := store.Open(ctx, child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := childLog.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(dataDir, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	brokenStory := filepath.Join(targetLayout.ContentRoot, "interactive", "story", "story-broken.jsonl")
+	if err := os.MkdirAll(filepath.Dir(brokenStory), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{brokenStory, filepath.Join(otherLayout.SessionsDir(), "broken.jsonl")} {
+		if err := os.WriteFile(path, []byte("{not-json\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writingSelector, err := agentrun.BindingSelector(agentrun.AgentKindIDE, targetProject.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keys, err := store.List(ctx, writingSelector); err != nil || len(keys) != 1 || !reflect.DeepEqual(keys[0], root) {
+		t.Fatalf("writing discovery crossed journal or Project boundaries: keys=%#v err=%v", keys, err)
+	}
+	if err := os.Remove(brokenStory); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(targetLayout.SessionsDir(), "unrelated.jsonl"), []byte("{not-json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gameSelector, err := agentrun.BindingSelector(agentrun.AgentKindInteractiveStory, targetProject.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keys, err := store.List(ctx, gameSelector); err != nil || len(keys) != 0 {
+		t.Fatalf("game discovery crossed product journal boundaries: keys=%#v err=%v", keys, err)
+	}
+	selector, err := agentrun.SessionBindingSelector(agentrun.AgentKindIDE, targetProject.ID, productSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := store.List(ctx, selector)
+	if err != nil {
+		t.Fatalf("targeted discovery failed on unrelated corruption: %v", err)
+	}
+	if len(keys) != 1 || !reflect.DeepEqual(keys[0], root) {
+		t.Fatalf("targeted keys = %#v, want %#v", keys, root)
+	}
+
+	targetPath := filepath.Join(targetLayout.SessionsDir(), productSession.ID+".jsonl")
+	if err := os.WriteFile(targetPath, []byte("{not-json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	parentAttributes, err := agent.ChildSessionAttributes(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	children, err := store.List(ctx, agentsession.Selector{Attributes: parentAttributes})
+	if err != nil {
+		t.Fatalf("child discovery read the corrupt root journal: %v", err)
+	}
+	if len(children) != 1 || !reflect.DeepEqual(children[0], child) {
+		t.Fatalf("children = %#v, want %#v", children, child)
+	}
+	if _, err := store.List(ctx, selector); err == nil {
+		t.Fatal("targeted discovery ignored corruption in the selected journal")
 	}
 }
 

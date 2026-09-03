@@ -51,6 +51,58 @@ type RuntimeBinding struct {
 	TaskID    string
 }
 
+// SessionStorageScope is the stable Project and product-journal scope carried
+// by a Denova Agent Session selector. It lets storage route constrained catalog
+// reads without exposing Denova's private identity labels to other packages.
+type SessionStorageScope struct {
+	ProjectID string
+	SessionID string
+	StoryID   string
+	Journal   SessionJournalKind
+}
+
+// SessionJournalKind identifies the canonical product journal family that can
+// contain the Sessions selected by one storage scope.
+type SessionJournalKind uint8
+
+const (
+	SessionJournalAny SessionJournalKind = iota
+	SessionJournalProduct
+	SessionJournalStory
+)
+
+// StorageScopeFromSessionSelector returns the exact Project owner encoded in a
+// selector. SessionID and StoryID narrow the journal when the selector carries
+// one of those immutable product identities.
+func StorageScopeFromSessionSelector(selector agent.SessionSelector) (SessionStorageScope, bool) {
+	projectID := strings.TrimSpace(selector.Attributes[bindingLabelProject])
+	if projectID == "" {
+		return SessionStorageScope{}, false
+	}
+	scope := SessionStorageScope{
+		ProjectID: projectID,
+		SessionID: strings.TrimSpace(selector.Attributes[bindingLabelSession]),
+		StoryID:   strings.TrimSpace(selector.Attributes[bindingLabelStory]),
+	}
+	switch {
+	case scope.SessionID != "" && scope.StoryID == "":
+		scope.Journal = SessionJournalProduct
+	case scope.StoryID != "" && scope.SessionID == "":
+		scope.Journal = SessionJournalStory
+	default:
+		switch selector.Namespace {
+		case agentSessionNamespacePrefix + bindingKindWriting + "." + bindingProfileWriting,
+			agentSessionNamespacePrefix + bindingKindWriting + "." + bindingProfileImage,
+			agentSessionNamespacePrefix + bindingKindProject + "." + bindingProfileAgentChat,
+			agentSessionNamespacePrefix + bindingKindAutomation + "." + bindingProfileAutomation:
+			scope.Journal = SessionJournalProduct
+		case agentSessionNamespacePrefix + bindingKindGame + "." + bindingProfileGame:
+			scope.Journal = SessionJournalStory
+		}
+	}
+	return scope, true
+}
+
 // bindingIdentity is the private Denova mapping from product identity to one
 // public Agent Session namespace. It is not a second runtime identity or a
 // persistence contract.
