@@ -10,6 +10,7 @@ const sessionBDelayMarker = 'E2E_SESSION_B_DELAY'
 const queueReloadDelayMarker = 'E2E_QUEUE_RELOAD_DELAY'
 const queueReloadFollowUpMarker = 'E2E_QUEUE_RELOAD_FOLLOW_UP'
 const multiAgentDisplayMarker = 'E2E_MULTI_AGENT_DISPLAY'
+const multiAgentStreamGateMarker = 'E2E_MULTI_AGENT_STREAM_GATE'
 const multiAgentExpectations = [
   { marker: 'E2E_MULTI_AGENT_ALPHA', output: 'Alpha stream started.', reasoning: 'Alpha reasoning one. Alpha reasoning two.' },
   { marker: 'E2E_MULTI_AGENT_BETA', output: 'Beta stream started.', reasoning: 'Beta reasoning one. Beta reasoning two.' },
@@ -107,9 +108,18 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
   await openAgentChatWorkbench(page)
   let composer = await openAgentChatSession(page, project.id, session.title)
   let released = false
+  let streamsReleased = false
   try {
     await composer.fill(`Delegate this test to three agents and wait for all results. ${multiAgentDisplayMarker}`)
     await composer.press('Enter')
+    await expect.poll(async () => (
+      (await getModelStatus(request)).delayed_waiting_by_marker[multiAgentStreamGateMarker] ?? 0
+    )).toBe(3)
+
+    const activeProcess = page.locator('[data-agent-execution-process]').last()
+    await expect(activeProcess.getByText('等待 SubAgent', { exact: true })).toBeVisible()
+    await releaseDelayedRequest(request, multiAgentStreamGateMarker)
+    streamsReleased = true
     await expect.poll(async () => {
       const status = await getModelStatus(request)
       return multiAgentExpectations.map(item => status.delayed_waiting_by_marker[item.marker] ?? 0)
@@ -138,6 +148,9 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
     composer = await openAgentChatSession(page, project.id, session.title)
     await expectIsolatedSubAgentSessions(page)
   } finally {
+    if (!streamsReleased) {
+      await releaseDelayedRequest(request, multiAgentStreamGateMarker)
+    }
     if (!released) {
       await Promise.allSettled(multiAgentExpectations.map(item => releaseDelayedRequest(request, item.marker)))
     }

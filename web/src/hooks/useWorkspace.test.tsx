@@ -96,11 +96,13 @@ describe('useWorkspace', () => {
       </StrictMode>,
     )
 
-    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/demo'))
-    expect(apiMock.getCurrentWorkspace).toHaveBeenCalledTimes(1)
-    expect(apiMock.getBookshelf).toHaveBeenCalledTimes(1)
-    expect(apiMock.getProjectBookTree).toHaveBeenCalledTimes(1)
-    expect(apiMock.getProjectBookSummary).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/demo')
+      expect(apiMock.getCurrentWorkspace).toHaveBeenCalledTimes(1)
+      expect(apiMock.getBookshelf).toHaveBeenCalledTimes(1)
+      expect(apiMock.getProjectBookTree).toHaveBeenCalledTimes(1)
+      expect(apiMock.getProjectBookSummary).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('exposes the stable project identity for project-scoped workspace modules', async () => {

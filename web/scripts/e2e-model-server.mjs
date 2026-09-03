@@ -14,6 +14,7 @@ const sessionAFollowUpMarker = 'E2E_SESSION_A_FOLLOW_UP'
 const queueReloadDelayMarker = 'E2E_QUEUE_RELOAD_DELAY'
 const queueReloadFollowUpMarker = 'E2E_QUEUE_RELOAD_FOLLOW_UP'
 const multiAgentDisplayMarker = 'E2E_MULTI_AGENT_DISPLAY'
+const multiAgentStreamGateMarker = 'E2E_MULTI_AGENT_STREAM_GATE'
 const multiAgentChildren = [
   { marker: 'E2E_MULTI_AGENT_ALPHA', label: 'Alpha', frameDelay: 18 },
   { marker: 'E2E_MULTI_AGENT_BETA', label: 'Beta', frameDelay: 12 },
@@ -249,6 +250,11 @@ function writeChatCompletion(response, frames) {
 }
 
 async function writeGatedMultiAgentCompletion(response, child) {
+  // Keep every child silent until the parent has entered task_wait. Without
+  // this handshake a fast mock response can finish its initial frames before
+  // the wait subscription exists, so the test exercises timing rather than
+  // the live interleaving contract.
+  await waitForDelayedRelease(multiAgentStreamGateMarker)
   response.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
