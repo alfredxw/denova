@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - master
   pull_request:
   workflow_dispatch:
 
@@ -16,12 +19,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -30,12 +33,12 @@ jobs:
             agent/go.sum
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.15.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: pnpm
@@ -48,7 +51,7 @@ jobs:
         run: pnpm --dir web install --frozen-lockfile
 
       - name: Check whitespace
-        run: git diff --check
+        run: git diff --check HEAD^ HEAD
 
       - name: Test installer
         run: scripts/install_test.sh
@@ -71,6 +74,15 @@ jobs:
             (cd "${module}" && go test ./...)
           done
 
+      - name: Run Go vet
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in ${GO_MODULES}; do
+            echo "==> go vet (${module})"
+            (cd "${module}" && go vet ./...)
+          done
+
       - name: Install Playwright browser
         run: pnpm --dir web exec playwright install --with-deps chromium
 
@@ -80,16 +92,20 @@ jobs:
       - name: Run frontend tests
         run: pnpm --dir web test
 
+      - name: Build distribution
+        run: ./scripts/build.sh
+
+      - name: Smoke-test production frontend
+        run: pnpm --dir web smoke:production
+
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |
             web/playwright-report
             web/test-results/artifacts
+            web/test-results/production-artifacts
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: Build distribution
-        run: ./scripts/build.sh

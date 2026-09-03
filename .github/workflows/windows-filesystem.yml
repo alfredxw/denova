@@ -1,6 +1,19 @@
 name: Windows filesystem durability
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/windows-filesystem.yml"
+      - "go.mod"
+      - "go.sum"
+      - "internal/localfs/**"
+      - "internal/workspace/documentreview/**"
+      - "internal/workspace/change/**"
+      - "agent/go.mod"
+      - "agent/go.sum"
+      - "agent/tools/**"
   pull_request:
     paths:
       - ".github/workflows/windows-filesystem.yml"
@@ -9,6 +22,9 @@ on:
       - "internal/localfs/**"
       - "internal/workspace/documentreview/**"
       - "internal/workspace/change/**"
+      - "agent/go.mod"
+      - "agent/go.sum"
+      - "agent/tools/**"
   workflow_dispatch:
 
 permissions:
@@ -21,13 +37,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            agent/go.sum
 
       - name: Verify shared directory durability consumers
         run: go test ./internal/localfs ./internal/workspace/documentreview ./internal/workspace/change -count=1
+
+      - name: Verify Agent workspace filesystem boundaries
+        working-directory: agent
+        run: go test ./tools -count=1

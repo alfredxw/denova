@@ -34,6 +34,9 @@ export default defineConfig({
           // Keep size caps on individual groups: a global cap can split tightly coupled SDKs into cyclic chunks.
           minSize: 20 * 1024,
           groups: [
+            // @pierre/diffs has top-level initializers across its internal modules.
+            // Keep the package atomic so the vendor size cap cannot create cyclic chunks.
+            { name: 'pierre-diffs', test: /node_modules[\\/]@pierre[\\/]diffs[\\/]/, priority: 50 },
             { name: 'shiki', test: /node_modules[\\/](?:shiki|@shikijs)[\\/]/, priority: 40 },
             { name: 'monaco', test: /node_modules[\\/](?:monaco-editor|@monaco-editor)[\\/]/, priority: 30 },
             { name: 'ai-sdk', test: /node_modules[\\/](?:ai|@ai-sdk)[\\/]/, priority: 20 },

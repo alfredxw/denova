@@ -59,7 +59,12 @@ func OpenWorkspaceWithOptions(options WorkspaceOptions) (*LocalWorkspace, error)
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize workspace path: %w", err)
 	}
-	info, err := os.Stat(canonical)
+	openedRoot, err := os.OpenRoot(canonical)
+	if err != nil {
+		return nil, fmt.Errorf("open workspace: %w", err)
+	}
+	defer openedRoot.Close()
+	info, err := openedRoot.Stat(".")
 	if err != nil {
 		return nil, fmt.Errorf("stat workspace: %w", err)
 	}

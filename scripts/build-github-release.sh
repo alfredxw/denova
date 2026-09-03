@@ -65,6 +65,23 @@ release_version_without_prefix() {
   printf '%s' "${VERSION#v}"
 }
 
+extract_release_brief() {
+  local release_tag="$1"
+  awk -v release_heading="## [${release_tag}]" '
+    index($0, release_heading) == 1 { in_release = 1; next }
+    in_release && /^## \[/ { exit }
+    in_release && $0 == "### Brief / 简要说明" { in_brief = 1; found = 1; next }
+    in_brief && /^### / { exit }
+    in_brief { print }
+    END {
+      if (!found) {
+        print "CHANGELOG.md is missing a Brief section for " release_heading > "/dev/stderr"
+        exit 1
+      }
+    }
+  '
+}
+
 validate_release_metadata() {
   if [[ "${VERSION}" == "dev" ]]; then
     return
@@ -82,6 +99,7 @@ validate_release_metadata() {
     echo "错误: CHANGELOG.md 缺少 ${release_tag} 章节" >&2
     exit 1
   fi
+  extract_release_brief "${release_tag}" < CHANGELOG.md >/dev/null
   if ! grep -Fq "<strong>${release_tag}</strong>" README.md || ! grep -Fq "<strong>${release_tag}</strong>" README.en.md; then
     echo "错误: README.md 与 README.en.md 的当前版本必须同步为 ${release_tag}" >&2
     exit 1
@@ -109,20 +127,16 @@ write_release_notes() {
     echo
     echo "## Release highlights / 发布内容"
     echo
-    awk -v heading="## [${release_tag}]" '
-      index($0, heading) == 1 { found = 1; next }
-      found && /^## \[/ { exit }
-      found { print }
-    ' CHANGELOG.md
+    extract_release_brief "${release_tag}" < CHANGELOG.md
     cat <<'EOF'
 
 ## Verification / 验证
 
 - Backend: all Go modules passed `go mod tidy -diff`, `go test ./...`, and `go vet ./...`.
-- Frontend: complete Vitest suite, i18n key check, TypeScript check, and production Vite build.
+- Frontend: complete test suite, i18n key check, TypeScript check, production Vite build, and built-bundle startup smoke test.
 - Packaging: five platform archives are generated from the same source revision and listed in `checksums.txt`.
 
-后端已通过完整 Go 测试、静态检查与依赖一致性检查；前端已通过完整测试、双语键检查、TypeScript 检查和生产构建；五个平台压缩包均由同一源码版本生成并写入 `checksums.txt`。
+后端已通过完整 Go 测试、静态检查与依赖一致性检查；前端已通过完整测试、双语键检查、TypeScript 检查、生产构建和构建产物启动烟测；五个平台压缩包均由同一源码版本生成并写入 `checksums.txt`。
 
 ## Install / 安装
 
@@ -176,6 +190,7 @@ run_pnpm -C "${ROOT_DIR}/web" check:i18n
 
 echo "==> 构建前端"
 run_pnpm -C "${ROOT_DIR}/web" build
+run_pnpm -C "${ROOT_DIR}/web" smoke:production
 
 echo "==> 交叉编译并打包"
 for target in "${TARGETS[@]}"; do

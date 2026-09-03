@@ -12,64 +12,46 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Brief / 简要说明
+
+#### 中文
+
+- 升级提示：v0.3.3 的游戏组合预设、独立 Config Manager、用户级全局 Automation 及部分旧模型与上下文设置不再参与运行；原数据会保留或先备份，可迁移的数据会自动迁移，全局 Automation 任务需在对应 Project 重新创建。
+- `.denova` 数据目录可在 Windows、WSL、Linux 与 macOS 之间整体移动；统一 Project 工作台支持通用、写作与游戏会话并行运行，并共享 Files、资料库、终端和版本历史。
+- Agent 新增自定义主 Agent、Goal、脚本编排、Project 指令、安全模式及更可靠的多 Agent 协作；语言与图像模型改为可复用连接和模型配置，并扩展常用协议与图像服务商支持。
+- 游戏新增规划模板、单页开局、故事控制台和任意已保存回复分支；写作、游戏与资料编辑同时增强了任务恢复、自动保存、版本恢复和长会话可靠性。
+- 导航、文件树、编辑器、版本 Diff 与字体缩放统一到同一套创作工作台，支持可持久化双栏布局、本机字体和更完整的文件操作。
+
+#### English
+
+- Upgrade note: v0.3.3 Game composition presets, standalone Config Manager, user-level global Automations, and several legacy model or context settings no longer participate in runtime behavior. Existing data is retained or backed up before supported migrations, and global Automations must be recreated in their Projects.
+- The complete `.denova` data directory can move across Windows, WSL, Linux, and macOS. The unified Project workbench runs General, Writing, and Game conversations concurrently while sharing Files, Lore, terminals, and version history.
+- Agents gain custom main Agents, Goals, script orchestration, Project instructions, safety modes, and more reliable multi-Agent work. Language and image models now use reusable connections and model profiles with broader protocol and image-provider support.
+- Game adds Planning Templates, a single-page start flow, the Story Console, and branching from any saved reply. Writing, Game, and Lore also gain stronger task recovery, autosave, version restoration, and long-session reliability.
+- Navigation, file trees, editors, version diffs, and typography now share one creation workbench with persistent split layouts, local fonts, and more complete file operations.
+
 ### Major changes / 重大变更
 
-- 主 Agent 仍默认自行处理任务，仅在用户明确要求多 Agent 协作或已加载 Skill 明确要求时委派；委派任务现在异步并行运行，完成结果会在安全执行边界可靠送达而无需主动等待，真实依赖点的等待仍可被用户新指令打断且不会终止 SubAgent。
-- The main Agent still works by itself by default and delegates only when the user explicitly requests multi-Agent work or a loaded Skill requires it. Delegated tasks now run asynchronously in parallel, with completed results delivered reliably at safe execution boundaries without requiring an explicit wait; waits at real dependency points remain interruptible without stopping SubAgents.
 - `.denova` 数据目录现在可在 Denova 完全退出后整体移动或复制到 Windows、WSL、Linux 与 macOS 的任意合法可写位置；受管 Project 的会话、游戏、版本、附件、工具产物和自动化会按稳定 Project ID 与相对路径继续使用，v0.3.3 索引在首次切换前自动备份并迁移。
 - After Denova fully exits, the complete `.denova` data directory can be moved or copied to any valid writable location on Windows, WSL, Linux, or macOS. Managed Project sessions, Game state, versions, attachments, tool artifacts, and automations continue through stable Project IDs and relative paths, with v0.3.3 indexes backed up before the first migration.
-- 字体设置改为类似 Dynamic Type 的统一离散档位：界面字号按完整层级缩放，阅读字号同步覆盖写作、游戏剧情、Agent 回复、源码编辑器、Diff 与终端。
-- Font settings now use unified Dynamic Type-style steps: interface text scales as one hierarchy, while reading size also covers Writing, Game story, Agent replies, source editors, diffs, and terminals.
-- 项目、Skill、版本 Diff 与面包屑文件树统一升级，采用一致的默认密度，并支持完整文件图标、空目录折叠、Git 状态、名称搜索与上下文菜单；项目文件树同时支持拖放整理。
-- Project, Skill, version Diff, and breadcrumb file trees now share a consistent default density, complete file icons, flattened empty directories, Git status, name search, and context menus; Project files also support drag-and-drop organization.
-- 版本管理改为可调整的历史侧栏与常驻 Diff 工作区，支持搜索和加载更早版本、按版本浏览文件，并直接恢复版本或单个文件。
-- Version Management now uses a resizable history sidebar and persistent Diff workspace, with history search and loading, per-version file browsing, and direct version or file restore.
-- 新增通用 Agent 与基于稳定 Project ID 的工作台；书籍和任意本地目录都可并行打开对话、Files、终端、阅读器与资料库。v0.3.3 Project 数据会保留源文件并自动复制迁移。
-- Added a General Agent and a stable Project-ID-based workbench. Books and arbitrary local directories can run chats and open Files, terminals, Reader, and Lore in parallel. v0.3.3 Project data is copy-migrated automatically while retaining the source files.
-- 写作页创作 Agent 支持同一本书的多个会话并行运行，并新增可隐藏的快捷会话栏；切换会话不会中断后台任务。
-- The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
-- 配置管理不再运行独立 Agent；通用与写作 Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面复用 AgentChat 的右侧管理面板、历史与恢复能力，并与工作台共享每个 Project 的同一会话列表和历史。
-- Configuration no longer runs a standalone Agent. General and Writing Agents provide the complete workflow through `/configuration`; configuration pages reuse AgentChat's right-side manager, history, and recovery while sharing the same Project conversation list and history with the workbench.
-- 写作与各配置页面提供独立的快捷指令组；用户可调整内容、顺序和显隐，并为每条指令选择填入输入框或立即发送。
-- Writing and each configuration page now have independent quick-prompt groups whose content, order, visibility, and fill-or-send behavior can be customized.
-- Agents 页面支持基于稳定运行契约创建独立的自定义主 Agent，可完整配置行为、模型与工具集、工具指导、稀疏 Skill 策略、上下文注入、checkpoint 保留偏好和委派策略，并展示实际生效的只读压缩协议；SubAgent 继续作为父 Agent 的独立委派能力，已有会话会固化完整定义并保持原行为。
-- The Agents page now creates independent custom main Agents on stable runtime contracts, with complete behavior, model and toolset, tool guidance, sparse Skill policy, context injection, checkpoint retention preferences, delegation settings, and the effective read-only compaction protocol. SubAgents remain a distinct delegated capability of parent Agents, while existing conversations preserve a complete definition snapshot and retain their original behavior.
-- 写作、游戏与 Project Agent 会话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
-- Writing, Game, and Project Agent conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
-- 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，将图片作为原生视觉输入发送给模型，并在输入区与已发送消息中提供图片预览。
-- Writing, Game, and General Agent chats now accept multiple generic files from the existing input menu, drag-and-drop, or paste. Denova stores independent copies for the Agent, sends images as native vision input, and previews images in both the composer and sent messages.
-- Agent 回复现在会在生成过程中实时呈现 Markdown、数学公式与中日韩文本排版，并以平滑动画展示新增内容。
-- Agent replies now render Markdown, math, and CJK typography during generation, with smooth animation for newly streamed content.
-- 新增 Ask、Write、Full access 安全模式；Project 外部文件读取按模式授权，写入与 Shell 工作目录仍受 Project 边界保护。
-- Added Ask, Write, and Full access safety modes. Reads outside a Project are approval-aware, while writes and shell working directories remain Project-bound.
-- 新增会话级 Goal、JavaScript `script` 编排和 Project `AGENTS.md` 指令，并将现有 `CREATOR.md` 与多 Skill 按需协作统一到所有 Project Agent，支持更长时间的自主执行。
-- Added session Goals, JavaScript `script` orchestration, and Project `AGENTS.md` instructions, while applying the existing `CREATOR.md` and on-demand multi-Skill coordination consistently across all Project Agents for longer autonomous runs.
-- 自动化改为 Project 任务，并作为普通 Writing 或 General Agent 会话执行；任务可选择每次新建会话或固定复用会话，运行历史直接在 AgentChat 中查看。
-- Automations are now Project tasks executed as ordinary Writing or General Agent conversations. Each task can create a new conversation per run or reuse one conversation, with run history opening directly in AgentChat.
+- 新增通用 Agent 与基于稳定 Project ID 的统一工作台；书籍和任意本地目录都可并行运行通用或写作会话，并共享 Files、资料库、终端、阅读器和版本历史。会话支持运行中追加 Follow Up、刷新或重启后恢复、按会话保存模型与权限，以及通过选择、拖拽或粘贴添加通用文件和原生视觉输入。
+- Added a General Agent and a unified stable Project-ID workbench where Books and arbitrary local directories can run General or Writing conversations concurrently while sharing Files, Lore, terminals, Reader, and version history. Conversations support queued follow-ups, refresh or restart recovery, per-conversation model and permission settings, generic file attachments, and native image input.
+- 配置与自动化统一进入 Project Agent 会话：通用和写作 Agent 通过 `/configuration` Skill 管理配置，各页面共享会话历史与恢复；Automation 作为普通 Project 会话运行，写作和配置页面可分别维护快捷指令组。
+- Configuration and automation now use Project Agent conversations. General and Writing Agents manage configuration through `/configuration` with shared history and recovery, Automations run as ordinary Project conversations, and Writing or configuration pages can maintain separate quick-prompt groups.
+- Agents 页面支持独立自定义主 Agent、会话 Goal、JavaScript `script` 编排、Project `AGENTS.md`、稀疏 Skill、上下文与压缩策略、委派策略以及 Ask、Write、Full access 安全模式；主 Agent 默认仍自行处理任务，仅在用户或 Skill 明确要求时并行委派，等待可被新指令安全打断。
+- The Agents page supports independent custom main Agents, session Goals, JavaScript `script` orchestration, Project `AGENTS.md`, sparse Skills, context and compaction policies, delegation policies, and Ask, Write, or Full access safety modes. Main Agents still delegate only when requested by the user or a Skill, with parallel work and interruptible waits.
 - 语言模型接入拆分为服务商预设与协议适配器，支持 OpenAI Chat Completions、Responses、Anthropic Messages、自定义兼容端点、模型发现和连接测试；思考设置统一为 `thinking_level`，模型输出上限改由模型与协议能力决定。
 - Split language-model setup into provider presets and protocol adapters, with OpenAI Chat Completions, Responses, Anthropic Messages, custom-compatible endpoints, model discovery, and connection tests. Thinking settings now use `thinking_level`, while model and protocol capabilities determine output limits.
-- 语言与图像模型配置改为“连接 + 模型”两层结构：同一 Endpoint 与 API Key 可复用于多个模型，语言模型支持从服务端列表批量添加，已完成配置默认折叠；v0.3.3 配置会在备份后自动迁移。
-- Language and image model settings now separate reusable connections from model profiles. One endpoint and API key can serve multiple models, language models support batch addition from provider discovery, completed items collapse by default, and v0.3.3 settings migrate automatically after backup.
-- 图像生成支持 OpenAI Images、xAI/Grok、火山方舟 Seedream、Google Gemini Image 与 ComfyUI Workflow；ComfyUI 默认发现用户保存的工作流，保存后运行一次即可解析，也可导入 API Format JSON；只将提示词、图片数量与尺寸绑定到生成请求，其余参数沿用工作流。自定义端点可复用协议，多图任务会保留部分成功结果。v0.3.3 图像配置会自动迁入 Profile，并在改写前备份。
-- Image generation now supports OpenAI Images, xAI/Grok, Volcengine Ark Seedream, Google Gemini Image, and ComfyUI Workflow. ComfyUI defaults to discovering user-saved workflows, which can be parsed after one run or supplied as API Format JSON; only the prompt, image count, and size are bound while all other workflow values remain unchanged. Custom endpoints can reuse protocols, and multi-image jobs preserve partial successes. v0.3.3 image settings migrate into Profiles automatically and are backed up before rewrite.
-- 工作台与创作界面进一步统一：项目页签收敛为写作、Files、资料库，支持可持久化双栏工作区；资料编辑器提供 Rich/Raw 模式、本地图片上传与评论，界面和阅读字体支持本机字体。书籍 Lore 与 Skills 迁至用户可见目录，v0.3.3 原文件保留为备份。
-- Unified the workbench and creation surfaces around Writing, Files, and Lore tabs with a persistent split workspace. Lore adds Rich/Raw editing, local image uploads, and comments, while UI and reading settings support local fonts. Book Lore and Skills move to user-visible directories, with the v0.3.3 source files retained as backups.
-- 写作页按文件类型选择编辑器：Markdown 可在文档编辑与 Monaco 源码编辑间切换，图片使用预览，JSON、JSONL 等其他文本使用 Monaco，并共享自动保存与冲突保护。
-- Writing now selects editors by file type: Markdown can switch between the document editor and Monaco source editing, images use preview, and other text such as JSON and JSONL uses Monaco with the same autosave and conflict protection.
-- 工作台改为统一且可自定义的一级导航：写作与游戏成为并列入口，菜单支持调整顺序和显隐；资料库、方案预设和版本管理不再按创作入口重复。方案预设统一展示全部类型，并标明通用、游戏专用或写作专用。
-- The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
-- 用户级方案统一收纳到 `.denova/presets`；v0.3.3 的叙事、图像与游戏方案目录会在保留原始备份后自动迁移。
-- User-wide presets now live under `.denova/presets`; v0.3.3 narrative, image, and Game preset directories migrate automatically after preserving their originals.
-- 新增“游戏规划”：内置经典冒险、主线长篇、角色关系、悬念恐怖、单元开放五种规划方式，也可复制后维护自定义模板；Game Agent 将规划作为面向未来的冒险书与故事细纲，按故事开关并只更新受影响章节，避免复述历史、状态或推荐选项。
-- Added Game Planning with five planning approaches—Classic Adventure, Directed Long-form, Character and Relationships, Mystery and Dread, and Episodic and Emergent—plus copyable custom templates. The Game Agent maintains a future-facing adventure book and detailed outline per story, updating only affected sections without duplicating history, state, or recommended choices.
-- 新故事线采用单页开局流程，可从资料库全部角色中选择主角（“主角”标签只作默认推荐，未命中时由 Game Agent 开局识别）或自定义角色，并在生成首幕前明确选择开场来源、模型配置、思考强度、规划模板及完整初始化选项；叙事风格、事件包、TRPG 检定、状态系统和图像方案由故事直接选择，不再由组合预设继承。
-- New Game stories use a single-page start flow for choosing any Lore character as the protagonist (the protagonist tag is only the default recommendation, with opening-time Game Agent identification when none matches) or defining a custom character, with an explicit opening source, model profile, thinking level, Planning Template, and full initialization options before the first scene is generated. Stories now select narrative style, event packages, TRPG Checks, State Systems, and image presets directly instead of inheriting them from a composition preset.
-- 右侧故事控制台重组为总览、调校与路线；当前分支规划可展开预览并直接编辑，保存带版本冲突保护，且不会改动剧情回合、状态或推荐选项；故事级规划模板、Game Agent 叙事、判定、图像与状态设置也集中于此。
-- The right-side Story Console is reorganized into Overview, Tuning, and Routes. The current branch plan expands into an inline preview/editor with revision-conflict protection and never changes story turns, state, or recommended choices; story-level planning, narration, checks, images, and state settings live alongside it.
-- 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在游戏控制台集中预览、切换和管理故事线。
-- Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Game Console.
-- Agent 配置迁入受管 Agents Project，并复用普通 Project 的对话、Files 与版本历史；Agents 页保留原有按 runtime 分组的主 Agent、Custom Agent 与独立 SubAgent 管理，General Agent 可按需读取跨 Project 的只读 Trajectory 证据来维护 Profile。Developer Mode 继续提供 Trajectory 查看与诊断导出。
-- Agent configuration now lives in a managed Agents Project and reuses ordinary Project chats, Files, and version history. The Agents page retains its runtime-grouped main Agents, Custom Agents, and distinct SubAgent management, while its General Agent can read cross-Project, read-only Trajectory evidence on demand when maintaining Profiles. Developer Mode continues to provide Trajectory inspection and diagnostic export.
+- 语言与图像模型配置改为可复用的“连接 + 模型”结构；语言模型支持服务端发现和批量添加，图像生成支持 OpenAI Images、xAI/Grok、火山方舟 Seedream、Google Gemini Image 与 ComfyUI Workflow，多图任务会保留部分成功结果，v0.3.3 配置会在备份后迁移。
+- Language and image settings now use reusable connections plus model profiles. Language models support provider discovery and batch addition, while image generation supports OpenAI Images, xAI/Grok, Volcengine Ark Seedream, Google Gemini Image, and ComfyUI Workflow with partial success preserved for multi-image jobs. v0.3.3 settings migrate after backup.
+- 工作台统一为可排序、可隐藏的一级导航与可持久化双栏布局；文件树、面包屑、Skill 与版本 Diff 共享搜索、Git 状态、文件图标和上下文操作，版本管理支持历史搜索、按版本浏览及恢复整个版本或单个文件，界面和阅读字体按统一档位缩放并支持本机字体。
+- The workbench now uses reorderable top-level navigation and persistent split layouts. File, breadcrumb, Skill, and version trees share search, Git status, icons, and context actions; Version Management supports history search, per-version browsing, and full-version or single-file restore; UI and reading typography scale through unified steps with local-font support.
+- 写作、Files 与资料库按文件类型提供文档、Monaco、图片预览及 Rich/Raw 编辑，并共享自动保存与冲突保护；Book Lore、Skills 与用户方案迁至用户可见目录或 `.denova/presets`，v0.3.3 原文件在迁移时保留。
+- Writing, Files, and Lore now select document, Monaco, image preview, or Rich/Raw editors by file type with shared autosave and conflict protection. Book Lore, Skills, and user presets move into visible directories or `.denova/presets`, while v0.3.3 source files are retained during migration.
+- 游戏新增五种内置规划方式和自定义规划模板、单页开局、集中式故事控制台，以及从任意已保存 AI 回复创建和管理分支；故事直接保存叙事、事件、检定、状态与图像选择，不再继承组合预设。
+- Game adds five built-in planning approaches and custom Planning Templates, a single-page start flow, a consolidated Story Console, and branch creation from any saved AI reply. Stories now store narrative, event, check, state, and image selections directly instead of inheriting a composition preset.
+- Agent 配置迁入受管 Agents Project 并复用普通 Project 的会话、Files 与版本历史；General Agent 可按需读取跨 Project 的只读 Trajectory 证据维护 Profile，Developer Mode 继续提供 Trajectory 查看与诊断导出。
+- Agent configuration now lives in a managed Agents Project with ordinary Project conversations, Files, and version history. The General Agent can read cross-Project, read-only Trajectory evidence on demand when maintaining Profiles, while Developer Mode retains Trajectory inspection and diagnostic export.
 - 终端启动方式改为用户级可排序注册表，并新增 macOS/Linux 一键安装器和 Windows PowerShell 快速重启脚本。
 - Terminal launchers now use a user-level ordered registry, with a macOS/Linux installer and a native Windows PowerShell quick-restart script.
 
@@ -77,45 +59,25 @@ Denova records only major user-visible features, important compatibility or data
 
 - v0.3.3 的游戏预设不再作为运行时组合配置。故事首次打开时会先备份原故事日志和引用的旧预设，再保留当时实际生效的叙事、事件、检定、状态、图像及规则展示配置，并切换到默认规划模板；旧预设中的自定义规划 Markdown 不自动转换，原内容保留在迁移备份中。
 - v0.3.3 Game Presets no longer act as runtime composition settings. When a story is first opened, Denova backs up its journal and referenced legacy preset, preserves the effective narrative, event, check, state, image, and rule-visibility selections on the story, and selects the default Planning Template. Custom planning Markdown is not converted automatically and remains available in the migration backup.
-- v0.3.3 的独立 Config Manager 会话和专属设置会原样保留，但不再参与运行、展示或自动合并；后续配置对话写入对应 Project 的 Agent 会话存储，并显示在该 Project 的统一会话列表中。
-- Standalone v0.3.3 Config Manager sessions and dedicated settings remain untouched but no longer participate in runtime behavior, appear in the UI, or merge automatically; future configuration conversations use the corresponding Project's Agent session storage and appear in that Project's shared conversation list.
-- v0.3.3 的用户级全局 Automation 任务文件会保留，但不再展示、触发或执行；需要继续使用的任务须在对应 Project 下重新创建。
-- User-level global Automation task files from v0.3.3 are retained but are no longer displayed, triggered, or executed. Tasks that remain needed must be recreated under the relevant Project.
-- v0.3.3 中的 `enable_thinking`、`reasoning_effort`、`max_output_tokens`、`tool_result_retention_enabled` 和低层 Cleanup 参数不再生效；升级后需重新选择 `thinking_level` 与当前上下文选项，输出上限则改由模型能力决定。
-- The v0.3.3 `enable_thinking`, `reasoning_effort`, `max_output_tokens`, `tool_result_retention_enabled`, and low-level Cleanup settings no longer take effect. Select `thinking_level` and the current context options again after upgrading; model capabilities now determine output limits.
-- v0.3.3 的 `labs.continual_learning` 开关不再生效；用户级有效 Agent 设置会先备份原配置，再迁入 `.denova/agents` Profile 文件，Project 覆盖仍保留在对应 Project Store 中。
-- The v0.3.3 `labs.continual_learning` switch no longer takes effect. Active user-level Agent settings are backed up before migration into `.denova/agents` Profile files, while Project overrides remain in their corresponding Project Store.
+- v0.3.3 的独立 Config Manager 会话、专属设置和用户级全局 Automation 任务文件会保留，但不再展示、触发或参与运行；后续配置对话使用对应 Project 的统一会话列表，需要继续使用的 Automation 须在对应 Project 下重新创建。
+- Standalone v0.3.3 Config Manager sessions, dedicated settings, and user-level global Automation files are retained but no longer displayed, triggered, or used at runtime. Future configuration conversations use the Project's shared conversation list, and Automations that remain needed must be recreated in that Project.
+- v0.3.3 的旧思考、输出上限、工具结果保留、低层 Cleanup 与 `labs.continual_learning` 设置不再生效；升级后需重新选择当前选项。有效用户级 Agent 设置会在备份后迁入 `.denova/agents` Profile，Project 覆盖继续保留。
+- Legacy v0.3.3 thinking, output-limit, tool-result retention, low-level Cleanup, and `labs.continual_learning` settings no longer take effect and must be reselected where applicable. Active user-level Agent settings are backed up before migration into `.denova/agents` Profiles, while Project overrides remain intact.
 
 ### Major fixes / 重要修复
 
-- 修复游戏检定因 Agent 重复回传故事骰点修正而错误抬高 `target` 的问题；规则模板 `modifier` 改由后端按 `template_id` 读取，故事调校不再暴露给 Game Agent，大成功与大失败仅由自然 20/1 触发。
-- Fixed Game checks incorrectly raising `target` when the Agent repeated story roll tuning. Rule-template `modifier` values are now resolved by the backend from `template_id`, story tuning is hidden from the Game Agent, and critical success or failure triggers only on a natural 20/1.
-- 修复数据目录绝对路径参与 Project 与会话身份，导致重启或搬迁后历史看似消失、受管 Project 被重复识别的问题。
-- Fixed absolute data-directory paths participating in Project and session identity, which could make history appear missing or register duplicate managed Projects after restart or relocation.
-- 修复跨轮、工具调用边界或重启后丢失推理上下文的问题；写作与游戏现在会安全保留并复用完整的 provider continuation。
-- Fixed reasoning context being lost across turns, tool-call boundaries, or restarts; Writing and Game now safely retain and reuse the complete provider continuation.
-- 修复 Provider Token 校准可能下调本地保守估算、导致长会话过晚清理上下文的问题；真实用量现在只会向上修正上下文压力。
-- Fixed provider token calibration lowering conservative local estimates and delaying context cleanup in long sessions; observed usage now only raises projected pressure.
-- 修复部分 v0.3.3 游戏故事升级后因旧上下文事件而无法打开的问题；迁移会先完整备份原始 JSONL，再原子重连有效历史。
-- Fixed some v0.3.3 Game stories failing to open after upgrade because of obsolete context events. Migration now backs up the original JSONL before atomically reconnecting valid history.
-- 修复写作、游戏和工作台长任务在刷新、断线重连、中断或继续执行后可能丢失或重复消息、工具结果和已提交内容的问题。
-- Fixed Writing, Game, and Workspace runs losing or duplicating messages, tool results, or committed content after refresh, reconnect, interruption, or continuation.
-- 主动中断写作或游戏流式会话现在会进入可恢复暂停，不再显示为错误；可直接输入新指令，或在空输入框中点击继续生成。
-- User-initiated interruption of Writing or Game streams is now a resumable pause instead of an error; enter a new instruction or click Resume in an empty composer.
-- 修复游戏回合重生成失败后再次重试会丢失原回合定位、把原提示误提交为新回合的问题。
-- Fixed retrying a failed Game turn regeneration losing its target and submitting the original prompt as a new turn.
-- 修复游戏生成中修改故事控制项会中断当前回合并丢弃未落盘正文的问题；普通调校从下一回合生效，主角与状态结构改动须在当前回合结束后进行。
-- Fixed story-control changes aborting an active Game turn and discarding uncommitted prose. Ordinary tuning now takes effect on the next turn, while protagonist and state-structure changes require the current turn to finish.
+- 修复数据目录绝对路径参与 Project 与会话身份，以及部分 v0.3.3 游戏故事含旧上下文事件的问题；搬迁或升级后不再出现历史消失、重复 Project 或故事无法打开，迁移会先备份原始数据再原子更新。
+- Fixed absolute data-directory paths participating in Project and session identity, along with obsolete context events in some v0.3.3 Game stories. Relocation or upgrade no longer causes missing history, duplicate Projects, or stories that fail to open, and migrations back up source data before atomic updates.
+- 修复跨轮、工具调用、刷新、重连、中断、继续或重启后推理上下文、消息、工具结果和已提交内容丢失或重复的问题；主动中断现在进入可恢复暂停，Token 校准不会再下调保守上下文估算。
+- Fixed reasoning context, messages, tool results, or committed content being lost or duplicated across turns, tool calls, refresh, reconnect, interruption, continuation, or restart. User interruption now creates a resumable pause, and token calibration no longer lowers conservative context estimates.
 - 修复写作与资料编辑中的自动保存、外部修改合并、评论消费和版本恢复问题，避免草稿被覆盖或已提交反馈重复出现。
 - Fixed autosave, external-edit merging, comment consumption, and version restoration in Writing and Lore, preventing draft overwrites and submitted feedback from reappearing.
-- 修复游戏新故事空回合崩溃、历史回合跳转错位、回合数错误及刷新后重复回放已结算剧情的问题。
-- Fixed empty-turn crashes in new Game stories, incorrect historical-turn navigation and counts, and replay of already settled story content after refresh.
+- 修复游戏检定重复应用故事修正、重生成重试丢失原回合、生成中调校丢弃正文，以及空回合崩溃、历史跳转和刷新后重复回放等问题；规则模板修正由后端解析，大成功与大失败仅由自然 20/1 触发。
+- Fixed Game checks applying story tuning twice, regeneration retries losing their target, tuning during generation discarding prose, empty-turn crashes, incorrect history navigation, and settled content replaying after refresh. Rule-template modifiers are resolved by the backend, and critical success or failure requires a natural 20 or 1.
 - 修复内置终端退出、重连、主题和 PTY 生命周期问题，交互式 CLI 退出后可可靠返回原工作目录的 Shell。
 - Fixed embedded-terminal exit, reconnect, theme, and PTY lifecycle issues so interactive tools reliably return to the shell in the original working directory.
-- 修复 DeepSeek、MiniMax、Claude 等模型及游戏回合的输出上限被错误压低的问题，已知模型按其能力使用正确上限。
-- Fixed incorrectly low output limits for DeepSeek, MiniMax, Claude, and Game turns; known models now use limits derived from their capabilities.
-- 修复 DeepSeek 思考模式在工具结果投影后继续运行或启动 SubAgent 时可能因未回传 `reasoning_content` 而失败的问题。
-- Fixed DeepSeek thinking-mode runs failing after tool-result projection or SubAgent startup because `reasoning_content` was not replayed.
+- 修复 DeepSeek、MiniMax、Claude 等模型及游戏回合输出上限过低，以及 DeepSeek 思考模式在工具结果投影或启动 SubAgent 后未回传 `reasoning_content` 而失败的问题。
+- Fixed incorrectly low output limits for DeepSeek, MiniMax, Claude, and Game turns, plus DeepSeek thinking-mode failures when `reasoning_content` was not replayed after tool-result projection or SubAgent startup.
 - 升级 Go、`go-git` 与 `x/image` 安全基线，修复标准库、Git 路径/符号链接和 WebP 解码相关漏洞。
 - Upgraded Go, `go-git`, and `x/image` security baselines to address standard-library, Git path/symlink, and WebP decoding vulnerabilities.
 

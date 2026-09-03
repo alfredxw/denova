@@ -15,7 +15,8 @@
     "test:unit:watch": "vitest",
     "test:playwright": "playwright test",
     "test:browser": "playwright test --project=browser",
-    "test:e2e": "playwright test --project=e2e"
+    "test:e2e": "playwright test --project=e2e",
+    "smoke:production": "playwright test --config playwright.production.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
