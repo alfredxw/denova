@@ -41,22 +41,13 @@ type OutputCommitRequest struct {
 	Message Message
 }
 
-type ContextCommitKind string
-
-const (
-	ContextCommitState          ContextCommitKind = "context_state"
-	ContextCommitToolBatch      ContextCommitKind = "tool_batch"
-	ContextCommitTaskCompletion ContextCommitKind = "task_completion"
-)
-
 // ContextCommitRequest appends one model-visible, UI-hidden message batch to
-// the same canonical lane as accepted input and final output. Kind and Ordinal
-// make retries deterministic within one Agent cycle.
+// the same canonical lane as accepted input and final output. Sequence makes
+// retries deterministic within one Agent cycle; the messages define the batch
+// shape so callers cannot label content inconsistently.
 type ContextCommitRequest struct {
 	Identity CommitIdentity
-	Kind     ContextCommitKind
-	Ordinal  int
-	Hash     string
+	Sequence int
 	Messages []Message
 }
 
@@ -145,30 +136,21 @@ func (adapter CanonicalAdapterFuncs) ApplyEffects(ctx context.Context, requests 
 	return adapter.ApplyEffectsFn(ctx, requests)
 }
 
-func canonicalContextHash(kind ContextCommitKind, ordinal int, messages []*Message, adapter CapabilityIdentity) (string, error) {
-	if err := adapter.validate("Canonical"); err != nil {
-		return "", err
+// ValidateContextCommitMessages derives and validates the one supported batch
+// shape from its messages. A context-state batch, a complete tool batch, and a
+// delegated task-completion batch are deliberately mutually exclusive.
+func ValidateContextCommitMessages(messages []*Message) error {
+	if len(messages) == 0 || messages[0] == nil {
+		return errors.New("canonical context commit requires messages")
 	}
-	if ordinal < 0 || len(messages) == 0 {
-		return "", errors.New("canonical context commit requires a non-negative ordinal and messages")
-	}
-	if err := validateCanonicalContextMessages(kind, messages); err != nil {
-		return "", err
-	}
-	return hashCanonical(struct {
-		Version  uint16
-		Adapter  CapabilityIdentity
-		Kind     ContextCommitKind
-		Ordinal  int
-		Messages []*Message
-	}{Version: 1, Adapter: adapter, Kind: kind, Ordinal: ordinal, Messages: cloneMessages(messages)})
-}
-
-func validateCanonicalContextMessages(kind ContextCommitKind, messages []*Message) error {
-	switch kind {
-	case ContextCommitState:
+	first := messages[0]
+	switch {
+	case first.Role == Assistant && len(first.ToolCalls) > 0:
+		return validateCanonicalToolBatch(messages)
+	case first.Role == User && IsContextStateMessage(first):
 		for index, message := range messages {
-			if message == nil || message.Role != User || !IsContextStateMessage(message) {
+			if message == nil || message.Role != User || !IsContextStateMessage(message) || message.TaskCompletion != nil ||
+				len(message.ToolCalls) != 0 || strings.TrimSpace(message.ToolCallID) != "" {
 				return fmt.Errorf("canonical context state message %d is invalid", index)
 			}
 		}
@@ -176,9 +158,7 @@ func validateCanonicalContextMessages(kind ContextCommitKind, messages []*Messag
 			return fmt.Errorf("validate canonical context state: %w", err)
 		}
 		return nil
-	case ContextCommitToolBatch:
-		return validateCanonicalToolBatch(messages)
-	case ContextCommitTaskCompletion:
+	case first.Role == User && first.TaskCompletion != nil:
 		for index, message := range messages {
 			if message == nil || message.Role != User || message.TaskCompletion == nil ||
 				strings.TrimSpace(message.TaskCompletion.CompletionID) == "" ||
@@ -191,27 +171,20 @@ func validateCanonicalContextMessages(kind ContextCommitKind, messages []*Messag
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported canonical context commit kind %q", kind)
+		return errors.New("canonical context messages do not form a supported batch")
 	}
 }
 
 func validateCanonicalToolBatch(messages []*Message) error {
-	if len(messages) < 2 || messages[0] == nil || messages[0].Role != Assistant || len(messages[0].ToolCalls) == 0 {
+	if len(messages) < 2 {
 		return errors.New("canonical tool batch requires one assistant call message and its results")
+	}
+	pending, err := validateCanonicalToolCallMessage(messages[0])
+	if err != nil {
+		return err
 	}
 	if len(messages) != len(messages[0].ToolCalls)+1 {
 		return errors.New("canonical tool batch must contain exactly one result per tool call")
-	}
-	pending := make(map[string]struct{}, len(messages[0].ToolCalls))
-	for _, call := range messages[0].ToolCalls {
-		id := strings.TrimSpace(call.ID)
-		if id == "" || strings.TrimSpace(call.Function.Name) == "" {
-			return errors.New("canonical tool batch contains an invalid tool call")
-		}
-		if _, duplicate := pending[id]; duplicate {
-			return fmt.Errorf("canonical tool batch repeats tool call %q", id)
-		}
-		pending[id] = struct{}{}
 	}
 	for index, message := range messages[1:] {
 		if message == nil || message.Role != ToolRole || len(message.ToolCalls) != 0 || message.TaskCompletion != nil {
@@ -229,19 +202,40 @@ func validateCanonicalToolBatch(messages []*Message) error {
 	return nil
 }
 
-// ValidateContextCommit verifies that a host received the exact context batch
-// produced by Agent. Hosts call it before applying their own idempotent write.
-func ValidateContextCommit(request ContextCommitRequest, adapter CapabilityIdentity) error {
+func validateCanonicalToolCallMessage(message *Message) (map[string]struct{}, error) {
+	if message == nil || message.Role != Assistant || len(message.ToolCalls) == 0 ||
+		strings.TrimSpace(message.ToolCallID) != "" || message.TaskCompletion != nil {
+		return nil, errors.New("canonical tool batch requires an assistant tool-call message")
+	}
+	pending := make(map[string]struct{}, len(message.ToolCalls))
+	for _, call := range message.ToolCalls {
+		id := strings.TrimSpace(call.ID)
+		if id == "" || strings.TrimSpace(call.Function.Name) == "" {
+			return nil, errors.New("canonical tool batch contains an invalid tool call")
+		}
+		if err := ValidateToolArgumentsJSON(call.Function.Arguments); err != nil {
+			return nil, fmt.Errorf("canonical tool call %q arguments: %w", id, err)
+		}
+		if _, duplicate := pending[id]; duplicate {
+			return nil, fmt.Errorf("canonical tool batch repeats tool call %q", id)
+		}
+		pending[id] = struct{}{}
+	}
+	return pending, nil
+}
+
+// ValidateContextCommit verifies an Agent-owned context sequence before a host
+// applies its own idempotent write.
+func ValidateContextCommit(request ContextCommitRequest) error {
+	if request.Identity.Stage != CommitContext {
+		return errors.New("canonical context commit has a non-context identity")
+	}
+	if request.Sequence < 0 {
+		return errors.New("canonical context commit requires a non-negative sequence")
+	}
 	messages := make([]*Message, len(request.Messages))
 	for index := range request.Messages {
 		messages[index] = request.Messages[index].Clone()
 	}
-	want, err := canonicalContextHash(request.Kind, request.Ordinal, messages, adapter)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(request.Hash) != want {
-		return errors.New("canonical context commit hash does not match messages")
-	}
-	return nil
+	return ValidateContextCommitMessages(messages)
 }

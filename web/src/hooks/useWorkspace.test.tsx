@@ -750,6 +750,36 @@ describe('useWorkspace', () => {
     expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/new|new.md|新作品')
   })
 
+  it('工作区切换时只发布路径与 Project ID 完整匹配的 canonical identity', async () => {
+    const switchedWorkspace = deferred<{ workspace: string; project_id: string; has_state: boolean }>()
+    apiMock.getCurrentWorkspace.mockResolvedValueOnce({ workspace: '/books/old', project_id: 'project-old', has_state: true })
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    const observedIdentities: string[] = []
+    render(<WorkspaceHarness autoRefreshEnabled={false} onChange={(value) => {
+      workspace = value
+      observedIdentities.push(`${value.workspace}|${value.projectId}`)
+    }} />)
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/old|||recent|project-old'))
+
+    apiMock.getCurrentWorkspace.mockReturnValueOnce(switchedWorkspace.promise)
+    let refreshRequest!: Promise<void>
+    act(() => {
+      refreshRequest = workspace!.refreshAll()
+    })
+    await waitFor(() => expect(apiMock.getCurrentWorkspace).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/old|||recent|project-old')
+
+    await act(async () => {
+      switchedWorkspace.resolve({ workspace: '/books/new', project_id: 'project-new', has_state: true })
+      await refreshRequest
+    })
+
+    expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/new|||recent|project-new')
+    expect(observedIdentities).not.toContain('/books/new|')
+    expect(observedIdentities).not.toContain('/books/old|project-new')
+  })
+
   it('只应用最后一次 current workspace 请求', async () => {
     const oldWorkspace = deferred<{ workspace: string; project_id: string; has_state: boolean }>()
     const newWorkspace = deferred<{ workspace: string; project_id: string; has_state: boolean }>()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"denova/config"
@@ -324,6 +325,118 @@ func TestPublicAgentRuntimeCommitsAccumulatedGameNarrativeWhenFinalModelMessageI
 		if event.Type == "agent_cycle_started" && event.DataString("delivery") != "start_turn" {
 			t.Fatalf("public Game cycle delivery = %#v", event.Data)
 		}
+	}
+}
+
+func TestPublicAgentRuntimeRecoversMalformedGameToolArguments(t *testing.T) {
+	ctx := context.Background()
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title: "public Agent malformed Game tool arguments", StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewConversation(
+		store, t.TempDir(), workspace, story.ID, "main", "推开石门", 800,
+		&config.Config{Workspace: workspace},
+	)
+	submitTestTurnResult(t, conversation, "推开石门", "石门已经开启")
+
+	var executions atomic.Int32
+	tool, err := agent.InferTool("submit_interactive_turn", "Submit the completed test turn", func(context.Context, struct{}) (string, error) {
+		executions.Add(1)
+		return `{"submitted":true}`, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor := agent.ToolDescriptor{
+		Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
+		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
+		Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
+		ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 4 << 10,
+	}
+	toolset, err := agent.StaticToolsIdentified(
+		agent.CapabilityIdentity{Kind: "tools.test.public-game-malformed-arguments", Version: 1},
+		agent.ToolDefinition{Tool: tool, Descriptor: descriptor},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &publicGameSequenceModel{responses: []*agent.Message{
+		agent.AssistantMessage("石门缓缓开启。", []agent.ToolCall{{
+			ID: "invalid-submit", Type: "function",
+			Function: agent.FunctionCall{Name: "submit_interactive_turn", Arguments: `[`},
+		}}),
+		agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "corrected-submit", Type: "function",
+			Function: agent.FunctionCall{Name: "submit_interactive_turn", Arguments: `{}`},
+		}}),
+		agent.AssistantMessage("", nil),
+	}}
+	runtime := agentexecution.NewEphemeralRuntime()
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	request := agentchat.ChatRequest{CommandID: "public-game-malformed-start", Message: "推开石门", Locale: "zh-CN"}
+	options := agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: "project-test", StoryID: story.ID, BranchID: "main",
+		Workspace: workspace, TaskID: "public-game-malformed-task", RootAgentName: "game",
+	}
+	var events []agentrun.Event
+	operation, err := runtime.Start(ctx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			Definition: agent.Definition{
+				Key: "denova.test.public-game-malformed", Name: "game", Model: model,
+				ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-malformed", Version: 1},
+				Permission:    agentpermission.FullAccess(), Tools: toolset,
+			},
+			Conversation: conversation, Request: request, Options: options,
+		},
+		Emit: func(event agentrun.Event) { events = append(events, event) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome := operation.Wait(ctx)
+	if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != "石门缓缓开启。" {
+		t.Fatalf("public Game malformed-arguments outcome = %#v", outcome)
+	}
+	if got := executions.Load(); got != 1 {
+		t.Fatalf("submit tool executions = %d, want only the corrected call", got)
+	}
+	for _, event := range events {
+		if event.Type == "error" {
+			t.Fatalf("public Game malformed-arguments recovery emitted error = %#v", event)
+		}
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var malformedCall *interactive.ModelContextToolCall
+	var malformedResult *interactive.ModelContextMessage
+	for turnIndex := range snapshot.Turns {
+		for messageIndex := range snapshot.Turns[turnIndex].ModelContextMessages {
+			message := &snapshot.Turns[turnIndex].ModelContextMessages[messageIndex]
+			for callIndex := range message.ToolCalls {
+				if message.ToolCalls[callIndex].ID == "invalid-submit" {
+					malformedCall = &message.ToolCalls[callIndex]
+				}
+			}
+			if message.ToolCallID == "invalid-submit" {
+				malformedResult = message
+			}
+		}
+	}
+	if malformedCall == nil || malformedCall.Function.Arguments != `{}` {
+		t.Fatalf("canonical malformed Game call = %#v", malformedCall)
+	}
+	if malformedResult == nil || malformedResult.ToolResult == nil ||
+		malformedResult.ToolResult.SyntheticReason != agent.ToolSyntheticInvalidArguments ||
+		!strings.Contains(malformedResult.Content, `"received_arguments":"["`) {
+		t.Fatalf("canonical malformed Game result = %#v", malformedResult)
 	}
 }
 

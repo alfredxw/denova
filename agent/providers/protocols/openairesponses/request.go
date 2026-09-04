@@ -171,10 +171,10 @@ func replayResponseOutput(message *agent.Message, config providers.ModelConfig) 
 	// resurrect a removed function_call without its function_call_output. Strict
 	// Responses endpoints reject that transcript and would turn a recoverable
 	// tool error into a terminal model error.
-	retainedToolCalls := make(map[string]struct{}, len(message.ToolCalls))
+	retainedToolCalls := make(map[string]agent.ToolCall, len(message.ToolCalls))
 	for _, call := range message.ToolCalls {
 		if callID := strings.TrimSpace(call.ID); callID != "" {
-			retainedToolCalls[callID] = struct{}{}
+			retainedToolCalls[callID] = call
 		}
 	}
 	items := make([]responses.ResponseInputItemUnionParam, 0, len(rawItems))
@@ -186,13 +186,26 @@ func replayResponseOutput(message *agent.Message, config providers.ModelConfig) 
 		if err := json.Unmarshal(raw, &identity); err != nil {
 			return nil, true, fmt.Errorf("decode stored Responses output item %d identity: %w", index, err)
 		}
+		projected := append(json.RawMessage(nil), raw...)
 		if identity.Type == "function_call" {
-			if _, retained := retainedToolCalls[strings.TrimSpace(identity.CallID)]; !retained {
+			call, retained := retainedToolCalls[strings.TrimSpace(identity.CallID)]
+			if !retained {
 				continue
+			}
+			var item map[string]any
+			if err := json.Unmarshal(raw, &item); err != nil {
+				return nil, true, fmt.Errorf("decode stored Responses function call %d: %w", index, err)
+			}
+			item["call_id"] = call.ID
+			item["name"] = call.Function.Name
+			item["arguments"] = call.Function.Arguments
+			projected, err = json.Marshal(item)
+			if err != nil {
+				return nil, true, fmt.Errorf("project stored Responses function call %d: %w", index, err)
 			}
 		}
 		var validated responses.ResponseInputItemUnionParam
-		if err := json.Unmarshal(raw, &validated); err != nil {
+		if err := json.Unmarshal(projected, &validated); err != nil {
 			return nil, true, fmt.Errorf("decode stored Responses output item %d: %w", index, err)
 		}
 		// Output and input message variants share the same `type: message`
@@ -200,7 +213,7 @@ func replayResponseOutput(message *agent.Message, config providers.ModelConfig) 
 		// variant and can silently discard output-only content parts, IDs, status,
 		// and phase. Validate the durable JSON above, then use the SDK's supported
 		// raw override so stateless continuation replay remains byte-for-byte exact.
-		items = append(items, param.Override[responses.ResponseInputItemUnionParam](append(json.RawMessage(nil), raw...)))
+		items = append(items, param.Override[responses.ResponseInputItemUnionParam](projected))
 	}
 	return items, true, nil
 }

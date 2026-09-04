@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-func TestCanonicalContextHashValidatesEveryBatchKind(t *testing.T) {
-	identity := CapabilityIdentity{Kind: "test.canonical", Version: 1}
+func TestValidateContextCommitDerivesEveryBatchShape(t *testing.T) {
 	state := newContextStateMessage(
 		testContextStateFragment("revision-1", "workspace"),
 		strings.Repeat("a", 64),
@@ -24,16 +23,19 @@ func TestCanonicalContextHashValidatesEveryBatchKind(t *testing.T) {
 
 	valid := []struct {
 		name     string
-		kind     ContextCommitKind
 		messages []*Message
 	}{
-		{name: "state", kind: ContextCommitState, messages: []*Message{state}},
-		{name: "tool batch", kind: ContextCommitToolBatch, messages: []*Message{call, result}},
-		{name: "task completion", kind: ContextCommitTaskCompletion, messages: []*Message{completion}},
+		{name: "state", messages: []*Message{state}},
+		{name: "tool batch", messages: []*Message{call, result}},
+		{name: "task completion", messages: []*Message{completion}},
 	}
 	for _, test := range valid {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := canonicalContextHash(test.kind, 0, test.messages, identity); err != nil {
+			request := ContextCommitRequest{
+				Identity: CommitIdentity{Stage: CommitContext}, Sequence: 0,
+				Messages: messageValues(test.messages),
+			}
+			if err := ValidateContextCommit(request); err != nil {
 				t.Fatalf("valid canonical context rejected: %v", err)
 			}
 		})
@@ -41,20 +43,42 @@ func TestCanonicalContextHashValidatesEveryBatchKind(t *testing.T) {
 
 	invalid := []struct {
 		name     string
-		kind     ContextCommitKind
 		messages []*Message
 	}{
-		{name: "unknown kind", kind: ContextCommitKind("unknown"), messages: []*Message{state}},
-		{name: "state carrying ordinary user input", kind: ContextCommitState, messages: []*Message{UserMessage("request")}},
-		{name: "tool batch missing result", kind: ContextCommitToolBatch, messages: []*Message{call}},
-		{name: "tool batch mismatched result", kind: ContextCommitToolBatch, messages: []*Message{call, ToolMessage(TextToolResult("complete"), "call-2")}},
-		{name: "task completion without identity", kind: ContextCommitTaskCompletion, messages: []*Message{UserMessage("child result")}},
+		{name: "ordinary user input", messages: []*Message{UserMessage("request")}},
+		{name: "tool batch missing result", messages: []*Message{call}},
+		{name: "tool batch mismatched result", messages: []*Message{call, ToolMessage(TextToolResult("complete"), "call-2")}},
+		{name: "task completion without identity", messages: []*Message{UserMessage("child result")}},
+		{name: "mixed state and completion", messages: []*Message{state, completion}},
 	}
 	for _, test := range invalid {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := canonicalContextHash(test.kind, 0, test.messages, identity); err == nil {
+			if err := ValidateContextCommitMessages(test.messages); err == nil {
 				t.Fatal("invalid canonical context was accepted")
 			}
 		})
 	}
+}
+
+func TestValidateContextCommitRejectsInvalidProtocolIdentity(t *testing.T) {
+	message := UserMessage("child result")
+	message.TaskCompletion = &TaskCompletionMessageMeta{
+		CompletionID: "completion-1", Author: "researcher", Recipient: "parent",
+	}
+	for _, request := range []ContextCommitRequest{
+		{Identity: CommitIdentity{Stage: CommitOutput}, Sequence: 0, Messages: messageValues([]*Message{message})},
+		{Identity: CommitIdentity{Stage: CommitContext}, Sequence: -1, Messages: messageValues([]*Message{message})},
+	} {
+		if err := ValidateContextCommit(request); err == nil {
+			t.Fatal("invalid context commit identity was accepted")
+		}
+	}
+}
+
+func messageValues(messages []*Message) []Message {
+	values := make([]Message, len(messages))
+	for index, message := range messages {
+		values[index] = *message.Clone()
+	}
+	return values
 }

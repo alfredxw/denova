@@ -19,7 +19,7 @@ export interface StorySummary {
   reply_target_chars: number
   choice_count: number
   image_settings?: StoryImageSettings
-  check_settings?: StoryCheckSettings
+  check_settings?: Partial<StoryCheckSettings>
   opening: StoryOpeningConfig
   state_schema_policy?: StoryStateSchemaPolicy
   created_at: string
@@ -797,8 +797,7 @@ export interface ModelContextBatchEvent {
   agent_command_id: string
   agent_operation_id: string
   agent_cycle: number
-  batch_ordinal: number
-  batch_hash: string
+  sequence: number
   messages: ModelContextMessage[]
 }
 

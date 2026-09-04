@@ -111,9 +111,7 @@ type contextBatchRecord struct {
 	Type            string               `json:"type"`
 	CreatedAt       time.Time            `json:"created_at"`
 	Identity        DomainCommitIdentity `json:"identity"`
-	Kind            string               `json:"kind"`
-	Ordinal         int                  `json:"ordinal"`
-	Hash            string               `json:"hash"`
+	Sequence        int                  `json:"sequence"`
 	ContextRevision uint64               `json:"context_revision"`
 	Messages        []agent.Message      `json:"messages"`
 }

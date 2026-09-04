@@ -204,6 +204,61 @@ describe('NewStorySetupPanel', () => {
     expect(screen.queryByRole('heading', { name: '回合判定' })).not.toBeInTheDocument()
   })
 
+  it('restores every check default when a released story summary omits zero values', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    const story: StorySummary = {
+      id: 'released-story',
+      title: '雾港旧事',
+      title_source: 'pending',
+      origin: '',
+      protagonist: { mode: 'lore', name: '林川', profile: loreCharacter.content, source_lore_item_id: loreCharacter.id },
+      story_teller_id: teller.id,
+      planning_template_id: planningTemplate.id,
+      planning_mode: 'enabled',
+      reply_target_chars: 2000,
+      choice_count: 5,
+      opening: { mode: 'ai' },
+      check_settings: {
+        rule_state_consumption_mode: 'hybrid_auto',
+        rule_visibility_mode: 'audit_only',
+      },
+      created_at: '2026-08-30T00:00:00Z',
+      updated_at: '2026-08-30T00:00:00Z',
+      branches: 1,
+      events: 0,
+      turn_count: 0,
+    }
+
+    render(
+      <NewStorySetupPanel
+        projectId="project-1"
+        story={story}
+        tellers={[teller]}
+        planningTemplates={[planningTemplate]}
+        imagePresets={[]}
+        loreItems={[loreCharacter]}
+        conversationConfig={conversationConfigController()}
+        onCancel={vi.fn()}
+        onCreate={onCreate}
+      />,
+    )
+
+    expect(screen.getByRole('combobox', { name: '全局难度' })).toHaveTextContent('标准')
+    expect(screen.getByRole('spinbutton', { name: '骰点修正' })).toHaveValue(0)
+    await user.click(screen.getByRole('button', { name: '开始故事' }))
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1))
+    expect(onCreate.mock.calls[0]?.[0]).toMatchObject({
+      check_settings: {
+        difficulty_shift: 0,
+        roll_modifier: 0,
+        rule_state_consumption_mode: 'hybrid_auto',
+        rule_visibility_mode: 'audit_only',
+      },
+    })
+  })
+
   it('waits for the effective opening runtime configuration before enabling start', async () => {
     const loadingConfig: ConversationConfigController = {
       ...conversationConfigController(),

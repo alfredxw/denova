@@ -213,7 +213,7 @@ func (boundary *ConversationBoundary) commitContext(ctx context.Context, request
 	if request.Identity.Stage != agent.CommitContext {
 		return agent.CommitReceipt{}, errors.New("Denova Conversation Boundary received a non-context commit")
 	}
-	if err := agent.ValidateContextCommit(request, boundary.config.CanonicalIdentity); err != nil {
+	if err := agent.ValidateContextCommit(request); err != nil {
 		return agent.CommitReceipt{}, err
 	}
 	run := agent.RunView{ID: request.Identity.RunID, CommandID: request.Identity.CommandID, Cycle: request.Identity.Cycle}

@@ -84,7 +84,7 @@ export interface ModeRouterProps {
   onToggleSettings: () => void
   onCloseSettings: () => void
   onToggleInteractiveRightPanel: () => void
-  onSwitchBook: (path: string) => void
+  onSwitchBook: (path: string) => void | Promise<void>
   onQuickSwitchBook: (path: string) => Promise<boolean>
   onBeforeWorkspaceSwitch: EditorFlushHandler
   onBooksChange: () => void | Promise<void>

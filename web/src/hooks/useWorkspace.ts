@@ -48,8 +48,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const [fileDocument, setFileDocumentState] = useState<ProjectFileDocument | null>(null)
   const fileContent = fileDocument?.content ?? ''
   const fileRevision = fileDocument?.revision ?? ''
-  const [workspace, setWorkspaceState] = useState<string>('')
-  const [projectId, setProjectId] = useState<string>('')
+  const [{ workspace, projectId }, setWorkspaceIdentityState] = useState({ workspace: '', projectId: '' })
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [workspaceSnapshotLoaded, setWorkspaceSnapshotLoaded] = useState(false)
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
@@ -84,27 +83,30 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     setFileDocumentState(next)
   }, [])
 
-  const setWorkspace = useCallback((nextWorkspace: string) => {
-    if (workspaceRef.current === nextWorkspace) return
+  const setWorkspaceIdentity = useCallback((nextWorkspace: string, nextProjectId: string) => {
+    const normalizedProjectId = nextWorkspace ? nextProjectId.trim() : ''
+    if (workspaceRef.current === nextWorkspace && projectIdRef.current === normalizedProjectId) return
+    const workspaceChanged = workspaceRef.current !== nextWorkspace
     workspaceRef.current = nextWorkspace
-    workspaceEpochRef.current += 1
-    treeRequestRef.current += 1
-    summaryRequestRef.current += 1
-    backgroundSummaryRefreshRef.current = null
-    backgroundSummaryRefreshQueuedRef.current = false
-    selectFileRequestRef.current += 1
-    fileVersionsRef.current.clear()
-    fileReadGenerationsRef.current.clear()
-    filePreviewVersionRef.current = 0
-    setTree([])
-    setSelectedFile(null)
-    setFileDocument(null)
-    setSummary(null)
-    setLoading(Boolean(nextWorkspace))
-    setWorkspaceSnapshotLoaded(false)
-    projectIdRef.current = ''
-    setProjectId('')
-    setWorkspaceState(nextWorkspace)
+    projectIdRef.current = normalizedProjectId
+    if (workspaceChanged) {
+      workspaceEpochRef.current += 1
+      treeRequestRef.current += 1
+      summaryRequestRef.current += 1
+      backgroundSummaryRefreshRef.current = null
+      backgroundSummaryRefreshQueuedRef.current = false
+      selectFileRequestRef.current += 1
+      fileVersionsRef.current.clear()
+      fileReadGenerationsRef.current.clear()
+      filePreviewVersionRef.current = 0
+      setTree([])
+      setSelectedFile(null)
+      setFileDocument(null)
+      setSummary(null)
+      setLoading(Boolean(nextWorkspace))
+      setWorkspaceSnapshotLoaded(false)
+    }
+    setWorkspaceIdentityState({ workspace: nextWorkspace, projectId: normalizedProjectId })
   }, [setFileDocument])
 
   const recordFileVersion = useCallback((targetProjectId: string, path: string, revision: string) => {
@@ -141,8 +143,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     filePreviewVersionRef.current = 0
     setSummary(null)
     setWorkspaceSnapshotLoaded(true)
-    projectIdRef.current = ''
-    setProjectId('')
   }, [setFileDocument])
 
   /** 获取当前 workspace 路径 */
@@ -153,19 +153,15 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     try {
       const data = await getCurrentWorkspace()
       if (requestID !== workspaceRequestRef.current || requestEpoch !== workspaceEpochRef.current) return
-      setWorkspace(data.workspace || '')
-      projectIdRef.current = data.project_id || ''
-      setProjectId(data.project_id || '')
+      setWorkspaceIdentity(data.workspace || '', data.project_id || '')
       setWorkspaceLoaded(true)
     } catch (e) {
       if (requestID !== workspaceRequestRef.current || requestEpoch !== workspaceEpochRef.current) return
       console.error('[hooks/useWorkspace.ts] failed to load the active workspace', e)
-      setWorkspace('')
-      projectIdRef.current = ''
-      setProjectId('')
+      setWorkspaceIdentity('', '')
       setWorkspaceLoaded(true)
     }
-  }, [setWorkspace])
+  }, [setWorkspaceIdentity])
 
   const fetchBookSnapshot = useCallback(async (
     options: WorkspaceRefreshOptions = {},
@@ -668,7 +664,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     refreshAfterAgentFileChange,
     refreshAll,
     refreshBooks: fetchBooks,
-    setWorkspace,
   }
 }
 

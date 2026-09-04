@@ -1,10 +1,8 @@
 package context
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -82,21 +80,36 @@ func NormalizeModelContextMessages(messages []*agent.Message) ([]*agent.Message,
 
 	keptCalls := make(map[int]map[int]bool)
 	keptResults := make(map[int]bool)
+	normalizedCalls := make(map[int]map[int]agent.ToolCall)
 	for batchKey, calls := range callOccurrences {
-		if len(calls) != 1 || !calls[0].valid {
+		if len(calls) != 1 {
 			continue
 		}
 		call := calls[0]
 		results := resultOccurrences[batchKey]
 		switch len(results) {
 		case 0:
+			if !call.valid {
+				continue
+			}
 			rememberContextToolCall(keptCalls, call)
 		case 1:
 			result := results[0]
 			if !result.canonicalID || result.ownerIndex != call.messageIndex {
 				continue
 			}
+			normalized, err := agent.NormalizeToolCallForModelContext(
+				messages[call.messageIndex].ToolCalls[call.callIndex],
+				messages[result.messageIndex].ToolResult,
+			)
+			if err != nil {
+				continue
+			}
 			rememberContextToolCall(keptCalls, call)
+			if normalizedCalls[call.messageIndex] == nil {
+				normalizedCalls[call.messageIndex] = make(map[int]agent.ToolCall)
+			}
+			normalizedCalls[call.messageIndex][call.callIndex] = normalized
 			keptResults[result.messageIndex] = true
 		}
 	}
@@ -125,6 +138,9 @@ func NormalizeModelContextMessages(messages []*agent.Message) ([]*agent.Message,
 				calls := make([]agent.ToolCall, 0, len(next.ToolCalls))
 				for callIndex, call := range next.ToolCalls {
 					if keptCalls[messageIndex][callIndex] {
+						if normalized, ok := normalizedCalls[messageIndex][callIndex]; ok {
+							call = normalized
+						}
 						calls = append(calls, call)
 					}
 				}
@@ -203,19 +219,8 @@ func contextToolResultOwners(messages []*agent.Message) map[int]int {
 // ValidToolCall reports whether a provider-neutral call has a canonical
 // identity, supported type, and one complete JSON object for arguments.
 func ValidToolCall(call agent.ToolCall) bool {
-	callID := strings.TrimSpace(call.ID)
-	toolName := strings.TrimSpace(call.Function.Name)
-	callType := strings.TrimSpace(call.Type)
-	if callID == "" || call.ID != callID || toolName == "" || call.Function.Name != toolName {
-		return false
-	}
-	if call.Type != callType || (callType != "" && callType != "function") {
-		return false
-	}
-	if call.Index != nil && *call.Index < 0 {
-		return false
-	}
-	return ValidateToolArgumentsJSON(call.Function.Arguments) == nil
+	_, err := agent.NormalizeToolCallForModelContext(call, nil)
+	return err == nil
 }
 
 func rememberContextToolCall(kept map[int]map[int]bool, call contextToolCallOccurrence) {
@@ -291,27 +296,7 @@ func modelContextProtocolError(format string, args ...any) error {
 // ValidateToolArgumentsJSON accepts only one complete JSON object. Model
 // context repair and live tool execution share this exact structural rule.
 func ValidateToolArgumentsJSON(arguments string) error {
-	arguments = strings.TrimSpace(arguments)
-	if arguments == "" {
-		return nil
-	}
-	decoder := json.NewDecoder(strings.NewReader(arguments))
-	decoder.UseNumber()
-	var payload map[string]any
-	if err := decoder.Decode(&payload); err != nil {
-		return err
-	}
-	if payload == nil {
-		return fmt.Errorf("arguments must be a JSON object")
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("arguments contain trailing JSON data")
-		}
-		return fmt.Errorf("arguments contain trailing data: %w", err)
-	}
-	return nil
+	return agent.ValidateToolArgumentsJSON(arguments)
 }
 
 func completeUnknownToolResults(messages []*agent.Message) []*agent.Message {

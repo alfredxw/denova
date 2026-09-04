@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	// Version 12 projects creator-authored branch-plan events and revision tokens.
-	storyProjectionVersion      = 13
+	// Version 14 rebuilds locators after the canonical context-batch protocol
+	// replaced its unreleased kind/hash fields with one sequence.
+	storyProjectionVersion      = 14
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -263,7 +264,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if err != nil {
 			return err
 		}
-		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, normalized.BatchHash)
+		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, "")
 	case StoryEventTypeProviderContinuation, StoryEventTypeModelContextProviderContinuation:
 		// Opaque state is joined to its owner only by bounded model-history reads.
 		// It never changes branch state or public projections by itself.

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -48,6 +49,11 @@ func TestModelContextBatchPersistsWithoutAdvancingBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	skipped := intents[0]
+	skipped.Sequence = 1
+	if _, err := store.AppendModelContextBatch(story.ID, skipped); !errors.Is(err, ErrModelContextBatchIdentityConflict) {
+		t.Fatalf("non-contiguous sequence error = %v", err)
+	}
 	first, err := store.AppendModelContextBatch(story.ID, intents[0])
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +64,18 @@ func TestModelContextBatchPersistsWithoutAdvancingBranch(t *testing.T) {
 	}
 	if retry.Revision != first.Revision {
 		t.Fatalf("exact retry revision = %q, want %q", retry.Revision, first.Revision)
+	}
+	conflicting := intents[0]
+	conflicting.Messages = CloneModelContextMessages(conflicting.Messages)
+	conflicting.Messages[1].Content = "different evidence"
+	if _, err := store.AppendModelContextBatch(story.ID, conflicting); !errors.Is(err, ErrModelContextBatchIdentityConflict) {
+		t.Fatalf("same sequence with different messages error = %v", err)
+	}
+	conflicting = intents[0]
+	conflicting.Messages = CloneModelContextMessages(conflicting.Messages)
+	conflicting.Messages[0].ProviderContinuation = map[string]any{}
+	if _, err := store.AppendModelContextBatch(story.ID, conflicting); !errors.Is(err, ErrModelContextBatchIdentityConflict) {
+		t.Fatalf("same sequence with different provider continuation error = %v", err)
 	}
 	after, err := store.StoryContext(story.ID, "main")
 	if err != nil {
@@ -423,16 +441,15 @@ func TestTurnAbsorbsMixedAgentContextKindsFromCanonicalBatches(t *testing.T) {
 		CompletionID: "completion-mixed", Author: "researcher", Recipient: "parent",
 	}
 	batches := []struct {
-		kind     string
 		messages []ModelContextMessage
 	}{
-		{kind: ModelContextBatchKindState, messages: []ModelContextMessage{ModelContextMessageFromAgent(state, nil)}},
-		{kind: ModelContextBatchKindTool, messages: durableModelContextBatchFixture()},
-		{kind: ModelContextBatchKindTaskCompletion, messages: []ModelContextMessage{ModelContextMessageFromAgent(completion, nil)}},
+		{messages: []ModelContextMessage{ModelContextMessageFromAgent(state, nil)}},
+		{messages: durableModelContextBatchFixture()},
+		{messages: []ModelContextMessage{ModelContextMessageFromAgent(completion, nil)}},
 	}
 	var expected []ModelContextMessage
-	for ordinal, batch := range batches {
-		intent, err := NewAgentContextBatchIntent(identity, "main", batch.kind, ordinal, batch.messages)
+	for sequence, batch := range batches {
+		intent, err := NewAgentContextBatchIntent(identity, "main", sequence, batch.messages)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -332,6 +332,101 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 	}
 }
 
+func TestAgentRuntimeCommitsMalformedArgumentsAsRecoverableContext(t *testing.T) {
+	ctx := context.Background()
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("public-runtime-invalid-arguments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions := 0
+	tool, err := agent.InferTool("typed_retry", "typed retry", func(_ context.Context, input struct {
+		Value int `json:"value"`
+	}) (string, error) {
+		executions++
+		return "accepted", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &publicBackendTestModel{responses: []*agent.Message{
+		agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "invalid-json", Type: "function",
+			Function: agent.FunctionCall{Name: "typed_retry", Arguments: `[`},
+		}}),
+		agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "corrected", Type: "function",
+			Function: agent.FunctionCall{Name: "typed_retry", Arguments: `{"value":7}`},
+		}}),
+		agent.AssistantMessage("finished", nil),
+	}}
+	descriptor := agent.ToolDescriptor{
+		Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
+		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
+		Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
+		ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 64 << 10,
+	}
+	toolset, err := agent.StaticToolsIdentified(
+		agent.CapabilityIdentity{Kind: "tools.public-backend-invalid-arguments", Version: 1},
+		agent.ToolDefinition{Tool: tool, Descriptor: descriptor},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
+		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
+		Definition: agent.Definition{
+			Key: "public-backend-invalid-arguments", Name: "root", Model: model,
+			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-invalid-arguments", Version: 1},
+			Permission:    agentpermission.FullAccess(), Tools: toolset,
+		},
+		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
+		Request:      agentchatRequest("invalid-arguments-command", "continue"),
+		Options: agentrun.Options{
+			AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID,
+			Workspace: t.TempDir(), TaskID: "invalid-arguments-task", RootAgentName: "root",
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome := operation.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("outcome = %#v", outcome)
+	}
+	if executions != 1 {
+		t.Fatalf("tool executions = %d, want 1", executions)
+	}
+	snapshot, err := sess.SnapshotContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, message := range snapshot.EffectiveMessages {
+		if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 1 ||
+			message.ToolCalls[0].ID != "invalid-json" {
+			continue
+		}
+		if message.ToolCalls[0].Function.Arguments != `{}` || index+1 >= len(snapshot.EffectiveMessages) {
+			t.Fatalf("canonical invalid call = %#v", message)
+		}
+		result := snapshot.EffectiveMessages[index+1]
+		if result.ToolResult == nil || result.ToolResult.SyntheticReason != agent.ToolSyntheticInvalidArguments ||
+			!strings.Contains(result.Content, `"received_arguments":"["`) {
+			t.Fatalf("canonical invalid result = %#v", result)
+		}
+		return
+	}
+	t.Fatalf("canonical invalid argument exchange is missing: %#v", snapshot.EffectiveMessages)
+}
+
 func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *testing.T) {
 	ctx := context.Background()
 	workspace := t.TempDir()

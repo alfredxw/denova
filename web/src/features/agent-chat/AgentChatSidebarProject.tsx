@@ -212,7 +212,7 @@ export function AgentChatSidebarProject({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-48">
                     <DropdownMenuItem onSelect={() => onCreateSession('')}>
-                      {t('agents.custom.builtin', { agent: t(baseAgentKind === 'ide' ? 'agents.ide.title' : 'agents.general.title') })}
+                      {t(baseAgentKind === 'ide' ? 'agents.ide.title' : 'agents.general.title')}
                     </DropdownMenuItem>
                     {customAgents.map((agent) => (
                       <DropdownMenuItem key={agent.id} onSelect={() => onCreateSession(agent.id)}>

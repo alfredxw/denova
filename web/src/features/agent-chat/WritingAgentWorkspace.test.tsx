@@ -7,7 +7,11 @@ import {
   getAgentChatProjects,
   type AgentChatProject,
 } from './api'
-import { WritingAgentWorkspace, type WritingAgentWorkspaceProps } from './WritingAgentWorkspace'
+import {
+  WRITING_SESSION_RAIL_STORAGE_KEY,
+  WritingAgentWorkspace,
+  type WritingAgentWorkspaceProps,
+} from './WritingAgentWorkspace'
 
 vi.mock('./api', () => ({
   AGENT_CHAT_PROJECT_UPDATED_EVENT: 'nova:agent-chat-project-updated',
@@ -126,8 +130,18 @@ function renderWorkspace(overrides: Partial<WritingAgentWorkspaceProps> = {}) {
 describe('WritingAgentWorkspace', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    window.localStorage.setItem(WRITING_SESSION_RAIL_STORAGE_KEY, 'true')
     vi.mocked(getAgentChatProjects).mockReset().mockResolvedValue([project()])
     vi.mocked(createAgentChatSession).mockReset()
+  })
+
+  it('starts with the quick-session rail collapsed when no preference was saved', async () => {
+    window.localStorage.removeItem(WRITING_SESSION_RAIL_STORAGE_KEY)
+    renderWorkspace()
+
+    expect(await screen.findByTestId('conversation:session-a')).toHaveTextContent('active')
+    expect(screen.queryByRole('navigation', { name: '快捷会话切换' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '显示会话侧栏' })).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('switches sessions without unmounting or stopping a running conversation', async () => {
@@ -184,14 +198,14 @@ describe('WritingAgentWorkspace', () => {
     expect(hideRailButton.closest('nav')).toBe(rail)
     await user.click(hideRailButton)
 
-    expect(window.localStorage.getItem('nova.writingAgent.sessionRailVisible.v1')).toBe('false')
+    expect(window.localStorage.getItem(WRITING_SESSION_RAIL_STORAGE_KEY)).toBe('false')
     expect(screen.queryByRole('navigation', { name: '快捷会话切换' })).not.toBeInTheDocument()
     const showRailButton = screen.getByRole('button', { name: '显示会话侧栏' })
     expect(showRailButton).toHaveAttribute('aria-pressed', 'false')
     expect(showRailButton.closest('nav')).toBeNull()
     await user.click(showRailButton)
 
-    expect(window.localStorage.getItem('nova.writingAgent.sessionRailVisible.v1')).toBe('true')
+    expect(window.localStorage.getItem(WRITING_SESSION_RAIL_STORAGE_KEY)).toBe('true')
     const reopenedRail = screen.getByRole('navigation', { name: '快捷会话切换' })
     const reopenedHideButton = screen.getByRole('button', { name: '隐藏会话侧栏' })
     expect(reopenedHideButton).toHaveAttribute('aria-pressed', 'true')

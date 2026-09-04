@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { hasLoreProtagonistTag } from '@/features/lore/tags'
 import type { ConversationConfigController, ConversationConfigSnapshot } from '@/features/conversation-config/types'
 import { normalizeThinkingLevel } from '@/features/settings/thinking-levels'
+import { normalizeStoryCheckSettings } from '../check-settings'
 import { gamePlanningTemplateName } from '../game-planning'
 import { normalizeStoryImageSettings } from '../image-settings'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
@@ -270,12 +271,7 @@ function initialSettings(
     replyTargetChars: story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS,
     choiceCount: story?.choice_count || DEFAULT_INTERACTIVE_CHOICE_COUNT,
     imageSettings,
-    checkSettings: story?.check_settings || {
-      difficulty_shift: 0,
-      roll_modifier: 0,
-      rule_state_consumption_mode: 'hybrid_auto',
-      rule_visibility_mode: 'audit_only',
-    },
+    checkSettings: normalizeStoryCheckSettings(story?.check_settings),
     stateSchemaMode: story?.state_schema_policy?.mode || 'adapt_template',
   }
 }

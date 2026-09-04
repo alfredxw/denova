@@ -42,7 +42,7 @@ type Conversation struct {
 	assistantMetadata           session.MessageMetadata
 	displayEvents               []interactive.DisplayEvent
 	modelContextMessages        []interactive.ModelContextMessage
-	modelContextBatchOrdinal    int
+	modelContextBatchSequence   int
 	ruleResolution              *interactive.RuleResolution
 	turnProtocol                interactiveTurnProtocol
 	baseParentID                *string
@@ -96,7 +96,7 @@ func (c *Conversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
 		c.acceptedPlayerInputID = ""
 	}
 	c.modelContextMessages = nil
-	c.modelContextBatchOrdinal = 0
+	c.modelContextBatchSequence = 0
 	c.pendingDomainCommit = nil
 	c.lastDomainReceipt = nil
 	c.mu.Unlock()

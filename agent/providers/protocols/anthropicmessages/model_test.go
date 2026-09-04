@@ -101,6 +101,19 @@ func TestDeepSeekThinkingRequestAndSignedContinuationReplay(t *testing.T) {
 	if !strings.Contains(string(replayedJSON), `"signature":"signed-state"`) {
 		t.Fatalf("signed thinking was not replayed: %s", replayedJSON)
 	}
+	message.ToolCalls[0].Function.Arguments = `{}`
+	replayed, err = assistantBlocks(message, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayedJSON, err = json.Marshal(replayed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(replayedJSON), `"signature":"signed-state"`) ||
+		strings.Contains(string(replayedJSON), `"q":"x"`) {
+		t.Fatalf("canonical tool input did not replace continuation input: %s", replayedJSON)
+	}
 }
 
 func TestGenerateUsesMessagesStreamingEndpointWithoutSDKTimeout(t *testing.T) {

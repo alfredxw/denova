@@ -109,10 +109,47 @@ func assistantBlocks(message *agent.Message, config providers.ModelConfig) ([]an
 			return nil, err
 		}
 		if matched {
+			retainedToolCalls := make(map[string]agent.ToolCall, len(message.ToolCalls))
+			for _, call := range message.ToolCalls {
+				if callID := strings.TrimSpace(call.ID); callID != "" {
+					retainedToolCalls[callID] = call
+				}
+			}
 			blocks := make([]anthropic.ContentBlockParamUnion, 0, len(rawBlocks))
 			for index, raw := range rawBlocks {
+				var identity struct {
+					Type string `json:"type"`
+					ID   string `json:"id"`
+				}
+				if err := json.Unmarshal(raw, &identity); err != nil {
+					return nil, fmt.Errorf("decode stored Anthropic content block %d identity: %w", index, err)
+				}
+				projected := append(json.RawMessage(nil), raw...)
+				if identity.Type == "tool_use" {
+					retained, ok := retainedToolCalls[strings.TrimSpace(identity.ID)]
+					if !ok {
+						continue
+					}
+					var input any = map[string]any{}
+					if strings.TrimSpace(retained.Function.Arguments) != "" {
+						if err := json.Unmarshal([]byte(retained.Function.Arguments), &input); err != nil {
+							return nil, fmt.Errorf("tool call %d arguments: %w", index, err)
+						}
+					}
+					var item map[string]any
+					if err := json.Unmarshal(raw, &item); err != nil {
+						return nil, fmt.Errorf("decode stored Anthropic tool block %d: %w", index, err)
+					}
+					item["id"] = retained.ID
+					item["name"] = retained.Function.Name
+					item["input"] = input
+					projected, err = json.Marshal(item)
+					if err != nil {
+						return nil, fmt.Errorf("project stored Anthropic tool block %d: %w", index, err)
+					}
+				}
 				var block anthropic.ContentBlockParamUnion
-				if err := json.Unmarshal(raw, &block); err != nil {
+				if err := json.Unmarshal(projected, &block); err != nil {
 					return nil, fmt.Errorf("decode stored Anthropic content block %d: %w", index, err)
 				}
 				blocks = append(blocks, block)

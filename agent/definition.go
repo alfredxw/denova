@@ -422,6 +422,7 @@ type preparedDefinition struct {
 	hostData                *HostData
 	clearRevision           uint64
 	contextState            contextStateSnapshot
+	contextSequence         int
 }
 
 func prepareDefinition(

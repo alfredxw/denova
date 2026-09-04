@@ -362,7 +362,7 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
 		},
 		{
-			name: "openai responses max output tokens", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"path\":\"chapter.md\",\"content\":\"valid but truncated\"}`}}, finish: "max_output_tokens",
+			name: "openai responses max output tokens", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{"path":"chapter.md"`}}, finish: "max_output_tokens",
 			tools: func(count *atomic.Int32) []ToolDefinition {
 				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
 					count.Add(1)
@@ -372,7 +372,7 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
 		},
 		{
-			name: "content filter", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"command\":\"valid but filtered\"}`}}, finish: "content_filter",
+			name: "content filter", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{"command":"valid but filtered"}`}}, finish: "content_filter",
 			tools: func(count *atomic.Int32) []ToolDefinition {
 				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
 					count.Add(1)
@@ -382,7 +382,7 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
 		},
 		{
-			name: "context window exceeded", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"path\":\"chapter.md\"}`}}, finish: "model_context_window_exceeded",
+			name: "context window exceeded", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{"path":"chapter.md"}`}}, finish: "model_context_window_exceeded",
 			tools: func(count *atomic.Int32) []ToolDefinition {
 				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
 					count.Add(1)
@@ -392,7 +392,7 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
 		},
 		{
-			name: "generic incomplete", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"path\":\"chapter.md\"}`}}, finish: "incomplete",
+			name: "generic incomplete", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{"path":"chapter.md"}`}}, finish: "incomplete",
 			tools: func(count *atomic.Int32) []ToolDefinition {
 				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
 					count.Add(1)

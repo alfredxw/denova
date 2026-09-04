@@ -41,6 +41,10 @@ type engineTranscript struct {
 	PreparationStage        enginePreparationStage `json:"preparation_stage,omitempty"`
 	Messages                []*Message             `json:"messages,omitempty"`
 	ContextState            contextStateSnapshot   `json:"context_state,omitempty"`
+	// ContextSequence is the next idempotency slot for this active cycle. It is
+	// checkpointed with the transcript so a resumed run cannot shift sequence
+	// numbers when an earlier context-state batch is already present.
+	ContextSequence int `json:"context_sequence,omitempty"`
 	// ActiveModelUser is the model-only rendering of the accepted raw user
 	// message while a tool batch or interaction is still active.
 	// Messages remains the canonical raw transcript. Once the cycle settles,
@@ -177,6 +181,9 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
+	if sameCycle {
+		prepared.contextSequence = state.ContextSequence
+	}
 	prepared.hostData = cloneHostData(input.HostData)
 	prepared.clearRevision = state.ClearRevision
 	prepared.contextState = cloneContextStateSnapshot(state.ContextState)
@@ -235,14 +242,13 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	contextOrdinal := 0
 	if len(stateMessages) > 0 {
 		if err := engine.commitCanonicalContext(
-			ctx, request, prepared.definition.Canonical, ContextCommitState, contextOrdinal, stateMessages,
+			ctx, request, prepared.definition.Canonical, prepared.contextSequence, stateMessages,
 		); err != nil {
 			return runstate.EngineResult{}, err
 		}
-		contextOrdinal++
+		prepared.contextSequence++
 	}
 	prepared.contextState = nextContextState
 	cycleStateTranscript := append(cloneMessages(state.Messages), cloneMessages(stateMessages)...)
@@ -668,8 +674,7 @@ func (engine *definitionEngine) Run(
 	}, runOption)
 	startedTools := make(map[string]bool)
 	var final *Message
-	var pendingToolMessages []*Message
-	var pendingToolCalls map[string]struct{}
+	pendingToolTranscriptIndex := -1
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -703,13 +708,13 @@ func (engine *definitionEngine) Run(
 			}
 			ids, messages := boundary.snapshot()
 			if err := engine.commitCanonicalContext(
-				ctx, request, prepared.definition.Canonical, ContextCommitTaskCompletion, contextOrdinal, messages,
+				ctx, request, prepared.definition.Canonical, prepared.contextSequence, messages,
 			); err != nil {
 				boundary.acknowledge(err)
 				controls.stop()
 				return runstate.EngineResult{}, err
 			}
-			contextOrdinal++
+			prepared.contextSequence++
 			transcript = append(transcript, cloneMessages(messages)...)
 			taskCompletionMessages = append(taskCompletionMessages, cloneMessages(messages)...)
 			checkpoint, checkpointErr := encodeActiveEngineTranscript(
@@ -724,6 +729,64 @@ func (engine *definitionEngine) Run(
 			if checkpointErr != nil {
 				controls.stop()
 				return runstate.EngineResult{}, checkpointErr
+			}
+			continue
+		}
+		if boundary := event.Output.ToolBatch; boundary != nil {
+			if !rootEvent {
+				err := errors.New("nested Agent emitted a canonical tool batch boundary into the root transcript")
+				boundary.acknowledge(err)
+				controls.stop()
+				return runstate.EngineResult{}, err
+			}
+			phase, messages := boundary.snapshot()
+			var boundaryErr error
+			if pendingToolTranscriptIndex < 0 || pendingToolTranscriptIndex != len(transcript)-1 {
+				boundaryErr = errors.New("canonical tool batch has no pending transcript owner")
+			} else {
+				switch phase {
+				case toolBatchPrepared:
+					if len(messages) != 1 {
+						boundaryErr = errors.New("prepared canonical tool batch requires one assistant message")
+						break
+					}
+					var canonical *Message
+					canonical, boundaryErr = canonicalToolBatchAssistant(transcript[pendingToolTranscriptIndex], messages[0])
+					if boundaryErr == nil {
+						transcript[pendingToolTranscriptIndex] = canonical
+						final = canonical.Clone()
+					}
+				case toolBatchCompleted:
+					var completed []*Message
+					completed, boundaryErr = completedCanonicalToolBatch(transcript[pendingToolTranscriptIndex], messages)
+					if boundaryErr == nil {
+						boundaryErr = engine.commitCanonicalContext(
+							ctx, request, prepared.definition.Canonical, prepared.contextSequence, completed,
+						)
+					}
+					if boundaryErr == nil {
+						prepared.contextSequence++
+						transcript = append(transcript[:pendingToolTranscriptIndex], completed...)
+						final = completed[0].Clone()
+						pendingToolTranscriptIndex = -1
+					}
+				default:
+					boundaryErr = fmt.Errorf("unsupported canonical tool batch phase %q", phase)
+				}
+			}
+			if boundaryErr == nil {
+				var checkpoint []byte
+				checkpoint, boundaryErr = encodeActiveEngineTranscript(
+					prepared, transcript, activeModelUser, activeUserIndex,
+				)
+				if boundaryErr == nil {
+					boundaryErr = emit(runstate.EngineTranscriptUpdated{State: checkpoint})
+				}
+			}
+			boundary.acknowledge(boundaryErr)
+			if boundaryErr != nil {
+				controls.stop()
+				return runstate.EngineResult{}, boundaryErr
 			}
 			continue
 		}
@@ -798,27 +861,22 @@ func (engine *definitionEngine) Run(
 					return runstate.EngineResult{}, err
 				}
 			}
+			if message.Role == ToolRole {
+				if pendingToolTranscriptIndex < 0 {
+					controls.stop()
+					return runstate.EngineResult{}, errors.New("tool result arrived without a canonical tool batch boundary")
+				}
+				// The completed boundary owns the whole canonical batch. Tool message
+				// events remain live display/lifecycle notifications only.
+				continue
+			}
 			transcript = append(transcript, CloneMessage(message))
 			if message.Role == Assistant && len(message.ToolCalls) > 0 {
-				pendingToolMessages = []*Message{message.Clone()}
-				pendingToolCalls = make(map[string]struct{}, len(message.ToolCalls))
-				for _, call := range message.ToolCalls {
-					pendingToolCalls[strings.TrimSpace(call.ID)] = struct{}{}
+				if pendingToolTranscriptIndex >= 0 {
+					controls.stop()
+					return runstate.EngineResult{}, errors.New("assistant tool batch arrived before the prior batch completed")
 				}
-			} else if message.Role == ToolRole && len(pendingToolMessages) > 0 {
-				pendingToolMessages = append(pendingToolMessages, message.Clone())
-				delete(pendingToolCalls, strings.TrimSpace(message.ToolCallID))
-				if len(pendingToolCalls) == 0 {
-					if err := engine.commitCanonicalContext(
-						ctx, request, prepared.definition.Canonical, ContextCommitToolBatch, contextOrdinal, pendingToolMessages,
-					); err != nil {
-						controls.stop()
-						return runstate.EngineResult{}, err
-					}
-					contextOrdinal++
-					pendingToolMessages = nil
-					pendingToolCalls = nil
-				}
+				pendingToolTranscriptIndex = len(transcript) - 1
 			}
 			if message.Role == Assistant {
 				final = CloneMessage(message)
@@ -1133,6 +1191,7 @@ func encodeEngineTranscriptState(
 		DefinitionCommandID:     prepared.definitionCommandID,
 		DefinitionCycle:         prepared.definitionCycle, PreparationStage: prepared.preparationStage,
 		Messages: cloneMessages(messages), ContextState: cloneContextStateSnapshot(prepared.contextState),
+		ContextSequence: prepared.contextSequence,
 		ActiveModelUser: CloneMessage(activeModelUser), ActiveUserIndex: activeUserIndex,
 		HostData: cloneHostData(prepared.hostData), ClearRevision: prepared.clearRevision,
 	})
@@ -1179,6 +1238,9 @@ func decodeEngineTranscript(encoded json.RawMessage) (engineTranscript, error) {
 	var state engineTranscript
 	if err := json.Unmarshal(encoded, &state); err != nil {
 		return engineTranscript{}, fmt.Errorf("decode Agent transcript: %w", err)
+	}
+	if state.ContextSequence < 0 {
+		return engineTranscript{}, errors.New("decode Agent transcript: context sequence cannot be negative")
 	}
 	state.Messages = cloneMessages(state.Messages)
 	state.ContextState = cloneContextStateSnapshot(state.ContextState)

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { getActorStates, getEventPackages, getRuleSystems } from '../../api'
+import { normalizeStoryCheckSettings } from '../../check-settings'
 import { gamePlanningTemplateName } from '../../game-planning'
 import { normalizeImageIntervalTurns, normalizeStoryImageSettings } from '../../image-settings'
 import { narrativeStyleName } from '../../narrative-style'
@@ -83,12 +84,7 @@ export function StoryTuningView({
 
   const refs = { ...DEFAULT_MODULE_REFS, ...(story?.module_refs || {}) }
   const imageSettings = normalizeStoryImageSettings(story?.image_settings)
-  const checkSettings: StoryCheckSettings = {
-    difficulty_shift: story?.check_settings?.difficulty_shift || 0,
-    roll_modifier: story?.check_settings?.roll_modifier || 0,
-    rule_state_consumption_mode: story?.check_settings?.rule_state_consumption_mode || 'hybrid_auto',
-    rule_visibility_mode: story?.check_settings?.rule_visibility_mode || 'audit_only',
-  }
+  const checkSettings = normalizeStoryCheckSettings(story?.check_settings)
   const structureLocked = (story?.turn_count || 0) > 0
   const disabled = !story || !onUpdate || Boolean(savingKey)
 

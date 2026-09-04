@@ -132,7 +132,7 @@ function App() {
   const {
     tree, loading, selectedFile, fileDocument, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
-    refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
+    refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks,
   } = useWorkspace()
   const settingsWorkspaceRef = useRef<string | null>(null)
 
@@ -446,22 +446,20 @@ function App() {
     setActiveTabKey(key)
   }, [selectedFile, limitTabs])
 
-  const handleWorkspaceSwitch = (newPath: string) => {
-    setWorkspace(newPath)
+  const handleWorkspaceSwitch = useCallback(async (newPath: string) => {
+    await refreshAll()
+    console.info('[App.tsx] Book Management switch synchronized', { workspace: newPath })
     setMode(lastCreationRouteRef.current)
-    refreshAll()
     notifyVersionChange()
     notifyProjectStructureChange()
-  }
+  }, [notifyProjectStructureChange, notifyVersionChange, refreshAll, setMode])
 
-  const handleAgentChatBookCreated = useCallback((newPath: string) => {
-    setWorkspace(newPath)
-    void refreshAll().catch((error) => {
-      console.error('[App.tsx] failed to refresh the Book created from Agent Chat', { workspace: newPath, error })
-    })
+  const handleAgentChatBookCreated = useCallback(async (newPath: string) => {
+    await refreshAll()
+    console.info('[App.tsx] synchronized the Book created from Agent Chat', { workspace: newPath })
     notifyVersionChange()
     notifyProjectStructureChange()
-  }, [notifyProjectStructureChange, notifyVersionChange, refreshAll, setWorkspace])
+  }, [notifyProjectStructureChange, notifyVersionChange, refreshAll])
 
   const handleQuickWorkspaceSwitch = useCallback(async (newPath: string): Promise<boolean> => {
     if (!newPath || newPath === workspace) return true
@@ -470,7 +468,6 @@ function App() {
       const result = await switchWorkspace(newPath)
       const nextWorkspace = result.workspace || newPath
       console.info('[App.tsx] title-bar Book switch completed', { from: workspace, to: nextWorkspace })
-      setWorkspace(nextWorkspace)
       await refreshAll()
       notifyVersionChange()
       notifyProjectStructureChange()
@@ -482,7 +479,7 @@ function App() {
       })
       return false
     }
-  }, [flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, refreshAll, setWorkspace, t, workspace])
+  }, [flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, refreshAll, t, workspace])
 
   const handleSaveCurrentFile = useCallback(async (path: string, content: string, baseRevision: string) => {
     const saved = await saveFileDraft(path, content, baseRevision)

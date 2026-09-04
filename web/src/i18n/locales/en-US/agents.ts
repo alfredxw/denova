@@ -31,7 +31,6 @@ const agents = {
   'agents.custom.inheritCurrent': 'Same as current branch',
   'agents.custom.archive': 'Archive',
   'agents.custom.archived': 'Archived',
-  'agents.custom.builtin': 'Built-in {{agent}}',
   'agents.custom.switchNote': 'Switching creates a new conversation so existing history keeps its original Agent.',
   'agents.custom.select': 'Agent',
   'agents.custom.imageDefault': 'Default Image Agent',

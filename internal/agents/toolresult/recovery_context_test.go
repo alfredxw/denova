@@ -7,6 +7,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -80,6 +81,35 @@ func TestIncompleteParallelToolCallsCompleteOnlyMissingResults(t *testing.T) {
 	}
 	if counts["call-read"] != 1 || counts["call-write"] != 1 {
 		t.Fatalf("tool result counts = %#v, want one per call", counts)
+	}
+}
+
+func TestContextPolicyPreservesRecoverableMalformedArguments(t *testing.T) {
+	t.Parallel()
+
+	result := agent.SyntheticToolResult(
+		agent.ToolResultError,
+		agent.ToolSyntheticInvalidArguments,
+		`{"error":{"code":"invalid_arguments","received_arguments":"["}}`,
+	)
+	messages := []*agent.Message{
+		agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "malformed-call", Type: "function",
+			Function: agent.FunctionCall{Name: "read", Arguments: `[`},
+		}}),
+		agent.ToolMessage(result, "malformed-call", agent.WithToolName("read")),
+	}
+
+	got := toolresult.ApplyContextPolicy(messages, toolresult.ContextPolicy{Enabled: true})
+	if len(got) != 2 || len(got[0].ToolCalls) != 1 {
+		t.Fatalf("recoverable malformed exchange = %#v", got)
+	}
+	if arguments := got[0].ToolCalls[0].Function.Arguments; arguments != `{}` {
+		t.Fatalf("recoverable malformed arguments = %q, want canonical empty object", arguments)
+	}
+	if got[1].ToolResult == nil || got[1].ToolResult.SyntheticReason != agent.ToolSyntheticInvalidArguments ||
+		!strings.Contains(got[1].Content, `"received_arguments":"["`) {
+		t.Fatalf("recoverable malformed result = %#v", got[1])
 	}
 }
 

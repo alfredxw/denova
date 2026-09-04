@@ -430,11 +430,26 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			return
 		}
 
+		preparedCalls := agent.prepareToolCalls(ctx, registry, assistant.ToolCalls, modelResponseOrdinal)
+		for index := range preparedCalls {
+			assistant.ToolCalls[index] = preparedCalls[index].call
+		}
+		for index := len(state.Messages) - 1; index >= 0; index-- {
+			if state.Messages[index] != nil && state.Messages[index].Role == Assistant {
+				state.Messages[index] = assistant.Clone()
+				break
+			}
+		}
+		if err := agent.publishToolBatchBoundary(ctx, toolBatchPrepared, []*Message{assistant}, events); err != nil {
+			events.Send(agent.errorEvent(err))
+			return
+		}
+
 		var toolResults []toolExecutionResult
 		if finishReason, blocked := modelFinishReasonBlocksToolExecution(assistant.ResponseMeta); blocked {
-			toolResults = agent.incompleteModelToolResults(ctx, assistant.ToolCalls, registry, modelResponseOrdinal, finishReason, events)
+			toolResults = agent.incompleteModelToolResults(preparedCalls, finishReason, events)
 		} else {
-			toolResults, err = agent.executeToolBatch(ctx, registry, assistant.ToolCalls, modelResponseOrdinal, events, options.cancel)
+			toolResults, err = agent.executePreparedToolBatch(ctx, preparedCalls, events, options.cancel)
 		}
 		for _, result := range toolResults {
 			if result.message == nil {
@@ -453,6 +468,17 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			events.Send(agent.errorEvent(err))
 			return
 		}
+		completedBatch := make([]*Message, 1, len(toolResults)+1)
+		completedBatch[0] = assistant.Clone()
+		for _, result := range toolResults {
+			if result.message != nil {
+				completedBatch = append(completedBatch, result.message.Clone())
+			}
+		}
+		if err := agent.publishToolBatchBoundary(ctx, toolBatchCompleted, completedBatch, events); err != nil {
+			events.Send(agent.errorEvent(err))
+			return
+		}
 
 		if cancelErr := options.cancel.safePoint(cancelAfterTools | cancelAfterModel); cancelErr != nil {
 			events.Send(agent.errorEvent(cancelErr))
@@ -462,6 +488,46 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			events.Send(agent.errorEvent(err))
 			return
 		}
+	}
+}
+
+func (agent *modelToolLoop) publishToolBatchBoundary(
+	ctx context.Context,
+	phase toolBatchPhase,
+	messages []*Message,
+	events *asyncGenerator[*loopEvent],
+) error {
+	if !toolStartReceiptRequired(ctx) {
+		return nil
+	}
+	switch phase {
+	case toolBatchPrepared:
+		if len(messages) != 1 {
+			return errors.New("prepared canonical tool batch requires one assistant message")
+		}
+		if _, err := validateCanonicalToolCallMessage(messages[0]); err != nil {
+			return err
+		}
+	case toolBatchCompleted:
+		if err := ValidateContextCommitMessages(messages); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported canonical tool batch phase %q", phase)
+	}
+	boundary := &toolBatchBoundary{
+		phase: phase, messages: cloneMessages(messages), receipt: make(chan error, 1),
+	}
+	events.Send(&loopEvent{
+		AgentName: agent.name,
+		RunPath:   []loopRunStep{newLoopRunStep(agent.name)},
+		Output:    &loopOutput{ToolBatch: boundary},
+	})
+	select {
+	case err := <-boundary.receipt:
+		return err
+	case <-ctx.Done():
+		return agent.contextError(ctx, nil)
 	}
 }
 

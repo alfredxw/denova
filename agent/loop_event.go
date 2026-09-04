@@ -140,9 +140,41 @@ func (variant *loopMessage) GetMessage() (*Message, error) {
 type loopOutput struct {
 	MessageOutput    *loopMessage
 	ToolExecution    *toolExecutionEvent
+	ToolBatch        *toolBatchBoundary
 	NestedEvent      *NestedEvent
 	TaskCompletions  *taskCompletionBoundary
 	CustomizedOutput any
+}
+
+type toolBatchPhase string
+
+const (
+	toolBatchPrepared  toolBatchPhase = "prepared"
+	toolBatchCompleted toolBatchPhase = "completed"
+)
+
+// toolBatchBoundary carries the exact Agent-owned transcript at the two
+// durability seams around execution. Prepared publishes normalized calls
+// before any tool starts; completed publishes the same calls with every paired
+// result before another provider request can begin.
+type toolBatchBoundary struct {
+	phase    toolBatchPhase
+	messages []*Message
+	receipt  chan error
+}
+
+func (boundary *toolBatchBoundary) acknowledge(err error) {
+	if boundary == nil || boundary.receipt == nil {
+		return
+	}
+	boundary.receipt <- err
+}
+
+func (boundary *toolBatchBoundary) snapshot() (toolBatchPhase, []*Message) {
+	if boundary == nil {
+		return "", nil
+	}
+	return boundary.phase, cloneMessages(boundary.messages)
 }
 
 // taskCompletionBoundary orders asynchronous child completion delivery behind

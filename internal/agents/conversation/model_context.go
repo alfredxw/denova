@@ -199,7 +199,7 @@ func (c *SessionConversation) CommitAgentCanonicalContext(
 		session.DomainCommitIdentity{
 			CommandID: request.Identity.CommandID, OperationID: request.Identity.RunID, Cycle: request.Identity.Cycle,
 		},
-		string(request.Kind), request.Ordinal, request.Hash, messages,
+		request.Sequence, messages,
 	)
 	if err != nil {
 		return session.ContextBatchReceipt{}, err

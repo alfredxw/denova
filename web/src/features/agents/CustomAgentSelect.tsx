@@ -51,7 +51,7 @@ export function CustomAgentSelect({ projectId = '', runtimeKind, value, onValueC
       </SelectTrigger>
       <SelectContent>
         {inheritLabel ? <SelectItem value={INHERIT_VALUE}>{inheritLabel}</SelectItem> : null}
-        <SelectItem value={BUILTIN_VALUE}>{t('agents.custom.builtin', { agent: baseTitle })}</SelectItem>
+        <SelectItem value={BUILTIN_VALUE}>{baseTitle}</SelectItem>
         {archivedSelection?.id ? (
           <SelectItem value={archivedSelection.id} disabled>
             {archivedSelection.name || archivedSelection.id} · {t('agents.custom.archived')}

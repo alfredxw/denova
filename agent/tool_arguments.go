@@ -80,6 +80,71 @@ func normalizeToolArgumentsWithSchema(arguments string, schema *jsonschema.Schem
 	return string(encoded), nil
 }
 
+// canonicalizeToolArgumentsJSON converts one model-produced argument object
+// into the provider-safe JSON used by execution and future model context.
+func canonicalizeToolArgumentsJSON(arguments string) (string, error) {
+	if strings.TrimSpace(arguments) == "" {
+		return "", toolArgumentError("invalid_json", "$", "empty JSON input")
+	}
+	value, err := decodeToolArgumentsJSON(arguments)
+	if err != nil {
+		return "", toolArgumentError("invalid_json", "$", "%v", err)
+	}
+	object, ok := value.(map[string]any)
+	if !ok || object == nil {
+		return "", toolArgumentError("type_conflict", "$", "tool arguments must be a JSON object")
+	}
+	encoded, err := json.Marshal(object)
+	if err != nil {
+		return "", toolArgumentError("invalid_json", "$", "encode canonical arguments: %v", err)
+	}
+	return string(encoded), nil
+}
+
+// ValidateToolArgumentsJSON accepts an empty argument string or exactly one
+// complete JSON object. It never applies syntax repair.
+func ValidateToolArgumentsJSON(arguments string) error {
+	arguments = strings.TrimSpace(arguments)
+	if arguments == "" {
+		return nil
+	}
+	value, err := decodeJSONValue(arguments)
+	if err != nil {
+		return err
+	}
+	object, ok := value.(map[string]any)
+	if !ok || object == nil {
+		return fmt.Errorf("arguments must be a JSON object")
+	}
+	return nil
+}
+
+// NormalizeToolCallForModelContext preserves a structurally valid call. A
+// paired no-execution result may replace unusable arguments with an empty
+// object so the model receives the error and can submit a corrected call.
+func NormalizeToolCallForModelContext(call ToolCall, result *ToolResultSummary) (ToolCall, error) {
+	callID := strings.TrimSpace(call.ID)
+	toolName := strings.TrimSpace(call.Function.Name)
+	callType := strings.TrimSpace(call.Type)
+	if callID == "" || call.ID != callID || toolName == "" || call.Function.Name != toolName {
+		return ToolCall{}, errors.New("tool call requires canonical id and function name")
+	}
+	if call.Type != callType || (callType != "" && callType != "function") {
+		return ToolCall{}, fmt.Errorf("tool call has unsupported type %q", call.Type)
+	}
+	if call.Index != nil && *call.Index < 0 {
+		return ToolCall{}, errors.New("tool call index cannot be negative")
+	}
+	if err := ValidateToolArgumentsJSON(call.Function.Arguments); err != nil {
+		if result == nil || (result.SyntheticReason != ToolSyntheticInvalidArguments &&
+			result.SyntheticReason != ToolSyntheticModelIncomplete) {
+			return ToolCall{}, fmt.Errorf("tool call arguments: %w", err)
+		}
+		call.Function.Arguments = `{}`
+	}
+	return call, nil
+}
+
 // decodeToolArgumentsJSON keeps valid model output on the standard library's
 // strict path. Malformed output gets one deterministic syntax-repair pass and
 // must then survive the same strict decoder before schema normalization.

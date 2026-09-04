@@ -40,7 +40,7 @@ interface HomeViewProps {
   /** 书架与标题快捷入口共用的持久化排序方式。 */
   bookSortMode: BookSortMode
   /** 切换到指定 workspace 后由父组件刷新业务状态 */
-  onSwitch: (path: string) => void
+  onSwitch: (path: string) => void | Promise<void>
   /** 在后端切换 workspace 前保存当前编辑器草稿。 */
   onBeforeSwitch?: () => Promise<boolean>
   /** 书籍记录有变更时通知父组件刷新列表 */
@@ -107,7 +107,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
     try {
       if (onBeforeSwitch && !(await onBeforeSwitch())) return
       const data = await switchWorkspace(path)
-      onSwitch(data.workspace || path)
+      await Promise.resolve(onSwitch(data.workspace || path))
     } catch (e) {
       console.error('Failed to switch workspace', e)
     }
@@ -428,9 +428,9 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
         open={showNovelImport}
         novaDir={novaDir}
         onOpenChange={setShowNovelImport}
-        onImported={(result) => {
-          onSwitch(result.workspace)
-          onBooksChange()
+        onImported={async (result) => {
+          await Promise.resolve(onSwitch(result.workspace))
+          await Promise.resolve(onBooksChange())
           onClose?.()
         }}
       />

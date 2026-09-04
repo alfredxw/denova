@@ -117,6 +117,31 @@ func TestNormalizeModelContextMessagesDropsAmbiguousHalvesAtomically(t *testing.
 	}
 }
 
+func TestNormalizeModelContextMessagesPreservesRecoverableMalformedArguments(t *testing.T) {
+	call := contextNormalizerTestCall("invalid-json", "read", `[`)
+	result := agent.ToolMessage(
+		agent.SyntheticToolResult(
+			agent.ToolResultError,
+			agent.ToolSyntheticInvalidArguments,
+			`{"error":{"code":"invalid_arguments"}}`,
+		),
+		call.ID,
+		agent.WithToolName(call.Function.Name),
+	)
+	input := []*agent.Message{agent.AssistantMessage("", []agent.ToolCall{call}), result}
+
+	normalized, err := NormalizeModelContextMessages(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(normalized) != 2 || len(normalized[0].ToolCalls) != 1 ||
+		normalized[0].ToolCalls[0].Function.Arguments != `{}` ||
+		normalized[1].ToolResult == nil ||
+		normalized[1].ToolResult.SyntheticReason != agent.ToolSyntheticInvalidArguments {
+		t.Fatalf("recoverable invalid argument exchange was not preserved: %#v", normalized)
+	}
+}
+
 func TestNormalizeModelContextMessagesRepairsMissingCallAndDropsLateOrphan(t *testing.T) {
 	call := contextNormalizerTestCall("late-result", "write", `{}`)
 	input := []*agent.Message{

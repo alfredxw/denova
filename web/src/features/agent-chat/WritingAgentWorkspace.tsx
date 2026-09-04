@@ -479,8 +479,8 @@ function uniqueStrings(values: string[]) {
 }
 
 export function readWritingSessionRailVisibility() {
-  if (typeof window === 'undefined') return true
-  return window.localStorage.getItem(WRITING_SESSION_RAIL_STORAGE_KEY) !== 'false'
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(WRITING_SESSION_RAIL_STORAGE_KEY) === 'true'
 }
 
 export function writeWritingSessionRailVisibility(visible: boolean) {

@@ -40,8 +40,7 @@ func ApplyContextPolicy(messages []*agent.Message, policy ContextPolicy) []*agen
 
 func filterToolContextMessages(messages []*agent.Message, policy ContextPolicy) []*agent.Message {
 	type callProjection struct {
-		call        agent.ToolCall
-		valid       bool
+		unique      bool
 		resultIndex int
 		results     int
 	}
@@ -72,11 +71,11 @@ func filterToolContextMessages(messages []*agent.Message, policy ContextPolicy) 
 				continue
 			}
 			if existing, found := calls[callID]; found {
-				existing.valid = false
+				existing.unique = false
 				calls[callID] = existing
 				continue
 			}
-			calls[callID] = callProjection{call: call, valid: validToolCall(call), resultIndex: -1}
+			calls[callID] = callProjection{unique: true, resultIndex: -1}
 		}
 		for resultIndex := index + 1; resultIndex < batchEnd; resultIndex++ {
 			result := messages[resultIndex]
@@ -101,7 +100,7 @@ func filterToolContextMessages(messages []*agent.Message, policy ContextPolicy) 
 		for _, call := range message.ToolCalls {
 			callID := strings.TrimSpace(call.ID)
 			projection, found := calls[callID]
-			if !found || !projection.valid || projection.results != 1 {
+			if !found || !projection.unique || projection.results != 1 {
 				continue
 			}
 			result := messages[projection.resultIndex]
@@ -109,8 +108,12 @@ func filterToolContextMessages(messages []*agent.Message, policy ContextPolicy) 
 				(!policy.Enabled && !IsUnknownEffectResult(result.Content)) {
 				continue
 			}
-			nextAssistant.ToolCalls = append(nextAssistant.ToolCalls, call)
-			retainedResults[projection.resultIndex] = projection.call
+			normalizedCall, err := agent.NormalizeToolCallForModelContext(call, result.ToolResult)
+			if err != nil {
+				continue
+			}
+			nextAssistant.ToolCalls = append(nextAssistant.ToolCalls, normalizedCall)
+			retainedResults[projection.resultIndex] = normalizedCall
 		}
 		if len(nextAssistant.ToolCalls) > 0 || assistantHasIndependentContent(nextAssistant) {
 			filtered = append(filtered, nextAssistant)

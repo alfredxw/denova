@@ -92,8 +92,8 @@ func normalizeResolvedPlayerInputContexts(
 				normalized.AgentCycle != input.AgentCycle {
 				return nil, fmt.Errorf("%w: resolved batch does not match player input %s", ErrModelContextBatchIdentityConflict, input.ID)
 			}
-			if normalized.BatchOrdinal != index {
-				return nil, fmt.Errorf("%w: resolved player input %s has a missing or duplicate batch ordinal", ErrModelContextBatchIdentityConflict, input.ID)
+			if normalized.Sequence != index {
+				return nil, fmt.Errorf("%w: resolved player input %s has a missing or duplicate batch sequence", ErrModelContextBatchIdentityConflict, input.ID)
 			}
 			batches = append(batches, normalized)
 		}

@@ -283,6 +283,164 @@ func TestInvalidArgumentsRemainModelVisibleAndCanBeRetried(t *testing.T) {
 	}
 }
 
+func TestMalformedArgumentsRemainModelVisibleAndCanBeRetried(t *testing.T) {
+	var calls atomic.Int32
+	tool, err := InferTool("typed_malformed_retry", "", func(_ context.Context, input struct {
+		Value int `json:"value"`
+	}) (string, error) {
+		calls.Add(1)
+		return fmt.Sprintf("value=%d", input.Value), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{
+			ID: "bad", Type: "function",
+			Function: FunctionCall{Name: "typed_malformed_retry", Arguments: `[`},
+		}})},
+		{message: AssistantMessage("", []ToolCall{{
+			ID: "fixed", Type: "function",
+			Function: FunctionCall{Name: "typed_malformed_retry", Arguments: `{"value":7}`},
+		}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	native, err := newModelToolLoop(context.Background(), loopConfig{
+		Name: "malformed-argument-retry", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+	}
+	inputs := model.capturedInputs()
+	if len(inputs) != 3 || len(inputs[1]) != 3 {
+		t.Fatalf("model inputs = %#v", inputs)
+	}
+	failedCall, failedResult := inputs[1][1], inputs[1][2]
+	if len(failedCall.ToolCalls) != 1 || failedCall.ToolCalls[0].Function.Arguments != `{}` {
+		t.Fatalf("failed call was not projected safely: %#v", failedCall)
+	}
+	if failedResult.ToolResult == nil || failedResult.ToolResult.SyntheticReason != ToolSyntheticInvalidArguments ||
+		!strings.Contains(failedResult.Content, `"received_arguments":"["`) {
+		t.Fatalf("invalid argument feedback was not preserved: %#v", failedResult)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("tool calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestRepairedArgumentsUseTheExecutedCanonicalValueInModelContext(t *testing.T) {
+	var executed string
+	tool := &functionTool{name: "repairable", run: func(_ context.Context, arguments string) (string, error) {
+		executed = arguments
+		return "ok", nil
+	}}
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{
+			ID: "repair", Type: "function",
+			Function: FunctionCall{Name: "repairable", Arguments: `{value: '7'}`},
+		}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	native, err := newModelToolLoop(context.Background(), loopConfig{
+		Name: "repairable-arguments", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+	}
+	inputs := model.capturedInputs()
+	if len(inputs) != 2 || len(inputs[1]) != 3 || len(inputs[1][1].ToolCalls) != 1 {
+		t.Fatalf("model inputs = %#v", inputs)
+	}
+	retained := inputs[1][1].ToolCalls[0].Function.Arguments
+	if retained != executed || retained != `{"value":"7"}` {
+		t.Fatalf("retained arguments = %q, executed = %q", retained, executed)
+	}
+}
+
+func TestCanonicalToolBatchBoundariesBracketExecution(t *testing.T) {
+	var calls atomic.Int32
+	var executed string
+	tool := &functionTool{name: "boundary_tool", run: func(_ context.Context, arguments string) (string, error) {
+		calls.Add(1)
+		executed = arguments
+		return "complete", nil
+	}}
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{
+			ID: "boundary-call", Type: "function",
+			Function: FunctionCall{Name: "boundary_tool", Arguments: `{value: 'ready'}`},
+		}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	native, err := newModelToolLoop(context.Background(), loopConfig{
+		Name: "canonical-boundary", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := contextWithToolStartReceipt(context.Background())
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(ctx, "go")
+	var phases []toolBatchPhase
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+		if event.Output == nil {
+			continue
+		}
+		if boundary := event.Output.ToolBatch; boundary != nil {
+			phase, messages := boundary.snapshot()
+			phases = append(phases, phase)
+			switch phase {
+			case toolBatchPrepared:
+				if calls.Load() != 0 || len(messages) != 1 || messages[0].ToolCalls[0].Function.Arguments != `{"value":"ready"}` {
+					t.Fatalf("prepared boundary calls=%d messages=%#v", calls.Load(), messages)
+				}
+			case toolBatchCompleted:
+				if calls.Load() != 1 || len(messages) != 2 || messages[1].Role != ToolRole || messages[1].ToolCallID != "boundary-call" {
+					t.Fatalf("completed boundary calls=%d messages=%#v", calls.Load(), messages)
+				}
+			default:
+				t.Fatalf("unexpected boundary phase %q", phase)
+			}
+			boundary.acknowledge(nil)
+		}
+		if execution := event.Output.ToolExecution; execution != nil && execution.Phase == toolExecutionStarted {
+			if calls.Load() != 0 {
+				t.Fatalf("tool ran before its start receipt: calls=%d", calls.Load())
+			}
+			execution.acknowledgeStart(nil)
+		}
+	}
+	if len(phases) != 2 || phases[0] != toolBatchPrepared || phases[1] != toolBatchCompleted || executed != `{"value":"ready"}` {
+		t.Fatalf("canonical boundary phases=%v executed=%q", phases, executed)
+	}
+}
+
 type progressOnlyTool struct{}
 
 func (*progressOnlyTool) Info(context.Context) (*ToolInfo, error) {

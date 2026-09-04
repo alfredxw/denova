@@ -6,6 +6,7 @@ const DEFAULT_STAGE_LINE_HEIGHT = 1.78
 
 export function useStagePreferences(projectId: string) {
   const [preferences, setPreferences] = useState({ lineHeight: DEFAULT_STAGE_LINE_HEIGHT })
+  const normalizedProjectId = projectId.trim()
 
   const applySettings = useCallback((settings: Awaited<ReturnType<typeof fetchProjectSettings>>) => {
     const effective = settings.effective || {}
@@ -16,17 +17,21 @@ export function useStagePreferences(projectId: string) {
 
   const load = useCallback(async () => {
     try {
-      applySettings(await fetchProjectSettings(projectId))
+      applySettings(await fetchProjectSettings(normalizedProjectId))
     } catch (error) {
       console.warn('[use-stage-preferences.ts] failed to load story stage display settings', error)
       setPreferences({ lineHeight: DEFAULT_STAGE_LINE_HEIGHT })
     }
-  }, [applySettings, projectId])
+  }, [applySettings, normalizedProjectId])
 
   useEffect(() => {
+    if (!normalizedProjectId) {
+      setPreferences({ lineHeight: DEFAULT_STAGE_LINE_HEIGHT })
+      return
+    }
     void load()
-    return subscribeSettingsTarget(projectSettingsTarget(projectId), applySettings)
-  }, [applySettings, load, projectId])
+    return subscribeSettingsTarget(projectSettingsTarget(normalizedProjectId), applySettings)
+  }, [applySettings, load, normalizedProjectId])
 
   return preferences
 }

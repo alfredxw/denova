@@ -31,7 +31,6 @@ const agents = {
   'agents.custom.inheritCurrent': '沿用当前分支 Agent',
   'agents.custom.archive': '归档',
   'agents.custom.archived': '已归档',
-  'agents.custom.builtin': '内置{{agent}}',
   'agents.custom.switchNote': '切换时会新建会话，已有历史继续使用原来的 Agent。',
   'agents.custom.select': 'Agent',
   'agents.custom.imageDefault': '默认图像 Agent',

@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 22
+	sessionProjectionVersion      = 23
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -49,9 +49,7 @@ type domainCommitLocator struct {
 
 type contextBatchLocator struct {
 	Identity        DomainCommitIdentity       `json:"identity"`
-	Kind            string                     `json:"kind"`
-	Ordinal         int                        `json:"ordinal"`
-	Hash            string                     `json:"hash"`
+	Sequence        int                        `json:"sequence"`
 	ContextRevision uint64                     `json:"context_revision"`
 	ResultCursor    ContextCursor              `json:"result_cursor"`
 	Cursor          conversationjournal.Cursor `json:"cursor"`
@@ -361,7 +359,7 @@ func (projection *sessionJournalProjection) applyContextBatch(record conversatio
 		projection.rememberMessage(record.Location, batch.Messages[index].Role, MessageMetadata{}, "")
 	}
 	projection.RecentContextBatches = append(projection.RecentContextBatches, contextBatchLocator{
-		Identity: batch.Identity, Kind: batch.Kind, Ordinal: batch.Ordinal, Hash: batch.Hash,
+		Identity: batch.Identity, Sequence: batch.Sequence,
 		ContextRevision: batch.ContextRevision,
 		ResultCursor: ContextCursor{
 			Revision: batch.ContextRevision, MessageCount: projection.MessageCount, ClearAfterIndex: projection.ClearAfter,

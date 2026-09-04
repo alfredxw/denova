@@ -66,6 +66,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major fixes / 重要修复
 
+- 修复首次切换 v0.3.3 书籍时工作区路径与 Project ID 短暂不同步而报错的问题；切换现在会一次发布完整 Project 身份，无需刷新恢复。
+- Fixed first-switch errors for v0.3.3 Books caused by the workspace path and Project ID updating separately; switches now publish one complete Project identity without requiring a refresh.
 - 修复数据目录绝对路径参与 Project 与会话身份，以及部分 v0.3.3 游戏故事含旧上下文事件的问题；搬迁或升级后不再出现历史消失、重复 Project 或故事无法打开，迁移会先备份原始数据再原子更新。
 - Fixed absolute data-directory paths participating in Project and session identity, along with obsolete context events in some v0.3.3 Game stories. Relocation or upgrade no longer causes missing history, duplicate Projects, or stories that fail to open, and migrations back up source data before atomic updates.
 - 修复跨轮、工具调用、刷新、重连、中断、继续或重启后推理上下文、消息、工具结果和已提交内容丢失或重复的问题；主动中断现在进入可恢复暂停，Token 校准不会再下调保守上下文估算。

@@ -178,15 +178,15 @@ func pendingModelContextBatchesForBranch(
 		if left != right {
 			return left < right
 		}
-		return result[i].BatchOrdinal < result[j].BatchOrdinal
+		return result[i].Sequence < result[j].Sequence
 	})
-	lastOrdinal := make(map[string]int, len(pendingInputs))
+	lastSequence := make(map[string]int, len(pendingInputs))
 	for _, event := range result {
-		expected := lastOrdinal[event.PlayerInputID]
-		if event.BatchOrdinal != expected {
-			return nil, fmt.Errorf("%w: player input %s has a missing or duplicate pending batch ordinal", ErrModelContextBatchIdentityConflict, event.PlayerInputID)
+		expected := lastSequence[event.PlayerInputID]
+		if event.Sequence != expected {
+			return nil, fmt.Errorf("%w: player input %s has a missing or duplicate pending batch sequence", ErrModelContextBatchIdentityConflict, event.PlayerInputID)
 		}
-		lastOrdinal[event.PlayerInputID] = expected + 1
+		lastSequence[event.PlayerInputID] = expected + 1
 	}
 	return result, nil
 }

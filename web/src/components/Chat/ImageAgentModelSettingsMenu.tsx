@@ -90,7 +90,7 @@ export function ImageAgentModelSettingsMenu({ disabled = false, projectId = '' }
         options={agentOptions}
         saving={selector.saving?.kind === 'agent'}
         disabled={controlsDisabled}
-        emptyLabel={t('agents.custom.builtin', { agent: t('agents.image.title') })}
+        emptyLabel={t('agents.image.title')}
         onValueChange={(value) => selector.select({ kind: 'agent', value })}
       />
       <PersistedSettingsMenuSub
@@ -263,7 +263,7 @@ function buildImageAgentOptions(
   settings: LayeredSettings | null,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): ModelMenuOption[] {
-  const builtinLabel = t('agents.custom.builtin', { agent: t('agents.image.title') })
+  const builtinLabel = t('agents.image.title')
   const options: ModelMenuOption[] = [{ id: BUILTIN_IMAGE_AGENT_ID, label: builtinLabel, currentLabel: builtinLabel }]
   for (const agent of customAgentsForRuntime(settings?.effective.custom_agents, 'image')) {
     if (!agent.id) continue

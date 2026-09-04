@@ -198,23 +198,6 @@ func hydrateModelContextProviderContinuations(
 	return result, nil
 }
 
-func modelContextProviderContinuationFingerprint(messages []ModelContextMessage) (string, error) {
-	continuations := make([]map[string]any, len(messages))
-	for index, message := range messages {
-		continuation, err := normalizeProviderContinuation(message.ProviderContinuation)
-		if err != nil {
-			return "", err
-		}
-		continuations[index] = continuation
-	}
-	data, err := json.Marshal(continuations)
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.Sum256(data)
-	return hex.EncodeToString(digest[:]), nil
-}
-
 func deterministicModelContextProviderContinuationID(ownerID string, messageIndex int) string {
 	digest := sha256.Sum256([]byte(strings.TrimSpace(ownerID) + "\x00" + fmt.Sprint(messageIndex)))
 	return "model-provider-continuation-" + hex.EncodeToString(digest[:16])

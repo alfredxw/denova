@@ -317,7 +317,7 @@ func (c *Conversation) AppendContextMessages(messages ...*agents.Message) error 
 
 	c.mu.Lock()
 	identity := c.agentCycleIdentity
-	ordinal := c.modelContextBatchOrdinal
+	sequence := c.modelContextBatchSequence
 	store := c.store
 	storyID := c.storyID
 	branchID := c.branchID
@@ -345,7 +345,7 @@ func (c *Conversation) AppendContextMessages(messages ...*agents.Message) error 
 	}
 	intents, err := interactive.NewModelContextBatchIntents(interactive.DomainCommitIdentity{
 		CommandID: commandID, OperationID: operationID, Cycle: identity.Cycle,
-	}, branchID, ordinal, converted)
+	}, branchID, sequence, converted)
 	if err != nil {
 		return err
 	}
@@ -355,8 +355,7 @@ func (c *Conversation) AppendContextMessages(messages ...*agents.Message) error 
 			return err
 		}
 		c.mu.Lock()
-		c.modelContextMessages = append(c.modelContextMessages, interactive.CloneModelContextMessages(receipt.Event.Messages)...)
-		c.modelContextBatchOrdinal = receipt.Event.BatchOrdinal + 1
+		c.modelContextBatchSequence = receipt.Event.Sequence + 1
 		c.mu.Unlock()
 	}
 	return nil
@@ -364,7 +363,8 @@ func (c *Conversation) AppendContextMessages(messages ...*agents.Message) error 
 
 // CommitAgentCanonicalContext persists an exact Agent-owned hidden batch in
 // the Story journal. The batch remains side evidence until the final Turn
-// absorbs it, and exact retries do not duplicate the in-memory suffix.
+// absorbs it; memory tracks only the next sequence and never duplicates the
+// journal's canonical message payload.
 func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request agent.ContextCommitRequest) (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("game conversation is unavailable")
@@ -383,7 +383,7 @@ func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request 
 	c.mu.Lock()
 	identity := c.agentCycleIdentity
 	branchID := c.branchID
-	currentOrdinal := c.modelContextBatchOrdinal
+	currentSequence := c.modelContextBatchSequence
 	c.mu.Unlock()
 	if request.Identity.CommandID != string(identity.CommandID) || request.Identity.RunID != string(identity.OperationID) ||
 		request.Identity.Cycle != identity.Cycle {
@@ -400,7 +400,7 @@ func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request 
 		interactive.DomainCommitIdentity{
 			CommandID: request.Identity.CommandID, OperationID: request.Identity.RunID, Cycle: request.Identity.Cycle,
 		},
-		branchID, string(request.Kind), request.Ordinal, converted,
+		branchID, request.Sequence, converted,
 	)
 	if err != nil {
 		return "", err
@@ -409,10 +409,9 @@ func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request 
 	if err != nil {
 		return "", err
 	}
-	if request.Ordinal >= currentOrdinal {
+	if request.Sequence >= currentSequence {
 		c.mu.Lock()
-		c.modelContextMessages = append(c.modelContextMessages, interactive.CloneModelContextMessages(receipt.Event.Messages)...)
-		c.modelContextBatchOrdinal = request.Ordinal + 1
+		c.modelContextBatchSequence = request.Sequence + 1
 		c.mu.Unlock()
 	}
 	return receipt.Revision, nil

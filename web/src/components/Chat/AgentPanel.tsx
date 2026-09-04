@@ -564,11 +564,11 @@ function AgentPanelComponent({
   }, [onEditQueuedCommand])
 
   const quickPromptScope = configuredQuickPromptScope ?? (generalAgent ? undefined : 'writing')
-  let quickPromptTarget = t('chat.quick.targetWork', { lng: 'en-US' })
+  let quickPromptTarget = t('chat.quick.targetWork')
   if (currentChapter) {
-    quickPromptTarget = t('chat.quick.targetChapter', { title: currentChapter.display_title, lng: 'en-US' })
+    quickPromptTarget = t('chat.quick.targetChapter', { title: currentChapter.display_title })
   } else if (selectedFile) {
-    quickPromptTarget = t('chat.quick.targetFile', { file: selectedFile, lng: 'en-US' })
+    quickPromptTarget = t('chat.quick.targetFile', { file: selectedFile })
   }
   const fillQuickPrompt = useCallback((prompt: string) => {
     setInputPrefill((current) => ({

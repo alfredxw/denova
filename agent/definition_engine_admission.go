@@ -172,16 +172,14 @@ func (engine *definitionEngine) commitCanonicalContext(
 	ctx context.Context,
 	request runstate.EngineRequest,
 	adapter CanonicalAdapter,
-	kind ContextCommitKind,
-	ordinal int,
+	sequence int,
 	messages []*Message,
 ) error {
 	contextAdapter, ok := adapter.(CanonicalContextAdapter)
 	if !ok || len(messages) == 0 {
 		return nil
 	}
-	hash, err := canonicalContextHash(kind, ordinal, messages, adapter.Identity())
-	if err != nil {
+	if err := ValidateContextCommitMessages(messages); err != nil {
 		return err
 	}
 	values := make([]Message, len(messages))
@@ -193,7 +191,7 @@ func (engine *definitionEngine) commitCanonicalContext(
 	}
 	receipt, err := contextAdapter.CommitContext(ctx, ContextCommitRequest{
 		Identity: canonicalCommitIdentity(engine.key, request.Snapshot, CommitContext),
-		Kind:     kind, Ordinal: ordinal, Hash: hash, Messages: values,
+		Sequence: sequence, Messages: values,
 	})
 	if err != nil {
 		return fmt.Errorf("commit canonical Agent context: %w", err)

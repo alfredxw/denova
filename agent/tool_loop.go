@@ -57,20 +57,9 @@ var fallbackToolResultDescriptor = ToolDescriptor{
 	Steering:        SteeringFinishCurrent, MaxResultBytes: fallbackToolResultMaxBytes,
 }
 
-// executeToolBatch schedules calls in descriptor-defined stages. Parallel reads
-// share one bounded stage; exclusive and child calls are source-order barriers.
-func (agent *modelToolLoop) executeToolBatch(
-	ctx context.Context,
-	registry *Registry,
-	calls []ToolCall,
-	modelResponseOrdinal int,
-	events *asyncGenerator[*loopEvent],
-	cancel *cancelControl,
-) ([]toolExecutionResult, error) {
-	prepared := agent.prepareToolCalls(ctx, registry, calls, modelResponseOrdinal)
-	return agent.executePreparedToolBatch(ctx, prepared, events, cancel)
-}
-
+// executePreparedToolBatch schedules calls in descriptor-defined stages.
+// Parallel reads share one bounded stage; exclusive and child calls are
+// source-order barriers.
 func (agent *modelToolLoop) executePreparedToolBatch(
 	ctx context.Context,
 	prepared []preparedToolCall,
@@ -155,6 +144,13 @@ func prepareToolCall(
 	parentCallID string,
 ) preparedToolCall {
 	call = cloneToolCalls([]ToolCall{call})[0]
+	originalCall := cloneToolCalls([]ToolCall{call})[0]
+	canonicalArguments, argumentErr := canonicalizeToolArgumentsJSON(call.Function.Arguments)
+	if argumentErr != nil {
+		call.Function.Arguments = `{}`
+	} else {
+		call.Function.Arguments = canonicalArguments
+	}
 	item := preparedToolCall{
 		index: index, call: call, executionID: executionID, parentCallID: parentCallID, registry: registry,
 	}
@@ -178,8 +174,11 @@ func prepareToolCall(
 		snapshot, _ := registry.Snapshot(name)
 		item.definition = definition
 		item.snapshot = snapshot
-		if normalized, err := NormalizeToolArguments(snapshot.Info, call.Function.Arguments); err != nil {
-			result := invalidToolArgumentsResult(call, err)
+		if argumentErr != nil {
+			result := invalidToolArgumentsResult(originalCall, argumentErr)
+			item.precomputed = &result
+		} else if normalized, err := NormalizeToolArguments(snapshot.Info, call.Function.Arguments); err != nil {
+			result := invalidToolArgumentsResult(originalCall, err)
 			item.precomputed = &result
 		} else {
 			item.call.Function.Arguments = normalized
@@ -370,7 +369,7 @@ func (agent *modelToolLoop) executePreparedTool(
 		}
 		normalizedArguments, err := NormalizeToolArguments(prepared.snapshot.Info, arguments)
 		if err != nil {
-			return invalidToolArgumentsToolResult(prepared.call.Function.Name, err), nil
+			return invalidToolArgumentsToolResult(prepared.call.Function.Name, arguments, err), nil
 		}
 		if agent.permission != nil && normalizedArguments != authorizedArguments {
 			return ToolResult{}, fmt.Errorf("%w: tool %q", ErrPermissionArgumentsChanged, prepared.call.Function.Name)
@@ -650,14 +649,14 @@ func syntheticCallResult(call ToolCall, status ToolResultStatus, reason ToolSynt
 }
 
 func invalidToolArgumentsResult(call ToolCall, err error) toolExecutionResult {
-	result := invalidToolArgumentsToolResult(call.Function.Name, err)
+	result := invalidToolArgumentsToolResult(call.Function.Name, call.Function.Arguments, err)
 	return toolExecutionResult{
 		result:  result,
 		message: ToolMessage(result, call.ID, WithToolName(call.Function.Name)),
 	}
 }
 
-func invalidToolArgumentsToolResult(toolName string, err error) ToolResult {
+func invalidToolArgumentsToolResult(toolName, receivedArguments string, err error) ToolResult {
 	issues := []ToolArgumentIssue{{Code: "constraint_violation", Path: "$", Message: "invalid tool arguments"}}
 	var argumentErr *ToolArgumentsError
 	if errors.As(err, &argumentErr) && argumentErr != nil && len(argumentErr.Issues) > 0 {
@@ -667,22 +666,29 @@ func invalidToolArgumentsToolResult(toolName string, err error) ToolResult {
 	}
 	payload := struct {
 		Error struct {
-			Code    string              `json:"code"`
-			Tool    string              `json:"tool"`
-			Message string              `json:"message"`
-			Issues  []ToolArgumentIssue `json:"issues"`
+			Code              string              `json:"code"`
+			Tool              string              `json:"tool"`
+			Message           string              `json:"message"`
+			Issues            []ToolArgumentIssue `json:"issues"`
+			ReceivedArguments *string             `json:"received_arguments,omitempty"`
 		} `json:"error"`
 	}{}
 	payload.Error.Code = string(ToolSyntheticInvalidArguments)
 	payload.Error.Tool = strings.TrimSpace(toolName)
 	payload.Error.Message = "Tool arguments could not be normalized safely; correct the listed issues and retry."
 	payload.Error.Issues = issues
-	encoded, marshalErr := json.Marshal(payload)
+	displayEncoded, marshalErr := json.Marshal(payload)
 	if marshalErr != nil {
-		encoded = []byte(`{"error":{"code":"invalid_arguments","message":"invalid tool arguments"}}`)
+		displayEncoded = []byte(`{"error":{"code":"invalid_arguments","message":"invalid tool arguments"}}`)
 	}
-	result := SyntheticToolResult(ToolResultError, ToolSyntheticInvalidArguments, string(encoded))
-	result.Details = append(json.RawMessage(nil), encoded...)
+	payload.Error.ReceivedArguments = &receivedArguments
+	modelEncoded, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		modelEncoded = displayEncoded
+	}
+	result := SyntheticToolResult(ToolResultError, ToolSyntheticInvalidArguments, string(modelEncoded))
+	result.DisplayContent = string(displayEncoded)
+	result.Details = append(json.RawMessage(nil), displayEncoded...)
 	return result
 }
 
@@ -754,25 +760,20 @@ func modelFinishReasonBlocksToolExecution(meta *ResponseMeta) (string, bool) {
 }
 
 func (agent *modelToolLoop) incompleteModelToolResults(
-	ctx context.Context,
-	calls []ToolCall,
-	registry *Registry,
-	modelResponseOrdinal int,
+	preparedCalls []preparedToolCall,
 	finishReason string,
 	events *asyncGenerator[*loopEvent],
 ) []toolExecutionResult {
-	results := make([]toolExecutionResult, len(calls))
+	results := make([]toolExecutionResult, len(preparedCalls))
 	finishReason = strings.TrimSpace(finishReason)
 	if finishReason == "" {
 		finishReason = "incomplete"
 	}
-	for index, call := range calls {
-		prepared := preparedToolCall{index: index, call: call, executionID: ToolExecutionIDForOrdinal(ctx, modelResponseOrdinal, index)}
-		result := syntheticCallResult(call, ToolResultSkipped, ToolSyntheticModelIncomplete,
+	for index, prepared := range preparedCalls {
+		result := syntheticCallResult(prepared.call, ToolResultSkipped, ToolSyntheticModelIncomplete,
 			fmt.Sprintf("tool call was not executed because the model response ended with finish_reason %q; arguments may be incomplete", finishReason))
-		if snapshot, ok := registry.Snapshot(call.Function.Name); ok {
-			prepared.snapshot = snapshot
-			normalizeToolExecutionResult(&result, snapshot.Descriptor)
+		if prepared.snapshot.Info != nil {
+			normalizeToolExecutionResult(&result, prepared.snapshot.Descriptor)
 		} else {
 			normalizeToolExecutionResult(&result, fallbackToolResultDescriptor)
 		}

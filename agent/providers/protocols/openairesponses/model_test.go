@@ -155,6 +155,41 @@ func TestContinuationDoesNotReplayToolCallRemovedByContextNormalization(t *testi
 	}
 }
 
+func TestContinuationUsesCanonicalToolCallArguments(t *testing.T) {
+	modelConfig := providers.ModelConfig{
+		Provider: providers.ProviderDeepSeek,
+		Protocol: providers.ProtocolOpenAIResponses,
+		Model:    "deepseek-v4-flash",
+	}
+	continuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"function_invalid","type":"function_call","call_id":"call_invalid","name":"write_lore_items","arguments":"{\"items\":" ,"status":"completed"}`),
+	})
+	if err != nil {
+		t.Fatalf("new continuation: %v", err)
+	}
+	assistant := agent.AssistantMessage("", []agent.ToolCall{{
+		ID: "call_invalid", Type: "function",
+		Function: agent.FunctionCall{Name: "write_lore_items", Arguments: `{}`},
+	}})
+	assistant.Extra = map[string]any{providers.ExtraKeyContinuation: continuation}
+
+	items, err := requestInput([]*agent.Message{assistant}, modelConfig)
+	if err != nil {
+		t.Fatalf("build canonical continuation input: %v", err)
+	}
+	data, err := json.Marshal(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input []map[string]any
+	if err := json.Unmarshal(data, &input); err != nil {
+		t.Fatal(err)
+	}
+	if len(input) != 1 || input[0]["arguments"] != `{}` || input[0]["call_id"] != "call_invalid" {
+		t.Fatalf("canonical tool call was not projected into continuation: %#v", input)
+	}
+}
+
 func mustProtocolOptions(t *testing.T, compatibility Compatibility) json.RawMessage {
 	t.Helper()
 	options, err := providers.EncodeProtocolOptions(compatibility)
