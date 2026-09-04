@@ -46,7 +46,9 @@ type Registry struct {
 
 func NewRegistry(denovaDir string) *Registry {
 	denovaDir = strings.TrimSpace(denovaDir)
-	if absolute, err := filepath.Abs(denovaDir); err == nil {
+	if canonical, err := canonicalDirectory(denovaDir, false); err == nil {
+		denovaDir = canonical
+	} else if absolute, err := filepath.Abs(denovaDir); err == nil {
 		denovaDir = filepath.Clean(absolute)
 	}
 	return &Registry{
@@ -838,7 +840,14 @@ func canonicalDirectory(path string, requireExists bool) (string, error) {
 }
 
 func samePath(left, right string) bool {
-	return filepath.Clean(left) == filepath.Clean(right)
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if left == right {
+		return true
+	}
+	canonicalLeft, leftErr := filepath.EvalSymlinks(left)
+	canonicalRight, rightErr := filepath.EvalSymlinks(right)
+	return leftErr == nil && rightErr == nil && filepath.Clean(canonicalLeft) == filepath.Clean(canonicalRight)
 }
 
 func normalizedSortMode(mode SortMode, hasOrder bool) SortMode {

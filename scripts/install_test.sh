@@ -24,7 +24,7 @@ case "$(uname -m)" in
   *) printf 'Skipping installer test on unsupported architecture.\n'; exit 0 ;;
 esac
 
-VERSION="v0.3.3"
+VERSION="v0.4.0"
 ARCHIVE_NAME="denova-${VERSION}-${platform_os}-${platform_arch}.tar.gz"
 RELEASE_DIR="${TEST_ROOT}/release"
 PACKAGE_ROOT="${TEST_ROOT}/package"
@@ -36,7 +36,7 @@ mkdir -p "${RELEASE_DIR}" "${PACKAGE_DIR}/web" "${PACKAGE_DIR}/skills" "${FAKE_B
 cat > "${PACKAGE_DIR}/denova" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = "--version" ]; then
-  printf '0.3.3\n'
+  printf '0.4.0\n'
   exit 0
 fi
 printf '%s\n' "${DENOVA_DIR:-}"
@@ -71,9 +71,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "${url}" in
-  */releases/latest) printf '%s' 'https://github.com/alfredxw/denova/releases/tag/v0.3.3' ;;
+  */releases/latest) printf '%s' 'https://github.com/alfredxw/denova/releases/tag/v0.4.0' ;;
   */checksums.txt) cp "${DENOVA_INSTALL_TEST_RELEASE_DIR}/checksums.txt" "${output}" ;;
-  */denova-v0.3.3-*.tar.gz) cp "${DENOVA_INSTALL_TEST_RELEASE_DIR}/${url##*/}" "${output}" ;;
+  */denova-v0.4.0-*.tar.gz) cp "${DENOVA_INSTALL_TEST_RELEASE_DIR}/${url##*/}" "${output}" ;;
   *) printf 'Unexpected installer URL: %s\n' "${url}" >&2; exit 1 ;;
 esac
 EOF
@@ -86,7 +86,7 @@ sh "${ROOT_DIR}/scripts/install.sh" >/dev/null
 
 LAUNCHER="${HOME_DIR}/.local/bin/denova"
 INSTALL_DIR="${HOME_DIR}/.local/lib/denova"
-[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.3.3" ]
+[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.4.0" ]
 [ "$(HOME="${HOME_DIR}" "${LAUNCHER}")" = "${HOME_DIR}/.denova" ]
 [ "$(HOME="${HOME_DIR}" DENOVA_DIR="${TEST_ROOT}/custom-data" "${LAUNCHER}")" = "${TEST_ROOT}/custom-data" ]
 [ ! -e "${INSTALL_DIR}/tools" ]

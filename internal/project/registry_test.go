@@ -41,7 +41,7 @@ func TestRegistryManagedProjectSurvivesDataDirectoryRelocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantWorkspace := filepath.Join(secondRoot, ContentDirectoryName, "Portable Book")
-	if relocated.ID != created.ID || relocated.WorkspacePath != wantWorkspace || relocated.Status != StatusAvailable {
+	if relocated.ID != created.ID || relocated.WorkspacePath != resolvedTestPath(t, wantWorkspace) || relocated.Status != StatusAvailable {
 		t.Fatalf("relocated Project = %#v, want workspace %s", relocated, wantWorkspace)
 	}
 	secondLayout, err := secondRegistry.Layout(relocated)
@@ -57,6 +57,15 @@ func TestRegistryManagedProjectSurvivesDataDirectoryRelocation(t *testing.T) {
 	if len(persisted.Projects) != 1 || persisted.Projects[0].WorkspacePath != "" {
 		t.Fatalf("registry persisted a runtime absolute path: %#v", persisted.Projects)
 	}
+}
+
+func resolvedTestPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Clean(resolved)
 }
 
 func TestRegistryPreservesForeignExternalLocationVerbatim(t *testing.T) {

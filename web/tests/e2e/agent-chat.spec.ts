@@ -2,7 +2,7 @@ import { access, mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type Page } from '../support/fixtures'
 import { createAgentChatSession, registerAgentChatProject, setAgentChatApprovalMode } from '../support/api'
-import { openAgentChatSession, openAgentChatWorkbench } from '../support/agent-chat'
+import { openAgentChatSession, openAgentChatWorkbench, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus, releaseDelayedRequest } from '../support/model'
 
 const sessionADelayMarker = 'E2E_SESSION_A_DELAY'
@@ -35,15 +35,13 @@ test('runs General Agent tools in ordinary directories without crossing Project 
   await page.goto('/')
   await openAgentChatWorkbench(page)
   let composer = await openAgentChatSession(page, alpha.id, alphaSession.title)
-  await composer.fill('Write the deterministic Project proof. E2E_GENERAL_PROJECT_ALPHA_WRITE')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Write the deterministic Project proof. E2E_GENERAL_PROJECT_ALPHA_WRITE')
   await expect(page.getByText('General Project write completed: alpha-project-only.', { exact: true }).filter({ visible: true })).toBeVisible()
   await expect.poll(() => readFile(path.join(alphaPath, 'e2e-project-proof.txt'), 'utf8')).toBe('alpha-project-only')
   await expect.poll(() => fileExists(path.join(betaPath, 'e2e-project-proof.txt'))).toBe(false)
 
   composer = await openAgentChatSession(page, beta.id, betaSession.title)
-  await composer.fill('Write the deterministic Project proof. E2E_GENERAL_PROJECT_BETA_WRITE')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Write the deterministic Project proof. E2E_GENERAL_PROJECT_BETA_WRITE')
   await expect(page.getByText('General Project write completed: beta-project-only.', { exact: true }).filter({ visible: true })).toBeVisible()
   await expect.poll(() => readFile(path.join(betaPath, 'e2e-project-proof.txt'), 'utf8')).toBe('beta-project-only')
   await expect(readFile(path.join(alphaPath, 'e2e-project-proof.txt'), 'utf8')).resolves.toBe('alpha-project-only')
@@ -62,18 +60,15 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
   await openAgentChatWorkbench(page)
   try {
     let composer = await openAgentChatSession(page, project.id, sessionA.title)
-    await composer.fill(`Hold Session A. ${sessionADelayMarker}`)
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, `Hold Session A. ${sessionADelayMarker}`)
     await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[sessionADelayMarker] ?? 0).toBe(1)
 
-    await composer.fill('Deliver this only after Session A resumes. E2E_SESSION_A_FOLLOW_UP')
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, 'Deliver this only after Session A resumes. E2E_SESSION_A_FOLLOW_UP')
     const queue = page.getByRole('region', { name: '排队中的指令' }).filter({ visible: true })
     await expect(queue).toContainText('E2E_SESSION_A_FOLLOW_UP')
 
     composer = await openAgentChatSession(page, project.id, sessionB.title)
-    await composer.fill(`Hold Session B independently. ${sessionBDelayMarker}`)
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, `Hold Session B independently. ${sessionBDelayMarker}`)
     await expect.poll(async () => (await getModelStatus(request)).delayed_waiting).toBe(2)
 
     await releaseDelayedRequest(request, sessionBDelayMarker)
@@ -110,8 +105,7 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
   let released = false
   let streamsReleased = false
   try {
-    await composer.fill(`Delegate this test to three agents and wait for all results. ${multiAgentDisplayMarker}`)
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, `Delegate this test to three agents and wait for all results. ${multiAgentDisplayMarker}`)
     await expect.poll(async () => (
       (await getModelStatus(request)).delayed_waiting_by_marker[multiAgentStreamGateMarker] ?? 0
     )).toBe(3)
@@ -167,13 +161,11 @@ test('restores an accepted Follow Up after reload and delivers it exactly once',
   await openAgentChatWorkbench(page)
   let composer = await openAgentChatSession(page, project.id, session.title)
   try {
-    await composer.fill(`Keep this run active across reload. ${queueReloadDelayMarker}`)
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, `Keep this run active across reload. ${queueReloadDelayMarker}`)
     await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[queueReloadDelayMarker] ?? 0)
       .toBe(1)
 
-    await composer.fill(`Deliver this after reload. ${queueReloadFollowUpMarker}`)
-    await composer.press('Enter')
+    await submitAgentChatMessage(page, composer, `Deliver this after reload. ${queueReloadFollowUpMarker}`)
     let queue = page.getByRole('region', { name: '排队中的指令' }).filter({ visible: true })
     await expect(queue).toContainText(queueReloadFollowUpMarker)
 

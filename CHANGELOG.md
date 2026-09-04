@@ -4,13 +4,15 @@ Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据�
 
 Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.3.3）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.3.3 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本（当前为 v0.4.0）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.0 后从未发布的中间格式不计入。
 
-`Unreleased` compares against the latest release (currently v0.3.3) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.3.3 are excluded.
+`Unreleased` compares against the latest release (currently v0.4.0) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.0 are excluded.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
+
+## [v0.4.0] - 2026-09-04
 
 ### Brief / 简要说明
 

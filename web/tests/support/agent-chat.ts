@@ -12,10 +12,17 @@ export async function openAgentChatSession(page: Page, projectId: string, sessio
     .filter({ hasText: sessionTitle })
   await expect(session).toBeVisible()
   await session.click()
+  await expect(session).toHaveAttribute('aria-current', 'page')
 
   const composer = page.getByPlaceholder(/输入消息/).filter({ visible: true })
   await expect(composer).toBeVisible()
   return composer
+}
+
+/** Submits after the selected conversation's configuration is ready. */
+export async function submitAgentChatMessage(page: Page, composer: Locator, message: string): Promise<void> {
+  await composer.fill(message)
+  await page.locator('[data-action="send"]').filter({ visible: true }).click()
 }
 
 export async function openAgentChatWorkbench(page: Page): Promise<void> {

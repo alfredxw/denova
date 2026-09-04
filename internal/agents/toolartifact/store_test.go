@@ -122,7 +122,16 @@ func TestStateStoreReferenceSurvivesDataRootMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(filepath.ToSlash(reference.ReadablePath), filepath.ToSlash(parent)) || !strings.HasPrefix(resolved, newRoot) {
+	canonicalNewRoot, err := filepath.EvalSymlinks(newRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(canonicalNewRoot, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(filepath.ToSlash(reference.ReadablePath), filepath.ToSlash(parent)) ||
+		relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
 		t.Fatalf("reference did not rebase: durable=%q runtime=%q", reference.ReadablePath, resolved)
 	}
 	content, err := os.ReadFile(resolved)

@@ -1,7 +1,7 @@
 {
   "name": "@alfredxw/denova",
-  "version": "0.3.3",
-  "description": "面向长篇小说创作的 AI 写作工作台",
+  "version": "0.4.0",
+  "description": "面向小说写作与 AI 角色扮演游戏的一体化 AI 创作平台",
   "type": "module",
   "bin": {
     "denova": "./bin/denova.js"

@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Status: <strong>Beta</strong> · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.4.0</strong> (2026-09-04) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)

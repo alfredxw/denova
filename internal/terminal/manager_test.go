@@ -26,11 +26,15 @@ func TestResolveShellFallsBackWhenConfiguredExecutableIsUnavailable(t *testing.T
 	}
 }
 
-// collect reads output until the session exits or the deadline passes, returning what it saw.
-func collect(t *testing.T, session *Session, out <-chan []byte, want string) string {
+// collect reads retained and live output until it finds want or the subscription closes.
+func collect(t *testing.T, history []byte, out <-chan []byte, want string) string {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
 	var builder strings.Builder
+	builder.Write(history)
+	if want != "" && strings.Contains(builder.String(), want) {
+		return builder.String()
+	}
 	for {
 		select {
 		case chunk, ok := <-out:
@@ -54,10 +58,10 @@ func TestManagerCreateRunsCommandAndStreamsOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	_, out, detach := session.Attach(16)
+	history, out, detach := session.Attach(16)
 	defer detach()
 
-	got := collect(t, session, out, "denova-terminal-ok")
+	got := collect(t, history, out, "denova-terminal-ok")
 	if !strings.Contains(got, "denova-terminal-ok") {
 		t.Fatalf("expected command output, got %q", got)
 	}
@@ -82,7 +86,7 @@ func TestAttachedSessionClosesOutputAfterFinalProcessBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	_, out, detach := session.Attach(16)
+	history, out, detach := session.Attach(16)
 	defer detach()
 
 	type outputResult struct {
@@ -91,6 +95,7 @@ func TestAttachedSessionClosesOutputAfterFinalProcessBytes(t *testing.T) {
 	result := make(chan outputResult, 1)
 	go func() {
 		var builder strings.Builder
+		builder.Write(history)
 		for chunk := range out {
 			builder.Write(chunk)
 		}
@@ -139,10 +144,10 @@ func TestCLIStartupReturnsToWorkspaceShell(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create Claude profile session: %v", err)
 	}
-	_, out, detach := session.Attach(16)
+	history, out, detach := session.Attach(16)
 	defer detach()
 
-	if got := collect(t, session, out, "cli-finished"); !strings.Contains(got, "cli-finished") {
+	if got := collect(t, history, out, "cli-finished"); !strings.Contains(got, "cli-finished") {
 		t.Fatalf("startup command output = %q", got)
 	}
 	select {
@@ -153,7 +158,7 @@ func TestCLIStartupReturnsToWorkspaceShell(t *testing.T) {
 	if err := session.Write([]byte("pwd\r")); err != nil {
 		t.Fatalf("write command after CLI exit: %v", err)
 	}
-	if got := collect(t, session, out, workspace); !strings.Contains(got, workspace) {
+	if got := collect(t, nil, out, workspace); !strings.Contains(got, workspace) {
 		t.Fatalf("CLI did not return to the workspace shell: output=%q workspace=%q", got, workspace)
 	}
 }
@@ -164,8 +169,8 @@ func TestSessionAttachReplaysScrollback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	_, out, detach := session.Attach(16)
-	collect(t, session, out, "replay-marker")
+	history, out, detach := session.Attach(16)
+	collect(t, history, out, "replay-marker")
 	detach()
 
 	select {
@@ -196,13 +201,13 @@ func TestSessionWriteFeedsStdin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	_, out, detach := session.Attach(16)
+	history, out, detach := session.Attach(16)
 	defer detach()
 
 	if err := session.Write([]byte("ping\n")); err != nil {
 		t.Fatalf("write stdin: %v", err)
 	}
-	got := collect(t, session, out, "got:ping")
+	got := collect(t, history, out, "got:ping")
 	if !strings.Contains(got, "got:ping") {
 		t.Fatalf("expected stdin echo, got %q", got)
 	}

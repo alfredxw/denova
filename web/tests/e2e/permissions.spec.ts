@@ -6,7 +6,7 @@ import {
   registerAgentChatProject,
   setAgentChatApprovalMode,
 } from '../support/api'
-import { openAgentChatSession, openAgentChatWorkbench } from '../support/agent-chat'
+import { openAgentChatSession, openAgentChatWorkbench, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus } from '../support/model'
 
 test('enforces Ask, Write, and Full access on a real external filesystem read', async ({ page, request }) => {
@@ -32,8 +32,7 @@ test('enforces Ask, Write, and Full access on a real external filesystem read', 
 
   let composer = await openAgentChatSession(page, project.id, askSession.title)
   await expect(page.getByRole('button', { name: 'Agent 安全模式: Ask' }).filter({ visible: true })).toBeVisible()
-  await composer.fill('Read the external E2E file. E2E_EXTERNAL_READ_ASK')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Read the external E2E file. E2E_EXTERNAL_READ_ASK')
   let approval = page.getByRole('region', { name: '需要你的确认' }).filter({ visible: true })
   const displayedExternalPath = modelStatus.external_secret_path.replaceAll('\\', '/')
   await expect(approval).toContainText(displayedExternalPath)
@@ -42,8 +41,7 @@ test('enforces Ask, Write, and Full access on a real external filesystem read', 
 
   composer = await openAgentChatSession(page, project.id, writeSession.title)
   await expect(page.getByRole('button', { name: 'Agent 安全模式: Write' }).filter({ visible: true })).toBeVisible()
-  await composer.fill('Read the external E2E file. E2E_EXTERNAL_READ_WRITE')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Read the external E2E file. E2E_EXTERNAL_READ_WRITE')
   approval = page.getByRole('region', { name: '需要你的确认' }).filter({ visible: true })
   await expect(approval).toContainText(displayedExternalPath)
   await approval.getByRole('button', { name: '拒绝' }).click()
@@ -51,8 +49,7 @@ test('enforces Ask, Write, and Full access on a real external filesystem read', 
 
   composer = await openAgentChatSession(page, project.id, fullSession.title)
   await expect(page.getByRole('button', { name: 'Agent 安全模式: Full access' }).filter({ visible: true })).toBeVisible()
-  await composer.fill('Read the external E2E file. E2E_EXTERNAL_READ_FULL_ACCESS')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Read the external E2E file. E2E_EXTERNAL_READ_FULL_ACCESS')
   await expect(page.getByText('External read completed in Full access mode.', { exact: true }).filter({ visible: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '需要你的确认' }).filter({ visible: true })).toHaveCount(0)
 })

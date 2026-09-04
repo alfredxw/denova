@@ -86,7 +86,11 @@ func TestReleasedV033WritingSessionMigratesAndContinues(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	if application.ProjectID() == "" || application.Workspace() != workspace {
+	canonicalWorkspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if application.ProjectID() == "" || application.Workspace() != canonicalWorkspace {
 		t.Fatalf("migrated active Project id=%q workspace=%q", application.ProjectID(), application.Workspace())
 	}
 

@@ -33,7 +33,7 @@ func TestRegistryLegacyMigrationRebasesManagedProjectFromForeignRoot(t *testing.
 	if projects[0].Location.Kind != LocationManaged || projects[0].Location.Path != "projects/portable-book" {
 		t.Fatalf("legacy managed Project location = %#v", projects[0].Location)
 	}
-	if projects[0].WorkspacePath != workspace || projects[0].Status != StatusAvailable {
+	if projects[0].WorkspacePath != resolvedTestPath(t, workspace) || projects[0].Status != StatusAvailable {
 		t.Fatalf("legacy managed Project was not rebased: %#v", projects[0])
 	}
 	all, err := NewRegistry(denovaDir).List(true)
@@ -70,10 +70,10 @@ func TestRegistryLegacyMigrationRebasesRootBookFromForeignDataRoot(t *testing.T)
 	}
 	project := projects[0]
 	if project.Location.Kind != LocationManaged || project.Location.Path != "Legacy Root Book" ||
-		project.WorkspacePath != workspace || project.Name != "Legacy title" || project.Status != StatusAvailable {
+		project.WorkspacePath != resolvedTestPath(t, workspace) || project.Name != "Legacy title" || project.Status != StatusAvailable {
 		t.Fatalf("foreign-root Book was not rebased onto its original identity: %#v", project)
 	}
-	if registry.CurrentBookPath() != workspace {
+	if registry.CurrentBookPath() != resolvedTestPath(t, workspace) {
 		t.Fatalf("current Book was not preserved: %q", registry.CurrentBookPath())
 	}
 }
@@ -131,14 +131,14 @@ func TestRegistryMigrationKeepsOneManagedOwnerForDuplicatedLegacyPaths(t *testin
 	}
 	current := byID[currentID]
 	if current.Location.Kind != LocationManaged || current.Location.Path != "projects/Portable Book" ||
-		current.WorkspacePath != workspace || current.Status != StatusAvailable {
+		current.WorkspacePath != resolvedTestPath(t, workspace) || current.Status != StatusAvailable {
 		t.Fatalf("current Project did not retain the managed content location: %#v", current)
 	}
 	stale := byID[staleID]
 	if stale.Location.Kind != LocationExternal || stale.Location.Path != stalePath || stale.Status != StatusMissing {
 		t.Fatalf("stale duplicate Project was not preserved as its original external location: %#v", stale)
 	}
-	if registry.CurrentBookPath() != workspace {
+	if registry.CurrentBookPath() != resolvedTestPath(t, workspace) {
 		t.Fatalf("current Book path = %q, want %q", registry.CurrentBookPath(), workspace)
 	}
 	for _, record := range projects {

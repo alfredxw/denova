@@ -101,7 +101,11 @@ func TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot(t *testing.T) {
 		t.Fatalf("Project identity changed after move: got=%q want=%q", secondApp.ProjectID(), projectID)
 	}
 	wantWorkspace := filepath.Join(secondRoot, "projects", "Portable Book")
-	if secondApp.Workspace() != wantWorkspace {
+	canonicalWorkspace, err := filepath.EvalSymlinks(wantWorkspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondApp.Workspace() != canonicalWorkspace {
 		t.Fatalf("runtime Project root=%q want=%q", secondApp.Workspace(), wantWorkspace)
 	}
 
@@ -136,7 +140,7 @@ func TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot(t *testing.T) {
 	tasks, err := automation.NewProjectStore(
 		secondRoot, projectID, secondLayout.ContentRoot, secondLayout.StoreRoot,
 	).ListInScope(automation.ScopeWorkspace)
-	if err != nil || len(tasks) != 1 || tasks[0].ID != createdTask.ID || tasks[0].Target.Workspace != wantWorkspace {
+	if err != nil || len(tasks) != 1 || tasks[0].ID != createdTask.ID || tasks[0].Target.Workspace != canonicalWorkspace {
 		t.Fatalf("moved automation tasks=%#v err=%v", tasks, err)
 	}
 	storyStore := interactive.NewStore(secondLayout.ContentRoot)
