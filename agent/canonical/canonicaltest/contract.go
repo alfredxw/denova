@@ -42,6 +42,16 @@ func RunAdapterContract(t *testing.T, factory Factory) {
 	if err != nil || strings.TrimSpace(outputReceipt.Revision) == "" {
 		t.Fatalf("output receipt = %#v error = %v", outputReceipt, err)
 	}
+}
+
+// RunEffectContract verifies the per-item contract independently of journal ownership.
+func RunEffectContract(t *testing.T, factory func(testing.TB) agent.EffectApplier) {
+	t.Helper()
+	adapter := factory(t)
+	outputIdentity := agent.CommitIdentity{
+		Session: agent.NamedSession("effect-contract"), CommandID: "command-1",
+		RunID: "run-1", Cycle: 1, Stage: agent.CommitOutput,
+	}
 	effects := []agent.EffectRequest{
 		{ID: "effect-1", Identity: outputIdentity, CallID: "call", Index: 0, Effect: agent.Effect{Kind: "contract", Data: []byte(`{"index":0}`)}},
 		{ID: "effect-2", Identity: outputIdentity, CallID: "call", Index: 1, Effect: agent.Effect{Kind: "contract", Data: []byte(`{"index":1}`)}},

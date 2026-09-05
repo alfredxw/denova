@@ -49,30 +49,32 @@ export function isSubAgentTimelineMessage(message: ChatMessage) {
   return message.role === 'assistant' || message.role === 'thinking' || message.role === 'tool_call' || message.role === 'tool_result'
 }
 
-export function buildSubAgentSummaryMessage(messages: ChatMessage[]): ChatMessage | null {
-  const first = messages.find((message) => message.subagent)
+/** Status cards never need the child prose or serialized tool arguments/results. */
+export function buildSubAgentSummaryMessage(views: AgentMessageView[]): ChatMessage | null {
+  const first = views.find((view) => view.metadata.subagent)
   if (!first) return null
-  const reversed = [...messages].reverse()
-  const sessionKey = subAgentSessionKey(first)
-  const subAgentStatus = reversed.find((message) => message.subagent_status)?.subagent_status
+  const metadata = first.metadata
+  const id = first.partId || first.messageId
+  const sessionKey = subAgentSessionKey(metadata)
+  const subAgentStatus = subAgentStatusFromViews(views)
   const streaming = subAgentStatus
     ? isActiveSubAgentStatus(subAgentStatus)
-    : messages.some((message) => message.streaming === true || ('status' in message && message.status === 'running'))
+    : views.some((view) => view.streaming || view.status === 'running')
   return {
-    id: sessionKey ? `subagent-summary:${sessionKey}` : first.id ? `${first.id}:summary` : 'subagent-summary',
+    id: sessionKey ? `subagent-summary:${sessionKey}` : id ? `${id}:summary` : 'subagent-summary',
     role: 'assistant',
     content: '',
     streaming,
-    created_at: first.created_at,
-    run_id: first.run_id,
-    display_segment_id: first.display_segment_id,
-    agent_kind: first.agent_kind,
-    agent_name: first.agent_name,
-    root_agent_name: first.root_agent_name,
-    run_path: first.run_path,
+    created_at: metadata.created_at,
+    run_id: metadata.run_id,
+    display_segment_id: metadata.display_segment_id,
+    agent_kind: metadata.agent_kind,
+    agent_name: metadata.agent_name,
+    root_agent_name: metadata.root_agent_name,
+    run_path: metadata.run_path,
     subagent: true,
-    subagent_session_id: first.subagent_session_id,
-    subagent_type: first.subagent_type,
+    subagent_session_id: metadata.subagent_session_id,
+    subagent_type: metadata.subagent_type,
     subagent_status: subAgentStatus,
   }
 }

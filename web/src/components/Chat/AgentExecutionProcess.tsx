@@ -3,13 +3,12 @@ import type { CSSProperties, ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration, ChatMessage } from '@/lib/api'
+import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration } from '@/lib/api'
 import {
   agentSubAgentSessionKey,
   agentViewAskInteraction,
   agentViewContent,
   agentViewStableKey,
-  agentViewToRenderMessage,
   buildAgentSubAgentTimelineGroups,
   isAgentSubAgentTimelineView,
   type AgentExecutionTiming,
@@ -108,7 +107,7 @@ export function AgentExecutionProcess({
           )
           continue
         }
-        const summary = buildSubAgentSummaryMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
+        const summary = buildSubAgentSummaryMessage(subAgentGroup.views)
         if (summary) {
           processItems.push(
             <MessageItem

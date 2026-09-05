@@ -16,7 +16,6 @@ import (
 	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
-	agenttoolartifact "denova/internal/agents/toolartifact"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -375,10 +374,7 @@ func (backend *publicBackend) preparedCycleCanonicalInput(
 	registration *publicCycleRegistration,
 ) (agent.CanonicalAdapter, error) {
 	options := cycle.Options.Normalize(cycle.Options.Workspace)
-	effectApplier, err := agentlifecycle.NewToolEffectApplier(backend.effects, options, registration.recordMutation)
-	if err != nil {
-		return nil, err
-	}
+	var err error
 	var committer agentlifecycle.ConversationCommitter
 	switch conversation := cycle.Conversation.(type) {
 	case *agentconversation.SessionConversation:
@@ -390,11 +386,10 @@ func (backend *publicBackend) preparedCycleCanonicalInput(
 			Session:      conversation.CanonicalSession(),
 			Options:      options,
 			Request:      cycle.Request,
-			ApplyEffects: effectApplier,
 			InputEffect:  projectInputCommitEffect(options.InputCommitEffect, projector, options),
 		})
 	case agentlifecycle.ConversationCommitterProvider:
-		committer, err = conversation.NewAgentConversationCommitter(options, effectApplier)
+		committer, err = conversation.NewAgentConversationCommitter(options)
 	default:
 		err = fmt.Errorf("Denova conversation %T has no public canonical committer", cycle.Conversation)
 	}
@@ -416,61 +411,6 @@ func (backend *publicBackend) preparedCycleCanonicalInput(
 		return nil, err
 	}
 	return boundary.CanonicalAdapter(), nil
-}
-
-func (backend *publicBackend) resolveTaskDefinition(
-	ctx context.Context,
-	request agent.PrepareRequest,
-) (agent.Definition, error) {
-	parent, err := agentdelegation.ParentSession(request.Session.Key)
-	if err != nil {
-		return agent.Definition{}, err
-	}
-	childName, err := agentdelegation.ChildName(request.Session.Key)
-	if err != nil {
-		return agent.Definition{}, err
-	}
-	binding, err := agentrun.RuntimeBindingFromAgentSessionKey(parent)
-	if err != nil {
-		return agent.Definition{}, fmt.Errorf("resolve delegated parent binding: %w", err)
-	}
-	profileID, err := binding.ProfileID()
-	if err != nil {
-		return agent.Definition{}, err
-	}
-	if backend.childDefinitions == nil {
-		return agent.Definition{}, fmt.Errorf("%w: profile %q cannot rebuild delegated Agents", ErrCyclePreparationUnavailable, profileID)
-	}
-	route, err := agentdelegation.ParentRoute(request.Session.Key)
-	if err != nil {
-		return agent.Definition{}, err
-	}
-	definition, err := backend.childDefinitions.PrepareChildDefinition(ctx, ChildDefinitionRequest{
-		Parent: parent, Child: childName, HostData: route,
-	})
-	if err != nil {
-		return agent.Definition{}, err
-	}
-	if definition.Model == nil || definition.Name != childName {
-		return agent.Definition{}, errors.New("delegated Agent Definition does not match its durable selector")
-	}
-	definition.Permission = agentlifecycle.BindPermissionRuleStore(
-		definition.Permission, backend.permissionRuleStore.Load, backend.permissionRuleStore.Persist,
-	)
-	if strings.TrimSpace(definition.AttachmentRoot) != "" {
-		canonical, _ := agentsession.CanonicalKey(request.Session.Key)
-		store, storeErr := agenttoolartifact.NewStateStore(definition.AttachmentRoot, canonical)
-		if storeErr != nil {
-			return agent.Definition{}, fmt.Errorf("create delegated Agent artifact Store: %w", storeErr)
-		}
-		definition.Artifacts, err = agent.IdentifyToolArtifactStorage(
-			store, publicCapabilityIdentity("denova.task.tool_artifacts", request.Session.Key),
-		)
-		if err != nil {
-			return agent.Definition{}, err
-		}
-	}
-	return definition, nil
 }
 
 func (backend *publicBackend) bindSharedRunTrace(runID string, registration *publicCycleRegistration) {
@@ -637,12 +577,11 @@ func (backend *publicBackend) bindDefinition(
 		inputEffect := projectInputCommitEffect(options.InputCommitEffect, projector, options)
 		committer, err = agentlifecycle.NewSessionConversationCommitter(agentlifecycle.SessionCommitterConfig{
 			Conversation: conversation, Session: conversation.CanonicalSession(), Options: options,
-			Request:      cycle.Request,
-			ApplyEffects: effectApplier,
-			InputEffect:  inputEffect,
+			Request:     cycle.Request,
+			InputEffect: inputEffect,
 		})
 	case agentlifecycle.ConversationCommitterProvider:
-		committer, err = conversation.NewAgentConversationCommitter(options, effectApplier)
+		committer, err = conversation.NewAgentConversationCommitter(options)
 	default:
 		err = fmt.Errorf("Denova conversation %T has no public canonical committer", cycle.Conversation)
 	}
@@ -665,6 +604,7 @@ func (backend *publicBackend) bindDefinition(
 		return agent.Definition{}, err
 	}
 	definition := cycle.Definition
+	definition.Effects = effectApplier
 	definition.AttachmentRoot = options.StateRoot
 	definition.Execution.IdleTimeout = options.IdleTimeout
 	if taskCatalog, ok := agentdelegation.AsCatalog(definition.Tools); ok {

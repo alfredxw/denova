@@ -336,6 +336,7 @@ func (source *projectSource) Prepare(
             tools.Ask(),
         ),
         Canonical:  project.CanonicalAdapter(),
+        Effects:    project.EffectApplier(),
         Permission: project.PermissionPolicy(),
     }, nil
 }
@@ -361,7 +362,7 @@ Every model-visible fragment from a custom `ContextSource` must declare its sour
 ## Ownership boundaries
 
 - Agent Session Store owns only model conversation transcript and capability state.
-- Canonical Adapter owns product facts and their idempotent writes; product state should not be mixed into the Session Store.
+- Canonical Adapter owns the product conversation journal. `Definition.Effects` independently handles idempotent tool effects, so a delegated Agent can keep its own Session transcript while applying changes to the parent Project.
 - Trace is observational only and is not a recovery or business authority.
 - Live Run controls, events, queues, tool stacks, and Interaction waiters belong to the current process.
 

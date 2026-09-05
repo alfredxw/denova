@@ -71,7 +71,7 @@ export function SessionHistoryPopover({
           type="button"
           aria-label={t('chat.sessionHistory.open')}
           className={cn(
-            'flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]',
+            'flex h-6 items-center gap-1 rounded-[6px] px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]',
             active || open
               ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
               : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]',

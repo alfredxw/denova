@@ -4,7 +4,7 @@ Thanks for helping improve Denova. This project is in beta, so contribution work
 
 ## Setup
 
-Denova requires Go 1.26.5+, Node.js 20+, and pnpm.
+Denova requires Go 1.26.6+, Node.js 22.13+, and pnpm.
 
 ```bash
 corepack enable
@@ -27,7 +27,7 @@ If a frontend command is missing, try the project script first, then use `npx` w
 ## Development Principles
 
 - Keep the main writing and reading surfaces stable; controls belong in the shell layer unless the workflow needs otherwise.
-- Keep Writing Mode and Interactive Mode separate. Shared menus must not switch modes automatically, and only one primary menu item should be active at a time.
+- Writing, Game, and shared tools are peer top-level destinations. Navigation must not maintain an additional global mode, and exactly one primary menu item is active at a time.
 - User-facing copy, empty states, errors, buttons, and settings should support both Chinese and English.
 - Model-visible context must have explicit source, purpose, and hard size limits. Do not inject unbounded history, logs, sessions, directories, or full files by default.
 - Prefer existing components, abstractions, and mature dependencies over custom implementations for common UI and editor behavior.
@@ -54,14 +54,14 @@ Choose validation based on the risk of the change:
 - Pure functions, parsers, boundary conditions, and small state transitions are good unit-test targets.
 - Frontend-visible changes should be verified in a browser, including narrow and wide layouts when layout is affected.
 - If the frontend is already running, use the existing hot-reload page instead of restarting it.
-- If backend behavior changes, restarting the backend is acceptable when needed.
+- If backend behavior changes, use `./scripts/restart-backend.sh` when a restart is needed. Do not start hidden services or a second development stack alongside the user's running services.
 - Run `./scripts/build.sh` before release or broad integration changes.
 
 When fixing a bug, add a failing test first when practical. If automation is not practical, document the manual verification scope in the change summary.
 
 ## Documentation and Changelog
 
-- Update `CHANGELOG.md` under `[Unreleased]` for user-facing changes, new features, repo-facing documentation, and notable fixes.
+- Update `CHANGELOG.md` under `[Unreleased]` only for major user-visible features, important fixes to released core workflows, and incompatible changes to the latest release's user data. Omit internal refactors, documentation-only changes, UI polish, and unreleased intermediate formats.
 - Keep `README.md` and `README.en.md` semantically aligned when public capability or setup information changes.
 - Release work must update the frontend version, `CHANGELOG.md`, `README.md`, `README.en.md`, and create the matching Git tag.
 

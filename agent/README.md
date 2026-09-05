@@ -336,6 +336,7 @@ func (source *projectSource) Prepare(
             tools.Ask(),
         ),
         Canonical:  project.CanonicalAdapter(),
+        Effects:    project.EffectApplier(),
         Permission: project.PermissionPolicy(),
     }, nil
 }
@@ -361,7 +362,7 @@ session, err := owner.Session(ctx, agent.SessionKey{
 ## 职责边界
 
 - Agent Session Store 只负责模型会话 transcript 和能力状态。
-- Canonical Adapter 负责产品事实及其幂等写入，不应将产品状态混入 Session Store。
+- Canonical Adapter 负责产品对话日志；`Definition.Effects` 独立处理工具变更的幂等回执，让子 Agent 在保留自己 Session 对话的同时，将变更提交到父级 Project。
 - Trace 只负责观测，不是恢复或业务事实源。
 - 实时 Run 控制、事件、队列、工具栈和 Interaction waiter 属于当前进程。
 

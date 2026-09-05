@@ -38,17 +38,6 @@ func (publicReplayConversationCommitter) CommitOutput(
 	return agent.OutputCommitReceipt{Revision: "test-output"}, nil
 }
 
-func (publicReplayConversationCommitter) ApplyEffects(
-	_ context.Context,
-	requests []agent.EffectRequest,
-) ([]agent.EffectResult, error) {
-	results := make([]agent.EffectResult, len(requests))
-	for index, request := range requests {
-		results[index] = agent.EffectResult{ID: request.ID, Revision: "test-effect"}
-	}
-	return results, nil
-}
-
 type interactiveReplayConversationCommitter struct {
 	publicReplayConversationCommitter
 	conversation *interactiveReplayConversation
@@ -77,7 +66,6 @@ func (committer interactiveReplayConversationCommitter) MaterializeInput(
 
 func (conversation *interactiveReplayConversation) NewAgentConversationCommitter(
 	agentrun.Options,
-	agentlifecycle.ToolEffectApplier,
 ) (agentlifecycle.ConversationCommitter, error) {
 	return interactiveReplayConversationCommitter{conversation: conversation}, nil
 }

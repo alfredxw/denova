@@ -15,11 +15,12 @@ interface CustomAgentSelectProps {
   onValueChange: (customAgentId: string | undefined) => void
   inheritLabel?: string
   disabled?: boolean
+  size?: 'sm' | 'default'
   className?: string
 }
 
 /** Selects one Agent instance without exposing runtime kinds as user-defined code. */
-export function CustomAgentSelect({ projectId = '', runtimeKind, value, onValueChange, inheritLabel, disabled = false, className }: CustomAgentSelectProps) {
+export function CustomAgentSelect({ projectId = '', runtimeKind, value, onValueChange, inheritLabel, disabled = false, size, className }: CustomAgentSelectProps) {
   const { t } = useTranslation()
   const target = projectId.trim() ? projectSettingsTarget(projectId) : GLOBAL_SETTINGS_TARGET
   const query = useQuery(settingsQueryOptions(target))
@@ -46,7 +47,7 @@ export function CustomAgentSelect({ projectId = '', runtimeKind, value, onValueC
       onValueChange={handleValueChange}
       disabled={disabled || query.isLoading}
     >
-      <SelectTrigger className={className} aria-label={t('agents.custom.select')}>
+      <SelectTrigger size={size} className={className} aria-label={t('agents.custom.select')}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -40,7 +40,6 @@ type SessionCommitterConfig struct {
 	Request      agentchat.ChatRequest
 
 	ProjectOutput SessionOutputProjector
-	ApplyEffects  func(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
 	InputEffect   agentrun.InputCommitEffect
 }
 
@@ -148,19 +147,6 @@ func inputEffectRequest(identity agent.CommitIdentity, hash string) agentrun.Inp
 	return agentrun.InputCommitEffectRequest{
 		CommandID: identity.CommandID, OperationID: identity.RunID, Cycle: identity.Cycle, Hash: hash,
 	}
-}
-
-func (committer *sessionConversationCommitter) ApplyEffects(
-	ctx context.Context,
-	requests []agent.EffectRequest,
-) ([]agent.EffectResult, error) {
-	if len(requests) == 0 {
-		return nil, nil
-	}
-	if committer.config.ApplyEffects == nil {
-		return nil, errors.New("Denova Session has Tool effects but no effect applier")
-	}
-	return committer.config.ApplyEffects(ctx, requests)
 }
 
 var _ ConversationCommitter = (*sessionConversationCommitter)(nil)

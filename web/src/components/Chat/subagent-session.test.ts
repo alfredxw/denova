@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatMessage } from '@/lib/api'
 import { buildAgentSubAgentTimelineGroups, type AgentMessageView, type AgentMessageViewKind } from '@/lib/agent-message-view'
 import { buildSubAgentSummaryMessage, selectSubAgentSessionViews, subAgentStatusFromViews } from './subagent-session'
 
@@ -24,11 +23,30 @@ describe('selectSubAgentSessionViews', () => {
     const settled = { ...subAgentView('settled', 'child-session', { kind: 'subagent-status' }), data: { status: 'failed' } }
     expect(subAgentStatusFromViews([content, settled])).toBe('failed')
 
-    const summary = buildSubAgentSummaryMessage([
-      { role: 'assistant', content: 'partial output', streaming: true, subagent: true, subagent_session_id: 'child-session' },
-      { role: 'system', content: '', subagent: true, subagent_session_id: 'child-session', subagent_status: 'failed' },
-    ] as ChatMessage[])
+    const summary = buildSubAgentSummaryMessage([{ ...content, streaming: true }, settled])
     expect(summary).toMatchObject({ role: 'assistant', content: '', subagent_status: 'failed', streaming: false })
+  })
+
+  it('projects only identity and lifecycle facts without reading tool payloads', () => {
+    const tool: AgentMessageView = {
+      ...subAgentView('write-call', 'child-session', { kind: 'tool' }),
+      status: 'running',
+      get input() { throw new Error('Status cards must not read tool input') },
+      get output() { throw new Error('Status cards must not read tool output') },
+    }
+    expect(buildSubAgentSummaryMessage([tool])).toMatchObject({
+      id: 'subagent-summary:child-session',
+      role: 'assistant',
+      content: '',
+      agent_name: 'researcher',
+      subagent_session_id: 'child-session',
+      streaming: true,
+    })
+    const waiting = { ...subAgentView('ask', 'child-session', { kind: 'ask' }), streaming: true }
+    expect(buildSubAgentSummaryMessage([tool, waiting])).toMatchObject({
+      subagent_status: 'waiting_input',
+      streaming: true,
+    })
   })
 })
 

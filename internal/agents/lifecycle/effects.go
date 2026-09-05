@@ -2,8 +2,10 @@ package lifecycle
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	agentrun "denova/internal/agents/run"
@@ -12,10 +14,6 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 )
-
-// ToolEffectApplier commits Denova Tool mutations directly to the product-owned
-// idempotent destination.
-type ToolEffectApplier func(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
 
 // ToolEffectObserver receives only effects accepted by the product. It is
 // process-local accounting and never effect authority.
@@ -28,7 +26,7 @@ func NewToolEffectApplier(
 	applier agenttoolruntime.ToolMutationApplier,
 	options agentrun.Options,
 	observe ToolEffectObserver,
-) (ToolEffectApplier, error) {
+) (agent.EffectApplier, error) {
 	if applier == nil {
 		return nil, errors.New("Denova Tool mutation applier is required")
 	}
@@ -37,7 +35,16 @@ func NewToolEffectApplier(
 	if err != nil {
 		return nil, fmt.Errorf("resolve Denova Tool effect binding: %w", err)
 	}
-	return func(ctx context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
+	key, err := binding.AgentSessionKey()
+	if err != nil {
+		return nil, err
+	}
+	// Product identity is stable when DataRoot moves; runtime paths and observer
+	// callbacks must not enter the effect capability's behavior identity.
+	identity := agent.CapabilityIdentity{Kind: "denova.tool_effects", Version: 1,
+		ConfigHash: fmt.Sprintf("%x", sha256.Sum256([]byte(key.Namespace+"\x00"+key.ID))),
+	}
+	return agent.EffectApplierFuncs{CapabilityIdentity: identity, ApplyEffectsFn: func(ctx context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
 		results := make([]agent.EffectResult, len(requests))
 		origin := agenttoolruntime.ToolMutationOrigin{
 			AgentKind: options.AgentKind, ProjectID: options.ProjectID,
@@ -73,6 +80,9 @@ func NewToolEffectApplier(
 			})
 			if err != nil {
 				result.Error = fmt.Sprintf("apply Denova Tool mutation: %v", err)
+				slog.ErrorContext(ctx, "failed to admit committed Agent Tool mutation",
+					"project_id", options.ProjectID, "run_id", request.Identity.RunID,
+					"tool_call_id", toolCallID, "effect_id", request.ID, "target", mutation.Target, "error", err)
 			} else {
 				result.Revision = request.ID
 				if observe != nil {
@@ -82,5 +92,5 @@ func NewToolEffectApplier(
 			results[index] = result
 		}
 		return results, nil
-	}, nil
+	}}, nil
 }

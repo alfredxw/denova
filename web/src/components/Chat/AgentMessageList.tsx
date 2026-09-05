@@ -299,7 +299,7 @@ export function MessageList({ projectId, attachmentScope, messages, projection, 
         item={resolvedItem}
         executionTimings={executionTimings}
         contentClassName={contentClassName}
-        isLast={index === firstItemIndex + listItems.length - 1}
+        nextItem={listItems[index - firstItemIndex + 1]}
         isStreaming={isStreaming}
         tailFollowActive={tailFollowActive}
         activeTraceDisplay={activeTraceDisplay}
@@ -485,11 +485,11 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreaming, tailFollowActive, activeTraceDisplay, subAgentPresentation, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
+function AgentChatListRow({ projectId, item, nextItem, executionTimings, isStreaming, tailFollowActive, activeTraceDisplay, subAgentPresentation, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
   executionTimings: ReadonlyMap<string, AgentExecutionTiming>
-  isLast: boolean
+  nextItem?: AgentChatListItem
   isStreaming: boolean
   tailFollowActive: boolean
   activeTraceDisplay: 'expanded' | 'collapsed'
@@ -518,6 +518,10 @@ function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreami
   syncStreamingTailLayout?: () => void
 }) {
   const { t } = useTranslation()
+  const isLast = !nextItem
+  // Consecutive trace rows share the spacing used inside AgentExecutionProcess.
+  const continuesTrace = item.kind === 'message' && isAgentTraceView(item.view)
+    && nextItem?.kind === 'message' && isAgentTraceView(nextItem.view)
   const turnAnchor = chatListItemNavigationAnchor(item)
   const renderMessageView = (view: AgentMessageView, key?: string, assistantPresentation: AssistantMessagePresentation = 'message') => {
     const mutationsAllowed = canMutateMessage?.(view) !== false
@@ -584,7 +588,7 @@ function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreami
       data-nova-chat-tail-row
       data-nova-chat-row-key={item.key}
       data-nova-chat-turn-anchor={turnAnchor}
-      className={cn('min-w-0 px-6', contentClassName, isLast ? 'pb-0' : 'pb-4')}
+      className={cn('min-w-0 px-6', contentClassName, isLast ? 'pb-0' : continuesTrace ? 'pb-2' : 'pb-4')}
       variants={item.kind === 'attachment' ? timelineAttachment : listItem}
       initial={isLast && isStreaming ? false : 'initial'}
       animate="animate"
@@ -680,7 +684,7 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
           continue
         }
       }
-      const summary = buildSubAgentSummaryMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
+      const summary = buildSubAgentSummaryMessage(subAgentGroup.views)
       if (summary) {
         items.push({ kind: 'legacy-message', key: `subagent-${subAgentGroup.key || index}`, message: summary, sourceIndex: index, openView: subAgentGroup.views[0] })
         continue

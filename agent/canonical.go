@@ -86,13 +86,12 @@ type EffectResult struct {
 	Error    string
 }
 
-// CanonicalAdapter coordinates direct idempotent writes to a host's product
-// store. ApplyEffects returns one result per item.
+// CanonicalAdapter coordinates direct idempotent conversation commits to a
+// host's product journal. Tool effects use Definition.Effects independently.
 type CanonicalAdapter interface {
 	Identity() CapabilityIdentity
 	MaterializeInput(context.Context, InputCommitRequest) (CommitReceipt, error)
 	CommitOutput(context.Context, OutputCommitRequest) (OutputCommitReceipt, error)
-	ApplyEffects(context.Context, []EffectRequest) ([]EffectResult, error)
 }
 
 // CanonicalContextAdapter is the optional extension used by hosts that own
@@ -108,7 +107,6 @@ type CanonicalAdapterFuncs struct {
 	CapabilityIdentity CapabilityIdentity
 	MaterializeInputFn func(context.Context, InputCommitRequest) (CommitReceipt, error)
 	CommitOutputFn     func(context.Context, OutputCommitRequest) (OutputCommitReceipt, error)
-	ApplyEffectsFn     func(context.Context, []EffectRequest) ([]EffectResult, error)
 }
 
 func (adapter CanonicalAdapterFuncs) Identity() CapabilityIdentity {
@@ -127,13 +125,6 @@ func (adapter CanonicalAdapterFuncs) CommitOutput(ctx context.Context, request O
 		return OutputCommitReceipt{}, ErrCapabilityUnsupported
 	}
 	return adapter.CommitOutputFn(ctx, request)
-}
-
-func (adapter CanonicalAdapterFuncs) ApplyEffects(ctx context.Context, requests []EffectRequest) ([]EffectResult, error) {
-	if adapter.ApplyEffectsFn == nil {
-		return nil, ErrCapabilityUnsupported
-	}
-	return adapter.ApplyEffectsFn(ctx, requests)
 }
 
 // ValidateContextCommitMessages derives and validates the one supported batch

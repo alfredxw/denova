@@ -761,14 +761,14 @@ function AgentPanelComponent({
             <button
               type="button"
               onClick={() => setView('chat')}
-              className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'chat' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              className={`flex h-6 items-center rounded-[6px] px-2 text-[11px] transition-colors ${view === 'chat' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
             >
               {t('chat.view.chat')}
             </button>
             <button
               type="button"
               onClick={() => setView('traces')}
-              className={`rounded-[6px] px-1.5 py-0.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              className={`flex h-6 items-center rounded-[6px] px-1.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
               aria-label={t('chat.view.traces')}
             >
               <Activity className="h-3 w-3" />
@@ -804,7 +804,8 @@ function AgentPanelComponent({
             runtimeKind={generalAgent ? 'general' : 'ide'}
             value={agentSelectionConfig.snapshot?.custom_agent_id ?? ''}
             disabled={sessionControlsDisabled || agentSelectionConfig.loading}
-            className="h-7 w-[min(11rem,28vw)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[11px]"
+            size="sm"
+            className="min-w-0 max-w-48 border-transparent bg-[var(--nova-surface-2)] py-0 text-[11px] *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate"
             onValueChange={(customAgentId) => {
               if (customAgentId === undefined) return
               if (customAgentId === (agentSelectionConfig.snapshot?.custom_agent_id ?? '')) return

@@ -14,14 +14,12 @@ import (
 
 func (conversation *imageAgentConversation) NewAgentConversationCommitter(
 	options agentrun.Options,
-	applyEffects agentlifecycle.ToolEffectApplier,
 ) (agentlifecycle.ConversationCommitter, error) {
 	delegate, err := agentlifecycle.NewSessionConversationCommitter(agentlifecycle.SessionCommitterConfig{
 		Conversation: conversation.journal,
 		Session:      conversation.journal.CanonicalSession(),
 		Options:      options,
 		Request:      agentchat.ChatRequest{Message: conversation.message},
-		ApplyEffects: applyEffects,
 		ProjectOutput: func(
 			_ context.Context,
 			_ agentchat.AgentContextPreparation,

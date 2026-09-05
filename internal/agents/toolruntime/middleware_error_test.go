@@ -356,14 +356,8 @@ func TestOrchestratorKeepsLargeResultLosslessUntilPublicProcessor(t *testing.T) 
 				ResultProcessor: agenttoolresult.Standard(agenttoolresult.Policy{MaxBytes: limit}),
 			}
 			if test.toolName == "write" {
-				definition.Canonical = agent.CanonicalAdapterFuncs{
-					CapabilityIdentity: agent.CapabilityIdentity{Kind: "test.denova.canonical", Version: 1},
-					MaterializeInputFn: func(context.Context, agent.InputCommitRequest) (agent.CommitReceipt, error) {
-						return agent.CommitReceipt{Revision: "input"}, nil
-					},
-					CommitOutputFn: func(context.Context, agent.OutputCommitRequest) (agent.OutputCommitReceipt, error) {
-						return agent.OutputCommitReceipt{Revision: "output"}, nil
-					},
+				definition.Effects = agent.EffectApplierFuncs{
+					CapabilityIdentity: agent.CapabilityIdentity{Kind: "test.denova.effects", Version: 1},
 					ApplyEffectsFn: func(_ context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
 						results := make([]agent.EffectResult, len(requests))
 						for index, request := range requests {

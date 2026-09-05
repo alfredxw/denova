@@ -63,10 +63,6 @@ func (probe *boundaryCommitterProbe) CommitOutput(_ context.Context, prepared ag
 	return agent.OutputCommitReceipt{Revision: "output:1"}, nil
 }
 
-func (*boundaryCommitterProbe) ApplyEffects(_ context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
-	return make([]agent.EffectResult, len(requests)), nil
-}
-
 func (*contextTestConversation) AppendAssistant(string) error                 { return nil }
 func (*contextTestConversation) MarkInterrupted(string, string, string) error { return nil }
 func (*contextTestConversation) PendingInterruption() *session.Interruption   { return nil }

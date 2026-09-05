@@ -354,7 +354,7 @@ func (engine *definitionEngine) emitToolExecution(
 	request runstate.EngineRequest,
 	execution *toolExecutionEvent,
 	source runstate.EventSource,
-	canonical CanonicalAdapter,
+	effects EffectApplier,
 	started map[string]bool,
 	emit runstate.EngineEventSink,
 ) error {
@@ -423,10 +423,10 @@ func (engine *definitionEngine) emitToolExecution(
 		if err != nil {
 			return fmt.Errorf("encode bounded Tool result projection: %w", err)
 		}
-		if len(result.Effects) != 0 && canonical == nil {
-			return errors.New("Tool produced canonical Effects but Definition has no Canonical Adapter")
+		if len(result.Effects) != 0 && effects == nil {
+			return errors.New("Tool produced Effects but Definition has no Effect Applier")
 		}
-		if err := engine.applyCanonicalEffects(ctx, request, canonical, callID, result.Effects); err != nil {
+		if err := engine.applyCanonicalEffects(ctx, request, effects, callID, result.Effects); err != nil {
 			return err
 		}
 		for index, artifact := range result.Artifacts {
@@ -456,7 +456,7 @@ func (engine *definitionEngine) emitToolExecution(
 func (engine *definitionEngine) applyCanonicalEffects(
 	ctx context.Context,
 	request runstate.EngineRequest,
-	adapter CanonicalAdapter,
+	adapter EffectApplier,
 	callID string,
 	effects []Effect,
 ) error {
@@ -496,13 +496,13 @@ func (engine *definitionEngine) applyCanonicalEffects(
 	for _, request := range requests {
 		result, ok := byID[request.ID]
 		if !ok {
-			return fmt.Errorf("Canonical Adapter omitted Tool effect %q", request.ID)
+			return fmt.Errorf("Effect Applier omitted Tool effect %q", request.ID)
 		}
 		if result.Error != "" {
 			return fmt.Errorf("apply canonical Tool effect %q: %s", request.ID, result.Error)
 		}
 		if strings.TrimSpace(result.Revision) == "" {
-			return fmt.Errorf("Canonical Adapter Tool effect %q has no revision", request.ID)
+			return fmt.Errorf("Effect Applier Tool effect %q has no revision", request.ID)
 		}
 	}
 	return nil

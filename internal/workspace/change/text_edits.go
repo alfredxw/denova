@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 const maxWorkspaceMutationReportedIssues = maxWorkspaceMutationEdits
@@ -146,12 +147,19 @@ func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (st
 		case len(matches) == 0:
 			issue = &editValidationIssue{
 				EditIndex: index, EditID: editID, Code: editIssueNotFound, Message: "old_string was not found",
-				Details: map[string]any{"match_count": 0},
+				Details: map[string]any{
+					"match_count": 0,
+					"suggestion":  "Read the target file again and copy old_string exactly, including whitespace and blank lines; omit read line-number prefixes.",
+				},
 			}
 		case len(matches) > 1 && !edit.ReplaceAll:
 			issue = &editValidationIssue{
 				EditIndex: index, EditID: editID, Code: editIssueNotUnique, Message: "old_string is not unique",
-				Details: map[string]any{"match_count_at_least": len(matches)},
+				Details: map[string]any{
+					"match_count_at_least": len(matches),
+					"matches":              editMatchContexts(base, matches),
+					"suggestion":           "Use the match locations to read surrounding text and expand old_string to identify one occurrence. Set replace_all=true only if every occurrence should change.",
+				},
 			}
 		case edit.ReplaceAll && len(matches) > maxWorkspaceMutationReplacements:
 			issue = &editValidationIssue{
@@ -259,4 +267,40 @@ func literalMatches(content, needle string, limit int) []int {
 		offset = start + len(needle)
 	}
 	return matches
+}
+
+// editMatchContext locates one exact match in the original snapshot. Line and
+// column are one-based; column counts Unicode code points. Context is only a
+// bounded preview around the match start, never replacement input.
+type editMatchContext struct {
+	Line             int    `json:"line"`
+	Column           int    `json:"column"`
+	ContextStartLine int    `json:"context_start_line"`
+	Context          string `json:"context"`
+	ContextTruncated bool   `json:"context_truncated"`
+}
+
+func editMatchContexts(base string, matches []int) []editMatchContext {
+	// Reuse the two-match uniqueness probe. Keep diagnostics bounded even for
+	// long lines or multi-megabyte old_string values, without rescanning matches.
+	const contextBytes = 512
+	contexts := make([]editMatchContext, 0, len(matches))
+	for _, offset := range matches {
+		start := max(0, offset-contextBytes/2)
+		end := min(len(base), offset+contextBytes/2)
+		for start < offset && !utf8.RuneStart(base[start]) {
+			start++
+		}
+		for end < len(base) && !utf8.RuneStart(base[end]) {
+			end--
+		}
+		line := 1 + strings.Count(base[:offset], "\n")
+		lineStart := strings.LastIndexByte(base[:offset], '\n') + 1
+		contexts = append(contexts, editMatchContext{
+			Line: line, Column: 1 + utf8.RuneCountInString(base[lineStart:offset]),
+			ContextStartLine: line - strings.Count(base[start:offset], "\n"),
+			Context:          base[start:end], ContextTruncated: start > 0 || end < len(base),
+		})
+	}
+	return contexts
 }

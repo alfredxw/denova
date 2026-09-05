@@ -811,7 +811,7 @@ func (engine *definitionEngine) Run(
 			continue
 		}
 		if execution := event.Output.ToolExecution; execution != nil {
-			emitErr := engine.emitToolExecution(ctx, request, execution, source, prepared.definition.Canonical, startedTools, emit)
+			emitErr := engine.emitToolExecution(ctx, request, execution, source, prepared.definition.Effects, startedTools, emit)
 			if execution.Phase == toolExecutionStarted {
 				execution.acknowledgeStart(emitErr)
 			}

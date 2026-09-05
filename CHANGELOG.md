@@ -18,44 +18,45 @@ Denova records only major user-visible features, important compatibility or data
 
 #### 中文
 
-- 升级提示：v0.3.3 的游戏组合预设、独立 Config Manager、用户级全局 Automation 及部分旧模型与上下文设置不再参与运行；原数据会保留或先备份，可迁移的数据会自动迁移，全局 Automation 任务需在对应 Project 重新创建。
-- `.denova` 数据目录可在 Windows、WSL、Linux 与 macOS 之间整体移动；统一 Project 工作台支持通用、写作与游戏会话并行运行，并共享 Files、资料库、终端和版本历史。
-- Agent 新增自定义主 Agent、Goal、脚本编排、Project 指令、安全模式及更可靠的多 Agent 协作；语言与图像模型改为可复用连接和模型配置，并扩展常用协议与图像服务商支持。
-- 游戏新增规划模板、单页开局、故事控制台和任意已保存回复分支；写作、游戏与资料编辑同时增强了任务恢复、自动保存、版本恢复和长会话可靠性。
-- 导航、文件树、编辑器、版本 Diff 与字体缩放统一到同一套创作工作台，支持可持久化双栏布局、本机字体和更完整的文件操作。
+v0.4.0 的核心是重建创作工作台与 Agent 执行底座：围绕 Project 统一创作资源，让持续对话、任务执行与恢复使用一致的会话机制。
+
+- **统一 Project 工作台**：新增通用 Agent，书籍与本地目录都可作为项目；写作、游戏与共通工具采用并列导航，共享文件、资料库、终端和版本历史，支持多会话并行。
+- **重建 Agent 运行与恢复**：统一保存对话、工具结果与任务状态，支持运行中追加指令、中断后继续及刷新或重启后恢复；新增自定义主 Agent、Goal 和脚本编排，统一管理 Skills、协作与权限。
+- **重组游戏创作流程**：从组合预设改为故事自身配置，规划模板独立复用；单页完成开局，在故事控制台调整规划、事件与状态，并可从任意已保存回复创建分支。
+- **统一模型接入**：语言与图像模型采用可复用的“连接 + 模型”配置，扩展 Responses、Anthropic、Gemini Image、Seedream 与 ComfyUI 等接入。
+- **项目数据可整体迁移**：受管项目使用稳定身份和相对路径，退出应用后可将完整 `.denova` 目录跨 Windows、WSL、Linux 与 macOS 搬迁，保留会话、版本和附件。
+
+**升级注意**：v0.3.3 数据按支持范围保留或先备份再迁移；旧全局 Automation 须在项目内重新创建，旧 Config Manager 历史不再展示，部分模型与上下文选项需重新设置。旧游戏预设中的自定义规划 Markdown 保留在备份中，不自动转换。
 
 #### English
 
-- Upgrade note: v0.3.3 Game composition presets, standalone Config Manager, user-level global Automations, and several legacy model or context settings no longer participate in runtime behavior. Existing data is retained or backed up before supported migrations, and global Automations must be recreated in their Projects.
-- The complete `.denova` data directory can move across Windows, WSL, Linux, and macOS. The unified Project workbench runs General, Writing, and Game conversations concurrently while sharing Files, Lore, terminals, and version history.
-- Agents gain custom main Agents, Goals, script orchestration, Project instructions, safety modes, and more reliable multi-Agent work. Language and image models now use reusable connections and model profiles with broader protocol and image-provider support.
-- Game adds Planning Templates, a single-page start flow, the Story Console, and branching from any saved reply. Writing, Game, and Lore also gain stronger task recovery, autosave, version restoration, and long-session reliability.
-- Navigation, file trees, editors, version diffs, and typography now share one creation workbench with persistent split layouts, local fonts, and more complete file operations.
+v0.4.0 rebuilds the creation workbench and Agent runtime around Projects, giving ongoing conversations, task execution, and recovery a consistent session model.
+
+- **Unified Project workbench**: General Agents, Books, and local directories share project tools and parallel conversations; Writing, Game, and shared tools use peer navigation.
+- **Rebuilt Agent runtime**: Conversations, tool results, and task state persist together, with follow-ups, resumable interruptions, restart recovery, custom main Agents, Goals, and scripting.
+- **Restructured Game creation**: Stories own their settings; reusable Planning Templates, single-page setup, the Story Console, and branching from any saved reply reshape the workflow.
+- **Unified model setup**: Reusable connections and model profiles expand language and image-provider support.
+- **Portable project data**: Managed Projects retain history, versions, and attachments when moving the complete `.denova` directory across supported systems after shutdown.
+
+**Upgrade note**: Supported v0.3.3 data is retained or migrated after backup. Recreate global Automations within Projects; old Config Manager history is no longer displayed, and some model/context options need reselection. Custom planning Markdown from old Game Presets remains in backups and is not converted automatically.
 
 ### Major changes / 重大变更
 
-- `.denova` 数据目录现在可在 Denova 完全退出后整体移动或复制到 Windows、WSL、Linux 与 macOS 的任意合法可写位置；受管 Project 的会话、游戏、版本、附件、工具产物和自动化会按稳定 Project ID 与相对路径继续使用，v0.3.3 索引在首次切换前自动备份并迁移。
-- After Denova fully exits, the complete `.denova` data directory can be moved or copied to any valid writable location on Windows, WSL, Linux, or macOS. Managed Project sessions, Game state, versions, attachments, tool artifacts, and automations continue through stable Project IDs and relative paths, with v0.3.3 indexes backed up before the first migration.
-- 新增通用 Agent 与基于稳定 Project ID 的统一工作台；书籍和任意本地目录都可并行运行通用或写作会话，并共享 Files、资料库、终端、阅读器和版本历史。会话支持运行中追加 Follow Up、刷新或重启后恢复、按会话保存模型与权限，以及通过选择、拖拽或粘贴添加通用文件和原生视觉输入。
-- Added a General Agent and a unified stable Project-ID workbench where Books and arbitrary local directories can run General or Writing conversations concurrently while sharing Files, Lore, terminals, Reader, and version history. Conversations support queued follow-ups, refresh or restart recovery, per-conversation model and permission settings, generic file attachments, and native image input.
-- 配置与自动化统一进入 Project Agent 会话：通用和写作 Agent 通过 `/configuration` Skill 管理配置，各页面共享会话历史与恢复；Automation 作为普通 Project 会话运行，写作和配置页面可分别维护快捷指令组。
-- Configuration and automation now use Project Agent conversations. General and Writing Agents manage configuration through `/configuration` with shared history and recovery, Automations run as ordinary Project conversations, and Writing or configuration pages can maintain separate quick-prompt groups.
-- Agents 页面支持独立自定义主 Agent、会话 Goal、JavaScript `script` 编排、Project `AGENTS.md`、稀疏 Skill、上下文与压缩策略、委派策略以及 Ask、Write、Full access 安全模式；主 Agent 默认仍自行处理任务，仅在用户或 Skill 明确要求时并行委派，等待可被新指令安全打断。
-- The Agents page supports independent custom main Agents, session Goals, JavaScript `script` orchestration, Project `AGENTS.md`, sparse Skills, context and compaction policies, delegation policies, and Ask, Write, or Full access safety modes. Main Agents still delegate only when requested by the user or a Skill, with parallel work and interruptible waits.
-- 语言模型接入拆分为服务商预设与协议适配器，支持 OpenAI Chat Completions、Responses、Anthropic Messages、自定义兼容端点、模型发现和连接测试；思考设置统一为 `thinking_level`，每个模型可单独配置最大输出 Token。
-- Split language-model setup into provider presets and protocol adapters, with OpenAI Chat Completions, Responses, Anthropic Messages, custom-compatible endpoints, model discovery, and connection tests. Thinking settings now use `thinking_level`, and each model can configure its own maximum output tokens.
-- 语言与图像模型配置改为可复用的“连接 + 模型”结构；语言模型支持服务端发现和批量添加，图像生成支持 OpenAI Images、xAI/Grok、火山方舟 Seedream、Google Gemini Image 与 ComfyUI Workflow，多图任务会保留部分成功结果，v0.3.3 配置会在备份后迁移。
-- Language and image settings now use reusable connections plus model profiles. Language models support provider discovery and batch addition, while image generation supports OpenAI Images, xAI/Grok, Volcengine Ark Seedream, Google Gemini Image, and ComfyUI Workflow with partial success preserved for multi-image jobs. v0.3.3 settings migrate after backup.
-- 工作台统一为可排序、可隐藏的一级导航与可持久化双栏布局；文件树、面包屑、Skill 与版本 Diff 共享搜索、Git 状态、文件图标和上下文操作，版本管理支持历史搜索、按版本浏览及恢复整个版本或单个文件，界面和阅读字体按统一档位缩放并支持本机字体。
-- The workbench now uses reorderable top-level navigation and persistent split layouts. File, breadcrumb, Skill, and version trees share search, Git status, icons, and context actions; Version Management supports history search, per-version browsing, and full-version or single-file restore; UI and reading typography scale through unified steps with local-font support.
-- 写作、Files 与资料库按文件类型提供文档、Monaco、图片预览及 Rich/Raw 编辑，并共享自动保存与冲突保护；Book Lore、Skills 与用户方案迁至用户可见目录或 `.denova/presets`，v0.3.3 原文件在迁移时保留。
-- Writing, Files, and Lore now select document, Monaco, image preview, or Rich/Raw editors by file type with shared autosave and conflict protection. Book Lore, Skills, and user presets move into visible directories or `.denova/presets`, while v0.3.3 source files are retained during migration.
-- 游戏新增五种内置规划方式和自定义规划模板、单页开局、集中式故事控制台，以及从任意已保存 AI 回复创建和管理分支；故事直接保存叙事、事件、检定、状态与图像选择，不再继承组合预设。
-- Game adds five built-in planning approaches and custom Planning Templates, a single-page start flow, a consolidated Story Console, and branch creation from any saved AI reply. Stories now store narrative, event, check, state, and image selections directly instead of inheriting a composition preset.
-- Agent 配置迁入受管 Agents Project 并复用普通 Project 的会话、Files 与版本历史；General Agent 可按需读取跨 Project 的只读 Trajectory 证据维护 Profile，Developer Mode 继续提供 Trajectory 查看与诊断导出。
-- Agent configuration now lives in a managed Agents Project with ordinary Project conversations, Files, and version history. The General Agent can read cross-Project, read-only Trajectory evidence on demand when maintaining Profiles, while Developer Mode retains Trajectory inspection and diagnostic export.
-- 终端启动方式改为用户级可排序注册表，并新增 macOS/Linux 一键安装器和 Windows PowerShell 快速重启脚本。
-- Terminal launchers now use a user-level ordered registry, with a macOS/Linux installer and a native Windows PowerShell quick-restart script.
+#### 中文
+
+- **以 Project 统一创作工作台与资源。** 从写作、游戏模式切换改为并列一级导航；新增通用 Agent，书籍和任意本地目录可运行多个通用或写作会话。Files、资料库、阅读器、终端与版本历史在工作台内共享，配置对话与 Automation 也归入 Project 会话。双栏布局可持久保存，文件按类型使用文档、源码或图片视图，并共享自动保存、冲突保护与版本恢复。
+- **以持久会话重建 Agent 执行。** 写作、通用对话、图像、自动化与游戏复用统一运行机制；每个逻辑会话以一份日志保存对话、工具结果、Goal、待办和上下文压缩等恢复状态，减少刷新、重连和重启后的丢失或重复。运行中可追加 Follow Up，中断后可继续；会话独立保存模型与权限。新增自定义主 Agent、Goal、JavaScript `script` 编排和 Project `AGENTS.md`，既有 Skills 与 SubAgent 协作纳入统一配置和执行机制，支持 Ask、Write、Full access 权限模式。主 Agent 默认自行处理任务，仅在用户或 Skill 明确要求时委派。Agent 配置本身也作为受管 Project 管理，可通过会话、Files 与版本历史维护。
+- **将游戏规划与故事配置分开。** v0.3.3 由组合预设提供的叙事、事件、检定、状态与图像选择，现在直接保存在故事上；规划独立为五种内置方式及可自定义的规划模板。创建故事采用单页开局，故事控制台集中管理规划、事件与状态，并支持从任意已保存 AI 回复创建和管理分支。创作者可以分别调整故事的运行配置与后续剧情规划。
+- **将模型服务连接与模型选项分开。** 同一连接可复用到多个模型，支持语言模型发现、批量添加和连接测试；协议覆盖 OpenAI Chat Completions、Responses、Anthropic Messages 及自定义兼容端点。图像接入扩展为 OpenAI Images、xAI/Grok、火山方舟 Seedream、Google Gemini Image 与 ComfyUI Workflow，多图任务保留部分成功结果。思考强度与单模型输出上限统一配置，改善长会话、工具调用和不同服务商之间的兼容性。
+- **让项目数据脱离本机绝对路径。** 受管 Project 使用稳定 Project ID，数据目录内引用改为规范相对路径；退出 Denova 后，完整 `.denova` 目录可跨 Windows、WSL、Linux 与 macOS 移动或复制，会话、游戏、版本、附件、工具产物和自动化随项目保留。v0.3.3 数据按支持范围先备份再迁移；外部 Project 的内容不包含在数据目录内，不承诺随目录跨系统迁移。
+
+#### English
+
+- **One Project workbench for creation and resources.** Peer top-level navigation replaces Writing/Game mode switching. General Agents are added, and Books or arbitrary local directories can run multiple General or Writing conversations. Files, Lore, Reader, terminals, and version history share the workbench; configuration conversations and Automations also belong to Project sessions. Persistent split layouts and file-appropriate document, source, or image views share autosave, conflict protection, and version restoration.
+- **An Agent runtime built around durable sessions.** Writing, General chat, Image, Automation, and Game share execution mechanisms. Each logical session keeps conversations, tool results, Goals, todos, and context-compaction state in one journal, reducing loss or duplication after refresh, reconnect, or restart. Runs accept follow-ups and support resumable interruptions; sessions retain their own model and permissions. Custom main Agents, Goals, JavaScript scripting, and Project instructions extend the existing Skills and SubAgent capabilities under shared configuration and execution, with Ask, Write, and Full access modes. Delegation remains opt-in through user or Skill instructions. Agent configuration is itself managed as a Project with conversations, Files, and version history.
+- **Game planning separated from story settings.** Narrative, event, check, state, and image selections previously supplied by composition presets now belong directly to each story. Planning becomes independently reusable through five built-in approaches and custom Planning Templates. Single-page setup, a consolidated Story Console, and branching from any saved AI reply let creators adjust story settings and future plot plans separately.
+- **Model connections separated from model options.** Multiple models reuse one connection, with language-model discovery, batch addition, and connection tests. Protocols include OpenAI Chat Completions, Responses, Anthropic Messages, and custom-compatible endpoints. Image support covers OpenAI Images, xAI/Grok, Volcengine Ark Seedream, Google Gemini Image, and ComfyUI Workflow, preserving partial success in multi-image jobs. Unified thinking settings and per-model output caps improve long-session, tool-call, and provider compatibility.
+- **Project data independent of host paths.** Managed Projects use stable IDs and normalized relative references. After Denova exits, the complete `.denova` directory can move or be copied across Windows, WSL, Linux, and macOS with sessions, Game state, versions, attachments, tool artifacts, and Automations intact. Supported v0.3.3 data migrates after backup. External Project contents are outside the data directory and are not covered by this cross-system portability guarantee.
 
 ### Incompatible data changes / 用户数据不兼容变更
 
@@ -67,6 +68,11 @@ Denova records only major user-visible features, important compatibility or data
 - Legacy v0.3.3 thinking, output-limit, tool-result retention, low-level Cleanup, and `labs.continual_learning` settings no longer take effect and must be reselected where applicable. Active user-level Agent settings are backed up before migration into `.denova/agents` Profiles, while Project overrides remain intact.
 
 ### Major fixes / 重要修复
+
+- 修复 Agent 流式输出和子 Agent 写作时界面明显卡顿的问题。
+- Fixed severe UI stalls during Agent streaming and delegated writing.
+- 修复子 Agent 成功写入文件后被错误标记为失败、导致主 Agent 重复写入的问题。
+- Fixed delegated Agents reporting failure after successful file writes, which could cause the parent Agent to repeat the writes.
 
 - Agent 首轮上下文现在直接包含当前可用的 Skill 目录，按名称加载只需一次工具调用；显式 `/<skill-name>` 仍会直接预载，减少等待和无效上下文消耗。
 - The first Agent context now includes the available Skill catalog, so loading by name takes one tool call; explicit `/<skill-name>` invocations remain preloaded, reducing latency and unnecessary context usage.

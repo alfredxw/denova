@@ -70,15 +70,19 @@ type CanonicalAdapter interface {
     Identity() CapabilityIdentity
     MaterializeInput(context.Context, InputCommitRequest) (CommitReceipt, error)
     CommitOutput(context.Context, OutputCommitRequest) (OutputCommitReceipt, error)
-    ApplyEffects(context.Context, []EffectRequest) ([]EffectResult, error)
 }
 
 type CanonicalContextAdapter interface {
     CommitContext(context.Context, ContextCommitRequest) (CommitReceipt, error)
 }
+
+type EffectApplier interface {
+    Identity() CapabilityIdentity
+    ApplyEffects(context.Context, []EffectRequest) ([]EffectResult, error)
+}
 ```
 
-Calls are direct. Implementations must be idempotent for the supplied identity. Hosts that own the canonical conversation implement `CanonicalContextAdapter` so Context State, complete tool-call/result batches, and child-task completion messages enter the same message lane. `ApplyEffects` returns one result per request so a tool batch can report partial item failures without rejecting unrelated items. There is no Agent-owned reconcile callback or host-effect outbox.
+Calls are direct. Implementations must be idempotent for the supplied identity. Hosts that own the canonical conversation implement `CanonicalContextAdapter` so Context State, complete tool-call/result batches, and child-task completion messages enter the same message lane. `Definition.Effects` binds an independent `EffectApplier`: delegated Agents can apply product mutations while retaining their own Session transcripts. `ApplyEffects` returns one result per request so a tool batch can report partial item failures without rejecting unrelated items. There is no Agent-owned reconcile callback or host-effect outbox.
 
 ## Events and snapshots
 

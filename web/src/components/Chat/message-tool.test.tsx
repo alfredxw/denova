@@ -3,6 +3,67 @@ import { describe, expect, it } from 'vitest'
 import { ToolExecutionBlock } from './message-tool'
 
 describe('ToolExecutionBlock', () => {
+  it.each(['read', 'grep', 'bash', 'pwsh', 'task', 'unknown_tool'])(
+    'keeps %s compact throughout input streaming and allows completed details',
+    (name) => {
+      const message = {
+        id: `streaming-${name}`,
+        role: 'tool_call' as const,
+        name,
+        status: 'running' as const,
+        streaming: true,
+      }
+      const input = JSON.stringify({ path: 'chapter.md', command: 'echo progress', content: 'Long operational input. '.repeat(100) })
+      const { container, rerender } = render(<ToolExecutionBlock message={{ ...message, args: '' }} />)
+      const header = container.querySelector('[data-nova-tool-header]') as HTMLElement
+
+      for (const args of ['', input.slice(0, 20), input.slice(0, -1), input]) {
+        rerender(<ToolExecutionBlock message={{ ...message, args }} />)
+        expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
+        expect(container.querySelector('[data-nova-tool-detail]')).not.toBeInTheDocument()
+        expect(header).toBeDisabled()
+        expect(header).toHaveAttribute('aria-expanded', 'false')
+      }
+
+      rerender(<ToolExecutionBlock message={{ ...message, args: input, streaming: false }} />)
+      expect(header).toBeEnabled()
+      expect(header).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(header)
+      expect(header).toHaveAttribute('aria-expanded', 'true')
+
+      rerender(<ToolExecutionBlock message={{ ...message, args: input, streaming: false, status: 'success', result: 'Completed operation' }} />)
+      expect(header).toHaveAttribute('aria-expanded', 'true')
+      expect(container).toHaveTextContent('Completed operation')
+      fireEvent.click(header)
+      expect(header).toHaveAttribute('aria-expanded', 'false')
+    },
+  )
+
+  it.each(['write', 'edit', 'write_lore_items', 'prepare_interactive_turn', 'submit_interactive_turn'])(
+    'previews %s input only while non-empty arguments are streaming',
+    (name) => {
+      const message = {
+        id: `streaming-${name}`,
+        role: 'tool_call' as const,
+        name,
+        args: '',
+        status: 'running' as const,
+        streaming: true,
+      }
+      const { container, rerender } = render(<ToolExecutionBlock message={message} />)
+      expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
+
+      rerender(<ToolExecutionBlock message={{ ...message, args: '{"content":"Draft' }} />)
+      expect(container.querySelector('[data-nova-tool-input-stream]')).toHaveAttribute('aria-busy', 'true')
+
+      rerender(<ToolExecutionBlock message={{ ...message, args: '{"content":"Draft"}', streaming: false }} />)
+      expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
+      const header = container.querySelector('[data-nova-tool-header]') as HTMLElement
+      expect(header).toBeEnabled()
+      expect(header).toHaveAttribute('aria-expanded', 'false')
+    },
+  )
+
   it('opens the child session returned by a task start card', () => {
     const opened: string[] = []
     const { container } = render(<ToolExecutionBlock
@@ -56,7 +117,7 @@ describe('ToolExecutionBlock', () => {
       message={{
         id: 'streaming-raw',
         role: 'tool_call',
-        name: 'unknown_tool',
+        name: 'write',
         args: rawInput,
         status: 'running',
         streaming: true,
@@ -71,22 +132,27 @@ describe('ToolExecutionBlock', () => {
     expect(input?.querySelector('a, em')).not.toBeInTheDocument()
   })
 
-  it('removes the streaming projection when the tool input completes', async () => {
-    const message = {
-      id: 'completed-input',
-      role: 'tool_call' as const,
-      name: 'unknown_tool',
-      args: '{"path":"chapters/ch01.md"',
-      status: 'running' as const,
-      streaming: true,
-    }
-    const { container, rerender } = render(<ToolExecutionBlock message={message} />)
+  it('keeps approval details open independently of the input preview policy', () => {
+    const { container } = render(<ToolExecutionBlock message={{
+      role: 'tool_call',
+      name: 'bash',
+      args: '{"command":"echo approval"}',
+      status: 'running',
+      streaming: false,
+      ask: {
+        schema: 'ask.pending.v1',
+        id: 'tool-approval',
+        tool_call_id: 'approval-call',
+        agent_kind: 'writer',
+        kind: 'tool_approval',
+        status: 'pending',
+        questions: [],
+        approval: { tool_name: 'bash', command: 'echo approval', mode: 'ask', risk: 'low', rule_id: 'command-review', args_hash: 'approval-args' },
+      },
+    }} />)
 
-    await waitFor(() => {
-      expect(container.querySelector('[data-nova-tool-input-stream]')).toHaveTextContent('"path": "chapters/ch01.md"')
-    })
-    rerender(<ToolExecutionBlock message={{ ...message, args: '{"path":"chapters/ch01.md"}', streaming: false }} />)
-
+    expect(container.querySelector('[data-nova-tool-header]')).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelector('[data-tool-approval-panel]')).toHaveTextContent('echo approval')
     expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
   })
 

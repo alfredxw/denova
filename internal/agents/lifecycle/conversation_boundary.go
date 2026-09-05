@@ -27,7 +27,6 @@ type ConversationCommitter interface {
 	// accepted input is durable. It must not append another user message.
 	ApplyPreparedContext(context.Context, agentchat.AgentContextPreparation) error
 	CommitOutput(context.Context, agentchat.AgentContextPreparation, agent.OutputCommitRequest) (agent.OutputCommitReceipt, error)
-	ApplyEffects(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
 }
 
 // ConversationContextCommitter is implemented by product journals that own
@@ -41,7 +40,7 @@ type ConversationContextCommitter interface {
 // It keeps game/lore persistence in the application package while exposing
 // only the canonical lifecycle contract.
 type ConversationCommitterProvider interface {
-	NewAgentConversationCommitter(agentrun.Options, ToolEffectApplier) (ConversationCommitter, error)
+	NewAgentConversationCommitter(agentrun.Options) (ConversationCommitter, error)
 }
 
 // ConversationBoundaryConfig declares one exact Denova product turn. The
@@ -145,10 +144,6 @@ func (adapter conversationBoundaryCanonical) CommitOutput(ctx context.Context, r
 
 func (adapter conversationBoundaryCanonicalContext) CommitContext(ctx context.Context, request agent.ContextCommitRequest) (agent.CommitReceipt, error) {
 	return adapter.boundary.commitContext(ctx, request)
-}
-
-func (adapter conversationBoundaryCanonical) ApplyEffects(ctx context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
-	return adapter.boundary.config.Committer.ApplyEffects(ctx, requests)
 }
 
 func (boundary *ConversationBoundary) materializeContext(

@@ -15,7 +15,6 @@ import (
 type CanonicalCommitterConfig struct {
 	Conversation *Conversation
 	Options      agentrun.Options
-	ApplyEffects func(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
 }
 
 type canonicalConversationCommitter struct{ config CanonicalCommitterConfig }
@@ -32,10 +31,9 @@ func NewCanonicalCommitter(config CanonicalCommitterConfig) (agentlifecycle.Conv
 // the execution host; game turn and lore persistence remain app-owned.
 func (conversation *Conversation) NewAgentConversationCommitter(
 	options agentrun.Options,
-	applyEffects agentlifecycle.ToolEffectApplier,
 ) (agentlifecycle.ConversationCommitter, error) {
 	return NewCanonicalCommitter(CanonicalCommitterConfig{
-		Conversation: conversation, Options: options, ApplyEffects: applyEffects,
+		Conversation: conversation, Options: options,
 	})
 }
 
@@ -102,19 +100,6 @@ func (committer *canonicalConversationCommitter) CommitOutput(
 			Content: receipt.Turn.Narrative, Thinking: receipt.Turn.Thinking,
 		},
 	}, nil
-}
-
-func (committer *canonicalConversationCommitter) ApplyEffects(
-	ctx context.Context,
-	requests []agent.EffectRequest,
-) ([]agent.EffectResult, error) {
-	if len(requests) == 0 {
-		return nil, nil
-	}
-	if committer.config.ApplyEffects == nil {
-		return nil, errors.New("Denova Game has Tool effects but no effect applier")
-	}
-	return committer.config.ApplyEffects(ctx, requests)
 }
 
 var _ agentlifecycle.ConversationCommitter = (*canonicalConversationCommitter)(nil)

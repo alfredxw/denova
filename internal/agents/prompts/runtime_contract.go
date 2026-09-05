@@ -95,6 +95,7 @@ func subAgentDelegationContract() string {
 		"- User steering can interrupt task_wait without aborting child tasks. Resume waiting only when their results are still needed.",
 		"- Give the SubAgent a self-contained goal, constraints, relevant paths or resource IDs, expected output, and write scope. Pass references instead of copying content it can read itself.",
 		"- Verify the returned result before reporting it to the user.",
+		"- A failed task may already have committed file changes. Inspect its receipts and current files before retrying a mutation or claiming that nothing changed; continue from completed work instead of recreating it.",
 	}, "\n")
 }
 

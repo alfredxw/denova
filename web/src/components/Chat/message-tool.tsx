@@ -16,6 +16,15 @@ import { toolPresentationKind } from '@/lib/tool-presentation'
 import { workspaceFileName } from '@/lib/workspace-path'
 import { taskSubAgentSessionKey } from './subagent-session'
 
+// Preview creative inputs as they arrive; operational tools stay compact regardless of input length.
+const STREAMING_INPUT_PREVIEW_TOOLS = new Set([
+  'write',
+  'edit',
+  'write_lore_items',
+  'prepare_interactive_turn',
+  'submit_interactive_turn',
+])
+
 export function ToolExecutionBlock({ message, showAgentSource = true, onResolve, onLayoutChange, onOpenSubAgentSession }: { message: ToolCallChatMessage; showAgentSource?: boolean; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void; onOpenSubAgentSession?: (sessionKey: string) => void }) {
   const { t } = useTranslation()
   const approvalInteraction = message.ask?.kind === 'tool_approval' ? message.ask : undefined
@@ -25,8 +34,9 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   const name = message.name || info.name
   const inputStreaming = message.streaming === true
   const rawArgs = message.args !== undefined ? message.args : info.args
-  const isInputStreaming = !approvalInteraction && inputStreaming && rawArgs.length > 0
+  const showStreamingInput = !approvalInteraction && inputStreaming && rawArgs.length > 0 && STREAMING_INPUT_PREVIEW_TOOLS.has(name)
   const canInterpretInput = !inputStreaming
+  const canShowDetail = Boolean(approvalInteraction) || canInterpretInput
   const args = canInterpretInput ? formatMaybeJSON(rawArgs) : rawArgs
   const status = message.status || 'running'
   const result = message.result || ''
@@ -84,7 +94,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   if (hasResult) displaySummary = specializedSummary || commandDescription || fileResultSummary || resultPreview || t('chat.tool.done')
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result)
-  const canToggleDetail = hasDetail && !isInputStreaming && !opensTaskSession
+  const canToggleDetail = hasDetail && canShowDetail && !opensTaskSession
 
   return (
     <div className="flex justify-start">
@@ -145,10 +155,10 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
             </span>
           )}
         </CollapsibleTrigger>
-        {isInputStreaming && (
+        {showStreamingInput && (
           <StreamingToolInput rawInput={rawArgs} streamKey={message.id || name} />
         )}
-        {!isInputStreaming && !approvalInteraction && hasSpecializedToolDetail(name) && (
+        {canShowDetail && !approvalInteraction && hasSpecializedToolDetail(name) && (
           <ToolCallDetail
             name={name}
             rawArgs={rawArgs}
@@ -156,7 +166,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
             resultSeverity={resultSeverity}
           />
         )}
-        {!isInputStreaming && (approvalInteraction || !hasSpecializedToolDetail(name)) && (
+        {canShowDetail && (approvalInteraction || !hasSpecializedToolDetail(name)) && (
           <ToolContent className="min-w-0 max-w-full border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
             <div className={`grid min-w-0 max-w-full gap-2 overflow-x-hidden overflow-y-auto px-3 py-2.5 ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
               {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}

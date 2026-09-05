@@ -236,6 +236,9 @@ type Definition struct {
 	Permission  PermissionPolicy
 	Interaction InteractionPolicy
 	Canonical   CanonicalAdapter
+	// Effects owns tool mutation receipts independently of conversation commits.
+	// Nil is valid only for tools that do not return Effects.
+	Effects EffectApplier
 
 	Middlewares []Middleware
 	Execution   ExecutionPolicy
@@ -345,6 +348,11 @@ func validateDefinition(definition Definition) error {
 			return err
 		}
 	}
+	if definition.Effects != nil {
+		if err := definition.Effects.Identity().validate("Effects"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -368,6 +376,7 @@ func initializeDefinition(ctx context.Context, definition Definition) (Definitio
 		{name: "Permission", value: definition.Permission},
 		{name: "Interaction", value: definition.Interaction},
 		{name: "Canonical", value: definition.Canonical},
+		{name: "Effects", value: definition.Effects},
 	}
 	for index, middleware := range definition.Middlewares {
 		components = append(components, component{
@@ -493,6 +502,7 @@ func definitionBehaviorIdentity(definition Definition) (string, error) {
 		Goal: identityOfGoal(definition.Goal), Cleanup: identityOfCleanup(definition.Cleanup), Compaction: identityOfCompaction(definition.Compaction),
 		Permission: identityOfPermission(definition.Permission), Interaction: identityOfInteraction(definition.Interaction),
 		Canonical:   identityOfCanonical(definition.Canonical),
+		Effects:     identityOfEffects(definition.Effects),
 		Middlewares: middlewareIdentities(definition.Middlewares),
 	})
 }
@@ -612,6 +622,7 @@ type definitionIdentity struct {
 	Permission      CapabilityIdentity
 	Interaction     CapabilityIdentity
 	Canonical       CapabilityIdentity
+	Effects         CapabilityIdentity
 	Middlewares     []CapabilityIdentity
 }
 
@@ -690,6 +701,13 @@ func identityOfCanonical(adapter CanonicalAdapter) CapabilityIdentity {
 		return CapabilityIdentity{Kind: "canonical.none", Version: 1}
 	}
 	return adapter.Identity()
+}
+
+func identityOfEffects(applier EffectApplier) CapabilityIdentity {
+	if applier == nil {
+		return CapabilityIdentity{Kind: "effects.none", Version: 1}
+	}
+	return applier.Identity()
 }
 
 func identityOfGoal(manager GoalManager) CapabilityIdentity {
