@@ -79,7 +79,14 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
     await releaseDelayedRequest(request, sessionADelayMarker)
     await expect(page.getByText('Session A initial response completed.', { exact: true }).filter({ visible: true })).toBeVisible()
     await expect(page.getByText('Session A follow-up reached only Session A.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expect(page.getByText('Session A initial response completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
     await expect(page.getByText('Session B response completed independently.', { exact: true }).filter({ visible: true })).toHaveCount(0)
+
+    await page.reload()
+    await openAgentChatWorkbench(page)
+    await openAgentChatSession(page, project.id, sessionA.title)
+    await expect(page.getByText('Session A initial response completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expect(page.getByText('Session A follow-up reached only Session A.', { exact: true }).filter({ visible: true })).toHaveCount(1)
 
     await openAgentChatSession(page, project.id, sessionB.title)
     await expect(page.getByText('Session B response completed independently.', { exact: true }).filter({ visible: true })).toHaveCount(1)

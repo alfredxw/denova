@@ -718,6 +718,10 @@ func (projector *PublicEventProjector) ProjectRunStarted(runID string, cycle int
 	projector.mu.Lock()
 	defer projector.mu.Unlock()
 	projector.bindRunIDLocked(runID)
+	// Follow Up creates a new projector within the same Run. Scope generated
+	// display identities to the durable cycle so later replies cannot replace
+	// earlier text when live and persisted history are merged.
+	projector.recorder.cycle = cycle
 	if !startedAt.IsZero() && (projector.runStartedAt.IsZero() || startedAt.Before(projector.runStartedAt)) {
 		projector.runStartedAt = startedAt.UTC()
 	}
@@ -741,7 +745,7 @@ func (projector *PublicEventProjector) ProjectRunStarted(runID string, cycle int
 // ProjectPreparedContext restores the established visible Skill load cards at
 // the same seam that injects explicitly requested Skills into the first model
 // request. These are product projections, not synthetic Agent tool executions.
-func (projector *PublicEventProjector) ProjectPreparedContext(prepared AgentContextPreparation) {
+func (projector *PublicEventProjector) ProjectPreparedContext(run agent.RunView, prepared AgentContextPreparation) {
 	if projector == nil || len(prepared.ExplicitSkills) == 0 {
 		return
 	}
@@ -751,6 +755,9 @@ func (projector *PublicEventProjector) ProjectPreparedContext(prepared AgentCont
 		return
 	}
 	projector.explicitSkillsProjected = true
+	// Context preparation can run before the event observer receives RunStarted.
+	// Use the preparation's durable identity for these cycle-local Skill cards.
+	projector.bindRunIDLocked(run.ID)
 	meta := projector.rootMetadata()
 	for index, invocation := range prepared.ExplicitSkills {
 		name := strings.TrimSpace(invocation.Name)
@@ -762,7 +769,7 @@ func (projector *PublicEventProjector) ProjectPreparedContext(prepared AgentCont
 			slog.ErrorContext(context.Background(), "[agent-public-runtime] encode explicit Skill projection failed", "skill", name, "error", err)
 			continue
 		}
-		callID := fmt.Sprintf("%s-explicit-skill-%02d", firstNonEmpty(projector.runID, "run"), index+1)
+		callID := fmt.Sprintf("%s-cycle-%03d-explicit-skill-%02d", firstNonEmpty(projector.runID, "run"), run.Cycle, index+1)
 		projector.emitEvent(agentrun.Event{Type: "tool_call", Data: meta.appendTo(map[string]any{
 			"id": callID, "provider_call_id": callID, "name": "skill", "args": string(arguments),
 		})})

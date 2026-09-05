@@ -597,8 +597,10 @@ func (backend *publicBackend) bindDefinition(
 		Request: cycle.Request, Options: options, Committer: committer,
 		ContextIdentity:   publicCapabilityIdentity("denova.context", identityConfig),
 		CanonicalIdentity: denovaCanonicalIdentity(request.Session.Key),
-		OnPrepared:        projector.ProjectPreparedContext,
-		ProjectOutput:     projector.ProjectCanonicalOutput,
+		OnPrepared: func(prepared agentchat.AgentContextPreparation) {
+			projector.ProjectPreparedContext(request.Run, prepared)
+		},
+		ProjectOutput: projector.ProjectCanonicalOutput,
 	})
 	if err != nil {
 		return agent.Definition{}, err

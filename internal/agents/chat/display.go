@@ -99,6 +99,7 @@ type displayEventRecorder struct {
 	sources                       map[displayEventSourceKey]*displaySourceRecorder
 	sourceOrder                   []displayEventSourceKey
 	segmentSeq                    int
+	cycle                         int
 	rootRunID                     string
 	rootAssistantSegmentIDs       []string
 	pendingToolIDs                map[string]string
@@ -558,7 +559,7 @@ func (r *displayEventRecorder) nextTextSegmentID(meta agentEventMetadata, role s
 	if runID == "" {
 		runID = "run"
 	}
-	return fmt.Sprintf("%s-display-%03d-%s", runID, r.segmentSeq, role)
+	return fmt.Sprintf("%s-cycle-%03d-display-%03d-%s", runID, r.cycle, r.segmentSeq, role)
 }
 
 func setEventDataString(data interface{}, key, value string) {
