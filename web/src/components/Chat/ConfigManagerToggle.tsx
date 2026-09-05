@@ -27,4 +27,3 @@ export function ConfigManagerToggle({ open, label, onToggle, className }: Config
     </Button>
   )
 }
-

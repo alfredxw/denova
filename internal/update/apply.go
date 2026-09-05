@@ -33,16 +33,16 @@ type ApplyScheduler struct {
 func (s ApplyScheduler) Schedule(ctx context.Context) error {
 	manifest := s.Manifest
 	if manifest.UpdaterExecutable == "" {
-		return fmt.Errorf("更新清单缺少 updater_executable")
+		return fmt.Errorf("update manifest is missing updater_executable")
 	}
 	if _, err := os.Stat(manifest.UpdaterExecutable); err != nil {
-		return fmt.Errorf("无法启动 updater: %w", err)
+		return fmt.Errorf("start updater: %w", err)
 	}
 	if s.ManifestPath == "" {
-		return fmt.Errorf("更新清单路径不能为空")
+		return fmt.Errorf("update manifest path is required")
 	}
 	if _, err := os.Stat(s.ManifestPath); err != nil {
-		return fmt.Errorf("更新清单不存在: %w", err)
+		return fmt.Errorf("update manifest is missing: %w", err)
 	}
 	delay := s.Delay
 	if delay <= 0 {
@@ -92,7 +92,7 @@ func (s ApplyScheduler) Schedule(ctx context.Context) error {
 func (s *Service) Apply(ctx context.Context) (ApplyResult, error) {
 	_ = ctx
 	if s.executablePath == "" {
-		return ApplyResult{}, fmt.Errorf("无法定位当前可执行文件")
+		return ApplyResult{}, fmt.Errorf("cannot locate the current executable")
 	}
 	installDir := filepath.Dir(s.executablePath)
 	manifestPath, err := readPendingManifestRef(updateDataDir(installDir))

@@ -630,7 +630,6 @@ export interface UpdateCheckResult {
   published_at: string
   release_notes?: string
   asset?: UpdateAsset
-  message?: string
 }
 
 export interface UpdateInstallResult {
@@ -644,7 +643,6 @@ export interface UpdateInstallResult {
   backup_path?: string
   staged_path?: string
   apply_log_path?: string
-  message?: string
 }
 
 export interface UpdateApplyResult {
@@ -660,5 +658,4 @@ export interface UpdateInstallProgress {
   downloaded_bytes?: number
   total_bytes?: number
   percent?: number
-  message?: string
 }

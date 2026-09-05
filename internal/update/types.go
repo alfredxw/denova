@@ -19,7 +19,6 @@ type CheckResult struct {
 	PublishedAt     time.Time `json:"published_at"`
 	ReleaseNotes    string    `json:"release_notes,omitempty"`
 	Asset           *Asset    `json:"asset,omitempty"`
-	Message         string    `json:"message,omitempty"`
 }
 
 type InstallResult struct {
@@ -33,7 +32,6 @@ type InstallResult struct {
 	BackupPath       string `json:"backup_path,omitempty"`
 	StagedPath       string `json:"staged_path,omitempty"`
 	ApplyLogPath     string `json:"apply_log_path,omitempty"`
-	Message          string `json:"message,omitempty"`
 }
 
 type ApplyResult struct {
@@ -49,5 +47,4 @@ type InstallProgress struct {
 	DownloadedBytes int64   `json:"downloaded_bytes,omitempty"`
 	TotalBytes      int64   `json:"total_bytes,omitempty"`
 	Percent         float64 `json:"percent,omitempty"`
-	Message         string  `json:"message,omitempty"`
 }

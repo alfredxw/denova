@@ -77,6 +77,9 @@ func stringify(v any) string {
 }
 
 var catalogZH = map[string]string{
+	"api.update.checkFailed":                  "检查更新失败，请稍后重试。详细原因请查看服务端日志。",
+	"api.update.installFailed":                "安装更新失败，请重试或从 GitHub Releases 手动下载安装包。详细原因请查看服务端日志。",
+	"api.update.applyFailed":                  "应用更新失败，请查看服务端日志，并尝试手动重启或安装。",
 	"api.common.invalidRequest":               "请求参数无效",
 	"api.common.invalidRequestWithDetail":     "请求参数无效: {{detail}}",
 	"api.common.invalidBody":                  "无效请求体",
@@ -219,6 +222,9 @@ var catalogZH = map[string]string{
 }
 
 var catalogEN = map[string]string{
+	"api.update.checkFailed":                  "Could not check for updates. Try again later; see server logs for details.",
+	"api.update.installFailed":                "Could not install the update. Retry or download the archive from GitHub Releases; see server logs for details.",
+	"api.update.applyFailed":                  "Could not apply the update. See server logs and try restarting or installing manually.",
 	"api.common.invalidRequest":               "Invalid request.",
 	"api.common.invalidRequestWithDetail":     "Invalid request: {{detail}}",
 	"api.common.invalidBody":                  "Invalid request body.",

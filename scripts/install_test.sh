@@ -99,4 +99,17 @@ DENOVA_INSTALL_TEST_RELEASE_DIR="${RELEASE_DIR}" \
 sh "${ROOT_DIR}/scripts/install.sh" >/dev/null
 grep -Fq 'preserved = true' "${INSTALL_DIR}/config.toml"
 
+# A corrupt download must leave the existing installation and user config intact.
+printf 'corrupt archive\n' >> "${RELEASE_DIR}/${ARCHIVE_NAME}"
+if PATH="${FAKE_BIN}:${PATH}" \
+  HOME="${HOME_DIR}" \
+  DENOVA_INSTALL_TEST_RELEASE_DIR="${RELEASE_DIR}" \
+  sh "${ROOT_DIR}/scripts/install.sh" >"${TEST_ROOT}/corrupt-install.log" 2>&1; then
+  printf 'Installer unexpectedly accepted a corrupt archive.\n' >&2
+  exit 1
+fi
+grep -Fq 'SHA-256 verification failed' "${TEST_ROOT}/corrupt-install.log"
+[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.4.0" ]
+grep -Fq 'preserved = true' "${INSTALL_DIR}/config.toml"
+
 printf 'Installer tests passed.\n'

@@ -124,7 +124,7 @@ func TestValidateReleasePackageRequiresRipgrepLicenses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "tools", hostruntime.RipgrepExecutableName()), []byte("ripgrep"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateReleasePackage(dir, "denova", updaterExecutableName()); err == nil || !strings.Contains(err.Error(), "许可") {
+	if err := validateReleasePackage(dir, "denova", updaterExecutableName()); err == nil || !strings.Contains(err.Error(), "license") {
 		t.Fatalf("release package without ripgrep licenses should fail, got %v", err)
 	}
 }

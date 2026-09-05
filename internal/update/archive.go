@@ -19,13 +19,13 @@ func extractArchive(archivePath, targetDir string) error {
 	if strings.HasSuffix(archivePath, ".tar.gz") {
 		return extractTarGz(archivePath, targetDir)
 	}
-	return fmt.Errorf("不支持的更新包格式: %s", filepath.Base(archivePath))
+	return fmt.Errorf("unsupported update archive format: %s", filepath.Base(archivePath))
 }
 
 func extractZip(archivePath, targetDir string) error {
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
-		return fmt.Errorf("打开 zip 更新包失败: %w", err)
+		return fmt.Errorf("open zip update archive: %w", err)
 	}
 	defer reader.Close()
 	for _, f := range reader.File {
@@ -55,12 +55,12 @@ func extractZip(archivePath, targetDir string) error {
 func extractTarGz(archivePath, targetDir string) error {
 	f, err := os.Open(archivePath)
 	if err != nil {
-		return fmt.Errorf("打开 tar.gz 更新包失败: %w", err)
+		return fmt.Errorf("open tar.gz update archive: %w", err)
 	}
 	defer f.Close()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		return fmt.Errorf("读取 gzip 更新包失败: %w", err)
+		return fmt.Errorf("read gzip update archive: %w", err)
 	}
 	defer gz.Close()
 	reader := tar.NewReader(gz)
@@ -97,7 +97,7 @@ func safeJoin(root, name string) (string, error) {
 		return "", err
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("更新包包含非法路径: %s", name)
+		return "", fmt.Errorf("update archive contains an invalid path: %s", name)
 	}
 	return target, nil
 }

@@ -133,7 +133,7 @@ function App() {
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileDocument, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, bookSortMode,
+    tree, loading, selectedFile, fileDocument, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, booksLoaded, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks,
   } = useWorkspace()
@@ -1031,6 +1031,7 @@ function App() {
         onImport={handleCharacterCardImport}
       />
       <OnboardingGuide
+        workspaceReady={workspaceLoaded && booksLoaded}
         mode={mode}
         rightPanel={rightPanel}
         settingsOpen={settingsOpen}

@@ -231,4 +231,3 @@ function isInteractiveImageError(value: unknown): value is InteractiveImageError
 function isMarkdownPath(path?: string) {
   return /\.(md|markdown)$/i.test(path || '')
 }
-

@@ -33,7 +33,7 @@ type pendingManifestRef struct {
 
 func writeManifest(path string, manifest ApplyManifest) error {
 	if err := writeJSONFile(path, manifest, 0o644); err != nil {
-		return fmt.Errorf("写入更新清单失败: %w", err)
+		return fmt.Errorf("write update manifest: %w", err)
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func writeManifest(path string, manifest ApplyManifest) error {
 func readManifest(path string) (ApplyManifest, error) {
 	var manifest ApplyManifest
 	if err := readJSONFile(path, &manifest); err != nil {
-		return ApplyManifest{}, fmt.Errorf("读取更新清单失败: %w", err)
+		return ApplyManifest{}, fmt.Errorf("read update manifest: %w", err)
 	}
 	return manifest, nil
 }
@@ -49,7 +49,7 @@ func readManifest(path string) (ApplyManifest, error) {
 func writePendingManifestRef(updateDir, manifestPath string) error {
 	path := filepath.Join(updateDir, pendingManifestRefName)
 	if err := writeJSONFile(path, pendingManifestRef{ManifestPath: manifestPath}, 0o644); err != nil {
-		return fmt.Errorf("记录待应用更新失败: %w", err)
+		return fmt.Errorf("record pending update: %w", err)
 	}
 	return nil
 }
@@ -58,10 +58,10 @@ func readPendingManifestRef(updateDir string) (string, error) {
 	path := filepath.Join(updateDir, pendingManifestRefName)
 	var ref pendingManifestRef
 	if err := readJSONFile(path, &ref); err != nil {
-		return "", fmt.Errorf("读取待应用更新失败: %w", err)
+		return "", fmt.Errorf("read pending update: %w", err)
 	}
 	if ref.ManifestPath == "" {
-		return "", fmt.Errorf("待应用更新记录缺少 manifest_path")
+		return "", fmt.Errorf("pending update is missing manifest_path")
 	}
 	return ref.ManifestPath, nil
 }

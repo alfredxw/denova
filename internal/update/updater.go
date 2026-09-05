@@ -111,7 +111,7 @@ func waitForProcessExit(ctx context.Context, pid int, options UpdaterOptions, lo
 	deadline := time.Now().Add(timeout)
 	for alive(pid) {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("等待 Denova 退出超时 pid=%d", pid)
+			return fmt.Errorf("timed out waiting for Denova to exit pid=%d", pid)
 		}
 		logger.InfoContext(ctx, "updater_waiting_for_process_exit", "pid", pid)
 		select {
@@ -129,7 +129,7 @@ func applyStagedUpdate(ctx context.Context, manifest ApplyManifest, logger *slog
 		return err
 	}
 	if err := os.MkdirAll(manifest.BackupDir, 0o755); err != nil {
-		return fmt.Errorf("创建更新备份目录失败: %w", err)
+		return fmt.Errorf("create update backup directory: %w", err)
 	}
 	entries := updateEntries(manifest)
 	for _, entry := range entries {
@@ -158,7 +158,7 @@ func applyStagedUpdate(ctx context.Context, manifest ApplyManifest, logger *slog
 
 func validateApplyManifest(manifest ApplyManifest) error {
 	if manifest.SourceDir == "" || manifest.InstallDir == "" || manifest.BackupDir == "" || manifest.TargetExecutable == "" || manifest.UpdaterExecutable == "" {
-		return fmt.Errorf("更新清单字段不完整")
+		return fmt.Errorf("update manifest fields are incomplete")
 	}
 	if err := validateReleasePackage(manifest.SourceDir, filepath.Base(manifest.TargetExecutable), filepath.Base(manifest.UpdaterExecutable)); err != nil {
 		return err
@@ -214,7 +214,7 @@ func backupEntry(entry replaceEntry) error {
 		return err
 	}
 	if err := os.Rename(entry.Target, entry.Backup); err != nil {
-		return fmt.Errorf("备份更新目标失败 target=%s err=%w", entry.Target, err)
+		return fmt.Errorf("back up update target target=%s err=%w", entry.Target, err)
 	}
 	return nil
 }
@@ -222,7 +222,7 @@ func backupEntry(entry replaceEntry) error {
 func copyEntry(entry replaceEntry) error {
 	if entry.Dir {
 		if err := copyDir(entry.Source, entry.Target); err != nil {
-			return fmt.Errorf("替换目录失败 target=%s err=%w", entry.Target, err)
+			return fmt.Errorf("replace update directory target=%s err=%w", entry.Target, err)
 		}
 		return nil
 	}
@@ -231,13 +231,13 @@ func copyEntry(entry replaceEntry) error {
 		if entry.Optional && os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("更新包缺少文件 %s: %w", filepath.Base(entry.Source), err)
+		return fmt.Errorf("update package is missing file %s: %w", filepath.Base(entry.Source), err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("更新包中的文件是目录: %s", entry.Source)
+		return fmt.Errorf("update package file is a directory: %s", entry.Source)
 	}
 	if err := copyFile(entry.Source, entry.Target, info.Mode().Perm()); err != nil {
-		return fmt.Errorf("替换文件失败 target=%s err=%w", entry.Target, err)
+		return fmt.Errorf("replace update file target=%s err=%w", entry.Target, err)
 	}
 	return nil
 }

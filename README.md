@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.4.0</strong>（2026-09-04） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
+  当前版本：<strong>v0.4.0</strong>（2026-09-05） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -38,6 +38,14 @@
 ### 方案预设
 
 ![Denova 方案预设](./img/story-teller.png)
+
+### 修改审阅
+
+![Denova 修改审阅](./img/review.png)
+
+### 工作台
+
+![Denova 工作台](./img/workspace.png)
 
 </details>
 
@@ -86,7 +94,7 @@ curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/inst
 
 ### 从源码运行
 
-需要 Go 1.26.6+、Node.js 20+、pnpm、ripgrep 和 Bash。Windows 请在 Git Bash 或 WSL 中运行以下命令。
+需要 Go 1.26.6+、Node.js 22.13+、pnpm、ripgrep 和 Bash。Windows 请在 Git Bash 或 WSL 中运行以下命令。
 
 ```bash
 git clone https://github.com/alfredxw/denova.git

@@ -111,7 +111,9 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
     )).toBe(3)
 
     const activeProcess = page.locator('[data-agent-execution-process]').last()
-    await expect(activeProcess.getByText('等待 SubAgent', { exact: true })).toBeVisible()
+    // Attached tasks synchronize before the next model call, so no explicit
+    // task_wait call is needed while the children are still streaming.
+    await expect(activeProcess.getByText('委派任务', { exact: true })).toBeVisible()
     await releaseDelayedRequest(request, multiAgentStreamGateMarker)
     streamsReleased = true
     await expect.poll(async () => {

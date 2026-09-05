@@ -35,6 +35,8 @@ interface TourStep {
 }
 
 interface OnboardingGuideProps {
+  /** Startup data must settle before an empty workspace can trigger onboarding. */
+  workspaceReady: boolean
   mode: WorkspaceMode
   rightPanel: RightPanel
   settingsOpen: boolean
@@ -72,6 +74,7 @@ export function OnboardingGuide({
   rightPanel,
   settingsOpen,
   workspace,
+  workspaceReady,
   booksCount,
   currentBookName,
   messages,
@@ -130,13 +133,13 @@ export function OnboardingGuide({
   }, [modelReady, refreshModelState, workspace])
 
   useEffect(() => {
-    if (open || loadingSettings || storedState.skipped || storedState.completed) return
+    if (!workspaceReady || open || loadingSettings || storedState.skipped || storedState.completed) return
     if (!modelReady || !workspace || booksCount === 0) {
       setCoreStep(firstCoreStep(modelReady, workspace))
       setPhase('core')
       setOpen(true)
     }
-  }, [booksCount, loadingSettings, modelReady, open, storedState.completed, storedState.skipped, workspace])
+  }, [booksCount, loadingSettings, modelReady, open, storedState.completed, storedState.skipped, workspace, workspaceReady])
 
   useEffect(() => {
     if (!open || phase !== 'core') return

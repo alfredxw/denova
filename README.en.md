@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.4.0</strong> (2026-09-04) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.4.0</strong> (2026-09-05) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)
@@ -38,6 +38,14 @@
 ### Presets
 
 ![Denova Presets](./img/story-teller.png)
+
+### Change review
+
+![Denova change review](./img/review.png)
+
+### Workspace
+
+![Denova workspace](./img/workspace.png)
 
 </details>
 
@@ -86,7 +94,7 @@ For stable use, choose a Release. The `master` branch may contain unreleased cha
 
 ### Run from Source
 
-You need Go 1.26.6+, Node.js 20+, pnpm, ripgrep, and Bash. On Windows, run these commands from Git Bash or WSL.
+You need Go 1.26.6+, Node.js 22.13+, pnpm, ripgrep, and Bash. On Windows, run these commands from Git Bash or WSL.
 
 ```bash
 git clone https://github.com/alfredxw/denova.git

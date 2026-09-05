@@ -4,20 +4,15 @@ Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据�
 
 Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.4.0）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.0 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本（当前为 v0.3.3）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.3.3 后从未发布的中间格式不计入。
 
-`Unreleased` compares against the latest release (currently v0.4.0) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.0 are excluded.
+`Unreleased` compares against the latest release (currently v0.3.3) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.3.3 are excluded.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
 
-### Major fixes / 重要修复
-
-- Agent 首轮上下文现在直接包含当前可用的 Skill 目录，按名称加载只需一次工具调用；显式 `/<skill-name>` 仍会直接预载，减少等待和无效上下文消耗。
-- The first Agent context now includes the available Skill catalog, so loading by name takes one tool call; explicit `/<skill-name>` invocations remain preloaded, reducing latency and unnecessary context usage.
-
-## [v0.4.0] - 2026-09-04
+## [v0.4.0] - 2026-09-05
 
 ### Brief / 简要说明
 
@@ -72,6 +67,9 @@ Denova records only major user-visible features, important compatibility or data
 - Legacy v0.3.3 thinking, output-limit, tool-result retention, low-level Cleanup, and `labs.continual_learning` settings no longer take effect and must be reselected where applicable. Active user-level Agent settings are backed up before migration into `.denova/agents` Profiles, while Project overrides remain intact.
 
 ### Major fixes / 重要修复
+
+- Agent 首轮上下文现在直接包含当前可用的 Skill 目录，按名称加载只需一次工具调用；显式 `/<skill-name>` 仍会直接预载，减少等待和无效上下文消耗。
+- The first Agent context now includes the available Skill catalog, so loading by name takes one tool call; explicit `/<skill-name>` invocations remain preloaded, reducing latency and unnecessary context usage.
 
 - 修复首次切换 v0.3.3 书籍时工作区路径与 Project ID 短暂不同步而报错的问题；切换现在会一次发布完整 Project 身份，无需刷新恢复。
 - Fixed first-switch errors for v0.3.3 Books caused by the workspace path and Project ID updating separately; switches now publish one complete Project identity without requiring a refresh.

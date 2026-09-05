@@ -23,19 +23,19 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 	installCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), updateInstallTimeout)
 	defer cancel()
 
-	reportInstallProgress(progress, InstallProgress{Phase: "checking", Message: "正在检查更新"})
+	reportInstallProgress(progress, InstallProgress{Phase: "checking"})
 	check, err := s.Check(installCtx)
 	if err != nil {
 		return InstallResult{}, err
 	}
 	if !check.UpdateAvailable {
-		return InstallResult{}, errors.New(check.Message)
+		return InstallResult{}, errors.New("no update is available")
 	}
 	if check.Asset == nil {
-		return InstallResult{}, errors.New(check.Message)
+		return InstallResult{}, errors.New("no release asset matches the current platform")
 	}
 	if s.executablePath == "" {
-		return InstallResult{}, errors.New("无法定位当前可执行文件")
+		return InstallResult{}, errors.New("cannot locate the current executable")
 	}
 
 	installDir := filepath.Dir(s.executablePath)
@@ -43,41 +43,41 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 	downloadDir := filepath.Join(updateDir, "downloads")
 	extractDir := filepath.Join(updateDir, "extract-"+safeUpdateName(check.LatestVersion))
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
-		return InstallResult{}, fmt.Errorf("创建更新下载目录失败: %w", err)
+		return InstallResult{}, fmt.Errorf("create update download directory: %w", err)
 	}
 	if err := os.RemoveAll(extractDir); err != nil {
-		return InstallResult{}, fmt.Errorf("清理更新解压目录失败: %w", err)
+		return InstallResult{}, fmt.Errorf("clear update extraction directory: %w", err)
 	}
 
 	archivePath := filepath.Join(downloadDir, check.Asset.Name)
 	if err := s.downloadAsset(installCtx, updateAssetDownloadURL(check.Asset), archivePath, check.Asset.Size, progress); err != nil {
 		return InstallResult{}, err
 	}
-	reportInstallProgress(progress, InstallProgress{Phase: "verifying", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: "正在校验更新包"})
+	reportInstallProgress(progress, InstallProgress{Phase: "verifying", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100})
 	if err := s.verifyChecksum(installCtx, check.Asset.Name, archivePath); err != nil {
 		return InstallResult{}, err
 	}
 
-	reportInstallProgress(progress, InstallProgress{Phase: "extracting", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: "正在解压更新包"})
+	reportInstallProgress(progress, InstallProgress{Phase: "extracting", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100})
 	if err := extractArchive(archivePath, extractDir); err != nil {
 		return InstallResult{}, err
 	}
 	packageRoot := filepath.Join(extractDir, releasePackageRootName)
 	if fi, err := os.Stat(packageRoot); err != nil || !fi.IsDir() {
-		return InstallResult{}, fmt.Errorf("更新包结构无效，缺少 %s 目录", releasePackageRootName)
+		return InstallResult{}, fmt.Errorf("invalid update package: missing %s directory", releasePackageRootName)
 	}
 
-	reportInstallProgress(progress, InstallProgress{Phase: "staging", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: "正在暂存更新"})
+	reportInstallProgress(progress, InstallProgress{Phase: "staging", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100})
 	result, err := s.stageUpdate(packageRoot, check)
 	if err == nil {
-		reportInstallProgress(progress, InstallProgress{Phase: "staged", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: result.Message})
+		reportInstallProgress(progress, InstallProgress{Phase: "staged", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100})
 	}
 	return result, err
 }
 
 func (s *Service) downloadAsset(ctx context.Context, url, target string, expectedSize int64, progress func(InstallProgress)) error {
 	if strings.TrimSpace(url) == "" {
-		return fmt.Errorf("下载更新包失败: Release 资源缺少下载地址")
+		return fmt.Errorf("download update: release asset has no download URL")
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[update] Starting package download url=%s target=%s", url, target))
 	downloadCtx, cancel := context.WithTimeout(ctx, updateDownloadTimeout)
@@ -86,7 +86,7 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 	tempTarget := target + ".download"
 	_ = os.Remove(tempTarget)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("创建更新下载目录失败: %w", err)
+		return fmt.Errorf("create update download directory: %w", err)
 	}
 
 	req, err := grab.NewRequest(tempTarget, url)
@@ -106,26 +106,26 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 	client.UserAgent = "denova-updater"
 	resp := client.Do(req)
 	assetName := filepath.Base(target)
-	reportInstallProgress(progress, downloadProgress(assetName, target, resp, expectedSize, "正在下载更新包"))
+	reportInstallProgress(progress, downloadProgress(assetName, target, resp, expectedSize))
 
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			reportInstallProgress(progress, downloadProgress(assetName, target, resp, expectedSize, "正在下载更新包"))
+			reportInstallProgress(progress, downloadProgress(assetName, target, resp, expectedSize))
 		case <-resp.Done:
 			if err := resp.Err(); err != nil {
 				_ = os.Remove(tempTarget)
-				return fmt.Errorf("下载更新包失败: %w", err)
+				return fmt.Errorf("download update package: %w", err)
 			}
 			if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
 				_ = os.Remove(tempTarget)
-				return fmt.Errorf("保存更新包失败: %w", err)
+				return fmt.Errorf("save update package: %w", err)
 			}
 			if err := os.Rename(tempTarget, target); err != nil {
 				_ = os.Remove(tempTarget)
-				return fmt.Errorf("保存更新包失败: %w", err)
+				return fmt.Errorf("save update package: %w", err)
 			}
 			reportInstallProgress(progress, InstallProgress{
 				Phase:           "downloading",
@@ -134,7 +134,6 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 				DownloadedBytes: maxInt64(resp.BytesComplete(), expectedSize),
 				TotalBytes:      maxInt64(resp.Size(), expectedSize),
 				Percent:         100,
-				Message:         "更新包下载完成",
 			})
 			slog.InfoContext(ctx, fmt.Sprintf("[update] Package download completed target=%s size=%d", target, resp.BytesComplete()))
 			return nil
@@ -155,7 +154,7 @@ func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallRes
 		return InstallResult{}, err
 	}
 	if err := copyDir(packageRoot, stagedDir); err != nil {
-		return InstallResult{}, fmt.Errorf("暂存更新包失败: %w", err)
+		return InstallResult{}, fmt.Errorf("stage update package: %w", err)
 	}
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return InstallResult{}, err
@@ -190,7 +189,6 @@ func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallRes
 		BackupPath:       backupDir,
 		StagedPath:       stagedDir,
 		ApplyLogPath:     manifest.LogPath,
-		Message:          "更新已暂存，重启并安装后生效",
 	}, nil
 }
 
@@ -201,7 +199,7 @@ func reportInstallProgress(progress func(InstallProgress), event InstallProgress
 	progress(event)
 }
 
-func downloadProgress(assetName, archivePath string, resp *grab.Response, expectedSize int64, message string) InstallProgress {
+func downloadProgress(assetName, archivePath string, resp *grab.Response, expectedSize int64) InstallProgress {
 	total := maxInt64(resp.Size(), expectedSize)
 	downloaded := resp.BytesComplete()
 	percent := resp.Progress() * 100
@@ -221,7 +219,6 @@ func downloadProgress(assetName, archivePath string, resp *grab.Response, expect
 		DownloadedBytes: downloaded,
 		TotalBytes:      total,
 		Percent:         percent,
-		Message:         message,
 	}
 }
 
@@ -246,28 +243,28 @@ func validateReleasePackage(packageRoot, exeName, updaterName string) error {
 	for _, name := range requiredFiles {
 		path := filepath.Join(packageRoot, name)
 		if fi, err := os.Stat(path); err != nil {
-			return fmt.Errorf("更新包缺少可执行文件 %s: %w", name, err)
+			return fmt.Errorf("update package is missing executable %s: %w", name, err)
 		} else if fi.IsDir() {
-			return fmt.Errorf("更新包中的可执行文件是目录: %s", name)
+			return fmt.Errorf("update executable is a directory: %s", name)
 		}
 	}
 	for _, name := range []string{"web", "skills"} {
 		path := filepath.Join(packageRoot, name)
 		if fi, err := os.Stat(path); err != nil {
-			return fmt.Errorf("更新包缺少目录 %s: %w", name, err)
+			return fmt.Errorf("update package is missing directory %s: %w", name, err)
 		} else if !fi.IsDir() {
-			return fmt.Errorf("更新包中的 %s 不是目录", name)
+			return fmt.Errorf("update package entry %s is not a directory", name)
 		}
 	}
 	if runtimeExecutables := hostruntime.DiscoverForExecutable(filepath.Join(packageRoot, exeName)); runtimeExecutables.Ripgrep == "" {
-		return fmt.Errorf("更新包缺少可执行的内置 ripgrep / update package is missing executable bundled ripgrep")
+		return fmt.Errorf("update package is missing executable bundled ripgrep")
 	}
 	for _, name := range []string{"LICENSE-MIT", "UNLICENSE"} {
 		licensePath := filepath.Join(packageRoot, "licenses", "ripgrep", name)
 		if info, err := os.Stat(licensePath); err != nil {
-			return fmt.Errorf("更新包缺少 ripgrep 许可文件 / update package is missing ripgrep license %s: %w", name, err)
+			return fmt.Errorf("update package is missing ripgrep license %s: %w", name, err)
 		} else if !info.Mode().IsRegular() {
-			return fmt.Errorf("更新包中的 ripgrep 许可文件无效 / invalid ripgrep license in update package: %s", name)
+			return fmt.Errorf("invalid ripgrep license in update package: %s", name)
 		}
 	}
 	return nil

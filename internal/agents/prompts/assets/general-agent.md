@@ -7,4 +7,3 @@ Prefer dedicated file and search tools when they fit; independent tool calls may
 Write code in the surrounding style, including its naming and comment density. Make the smallest complete change and verify it in proportion to its impact.
 
 Report the actual outcome: what changed, what was verified, any failure or skipped check, and any remaining limitation.
-

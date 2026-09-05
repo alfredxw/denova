@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test'
 const backendPort = process.env.DENOVA_E2E_BACKEND_PORT || '18080'
 const frontendPort = process.env.DENOVA_E2E_FRONTEND_PORT || '15173'
 const modelPort = process.env.DENOVA_E2E_MODEL_PORT || '18081'
-const baseURL = `http://127.0.0.1:${frontendPort}`
+const packaged = Boolean(process.env.DENOVA_E2E_PACKAGE_DIR)
+const baseURL = `http://127.0.0.1:${packaged ? backendPort : frontendPort}`
 
 export default defineConfig({
   testDir: './tests',
@@ -56,7 +57,7 @@ export default defineConfig({
         DENOVA_E2E_MODEL_PORT: modelPort,
       },
     },
-    {
+    ...(!packaged ? [{
       command: `pnpm dev --host 127.0.0.1 --port ${frontendPort} --strictPort`,
       url: baseURL,
       reuseExistingServer: false,
@@ -64,6 +65,6 @@ export default defineConfig({
         DENOVA_BACKEND_PORT: backendPort,
         DENOVA_FRONTEND_PORT: frontendPort,
       },
-    },
+    }] : []),
   ],
 })

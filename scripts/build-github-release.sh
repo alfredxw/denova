@@ -86,13 +86,12 @@ validate_release_metadata() {
   if [[ "${VERSION}" == "dev" ]]; then
     return
   fi
-  local expected web_version npm_version release_tag
+  local expected web_version release_tag
   expected="$(release_version_without_prefix)"
   release_tag="v${expected}"
   web_version="$(node -p "require('./web/package.json').version")"
-  npm_version="$(node -p "require('./npm/package.json').version")"
-  if [[ "${web_version}" != "${expected}" || "${npm_version}" != "${expected}" ]]; then
-    echo "错误: Release ${release_tag} 与包版本不一致（web=${web_version}, npm=${npm_version}）" >&2
+  if [[ "${web_version}" != "${expected}" ]]; then
+    echo "错误: Release ${release_tag} 与包版本不一致（web=${web_version}）" >&2
     exit 1
   fi
   if ! grep -Fq "## [${release_tag}]" CHANGELOG.md; then

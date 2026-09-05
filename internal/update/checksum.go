@@ -39,7 +39,7 @@ func (s *Service) verifyChecksum(ctx context.Context, assetName, archivePath str
 		return err
 	}
 	if !strings.EqualFold(expected, actual) {
-		return fmt.Errorf("更新包校验失败: expected=%s actual=%s", expected, actual)
+		return fmt.Errorf("update package checksum mismatch: expected=%s actual=%s", expected, actual)
 	}
 	return nil
 }
@@ -55,7 +55,7 @@ func checksumForAsset(path, assetName string) (string, error) {
 			return fields[0], nil
 		}
 	}
-	return "", fmt.Errorf("checksums.txt 中缺少 %s", assetName)
+	return "", fmt.Errorf("checksums.txt is missing %s", assetName)
 }
 
 func fileSHA256(path string) (string, error) {

@@ -22,7 +22,13 @@ mkdirSync(binaryDir, { recursive: true })
 
 const backendPort = process.env.DENOVA_E2E_BACKEND_PORT || '18080'
 const modelPort = process.env.DENOVA_E2E_MODEL_PORT || '18081'
-const binaryPath = path.join(binaryDir, process.platform === 'win32' ? 'denova-e2e.exe' : 'denova-e2e')
+// Release smoke tests use the extracted distribution, including its own assets.
+const packageDir = process.env.DENOVA_E2E_PACKAGE_DIR
+  ? path.resolve(process.env.DENOVA_E2E_PACKAGE_DIR)
+  : undefined
+const binaryPath = packageDir
+  ? path.join(packageDir, process.platform === 'win32' ? 'denova.exe' : 'denova')
+  : path.join(binaryDir, process.platform === 'win32' ? 'denova-e2e.exe' : 'denova-e2e')
 const config = `language = "zh-CN"
 update_check_enabled = false
 model_max_retries = 1
@@ -195,20 +201,23 @@ writeFileSync(path.join(denovaDir, 'books.json'), JSON.stringify({
   hidden: [],
 }, null, 2), 'utf8')
 
-const build = spawnSync('go', ['build', '-o', binaryPath, './cmd/denova'], {
-  cwd: repositoryRoot,
-  env: process.env,
-  stdio: 'inherit',
-})
-if (build.error) throw build.error
-if (build.status !== 0) process.exit(build.status ?? 1)
+if (!packageDir) {
+  const build = spawnSync('go', ['build', '-o', binaryPath, './cmd/denova'], {
+    cwd: repositoryRoot,
+    env: process.env,
+    stdio: 'inherit',
+  })
+  if (build.error) throw build.error
+  if (build.status !== 0) process.exit(build.status ?? 1)
+}
 
 const backend = spawn(binaryPath, ['--no-open', `--port=${backendPort}`], {
   cwd: runtimeRoot,
   env: {
     ...process.env,
     DENOVA_DIR: denovaDir,
-    DENOVA_SKILLS_DIR: path.join(repositoryRoot, 'skills'),
+    DENOVA_SKILLS_DIR: path.join(packageDir || repositoryRoot, 'skills'),
+    ...(packageDir ? { DENOVA_WEB_DIR: path.join(packageDir, 'web') } : {}),
   },
   stdio: 'inherit',
 })

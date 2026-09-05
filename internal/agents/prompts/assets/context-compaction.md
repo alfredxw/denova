@@ -26,4 +26,3 @@ For every other source_agent_kind, use a workspace-task checkpoint covering writ
 - Preserve user goals and boundaries; creative, product, and technical decisions with rationale; current implementation or work state; file and artifact references; confirmed findings; changes and verification; failures and rejected approaches; unresolved questions; and next steps.
 - From file bodies, logs, and search results, retain only conclusions and recoverable references needed for later decisions. Do not copy large source excerpts.
 - Completed steps may be consolidated, but retain their results, behavior changes, compatibility effects, and verification evidence.
-

@@ -9,6 +9,10 @@ on:
       - "go.mod"
       - "go.sum"
       - "internal/localfs/**"
+      - "internal/portablepath/**"
+      - "internal/project/**"
+      - "internal/app/**"
+      - "config/**"
       - "internal/workspace/documentreview/**"
       - "internal/workspace/change/**"
       - "agent/go.mod"
@@ -20,6 +24,10 @@ on:
       - "go.mod"
       - "go.sum"
       - "internal/localfs/**"
+      - "internal/portablepath/**"
+      - "internal/project/**"
+      - "internal/app/**"
+      - "config/**"
       - "internal/workspace/documentreview/**"
       - "internal/workspace/change/**"
       - "agent/go.mod"
@@ -50,6 +58,11 @@ jobs:
 
       - name: Verify shared directory durability consumers
         run: go test ./internal/localfs ./internal/workspace/documentreview ./internal/workspace/change -count=1
+
+      - name: Verify Project paths and released-data migration
+        run: |
+          go test ./internal/project ./internal/portablepath -count=1
+          go test ./internal/app -run "TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot|TestReleasedV033WritingSessionMigratesAndContinues|TestPortableDataMigration" -count=1
 
       - name: Verify Agent workspace filesystem boundaries
         working-directory: agent

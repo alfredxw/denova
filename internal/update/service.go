@@ -58,22 +58,9 @@ func (s *Service) Check(ctx context.Context) (CheckResult, error) {
 		ReleaseURL:      release.HTMLURL,
 		PublishedAt:     release.PublishedAt,
 		ReleaseNotes:    release.Body,
-		Message:         "当前已是最新版本",
 	}
 	if asset != nil {
 		result.Asset = &Asset{Name: asset.Name, Size: asset.Size, DownloadURL: asset.DownloadURL, BrowserDownloadURL: asset.BrowserDownloadURL}
-	}
-	switch {
-	case isDevVersion(current):
-		result.Message = "开发版本不支持应用内安装更新，请使用 Release 包运行后再检查"
-	case latest == "":
-		result.Message = "GitHub Release 未提供版本号"
-	case !updateAvailable:
-		result.Message = "当前已是最新版本"
-	case asset == nil:
-		result.Message = fmt.Sprintf("找到新版本，但没有匹配当前平台的安装包: %s", platform)
-	default:
-		result.Message = "发现可用更新"
 	}
 	return result, nil
 }
@@ -88,16 +75,16 @@ func (s *Service) latestRelease(ctx context.Context) (githubRelease, error) {
 	req.Header.Set("User-Agent", "denova-update-checker")
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return githubRelease{}, fmt.Errorf("检查 GitHub Release 失败: %w", err)
+		return githubRelease{}, fmt.Errorf("check GitHub release: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return githubRelease{}, fmt.Errorf("检查 GitHub Release 失败: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return githubRelease{}, fmt.Errorf("check GitHub release: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var release githubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return githubRelease{}, fmt.Errorf("解析 GitHub Release 响应失败: %w", err)
+		return githubRelease{}, fmt.Errorf("decode GitHub release response: %w", err)
 	}
 	return release, nil
 }

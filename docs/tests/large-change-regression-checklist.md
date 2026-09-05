@@ -67,7 +67,7 @@
 | 资料、预设、Skills、自动化与图像 | 共用创作资源、CAS、Config Manager、Skill 管理、Automation 或图像生成变化 |
 | 数据、版本与恢复 | API 字段、文件结构、持久化真源、迁移/清理、版本 Diff、恢复、备份或并发写入变化 |
 | 性能与长会话 | 列表、虚拟化、滚动、SSE、轮询、缓存、长历史、大文件、渲染或大对象变化 |
-| 平台与发布 | 构建、内嵌资源、安装器、updater、npm、跨平台代码或正式发版 |
+| 平台与发布 | 构建、内嵌资源、安装器、updater、跨平台代码或正式发版 |
 
 常见联动关系：
 
@@ -136,6 +136,7 @@ pnpm --dir web test
 - `pnpm --dir web test:playwright`：主测试层，同一套 Playwright Test 同时承载浏览器行为回归与核心 E2E。
 - `pnpm --dir web test:browser`：浏览器交互回归，重点验证导航、响应式布局、主题与双语行为。
 - `pnpm --dir web test:e2e`：连接隔离的真实 Denova 后端与本地确定性模型，覆盖写作保存和游戏回合持久化等核心链路。
+- 发布包回归：先解压当前宿主平台的产物，再运行 `DENOVA_E2E_PACKAGE_DIR=/absolute/path/to/denova pnpm --dir web exec playwright test --project=e2e`；复用隔离数据和确定性模型，直接检查包内二进制、前端及 Skills。不可与其他 E2E 同时运行。
 - `pnpm --dir web test:unit`：辅助测试层，仅保留纯逻辑、解析器、状态转换和需要快速反馈的组件/Hook 测试。
 - `pnpm --dir web test`：CI 与发布使用的完整前端测试入口，先跑 Vitest，再一次性跑全部 Playwright 项目。
 
@@ -299,7 +300,7 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 
 版本元数据：
 
-- [ ] `web/package.json` 与 `npm/package.json` 使用同一 `X.Y.Z`。
+- [ ] `web/package.json` 使用发布版本 `X.Y.Z`。
 - [ ] `CHANGELOG.md` 存在 `## [vX.Y.Z]`，说明用户可感知变化、修复和不兼容行为。
 - [ ] `README.md` 与 `README.en.md` 的版本、能力和安装说明同步。
 - [ ] Release commit、PR title 和 Tag 符合约定，Tag 为 `vX.Y.Z`。
@@ -308,7 +309,6 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 
 ```bash
 scripts/build-github-release.sh "vX.Y.Z"
-scripts/npm-release.sh --pack
 ```
 
 - [ ] 生成 macOS/Linux ARM64、x64 与 Windows x64 产物和 `checksums.txt`。
@@ -317,7 +317,6 @@ scripts/npm-release.sh --pack
 - [ ] 在当前原生平台运行主程序与 updater 的 `--version`，均输出 `X.Y.Z`。
 - [ ] 用临时安装目录和数据目录完成指定版本安装、重复安装和失败回滚。
 - [ ] 从原生归档完成“启动 → 新建 Book → 一轮 Writing → 一轮 Game → 重启恢复”冒烟。
-- [ ] npm tarball 内容符合声明，当前平台 wrapper 能启动正确二进制。
 - [ ] Git tag 指向已测试提交；Release notes 只写简要用户变化；上传资产与本地校验一致。
 
 ## 18. 最终结论
