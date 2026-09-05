@@ -93,6 +93,9 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
 })
 
 test('keeps three interleaved SubAgent streams responsive, isolated, and restorable', async ({ page, request }) => {
+  // Three complete isolation passes and two reloads need the slow-test budget
+  // on CI; each individual interaction keeps the normal assertion timeout.
+  test.slow()
   const projectPath = path.resolve('test-results', 'runtime', 'multi-agent-display-project')
   await mkdir(projectPath, { recursive: true })
   const project = await registerAgentChatProject(request, projectPath)
