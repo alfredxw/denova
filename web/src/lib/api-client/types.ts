@@ -83,6 +83,8 @@ interface ToolChatMessageBase extends ChatMessageBase {
   name?: string
   result?: string
   status?: ChatMessageStatus
+  /** Known truncation of the recorded display output; absence does not prove completeness. */
+  result_truncated?: boolean
   illustration?: ChapterIllustration
   interactive_image?: InteractiveImage
   interactive_images?: InteractiveImage[]
@@ -93,6 +95,8 @@ interface ToolChatMessageBase extends ChatMessageBase {
 export interface ToolCallChatMessage extends ToolChatMessageBase {
   role: 'tool_call'
   args?: string
+  /** SDK partial input is a preview, not the recorded protocol text. */
+  args_preview?: boolean
   ask?: AgentAskInteraction
 }
 

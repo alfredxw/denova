@@ -160,13 +160,16 @@ func assistantDataMessage(entry appsvc.AgentSessionHistoryEntry, index int, data
 func toolPartFromHistory(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	input := parseJSONValue(entry.Args)
 	state := "input-available"
-	toolMetadata := map[string]any{}
+	// Preserve recorded protocol text for inspection; parsed SDK input is only
+	// a rendering projection and can lose whitespace or numeric precision.
+	toolMetadata := map[string]any{"input_text": entry.Args}
 	part := map[string]any{
-		"type":       "dynamic-tool",
-		"toolName":   firstNonEmpty(entry.Name, "unknown_tool"),
-		"toolCallId": historyToolCallID(entry),
-		"state":      state,
-		"input":      input,
+		"type":         "dynamic-tool",
+		"toolName":     firstNonEmpty(entry.Name, "unknown_tool"),
+		"toolCallId":   historyToolCallID(entry),
+		"state":        state,
+		"input":        input,
+		"toolMetadata": toolMetadata,
 	}
 	switch entry.Status {
 	case "error", "blocked", "skipped":

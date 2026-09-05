@@ -62,7 +62,8 @@ export function createAgentToolMessage({ id, name, state, input, output, errorTe
     toolName: name || 'unknown_tool',
     toolCallId: messageID,
     state,
-    input,
+    input: state === 'input-streaming' || typeof input !== 'string' ? input : parseAgentToolInput(input),
+    ...(typeof input === 'string' ? { toolMetadata: { input_text: input } } : {}),
   }
   if (output !== undefined && state !== 'output-error') part.output = output
   if (errorText !== undefined || state === 'output-error') part.errorText = errorText || String(output || '')

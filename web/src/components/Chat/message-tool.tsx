@@ -15,6 +15,7 @@ import { formatMaybeJSON, hasSpecializedToolDetail, ToolCallDetail, toolDetailSu
 import { toolPresentationKind } from '@/lib/tool-presentation'
 import { workspaceFileName } from '@/lib/workspace-path'
 import { taskSubAgentSessionKey } from './subagent-session'
+import { ToolInspectorButton } from './ToolInspector'
 
 // Preview creative inputs as they arrive; operational tools stay compact regardless of input length.
 const STREAMING_INPUT_PREVIEW_TOOLS = new Set([
@@ -99,62 +100,66 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   return (
     <div className="flex justify-start">
       <Tool open={expanded} onOpenChange={opensTaskSession ? undefined : setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[11px] shadow-sm">
-        <CollapsibleTrigger
-          type="button"
-          disabled={!canToggleDetail && !opensTaskSession}
-          onClick={opensTaskSession ? (event) => {
-            event.preventDefault()
-            onOpenSubAgentSession?.(taskSessionKey)
-          } : undefined}
-          aria-label={opensTaskSession ? t('chat.subagent.openSession') : undefined}
-          data-nova-tool-header
-          className={`grid min-h-9 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 px-2.5 py-1.5 text-left leading-4 transition-colors enabled:cursor-pointer enabled:hover:bg-[var(--nova-hover)] disabled:cursor-default ${showStackedOutcome ? 'gap-y-0.5' : ''}`}
-        >
-          <ToolStatusIcon status={resultSeverity === 'error' ? 'error' : status} warning={resultSeverity === 'warning'} />
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <span
-              className="min-w-0 max-w-[42%] shrink-0 truncate font-medium text-[var(--nova-text)]"
-              title={displayName === name ? undefined : name}
-            >
-              {displayName}
-            </span>
-            {isScriptTool && (
-              <span className="shrink-0 rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
-                {t('chat.tool.scriptBadge')}
-              </span>
-            )}
-            {taskSubAgent && (
+        {/* One hover surface includes both the disclosure trigger and its secondary action. */}
+        <div className={`flex min-w-0 items-center transition-colors ${canToggleDetail || opensTaskSession ? 'hover:bg-[var(--nova-hover)]' : ''}`} data-nova-tool-header-row>
+          <CollapsibleTrigger
+            type="button"
+            disabled={!canToggleDetail && !opensTaskSession}
+            onClick={opensTaskSession ? (event) => {
+              event.preventDefault()
+              onOpenSubAgentSession?.(taskSessionKey)
+            } : undefined}
+            aria-label={opensTaskSession ? t('chat.subagent.openSession') : undefined}
+            data-nova-tool-header
+            className={`grid min-h-9 min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 px-2.5 py-1.5 text-left leading-4 enabled:cursor-pointer disabled:cursor-default ${showStackedOutcome ? 'gap-y-0.5' : ''}`}
+          >
+            <ToolStatusIcon status={resultSeverity === 'error' ? 'error' : status} warning={resultSeverity === 'warning'} />
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <span
-                className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]"
+                className="min-w-0 max-w-[42%] shrink-0 truncate font-medium text-[var(--nova-text)]"
+                title={displayName === name ? undefined : name}
               >
-                {t('chat.subagent.delegating', { name: taskSubAgent })}
+                {displayName}
+              </span>
+              {isScriptTool && (
+                <span className="shrink-0 rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                  {t('chat.tool.scriptBadge')}
+                </span>
+              )}
+              {taskSubAgent && (
+                <span
+                  className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]"
+                >
+                  {t('chat.subagent.delegating', { name: taskSubAgent })}
+                </span>
+              )}
+              {showAgentSource && message.subagent ? <AgentSourceBadge message={message} compact /> : null}
+              {approvalPending && (
+                <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+                  {t('agentApproval.approval.waiting')}
+                </span>
+              )}
+              {!showStackedOutcome && (
+                <span
+                  data-nova-tool-summary
+                  className={`min-w-0 flex-1 truncate ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}
+                  title={headerSummary}
+                >
+                  {headerSummary}
+                </span>
+              )}
+              {opensTaskSession && (
+                <PanelRightOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" aria-hidden="true" />
+              )}
+            </div>
+            {showStackedOutcome && (
+              <span className="col-start-2 col-end-3 whitespace-normal pt-0.5 leading-4 text-[var(--nova-warning)]">
+                {displaySummary}
               </span>
             )}
-            {showAgentSource && message.subagent ? <AgentSourceBadge message={message} compact /> : null}
-            {approvalPending && (
-              <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
-                {t('agentApproval.approval.waiting')}
-              </span>
-            )}
-            {!showStackedOutcome && (
-              <span
-                data-nova-tool-summary
-                className={`min-w-0 flex-1 truncate ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}
-                title={headerSummary}
-              >
-                {headerSummary}
-              </span>
-            )}
-            {opensTaskSession && (
-              <PanelRightOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" aria-hidden="true" />
-            )}
-          </div>
-          {showStackedOutcome && (
-            <span className="col-start-2 col-end-3 whitespace-normal pt-0.5 leading-4 text-[var(--nova-warning)]">
-              {displaySummary}
-            </span>
-          )}
-        </CollapsibleTrigger>
+          </CollapsibleTrigger>
+          {expanded && canToggleDetail && <ToolInspectorButton className="mr-2" />}
+        </div>
         {showStreamingInput && (
           <StreamingToolInput rawInput={rawArgs} streamKey={message.id || name} />
         )}
@@ -187,7 +192,7 @@ export function ToolResultBlock({ content }: { content: string }) {
   const envelope = decodeToolResultEnvelope(stripToolResultMetadata(content))
   const severity = envelope?.severity || 'success'
   const preview = envelope ? buildToolResultEnvelopeSummary(t, envelope) : buildPreview(content, 160)
-  const canExpand = content.trim().replace(/\s+/g, ' ').length > 160
+  const canExpand = content.trim().length > 0
   const isProcessExitWarning = severity === 'warning'
     && envelope?.schema === 'process.result.v1'
     && envelope.status === 'failed'
@@ -200,43 +205,44 @@ export function ToolResultBlock({ content }: { content: string }) {
   return (
     <div className="flex justify-start">
       <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-sm">
-        <div className="flex items-start gap-3 px-3 py-2.5">
-          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${tone}`}>
-            {severity === 'error'
-              ? <span className="text-xs font-semibold">!</span>
-              : severity === 'warning'
-                ? <AlertTriangle className="h-3.5 w-3.5" />
-                : <CheckCircle2 className="h-3.5 w-3.5" />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-[var(--nova-text)]">
-                {t(severity === 'error'
-                  ? 'chat.tool.resultFailed'
-                  : isProcessExitWarning
-                    ? 'chat.tool.resultAttention'
-                    : severity === 'warning'
-                      ? 'chat.tool.resultPartial'
-                      : 'chat.tool.resultDone')}
-              </span>
-              <span className={`rounded-full border px-2 py-0.5 text-[11px] ${tone}`}>
-                {severity}
-              </span>
+        <div className="flex min-w-0 items-center transition-colors hover:bg-[var(--nova-hover)]">
+          <button type="button" className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left enabled:cursor-pointer" disabled={!canExpand} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+            <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${tone}`}>
+              {severity === 'error'
+                ? <span className="text-xs font-semibold">!</span>
+                : severity === 'warning'
+                  ? <AlertTriangle className="h-3.5 w-3.5" />
+                  : <CheckCircle2 className="h-3.5 w-3.5" />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-[var(--nova-text)]">
+                  {t(severity === 'error'
+                    ? 'chat.tool.resultFailed'
+                    : isProcessExitWarning
+                      ? 'chat.tool.resultAttention'
+                      : severity === 'warning'
+                        ? 'chat.tool.resultPartial'
+                        : 'chat.tool.resultDone')}
+                </span>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] ${tone}`}>
+                  {severity}
+                </span>
+              </div>
+              <div className="mt-1 flex min-w-0 items-center gap-2 text-[var(--nova-text-faint)]">
+                <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+                <span className="truncate">{preview || t('chat.tool.noReturn')}</span>
+                {canExpand && (
+                  <span
+                    className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                  >
+                    {expanded ? t('chat.tool.collapse') : t('chat.tool.expand')}
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="mt-1 flex min-w-0 items-center gap-2 text-[var(--nova-text-faint)]">
-              <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-              <span className="truncate">{preview || t('chat.tool.noReturn')}</span>
-              {canExpand && (
-                <button
-                  type="button"
-                  className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                  onClick={() => setExpanded(!expanded)}
-                >
-                  {expanded ? t('chat.tool.collapse') : t('chat.tool.expand')}
-                </button>
-              )}
-            </div>
-          </div>
+          </button>
+          {expanded && <ToolInspectorButton className="mr-2" />}
         </div>
         {expanded && (
           <pre className="m-0 min-w-0 max-w-full max-h-56 overflow-x-hidden overflow-y-auto whitespace-pre-wrap border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">

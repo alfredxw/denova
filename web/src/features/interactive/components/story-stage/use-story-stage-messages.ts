@@ -8,7 +8,6 @@ import {
   createAgentReasoningMessage,
   createAgentTextMessage,
   createAgentToolMessage,
-  parseAgentToolInput,
 } from '@/lib/agent-ui-message'
 import type { Snapshot, TurnDisplayEvent, TurnEvent } from '../../types'
 import type { TurnNavigationItem } from '../TurnNavigator'
@@ -178,7 +177,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
           id: event.id || `${turn.id}-tool-${index}`,
           name: event.name || event.content || 'unknown_tool',
           state: status === 'error' ? 'output-error' : status === 'success' ? 'output-available' : 'input-available',
-          input: parseAgentToolInput(event.args || ''),
+          input: event.args || '',
           output: status === 'error' ? undefined : event.result || undefined,
           errorText: status === 'error' ? event.result || '' : undefined,
           metadata: { ...metadata, display_role: 'tool_call' },

@@ -62,7 +62,8 @@ export const ToolCallDetail = memo(function ToolCallDetail(props: ToolCallDetail
   )
 })
 
-function ToolCallDetailBody({ name, rawArgs, result, resultSeverity }: ToolCallDetailProps) {
+/** Reuses the same adapters in inline disclosures and the full-size inspector. */
+export function ToolCallDetailBody({ name, rawArgs, result, resultSeverity, layout = 'inline' }: ToolCallDetailProps & { layout?: 'inline' | 'inspector' }) {
   const { t } = useTranslation()
   const adapter = toolDetailAdapters[name]
   const input = parseRecord(rawArgs)
@@ -77,6 +78,29 @@ function ToolCallDetailBody({ name, rawArgs, result, resultSeverity }: ToolCallD
     rawInput: rawArgs,
     result,
     t,
+  }
+
+  if (layout === 'inspector') {
+    return (
+      <div className="flex min-w-0 flex-col gap-5 text-sm leading-6">
+        {adapter.layout === 'unified' ? (
+          input ? adapter.render(renderProps) : <DetailPre>{formatMaybeJSON(rawArgs)}</DetailPre>
+        ) : (
+          <>
+            <section className="flex min-w-0 flex-col gap-2">
+              <h3 className="font-medium">{t('chat.tool.inspector.input')}</h3>
+              {input ? adapter.renderInput(renderProps) : <DetailPre>{formatMaybeJSON(rawArgs)}</DetailPre>}
+            </section>
+            {hasResult && (
+              <section className="flex min-w-0 flex-col gap-2">
+                <h3 className="font-medium">{t('chat.tool.inspector.output')}</h3>
+                <div className={outputTone}>{adapter.renderOutput(renderProps)}</div>
+              </section>
+            )}
+          </>
+        )}
+      </div>
+    )
   }
 
   if (adapter.layout === 'unified') {

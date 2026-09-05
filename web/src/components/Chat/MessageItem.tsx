@@ -25,6 +25,7 @@ import { ToolExecutionBlock, ToolResultBlock } from './message-tool'
 import { TodoListBlock } from './message-todo'
 import { toolCallRenderer, toolResultRenderer } from '@/lib/tool-presentation'
 import { SentMessageAttachments } from './ComposerAttachments'
+import { ToolInspector } from './ToolInspector'
 
 /** Progress prose omits conversation-level metadata such as time and actions. */
 export type AssistantMessagePresentation = 'message' | 'progress'
@@ -55,7 +56,15 @@ interface MessageItemProps {
 }
 
 /** Dispatches one role-specific message to its focused renderer. */
-export const MessageItem = memo(function MessageItem({ projectId = '', message, assistantPresentation = 'message', highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem(props: MessageItemProps) {
+  const { message, projectId = '' } = props
+  const content = <MessageItemContent {...props} />
+  return message.role === 'tool_call' || message.role === 'tool_result' || message.role === 'ask'
+    ? <ToolInspector message={message} projectId={projectId}>{content}</ToolInspector>
+    : content
+})
+
+function MessageItemContent({ projectId = '', message, assistantPresentation = 'message', highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -260,7 +269,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
       return exhaustiveRole
     }
   }
-})
+}
 
 /** Lightweight activity shown before an active Agent emits a concrete message. */
 export function AgentActivityShimmer({ content }: { content: string }) {

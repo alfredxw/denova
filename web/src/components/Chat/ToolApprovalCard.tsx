@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { normalizeAgentApprovalMode } from '@/features/agent-approval/modes'
 import { refreshSettings } from '@/features/settings/api'
 import type { AskInteractionMessage, AskInteractionResolver } from './AskInteractionCard'
+import { ToolInspectorButton } from './ToolInspector'
 
 type ApprovalOption = 'allow-once' | 'allow-workspace' | 'deny'
 
@@ -101,6 +102,7 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
         <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${statusTone}`}>
           {t(`agentApproval.approval.${statusKey}`)}
         </span>
+        {!embedded && <ToolInspectorButton />}
       </div>
 
       {!embedded && (

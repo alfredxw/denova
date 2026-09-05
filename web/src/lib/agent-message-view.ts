@@ -404,7 +404,9 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'thinking', content: view.content, streaming, ...meta }
     case 'tool': {
       const raw = view.part as Record<string, any>
-      const args = stringifyInput(view.input)
+      const toolMetadata = objectData(raw.toolMetadata)
+      const recordedInput = toolMetadata.input_text
+      const args = typeof recordedInput === 'string' ? recordedInput : stringifyInput(view.input)
       const result = raw.state === 'output-error' ? view.errorText : stringifyOutput(view.output)
       return {
         id,
@@ -412,6 +414,8 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
         content: args ? `${view.toolName || ''}\n${args}` : view.toolName || '',
         name: view.toolName,
         args,
+        args_preview: typeof recordedInput !== 'string',
+        result_truncated: toolMetadata.display_truncated === true,
         status,
         result,
         ask: view.approval,

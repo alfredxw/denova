@@ -145,7 +145,10 @@ function findToolMessageIndex(messages: AgentUIMessage[], id?: string, name?: st
 }
 
 export function updateToolMessageInput(message: AgentUIMessage, input: string): AgentUIMessage {
-  return updateToolPart(message, (part) => ({ ...part, input }))
+  return updateToolPart(message, (part) => ({
+    ...part, input,
+    toolMetadata: { ...(part.toolMetadata as Record<string, unknown> | undefined), input_text: input },
+  }))
 }
 
 export function completeToolMessage(message: AgentUIMessage, result: string): AgentUIMessage {

@@ -424,9 +424,14 @@ func (e *StreamEncoder) writeToolResult(data map[string]any, providerMetadata ma
 	if len(providerMetadata) > 0 {
 		chunk["providerMetadata"] = providerMetadata
 	}
-	if illustration, ok := data["illustration"]; ok && illustration != nil {
-		chunk["toolMetadata"] = map[string]any{"illustration": illustration}
+	toolMetadata := map[string]any{"input_text": e.toolInputs[toolID]}
+	if truncated, ok := data["display_truncated"].(bool); ok {
+		toolMetadata["display_truncated"] = truncated
 	}
+	if illustration, ok := data["illustration"]; ok && illustration != nil {
+		toolMetadata["illustration"] = illustration
+	}
+	chunk["toolMetadata"] = toolMetadata
 	delete(e.toolInputs, toolID)
 	delete(e.startedTool, toolID)
 	delete(e.availableTool, toolID)
@@ -439,11 +444,12 @@ func (e *StreamEncoder) writeToolInputAvailable(toolID, toolName string, provide
 	}
 	inputRaw := e.toolInputs[toolID]
 	chunk := map[string]any{
-		"type":       "tool-input-available",
-		"toolCallId": toolID,
-		"toolName":   toolName,
-		"input":      parseJSONValue(inputRaw),
-		"dynamic":    true,
+		"type":         "tool-input-available",
+		"toolCallId":   toolID,
+		"toolName":     toolName,
+		"input":        parseJSONValue(inputRaw),
+		"dynamic":      true,
+		"toolMetadata": map[string]any{"input_text": inputRaw},
 	}
 	if len(providerMetadata) > 0 {
 		chunk["providerMetadata"] = providerMetadata

@@ -13,6 +13,7 @@ import type {
 } from '@/lib/api'
 import { chatAssetURL } from './message-content'
 import { ToolStatusIcon } from './message-tool-status'
+import { ToolInspectorButton } from './ToolInspector'
 
 export function ChapterIllustrationBlock({ projectId, message, onInsert }: { projectId: string; message: ToolCallChatMessage | ToolResultChatMessage; onInsert?: (illustration: ChapterIllustration) => void }) {
   const { t } = useTranslation()
@@ -74,6 +75,7 @@ export function ChapterIllustrationBlock({ projectId, message, onInsert }: { pro
                 showLabel
               />
             )}
+            <ToolInspectorButton />
           </div>
         </div>
       </div>
@@ -84,8 +86,9 @@ export function ChapterIllustrationBlock({ projectId, message, onInsert }: { pro
 export function InteractiveImageBlock({ projectId, message }: { projectId: string; message: InteractiveImageMessage }) {
   return (
     <div className="flex justify-start">
-      <div className="w-full">
+      <div className="relative w-full">
         <InteractiveImageStrip message={message} projectId={projectId} />
+        <ToolInspectorButton className="absolute right-2 top-5 bg-background/80" />
       </div>
     </div>
   )

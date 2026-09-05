@@ -2,6 +2,7 @@ import { CheckCircle2, Circle, CircleDot, ListTodo } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ToolCallChatMessage } from '@/lib/api'
 import { stripToolResultMetadata } from './message-tool'
+import { ToolInspectorButton } from './ToolInspector'
 
 interface TodoItem {
 	id?: string
@@ -24,7 +25,7 @@ export function TodoListBlock({ message }: { message: ToolCallChatMessage }) {
   return (
     <div className="flex justify-start">
       <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
-        <div className="flex min-h-10 min-w-0 items-center gap-2 px-3 py-2">
+        <div className="flex min-h-10 min-w-0 items-center gap-2 px-3 py-2 transition-colors hover:bg-[var(--nova-hover)]">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
             <ListTodo className="h-3.5 w-3.5" />
           </span>
@@ -35,6 +36,7 @@ export function TodoListBlock({ message }: { message: ToolCallChatMessage }) {
             </span>
           )}
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">{headline}</span>
+          <ToolInspectorButton />
         </div>
         {todos.length > 0 && (
           <ul className="grid gap-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">

@@ -65,6 +65,7 @@
     "cmdk": "^1.1.1",
     "diff": "8.0.4",
     "i18next": "^26.3.1",
+    "jsonc-parser": "^3.3.1",
     "katex": "^0.16.27",
     "lucide-react": "^1.16.0",
     "monaco-editor": "^0.55.1",

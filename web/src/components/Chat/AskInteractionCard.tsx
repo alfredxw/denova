@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentAskResolveAction } from '@/lib/agent-ask'
 import { toolPresentationKind } from '@/lib/tool-presentation'
+import { ToolInspectorButton } from './ToolInspector'
 
 export type AskResolveAction = AgentAskResolveAction
 
@@ -119,9 +120,9 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
     <div className="flex justify-start">
       <Collapsible className="w-full" open={pending || expanded} onOpenChange={setExpanded}>
         <section className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]" aria-label={t('chat.ask.title')}>
-          <header>
+          <header className="flex min-w-0 items-center transition-colors hover:bg-[var(--nova-hover)]">
             <CollapsibleTrigger asChild disabled={pending}>
-              <button type="button" className={`flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left ${pending ? 'cursor-default' : 'hover:bg-[var(--nova-hover)]'}`}>
+              <button type="button" className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left ${pending ? 'cursor-default' : 'cursor-pointer'}`}>
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
                   <MessageCircleQuestion className="h-4 w-4" />
                 </span>
@@ -132,6 +133,7 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
                 {!pending && <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform ${expanded ? 'rotate-90' : ''}`} />}
               </button>
             </CollapsibleTrigger>
+            {(pending || expanded) && <ToolInspectorButton className="mr-2" />}
           </header>
 
           <CollapsibleContent>
