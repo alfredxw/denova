@@ -31,10 +31,6 @@
 
 ![Denova Game](./img/interactive.png)
 
-### Branches
-
-![Branches](./img/branch.png)
-
 ### Lore Library
 
 ![Denova Lore Library](./img/setting.png)
@@ -131,7 +127,7 @@ Denova is evolving quickly. Bug reports, workflow ideas, usage notes, and creati
 [Discord community](https://discord.gg/QuHu2aPya)
 
 <p align="center">
-  <img src="./img/wechat.jpg" alt="WeChat community" width="240">
+  <img src="./img/wechat.png" alt="WeChat community" width="240">
 </p>
 
 ## Support Denova

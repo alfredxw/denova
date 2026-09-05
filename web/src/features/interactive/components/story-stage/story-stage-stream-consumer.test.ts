@@ -104,7 +104,6 @@ describe('story stage stream event contract', () => {
       'post_run_verification',
       'run_state',
       'subagent_artifact',
-      'subagent_final',
       'subagent_transcript_synchronized',
       'tool_target',
       'verification',

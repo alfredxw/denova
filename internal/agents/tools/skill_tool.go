@@ -6,12 +6,13 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
+	publictools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	novaskills "denova/internal/agents/skills"
 )
 
-const GeneralSubAgentName = "general-purpose"
+const GeneralSubAgentName = publictools.DefaultTaskAgentName
 
 type skillToolInput struct {
 	Name string `json:"name" jsonschema:"description=Exact name of the Skill to load from the available Skills catalog"`

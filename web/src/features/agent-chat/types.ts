@@ -96,6 +96,20 @@ export interface AgentChatAgentTab extends AgentChatTabCommon {
 }
 
 /**
+ * Temporary detail view for a child Agent spawned by one conversation tab. The parent owns
+ * the live message transport, so this tab carries navigation only and is never persisted.
+ */
+export interface AgentChatSubAgentTab extends AgentChatTabCommon {
+  kind: 'subagent'
+  parentTabId: string
+  parentSessionId: string
+  sessionKey: string
+  title: string
+  customTitle?: never
+  pinned?: never
+}
+
+/**
  * Terminal tab. `terminalSessionId` is written once the first attach succeeds so a page
  * reload can re-attach to the pty that is still running.
  */
@@ -139,4 +153,4 @@ export interface AgentChatReviewRenderContext {
   onWorkspaceChanged: (paths: string[]) => void | Promise<void>
 }
 
-export type AgentChatTab = AgentChatAgentTab | AgentChatTerminalTab | AgentChatFilesTab | AgentChatPageTab | AgentChatReviewTab
+export type AgentChatTab = AgentChatAgentTab | AgentChatSubAgentTab | AgentChatTerminalTab | AgentChatFilesTab | AgentChatPageTab | AgentChatReviewTab

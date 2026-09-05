@@ -2,6 +2,7 @@ import { memo } from 'react'
 import type { CSSProperties } from 'react'
 import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration } from '@/lib/api'
 import { agentViewToRenderMessage, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
+import { subAgentSessionKey } from './subagent-session'
 import { MessageItem, type AssistantMessagePresentation } from './MessageItem'
 
 interface AgentMessageItemProps {
@@ -55,6 +56,14 @@ export const AgentMessageItem = memo(function AgentMessageItem({
 }: AgentMessageItemProps) {
   const message = agentViewToRenderMessage(view)
   if (!message) return null
+  const openSubAgentSessionFromMessage = onOpenSubAgentSession ? (openedMessage: typeof message) => {
+    const sessionKey = subAgentSessionKey(openedMessage)
+    if (!sessionKey) return
+    onOpenSubAgentSession({
+      ...view,
+      metadata: { ...view.metadata, subagent: true, subagent_session_id: sessionKey },
+    })
+  } : undefined
   return (
     <MessageItem
       projectId={projectId}
@@ -67,7 +76,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
       onCreateBranch={onCreateBranch ? () => onCreateBranch(view) : undefined}
       onRegenerate={onRegenerateMessage ? () => onRegenerateMessage(view) : undefined}
       onSwitchVersion={onSwitchMessageVersion ? (_message, direction) => onSwitchMessageVersion(view, direction) : undefined}
-      onOpenSubAgentSession={onOpenSubAgentSession ? () => onOpenSubAgentSession(view) : undefined}
+      onOpenSubAgentSession={openSubAgentSessionFromMessage}
       onInsertIllustration={onInsertIllustration}
       onGenerateInteractiveImage={onGenerateInteractiveImage ? () => onGenerateInteractiveImage(view) : undefined}
       generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}

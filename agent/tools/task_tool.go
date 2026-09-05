@@ -14,6 +14,10 @@ var (
 	ErrTaskInvalidInput     = errors.New("invalid task input")
 )
 
+// DefaultTaskAgentName is the built-in general delegated Agent selected when
+// task.start omits an explicit catalog name.
+const DefaultTaskAgentName = "general-purpose"
+
 type TaskRef struct {
 	Agent   string `json:"agent,omitempty" jsonschema_description:"Delegated Agent name returned by start."`
 	Session string `json:"session,omitempty" jsonschema_description:"Child Session ID returned by start."`
@@ -21,7 +25,7 @@ type TaskRef struct {
 }
 
 type TaskRequest struct {
-	Agent          string `json:"agent,omitempty" jsonschema_description:"Stable delegated Agent name from the catalog in this tool description."`
+	Agent          string `json:"agent,omitempty" jsonschema_description:"Optional stable delegated Agent name from the catalog in this tool description. Omit it to use the built-in general-purpose Agent."`
 	Prompt         string `json:"prompt,omitempty" jsonschema_description:"Self-contained goal, constraints, relevant references, expected output, and write scope."`
 	IdempotencyKey string `json:"idempotency_key,omitempty" jsonschema_description:"Stable retry identity; omit to derive it from this tool execution."`
 }
@@ -144,7 +148,7 @@ func buildTasks(executor TaskExecutor) (agent.Toolset, error) {
 	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
 		return nil, errors.New("tasks TaskExecutor requires a stable Identity")
 	}
-	description := "Start delegated tasks asynchronously, inspect their current state, add instructions, or abort them. Use this tool only when delegation was explicitly requested. Batch operations return per-item outcomes."
+	description := "Start delegated tasks asynchronously, inspect their current state, add instructions, or abort them. Use this tool only when delegation was explicitly requested. Batch operations return per-item outcomes. task.start defaults to the built-in general-purpose Agent when agent is omitted."
 	if catalog, ok := executor.(taskAgentCatalog); ok {
 		for _, candidate := range catalog.TaskAgents() {
 			description += fmt.Sprintf("\n- %s: %s", candidate.Name, candidate.Description)
@@ -275,8 +279,8 @@ func taskErrorCode(err error) string {
 }
 
 func validateTaskRequest(request TaskRequest) error {
-	if err := validateTaskString("agent", request.Agent, 256); err != nil {
-		return err
+	if len(request.Agent) > 256 {
+		return fmt.Errorf("%w: agent exceeds 256 bytes", ErrTaskInvalidInput)
 	}
 	if err := validateTaskString("prompt", request.Prompt, 1<<20); err != nil {
 		return err

@@ -335,7 +335,8 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     loreReferenceLabels: props.loreReferenceLabels,
     loreSuggestions: props.loreSuggestions,
     onInsertIllustration: props.onInsertIllustration,
-    onSubAgentDetailsChange: props.onSubAgentDetailsChange,
+    activeSubAgentSession: props.activeSubAgentSession,
+    onSubAgentSessionOpen: props.onSubAgentSessionOpen,
     composerContext: {
       references: props.references,
       loreReferences: props.loreReferences,
@@ -350,6 +351,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     createSession,
     deleteSession,
     props.chrome,
+    props.activeSubAgentSession,
     props.composerDraftScope,
     props.currentChapter,
     props.fileSuggestions,
@@ -361,7 +363,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     props.onLoreReferenceRemove,
     props.onReferenceRemove,
     props.onStyleSceneRemove,
-    props.onSubAgentDetailsChange,
+    props.onSubAgentSessionOpen,
     props.onTextSelectionRemove,
     props.quickPromptScope,
     props.references,
@@ -382,7 +384,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     .filter((session): session is WorkspaceSession => Boolean(session))
 
   useEffect(() => {
-    if (!activeSessionId) props.onConversationStateChange?.({ messages: [], isStreaming: false })
+    if (!activeSessionId) props.onConversationStateChange?.({ sessionId: '', messages: [], isStreaming: false })
   }, [activeSessionId, props.onConversationStateChange])
 
   return (

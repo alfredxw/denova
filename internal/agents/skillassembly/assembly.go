@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	agent "github.com/alfredxw/denova/agent"
-	publictools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	"denova/internal/agents/prompts"
@@ -40,7 +39,7 @@ func Build(
 	if !enabled || !settings.Allows(config.AgentToolSkills) || cfg == nil {
 		return assembly, nil
 	}
-	mode, overrides, pinnedNames := config.ResolveActiveAgentSkillPolicy(cfg, agentKind)
+	mode, overrides, _ := config.ResolveActiveAgentSkillPolicy(cfg, agentKind)
 	backend := novaskills.NewAgentBackendWithPolicy(
 		novaskills.NewDirectories(cfg.SkillsDir, cfg.DataDir(), cfg.Workspace),
 		agentKind,
@@ -55,19 +54,13 @@ func Build(
 		return assembly, nil
 	}
 
-	pinnedSet := make(map[string]bool, len(pinnedNames))
-	for _, name := range pinnedNames {
-		pinnedSet[name] = true
-	}
-	entries := make([]prompts.SkillCatalogEntry, 0, len(pinnedNames))
+	entries := make([]prompts.SkillCatalogEntry, 0, len(available))
 	for _, item := range available {
-		if pinnedSet[item.Name] {
-			entries = append(entries, prompts.SkillCatalogEntry{Name: item.Name, Description: item.Description})
-		}
+		entries = append(entries, prompts.SkillCatalogEntry{Name: item.Name, Description: item.Description})
 	}
-	assembly.SystemPrompt, err = prompts.AppendSkillsDiscoveryPrompt(cfg, systemPrompt, entries)
+	assembly.SystemPrompt, err = prompts.AppendSkillsCatalogPrompt(cfg, systemPrompt, entries)
 	if err != nil {
-		return Assembly{}, fmt.Errorf("append Skill discovery policy for Agent %s: %w", agentKind, err)
+		return Assembly{}, fmt.Errorf("append Skill catalog for Agent %s: %w", agentKind, err)
 	}
 
 	catalog := agenttoolruntime.NewCatalog(cfg)
@@ -76,24 +69,17 @@ func Build(
 	if err != nil {
 		return Assembly{}, fmt.Errorf("create canonical Skill descriptor for Agent %s: %w", agentKind, err)
 	}
-	toolset := publictools.Skills(newSkillSource(backend, maxBytes, struct {
-		AgentKind string
-		Mode      string
-		Overrides map[string]bool
-	}{agentKind, mode, overrides}))
-	skillTools, err := toolset.PrepareTools(ctx, agent.ToolRequest{})
-	if err != nil {
-		return Assembly{}, fmt.Errorf("create Skill list/read tool for Agent %s: %w", agentKind, err)
+	if canonical.Tool == nil {
+		return Assembly{}, fmt.Errorf("create Skill tool for Agent %s: expected one canonical tool", agentKind)
 	}
-	if len(skillTools) != 1 || canonical.Tool == nil {
-		return Assembly{}, fmt.Errorf("create Skill list/read tool for Agent %s: expected exactly one canonical tool", agentKind)
+	if err := canonical.Validate(ctx); err != nil {
+		return Assembly{}, fmt.Errorf("validate Skill tool for Agent %s: %w", agentKind, err)
 	}
-	skillTools[0].Descriptor = canonical.Descriptor
 	referenceAdapter, err := catalog.SkillReference(backend)
 	if err != nil {
 		return Assembly{}, fmt.Errorf("create Skill reference adapter for Agent %s: %w", agentKind, err)
 	}
-	assembly.Tools = skillTools
+	assembly.Tools = []agent.ToolDefinition{canonical}
 	assembly.ReadAdapters = []producttools.ReadAdapterBinding{referenceAdapter}
 	return assembly, nil
 }

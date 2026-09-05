@@ -643,7 +643,8 @@ func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentde
 		permissionRules = config.NormalizeAgentApprovalRules(cfg.AgentApprovalRules)
 	}
 	permission, err := agentlifecycle.NewPermissionPolicy(agentlifecycle.PermissionConfig{
-		Mode: permissionMode, ProjectID: configProjectID(cfg), Workspace: configWorkspace(cfg), Rules: permissionRules,
+		Mode: permissionMode, ProjectID: configProjectID(cfg), Workspace: configWorkspace(cfg),
+		NonInteractive: true, Rules: permissionRules,
 	})
 	if err != nil {
 		return agentdelegation.Child{}, err

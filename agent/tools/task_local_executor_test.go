@@ -29,6 +29,99 @@ type notifyingTaskExecutor struct {
 	once    sync.Once
 }
 
+type lateBoundTaskExecutor struct {
+	delegate TaskExecutor
+}
+
+func (*lateBoundTaskExecutor) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{Kind: "test.task.late-bound", Version: 1}
+}
+
+func (*lateBoundTaskExecutor) TaskAgents() []TaskAgentInfo {
+	return []TaskAgentInfo{{Name: DefaultTaskAgentName, Description: "General delegated work"}}
+}
+
+func (executor *lateBoundTaskExecutor) Start(ctx context.Context, request TaskRequest) (Task, error) {
+	return executor.delegate.Start(ctx, request)
+}
+
+func (executor *lateBoundTaskExecutor) Observe(ctx context.Context, ref TaskRef, cursor string) (TaskObservation, error) {
+	return executor.delegate.Observe(ctx, ref, cursor)
+}
+
+func (executor *lateBoundTaskExecutor) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOutcome, error) {
+	return executor.delegate.Wait(ctx, refs)
+}
+
+func (executor *lateBoundTaskExecutor) Steer(ctx context.Context, ref TaskRef, input agent.Input) error {
+	return executor.delegate.Steer(ctx, ref, input)
+}
+
+func (executor *lateBoundTaskExecutor) Respond(ctx context.Context, ref TaskRef, id string, response agent.InteractionResponse) error {
+	return executor.delegate.Respond(ctx, ref, id, response)
+}
+
+func (executor *lateBoundTaskExecutor) Abort(ctx context.Context, ref TaskRef, request agent.AbortRequest) error {
+	return executor.delegate.Abort(ctx, ref, request)
+}
+
+type parentTaskCompletionModel struct {
+	mu            sync.Mutex
+	inputs        [][]*agent.Message
+	secondStarted chan struct{}
+	once          sync.Once
+}
+
+func (model *parentTaskCompletionModel) Generate(ctx context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+	return model.next(ctx, input)
+}
+
+func (model *parentTaskCompletionModel) Stream(ctx context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	message, err := model.next(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
+}
+
+func (model *parentTaskCompletionModel) next(_ context.Context, input []*agent.Message) (*agent.Message, error) {
+	model.mu.Lock()
+	model.inputs = append(model.inputs, cloneTaskMessages(input))
+	call := len(model.inputs)
+	model.mu.Unlock()
+	switch call {
+	case 1:
+		return agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "delegate", Type: "function", Function: agent.FunctionCall{
+				Name: "task", Arguments: `{"action":"start","starts":[{"prompt":"inspect"}]}`,
+			},
+		}}), nil
+	case 2:
+		model.once.Do(func() { close(model.secondStarted) })
+		return agent.AssistantMessage("parent final after child", nil), nil
+	default:
+		return nil, fmt.Errorf("parent task completion model exhausted")
+	}
+}
+
+func (model *parentTaskCompletionModel) capturedInputs() [][]*agent.Message {
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	inputs := make([][]*agent.Message, len(model.inputs))
+	for index, messages := range model.inputs {
+		inputs[index] = cloneTaskMessages(messages)
+	}
+	return inputs
+}
+
+func cloneTaskMessages(messages []*agent.Message) []*agent.Message {
+	cloned := make([]*agent.Message, len(messages))
+	for index, message := range messages {
+		cloned[index] = message.Clone()
+	}
+	return cloned
+}
+
 func (executor *notifyingTaskExecutor) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOutcome, error) {
 	executor.once.Do(func() { close(executor.waiting) })
 	return executor.LocalTasks.Wait(ctx, refs)
@@ -100,6 +193,29 @@ func newTaskExecutor(t *testing.T, owner *agent.Agent) *LocalTasks {
 		t.Fatal(err)
 	}
 	return executor
+}
+
+func TestLocalTasksDefaultsOmittedAgentToGeneralPurpose(t *testing.T) {
+	owner := newTaskAgent(t, agentsession.Memory(), &taskModel{responses: []*agent.Message{
+		agent.AssistantMessage("default result", nil),
+	}})
+	defer owner.Close(context.Background())
+	executor, err := NewLocalTasks(LocalTaskOptions{Parallelism: 1}, LocalTaskAgent{
+		Name: DefaultTaskAgentName, Description: "General delegated work", Opener: owner,
+		Identity: agent.CapabilityIdentity{Kind: "test.task.default", Version: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := executor.Start(context.Background(), TaskRequest{
+		Prompt: "inspect", IdempotencyKey: "default-agent",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Ref.Agent != DefaultTaskAgentName || task.Ref.Session == "" || task.Ref.Run == "" {
+		t.Fatalf("default task = %#v", task)
+	}
 }
 
 func TestLocalTasksObserveFinalOutputFromColdAgent(t *testing.T) {
@@ -323,6 +439,91 @@ func TestLocalTasksPublishesCompletionWithoutTaskWait(t *testing.T) {
 	}
 	if len(watch.PendingIDs) != 1 || watch.PendingIDs[0] != id {
 		t.Fatalf("pending completion IDs = %#v", watch.PendingIDs)
+	}
+}
+
+func TestLocalTasksStreamsAndBlocksParentFinalWithoutTaskWait(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	release := make(chan struct{})
+	child := newTaskAgent(t, agentsession.Memory(), &blockingTaskModel{release: release, response: "child result"})
+	defer child.Close(context.Background())
+
+	proxy := &lateBoundTaskExecutor{}
+	parentModel := &parentTaskCompletionModel{secondStarted: make(chan struct{})}
+	parentOwner, err := agent.New(ctx, agent.Definition{
+		Name: "root", Model: parentModel,
+		ModelIdentity: agent.CapabilityIdentity{Kind: "test.task.parent-completion", Version: 1},
+		Tools:         Tasks(proxy),
+	}, agent.WithSessionStore(agentsession.Memory()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parentOwner.Close(context.Background())
+	parent, err := parentOwner.Session(ctx, agent.NamedSession("task-parent-finalization"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := NewLocalTasks(LocalTaskOptions{
+		Parallelism: 1, CompletionParent: parent, MaxResultBytes: 4096,
+	}, LocalTaskAgent{
+		Name: DefaultTaskAgentName, Description: "General delegated work", Opener: child,
+		Identity: agent.CapabilityIdentity{Kind: "test.task.child-completion", Version: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy.delegate = local
+
+	run, err := parent.Run(ctx, agent.Text("delegate"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-parentModel.secondStarted:
+		t.Fatal("parent called the model again before its child completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	probeCtx, stopProbe := context.WithTimeout(ctx, 20*time.Millisecond)
+	if result, waitErr := run.Wait(probeCtx); !errors.Is(waitErr, context.DeadlineExceeded) {
+		stopProbe()
+		t.Fatalf("parent settled before its child: result=%#v err=%v", result, waitErr)
+	}
+	stopProbe()
+	close(release)
+	select {
+	case <-parentModel.secondStarted:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if result, waitErr := run.Wait(ctx); waitErr != nil || result.Status != agent.ResultCompleted {
+		t.Fatalf("parent result=%#v err=%v", result, waitErr)
+	}
+
+	var nested []agent.NestedEvent
+	for event := range run.Events() {
+		if childEvent, ok := event.Payload.(agent.NestedEvent); ok {
+			nested = append(nested, childEvent)
+		}
+	}
+	if len(nested) == 0 {
+		t.Fatal("task.start did not stream child events without task_wait")
+	}
+	if nested[0].Source.InvocationID == "" || nested[0].Source.InvocationType != "task" {
+		t.Fatalf("nested child identity = %#v", nested[0].Source)
+	}
+	inputs := parentModel.capturedInputs()
+	if len(inputs) != 2 {
+		t.Fatalf("parent model calls = %d, want 2", len(inputs))
+	}
+	completionMessages := 0
+	for _, message := range inputs[1] {
+		if message.TaskCompletion != nil {
+			completionMessages++
+		}
+	}
+	if completionMessages != 1 {
+		t.Fatalf("completion messages in resumed parent input = %d", completionMessages)
 	}
 }
 

@@ -50,6 +50,7 @@ vi.mock('./AgentChatConversationTab', () => ({
     reviewFeedback,
     onReviewFeedbackOpen,
     onWorkspaceChanged,
+    onSubAgentSessionOpen,
   }: {
     workspace: string
     sessionId: string
@@ -64,6 +65,7 @@ vi.mock('./AgentChatConversationTab', () => ({
     }>
     onReviewFeedbackOpen?: (selection: unknown, comment: unknown) => void
     onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void
+    onSubAgentSessionOpen?: (target: { parentSessionId: string; sessionKey: string; name: string }) => void
   }) => {
     const selection = reviewFeedback?.[0]
     const comment = selection?.comments[0]
@@ -80,6 +82,9 @@ vi.mock('./AgentChatConversationTab', () => ({
         </button>
         <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/new.ts'], { impact: 'structure', origin: 'external' })}>
           simulate external structure
+        </button>
+        <button type="button" onClick={() => onSubAgentSessionOpen?.({ parentSessionId: sessionId, sessionKey: 'child-session', name: 'Researcher' })}>
+          open child Agent
         </button>
       </div>
     )

@@ -112,17 +112,25 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 		return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
 	}
 	if len(pending) != 0 {
-		interaction := pending[0]
-		resolution, err := agent.RequestInteraction(ctx, interaction.request)
-		if err != nil {
-			return nil, fmt.Errorf("route child Interaction: %w", err)
+		if tasks.completionParent != nil {
+			for _, interaction := range pending {
+				if err := tasks.rejectChildInteraction(interaction.ref, interaction.request); err != nil && !errors.Is(err, agent.ErrInteractionStale) {
+					return nil, fmt.Errorf("reject non-interactive child request: %w", err)
+				}
+			}
+		} else {
+			interaction := pending[0]
+			resolution, err := agent.RequestInteraction(ctx, interaction.request)
+			if err != nil {
+				return nil, fmt.Errorf("route child Interaction: %w", err)
+			}
+			if err := tasks.Respond(ctx, interaction.ref, interaction.request.ID, responseFromResolution(resolution)); err != nil {
+				return nil, fmt.Errorf("resolve child Interaction: %w", err)
+			}
+			ready[interaction.index] = true
+			cancel()
+			return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
 		}
-		if err := tasks.Respond(ctx, interaction.ref, interaction.request.ID, responseFromResolution(resolution)); err != nil {
-			return nil, fmt.Errorf("resolve child Interaction: %w", err)
-		}
-		ready[interaction.index] = true
-		cancel()
-		return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
 	}
 	if len(streams) == 0 {
 		return outcomes, nil
@@ -202,11 +210,19 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 		if !eventOK || event.RunID != stream.ref.Run {
 			continue
 		}
-		if err := forwardTaskEvent(ctx, stream.ref, event); err != nil {
-			return nil, err
+		if tasks.completionParent == nil {
+			if err := forwardTaskEvent(ctx, stream.ref, event); err != nil {
+				return nil, err
+			}
 		}
 		switch payload := event.Payload.(type) {
 		case agent.InteractionRequested:
+			if tasks.completionParent != nil {
+				if err := tasks.rejectChildInteraction(stream.ref, payload.Request); err != nil && !errors.Is(err, agent.ErrInteractionStale) {
+					return nil, fmt.Errorf("reject non-interactive child request: %w", err)
+				}
+				continue
+			}
 			resolution, err := agent.RequestInteraction(ctx, payload.Request)
 			if err != nil {
 				return nil, fmt.Errorf("route child Interaction: %w", err)
@@ -224,6 +240,14 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 		}
 	}
 	return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
+}
+
+func (tasks *LocalTasks) rejectChildInteraction(ref TaskRef, request agent.InteractionRequest) error {
+	response := agent.InteractionResponse{Cancelled: true}
+	if request.Kind == agent.InteractionPermission {
+		response = agent.InteractionResponse{Permission: agent.PermissionDeny}
+	}
+	return tasks.Respond(context.Background(), ref, request.ID, response)
 }
 
 func (tasks *LocalTasks) collectWaitOutcomes(

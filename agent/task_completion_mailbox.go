@@ -12,6 +12,8 @@ import (
 
 const maxTaskCompletionIDBytes = 1024
 
+var errTaskCompletionWaitInterrupted = errors.New("task completion wait interrupted")
+
 // TaskCompletion is one child-task result waiting for delivery to the parent
 // model loop. The child Session terminal record remains the authoritative
 // result; this value is only an in-process notification and bounded projection.
@@ -29,18 +31,59 @@ type TaskCompletionWatch struct {
 }
 
 type taskCompletionMailbox struct {
-	pending   map[string]TaskCompletion
-	order     []string
-	delivered map[string]struct{}
-	activity  chan struct{}
+	pending     map[string]TaskCompletion
+	order       []string
+	delivered   map[string]struct{}
+	outstanding map[string]struct{}
+	activity    chan struct{}
 }
 
 func newTaskCompletionMailbox() taskCompletionMailbox {
 	return taskCompletionMailbox{
-		pending:   make(map[string]TaskCompletion),
-		delivered: make(map[string]struct{}),
-		activity:  make(chan struct{}),
+		pending:     make(map[string]TaskCompletion),
+		delivered:   make(map[string]struct{}),
+		outstanding: make(map[string]struct{}),
+		activity:    make(chan struct{}),
 	}
+}
+
+// TrackTaskCompletion registers one attached child task before task.start
+// returns. A parent model loop may not settle while any registered child has
+// not yet published a terminal completion.
+func (session *Session) TrackTaskCompletion(ctx context.Context, id string) (bool, error) {
+	if session == nil {
+		return false, ErrSessionClosed
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, errors.New("task completion tracking requires an ID")
+	}
+	if len(id) > maxTaskCompletionIDBytes {
+		return false, fmt.Errorf("task completion ID exceeds %d bytes", maxTaskCompletionIDBytes)
+	}
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return false, ErrSessionClosed
+	}
+	if _, ok := session.taskCompletions.delivered[id]; ok {
+		return false, nil
+	}
+	if _, ok := session.taskCompletions.pending[id]; ok {
+		return false, nil
+	}
+	if _, ok := session.taskCompletions.outstanding[id]; ok {
+		return false, nil
+	}
+	session.taskCompletions.outstanding[id] = struct{}{}
+	session.signalTaskCompletionActivityLocked()
+	return true, nil
 }
 
 // EnqueueTaskCompletion queues a completion without starting or steering a
@@ -67,16 +110,23 @@ func (session *Session) EnqueueTaskCompletion(ctx context.Context, completion Ta
 		return false, ErrSessionClosed
 	}
 	if _, ok := session.taskCompletions.delivered[completion.ID]; ok {
+		delete(session.taskCompletions.outstanding, completion.ID)
 		return false, nil
 	}
 	if _, ok := session.taskCompletions.pending[completion.ID]; ok {
+		delete(session.taskCompletions.outstanding, completion.ID)
 		return false, nil
 	}
+	delete(session.taskCompletions.outstanding, completion.ID)
 	session.taskCompletions.pending[completion.ID] = completion
 	session.taskCompletions.order = append(session.taskCompletions.order, completion.ID)
+	session.signalTaskCompletionActivityLocked()
+	return true, nil
+}
+
+func (session *Session) signalTaskCompletionActivityLocked() {
 	close(session.taskCompletions.activity)
 	session.taskCompletions.activity = make(chan struct{})
-	return true, nil
 }
 
 // WatchTaskCompletions atomically checks the requested IDs and subscribes to
@@ -249,4 +299,46 @@ func pendingTaskCompletionsFromContext(ctx context.Context) []TaskCompletion {
 	}
 	session, _ := ctx.Value(taskCompletionSessionContextKey{}).(*Session)
 	return session.pendingTaskCompletions()
+}
+
+// waitForTrackedTaskCompletionsFromContext is the model-boundary barrier for a
+// parent loop. Once child work is attached, the parent does not call the model
+// again until every tracked child has published a terminal completion. It
+// returns whether at least one completion is then ready for delivery, plus an
+// interrupt sentinel so the loop can apply its normal safe-point cancellation
+// semantics.
+func waitForTrackedTaskCompletionsFromContext(
+	ctx context.Context,
+	interrupt <-chan struct{},
+) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	session, _ := ctx.Value(taskCompletionSessionContextKey{}).(*Session)
+	if session == nil {
+		return false, nil
+	}
+	for {
+		session.mu.RLock()
+		if session.closed {
+			session.mu.RUnlock()
+			return false, ErrSessionClosed
+		}
+		if len(session.taskCompletions.outstanding) == 0 {
+			ready := len(session.taskCompletions.pending) != 0
+			session.mu.RUnlock()
+			return ready, nil
+		}
+		activity := session.taskCompletions.activity
+		session.mu.RUnlock()
+
+		select {
+		case <-activity:
+			continue
+		case <-interrupt:
+			return false, errTaskCompletionWaitInterrupted
+		case <-ctx.Done():
+			return false, ctx.Err()
+		}
+	}
 }

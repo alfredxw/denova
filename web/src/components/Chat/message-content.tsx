@@ -98,6 +98,8 @@ export const MarkdownContent = memo(function MarkdownContent({
     exitFullscreen: t('chat.markdown.exitFullscreen'),
     viewFullscreen: t('chat.markdown.viewFullscreen'),
   }), [t])
+  // Let the surrounding message or panel own vertical scrolling while tables
+  // retain Streamdown's horizontal overflow behavior.
   return (
     <Streamdown
       animated
@@ -109,6 +111,7 @@ export const MarkdownContent = memo(function MarkdownContent({
       mode="streaming"
       plugins={chatMarkdownPlugins}
       rehypePlugins={chatMarkdownRehypePlugins}
+      tableMaxHeight={0}
       translations={translations}
     >
       {content}

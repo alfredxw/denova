@@ -165,7 +165,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 				projector.nestedOutput(projector.nestedThinking, meta).WriteString(thinking)
 				projector.emitEvent(agentrun.Event{Type: "thinking", Data: meta.appendTo(map[string]any{"content": thinking})})
 			}
-			projector.emitEvent(agentrun.Event{Type: "subagent_final", Data: meta.appendTo(map[string]any{"content": payload.Content})})
+			// Repaired deltas are the only display content; RunSettled publishes the status.
 			return
 		}
 		projector.finishInteractiveResponseLocked(nil)

@@ -23,7 +23,10 @@ type PermissionConfig struct {
 	AgentKind string
 	ProjectID string
 	Workspace string
-	Rules     []config.AgentApprovalRule
+	// NonInteractive converts approval prompts into blocks. Delegated Agents
+	// report the blocker to their parent instead of waiting for user input.
+	NonInteractive bool
+	Rules          []config.AgentApprovalRule
 
 	LoadRules   func(context.Context) ([]config.AgentApprovalRule, error)
 	PersistRule func(context.Context, config.AgentApprovalRule) error
@@ -87,15 +90,16 @@ func BindPermissionRuleStore(
 
 func (policy *denovaPermissionPolicy) Identity() agent.CapabilityIdentity {
 	payload := struct {
-		Mode      config.AgentApprovalMode
-		AgentKind string
-		ProjectID string
-		Workspace string
-		GOOS      string
-		Matchers  []string
+		Mode           config.AgentApprovalMode
+		AgentKind      string
+		ProjectID      string
+		Workspace      string
+		GOOS           string
+		NonInteractive bool
+		Matchers       []string
 	}{
 		policy.config.Mode, policy.config.AgentKind, policy.config.ProjectID, policy.config.Workspace,
-		policy.config.GOOS, []string{
+		policy.config.GOOS, policy.config.NonInteractive, []string{
 			fmt.Sprintf("%s.v%d", config.AgentApprovalMatcherShell, config.AgentApprovalRuleMatcherVersion),
 			fmt.Sprintf("%s.v%d", config.AgentApprovalMatcherFilesystem, config.AgentApprovalRuleMatcherVersion),
 		},
@@ -103,7 +107,7 @@ func (policy *denovaPermissionPolicy) Identity() agent.CapabilityIdentity {
 	encoded, _ := json.Marshal(payload)
 	digest := sha256.Sum256(encoded)
 	return agent.CapabilityIdentity{
-		Kind: "denova.permission", Version: 2, ConfigHash: hex.EncodeToString(digest[:]),
+		Kind: "denova.permission", Version: 3, ConfigHash: hex.EncodeToString(digest[:]),
 	}
 }
 
@@ -121,7 +125,11 @@ func (policy *denovaPermissionPolicy) Evaluate(ctx context.Context, request agen
 	case toolapproval.ActionAllow:
 		kind = agent.PermissionAllow
 	case toolapproval.ActionPrompt:
-		kind = agent.PermissionAsk
+		if policy.config.NonInteractive {
+			kind = agent.PermissionBlock
+		} else {
+			kind = agent.PermissionAsk
+		}
 	case toolapproval.ActionDeny:
 		kind = agent.PermissionBlock
 	default:
@@ -136,15 +144,20 @@ func (policy *denovaPermissionPolicy) Evaluate(ctx context.Context, request agen
 	} else if decision.Command == "" {
 		details.Details = strings.TrimSpace(strings.ToValidUTF8(string(request.Arguments), "\uFFFD"))
 	}
-	if decision.Remember != nil {
+	if decision.Remember != nil && kind == agent.PermissionAsk {
 		details.CanRemember = true
 		details.RuleMatcherVersion = decision.Remember.MatcherVersion
 		details.RuleMatchKey = decision.Remember.MatchKey
 		details.RuleDisplayPattern = decision.Remember.DisplayPattern
 	}
-	return agent.PermissionDecision{
-		Kind: kind, Reason: localizedApprovalReason(decision.Reason), Details: details,
-	}, nil
+	reason := localizedApprovalReason(decision.Reason)
+	if policy.config.NonInteractive && decision.Action == toolapproval.ActionPrompt {
+		reason = agent.LocalizedText{
+			Chinese: "子 Agent 不能请求用户授权；请将受阻原因返回给父 Agent。",
+			English: "Delegated Agents cannot request user approval; return the blocker to the parent Agent.",
+		}
+	}
+	return agent.PermissionDecision{Kind: kind, Reason: reason, Details: details}, nil
 }
 
 func (policy *denovaPermissionPolicy) Resolve(ctx context.Context, request agent.PermissionResolveRequest) (agent.PermissionResolvedDecision, error) {

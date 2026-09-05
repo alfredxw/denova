@@ -16,6 +16,8 @@ import type { Tab } from './TabController'
 import { TabController } from './TabController'
 import { WorkbenchRouteLayer } from './WorkbenchRouteHost'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
+import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
+import type { AgentChatConversationState } from '@/features/agent-chat/AgentChatConversationTab'
 
 const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
 const StableImageFilePreview = memo(ImageFilePreview)
@@ -44,6 +46,7 @@ interface WritingMainRouteProps {
   tabs: Tab[]
   activeTabKey: string | null
   activeTab: Tab | null
+  subAgentConversation: AgentChatConversationState
   summary: WorkspaceSummary | null
   tabActions: ReactNode
   activeFileKind: string | null
@@ -100,6 +103,7 @@ export function WritingMainRoute({
   tabs,
   activeTabKey,
   activeTab,
+  subAgentConversation,
   summary,
   tabActions,
   activeFileKind,
@@ -165,7 +169,15 @@ export function WritingMainRoute({
           />
           <div className="flex min-h-0 flex-1 flex-col">
             {activeTab ? (
-              activeTab.kind === 'lore' ? (
+              activeTab.kind === 'subagent' ? (
+                <AgentSubAgentSessionPanel
+                  chrome="tab"
+                  projectId={projectId}
+                  messages={subAgentConversation.messages}
+                  sessionKey={activeTab.sessionKey}
+                  onResolveAsk={subAgentConversation.onResolveAsk}
+                />
+              ) : activeTab.kind === 'lore' ? (
                 <LoreWorkspaceTab
                   projectId={projectId}
                   documentReview={documentReview}

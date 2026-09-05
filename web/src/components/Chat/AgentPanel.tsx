@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, ChevronLeft, Plus } from 'lucide-react'
 import { motion } from 'motion/react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
@@ -41,7 +40,7 @@ import { SessionHistoryPopover } from './SessionHistoryPopover'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { SessionRailToggle } from './SessionRailToggle'
 import { AgentTracePanel } from './AgentTracePanel'
-import { AgentSubAgentSessionPanel } from './AgentSubAgentSessionPanel'
+import { AgentSubAgentSessionPanel, type AgentSubAgentSessionTarget } from './AgentSubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
 import type { ReferencePickerItem } from './FileReferencePicker'
 import { WritingComposerSettingsMenu, WritingImagePresetMenu } from './WritingComposerSettingsMenu'
@@ -184,7 +183,9 @@ export interface AgentPanelProps {
   onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
-  onSubAgentDetailsChange?: (open: boolean) => void
+  /** Hosts with a tab model own sub-Agent navigation; standalone surfaces use an inline fallback. */
+  activeSubAgentSession?: AgentSubAgentSessionTarget | null
+  onSubAgentSessionOpen?: (target: AgentSubAgentSessionTarget) => void | Promise<void>
 }
 
 /**
@@ -268,7 +269,8 @@ function AgentPanelComponent({
   onReviewFeedbackSubmissionFailed,
   onOpenChangeReview,
   onWorkspaceChanged,
-  onSubAgentDetailsChange,
+  activeSubAgentSession = null,
+  onSubAgentSessionOpen,
 }: AgentPanelProps) {
   const { t } = useTranslation()
   const dockedChrome = chrome === 'panel'
@@ -288,7 +290,7 @@ function AgentPanelComponent({
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
-  const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
+  const [fallbackSubAgentSession, setFallbackSubAgentSession] = useState<AgentSubAgentSessionTarget | null>(null)
   const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const pendingWritingInitRef = useRef<string | null>(null)
@@ -383,14 +385,8 @@ function AgentPanelComponent({
   }, [workspace])
 
   useEffect(() => {
-    onSubAgentDetailsChange?.(Boolean(activeSubAgentSessionKey))
-  }, [activeSubAgentSessionKey, onSubAgentDetailsChange])
-
-  useEffect(() => {
-    return () => {
-      onSubAgentDetailsChange?.(false)
-    }
-  }, [onSubAgentDetailsChange])
+    setFallbackSubAgentSession(null)
+  }, [activeSessionId])
 
   const handleAnalyzeContext = async (message: string) => {
     setContextAnalysisLoading(true)
@@ -425,8 +421,18 @@ function AgentPanelComponent({
 
   const openSubAgentSession = useCallback((message: AgentMessageView) => {
     const key = agentSubAgentSessionKey(message)
-    if (key) setActiveSubAgentSessionKey(key)
-  }, [])
+    if (!key || !activeSessionId) return
+    const target: AgentSubAgentSessionTarget = {
+      parentSessionId: activeSessionId,
+      sessionKey: key,
+      name: message.metadata.agent_name || message.metadata.subagent_type || t('chat.subagent.label'),
+    }
+    if (onSubAgentSessionOpen) {
+      void onSubAgentSessionOpen(target)
+      return
+    }
+    setFallbackSubAgentSession(target)
+  }, [activeSessionId, onSubAgentSessionOpen, t])
 
   const openTraceRun = useCallback((runID: string) => {
     if (!runID) return
@@ -623,7 +629,9 @@ function AgentPanelComponent({
     timelineAttachments,
     onOpenSubAgentSession: openSubAgentSession,
     onInsertIllustration,
-    activeSubAgentSessionKey,
+    activeSubAgentSessionKey: activeSubAgentSession?.parentSessionId === activeSessionId
+      ? activeSubAgentSession.sessionKey
+      : fallbackSubAgentSession?.sessionKey || '',
     onApprovePlan: onApproveProposedPlan,
     onContinuePlan: continuePlanDiscussion,
     onExitPlanMode,
@@ -836,29 +844,18 @@ function AgentPanelComponent({
       {view === 'chat' ? (
         <>
           <div className="relative flex min-h-0 flex-1">
-            {!activeSubAgentSessionKey ? (
+            {!fallbackSubAgentSession ? (
               <StablePortalSlot host={chatPaneHost} fallback={chatPane} wrapFallback={false} className="relative flex min-h-0 min-w-0 flex-1 flex-col" />
             ) : (
-              <>
-                <Group
-                  id="nova-agent-subagent-details"
-                  orientation="horizontal"
-                  disableCursor
-                  resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-                  className="absolute inset-0 hidden lg:flex"
-                >
-                  <Panel id="agent-chat" defaultSize="52%" minSize="300px" className="min-w-[300px]">
-                    <StablePortalSlot host={chatPaneHost} fallback={chatPane} wrapFallback={false} className="relative flex h-full min-h-0 min-w-0 flex-col" />
-                  </Panel>
-                  <SubAgentDetailsResizeHandle label={t('chat.subagent.resizeSession')} />
-                  <Panel id="subagent-details" defaultSize="48%" minSize="300px" maxSize="68%" className="min-w-[300px]">
-                    <AgentSubAgentSessionPanel projectId={projectId} messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
-                  </Panel>
-                </Group>
-                <div className="absolute inset-0 z-30 lg:hidden">
-                  <AgentSubAgentSessionPanel projectId={projectId} messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
-                </div>
-              </>
+              <div className="absolute inset-0 z-30">
+                <AgentSubAgentSessionPanel
+                  projectId={projectId}
+                  messages={messages}
+                  sessionKey={fallbackSubAgentSession.sessionKey}
+                  onClose={() => setFallbackSubAgentSession(null)}
+                  onResolveAsk={resolveAsk}
+                />
+              </div>
             )}
           </div>
           <ContextAnalysisDialog
@@ -894,8 +891,4 @@ export const AgentPanel = memo(AgentPanelComponent)
 function isGlobalStyleSceneName(scene: string) {
   const normalized = scene.trim().toLowerCase()
   return normalized === '全局' || normalized === 'global'
-}
-
-function SubAgentDetailsResizeHandle({ label }: { label: string }) {
-  return <Separator aria-label={label} className="nova-resize-handle z-10 -mx-1 hidden w-2 cursor-col-resize bg-transparent transition-colors lg:block" />
 }

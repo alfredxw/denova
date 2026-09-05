@@ -25,30 +25,43 @@ export function subAgentSessionKey(message?: Pick<ChatMessage, 'subagent' | 'sub
   ].filter(Boolean).join('/')
 }
 
+/** Reads the one unambiguous delegated invocation returned by task.start. */
+export function taskSubAgentSessionKey(result: string) {
+  if (!result.trim()) return ''
+  try {
+    const parsed = JSON.parse(result) as {
+      results?: Array<{ task?: { ref?: { session?: unknown; run?: unknown } } }>
+    }
+    const keys = new Set<string>()
+    for (const item of parsed.results || []) {
+      const session = typeof item.task?.ref?.session === 'string' ? item.task.ref.session.trim() : ''
+      const run = typeof item.task?.ref?.run === 'string' ? item.task.ref.run.trim() : ''
+      if (session && run) keys.add(`${session}/${run}`)
+    }
+    return keys.size === 1 ? [...keys][0] : ''
+  } catch {
+    return ''
+  }
+}
+
 export function isSubAgentTimelineMessage(message: ChatMessage) {
   if (!message.subagent) return false
   return message.role === 'assistant' || message.role === 'thinking' || message.role === 'tool_call' || message.role === 'tool_result'
 }
 
-export function buildSubAgentProgressMessage(messages: ChatMessage[]): ChatMessage | null {
+export function buildSubAgentSummaryMessage(messages: ChatMessage[]): ChatMessage | null {
   const first = messages.find((message) => message.subagent)
   if (!first) return null
   const reversed = [...messages].reverse()
-  const latest = reversed.find((message) => message.role === 'assistant' && (message.content || '').trim())
-    || reversed.find((message) => (message.content || (message.role === 'tool_call' || message.role === 'tool_result' ? message.name : '') || '').trim())
-    || first
-  const content = latest.role === 'tool_call'
-    ? latest.name || latest.content || ''
-    : latest.content || ''
   const sessionKey = subAgentSessionKey(first)
   const subAgentStatus = reversed.find((message) => message.subagent_status)?.subagent_status
   const streaming = subAgentStatus
     ? isActiveSubAgentStatus(subAgentStatus)
     : messages.some((message) => message.streaming === true || ('status' in message && message.status === 'running'))
   return {
-    id: sessionKey ? `subagent-progress:${sessionKey}` : first.id ? `${first.id}:progress` : 'subagent-progress',
+    id: sessionKey ? `subagent-summary:${sessionKey}` : first.id ? `${first.id}:summary` : 'subagent-summary',
     role: 'assistant',
-    content,
+    content: '',
     streaming,
     created_at: first.created_at,
     run_id: first.run_id,

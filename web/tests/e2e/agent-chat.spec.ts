@@ -202,6 +202,7 @@ async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
 
   const cards = process.getByRole('button', { name: 'general-purpose 输出', exact: true })
   await expect(cards).toHaveCount(3)
+  for (const item of multiAgentExpectations) await expect(process).not.toContainText(item.output)
   const seen = new Set<string>()
   for (let index = 0; index < 3; index += 1) {
     await cards.nth(index).click()
@@ -224,7 +225,8 @@ async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
       await expect(panel).not.toContainText(other.output)
       await expect(panel).not.toContainText(other.reasoning)
     }
-    await panel.getByRole('button', { name: '关闭 SubAgent 详情', exact: true }).click()
+    await expect(panel.getByRole('button', { name: '关闭 SubAgent 详情', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: '关闭 general-purpose', exact: true }).click()
   }
   expect([...seen].sort()).toEqual(multiAgentExpectations.map(item => item.marker).sort())
 }

@@ -17,7 +17,7 @@ import {
 } from '@/lib/agent-message-view'
 import { AgentMessageItem } from './AgentMessageItem'
 import { MessageItem } from './MessageItem'
-import { buildSubAgentProgressMessage } from './subagent-session'
+import { buildSubAgentSummaryMessage } from './subagent-session'
 import { buildToolCallTree, type AgentProcessNode } from './tool-call-tree'
 
 interface AgentExecutionProcessProps {
@@ -108,13 +108,13 @@ export function AgentExecutionProcess({
           )
           continue
         }
-        const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
-        if (progress) {
+        const summary = buildSubAgentSummaryMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
+        if (summary) {
           processItems.push(
             <MessageItem
               projectId={projectId}
               key={`subagent-${subAgentGroup.key}`}
-              message={progress}
+              message={summary}
               highlightDialogue={highlightDialogue}
               messageStyle={messageStyle}
               onOpenSubAgentSession={() => onOpenSubAgentSession(subAgentGroup.views[0])}
@@ -137,6 +137,7 @@ export function AgentExecutionProcess({
             messageStyle={messageStyle}
             onInsertIllustration={onInsertIllustration}
             onGenerateInteractiveImage={onGenerateInteractiveImage}
+            onOpenSubAgentSession={onOpenSubAgentSession}
             onOpenTrace={onOpenTrace}
             onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
             onResolveAsk={onResolveAsk}

@@ -3,6 +3,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
 import {
+  Bot,
   FileDiff,
   FolderTree,
   MessageCircle,
@@ -121,6 +122,8 @@ export function AgentChatTabBar({
     switch (tab.kind) {
       case 'agent':
         return <MessageCircle className="size-3.5" />
+      case 'subagent':
+        return <Bot className="size-3.5" />
       case 'terminal':
         return <TerminalSquare className="size-3.5" />
       case 'files':
@@ -229,18 +232,22 @@ export function AgentChatTabBar({
                               </span>
                             )
                           }
-                          onDoubleClick={() => setRenaming({ id: tab.id, value: label })}
+                          onDoubleClick={tab.kind === 'subagent' ? undefined : () => setRenaming({ id: tab.id, value: label })}
                         />
                       </ContextMenuTrigger>
                       <ContextMenuContent className="min-w-44">
-                        <ContextMenuItem onSelect={() => setRenaming({ id: tab.id, value: label })}>
-                          <Pencil />
-                          {t('agentChat.tabs.rename')}
-                        </ContextMenuItem>
-                        <ContextMenuItem onSelect={() => onTogglePin(tab.id)}>
-                          {tab.pinned ? <PinOff /> : <Pin />}
-                          {tab.pinned ? t('agentChat.tabs.unpin') : t('agentChat.tabs.pin')}
-                        </ContextMenuItem>
+                        {tab.kind !== 'subagent' ? (
+                          <>
+                            <ContextMenuItem onSelect={() => setRenaming({ id: tab.id, value: label })}>
+                              <Pencil />
+                              {t('agentChat.tabs.rename')}
+                            </ContextMenuItem>
+                            <ContextMenuItem onSelect={() => onTogglePin(tab.id)}>
+                              {tab.pinned ? <PinOff /> : <Pin />}
+                              {tab.pinned ? t('agentChat.tabs.unpin') : t('agentChat.tabs.pin')}
+                            </ContextMenuItem>
+                          </>
+                        ) : null}
                         <ContextMenuItem onSelect={() => onMoveTab(tab.id, oppositeGroup(group), null)}>
                           <SplitSquareHorizontal />
                           {group === 'primary' ? t('agentChat.tabs.moveRight') : t('agentChat.tabs.moveLeft')}

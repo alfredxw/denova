@@ -1,4 +1,4 @@
-import { BookMarked, Pin, PinOff, X } from 'lucide-react'
+import { BookMarked, Bot, Pin, PinOff, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
@@ -21,11 +21,20 @@ import {
 
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
 const ACTIVE_TAB_STORAGE_PREFIX = 'nova.layout.activeTab:'
+export const WRITING_SUBAGENT_TAB_KEY = 'subagent'
 
 /** 编辑区 Tab：文件与工作区级工具共享同一套生命周期和持久化规则。 */
 export type Tab =
   | { kind: 'file'; path: string; pinned?: boolean }
   | { kind: 'lore'; pinned?: boolean }
+  | {
+      kind: 'subagent'
+      parentSessionId: string
+      sessionKey: string
+      title: string
+      returnTabKey: string | null
+      pinned?: never
+    }
 
 /** Tab 唯一标识，用于 React key 与持久化匹配 */
 export function tabKey(tab: Tab): string {
@@ -34,6 +43,8 @@ export function tabKey(tab: Tab): string {
       return `file:${tab.path}`
     case 'lore':
       return 'lore'
+    case 'subagent':
+      return WRITING_SUBAGENT_TAB_KEY
   }
 }
 
@@ -42,6 +53,7 @@ function pickLRUVictim(tabs: Tab[], protectedKey: string | null, activations: Ma
   let victim: string | null = null
   let lowest = Infinity
   for (const t of tabs) {
+    if (t.kind === 'subagent') continue
     const k = tabKey(t)
     if (k === protectedKey || t.pinned) continue
     const score = activations.get(k) ?? 0
@@ -77,7 +89,7 @@ export function orderTabs(tabs: Tab[]): Tab[] {
 /** Toggle pinning through the one canonical ordering path used by rendering and persistence. */
 export function setTabPinned(tabs: Tab[], key: string, pinned: boolean): Tab[] {
   return orderTabs(tabs.map((tab) => (
-    tabKey(tab) === key ? { ...tab, pinned: pinned || undefined } : tab
+    tab.kind !== 'subagent' && tabKey(tab) === key ? { ...tab, pinned: pinned || undefined } : tab
   )))
 }
 
@@ -97,7 +109,7 @@ export function enforceTabLimit(tabs: Tab[], protectedKey: string | null, max: n
   const deduped = orderTabs(dedupeTabs(tabs))
   if (max < 1) return deduped
   let current = deduped
-  while (current.length > max) {
+  while (current.filter((tab) => tab.kind !== 'subagent').length > max) {
     const victim = pickLRUVictim(current, protectedKey, activations)
     if (!victim) break
     current = current.filter((t) => tabKey(t) !== victim)
@@ -108,11 +120,13 @@ export function enforceTabLimit(tabs: Tab[], protectedKey: string | null, max: n
 
 /** Tab 显示标题 */
 function tabLabel(tab: Tab): string {
-  return tab.kind === 'file' ? tab.path.split('/').pop() || tab.path : ''
+  if (tab.kind === 'file') return tab.path.split('/').pop() || tab.path
+  return tab.kind === 'subagent' ? tab.title : ''
 }
 
 function formatChapterTabLabel(tab: Tab, summary: WorkspaceSummary | null, loreLabel: string): string {
   if (tab.kind === 'lore') return loreLabel
+  if (tab.kind === 'subagent') return tab.title
   return (summary?.chapters || []).find((chapter) => chapter.path === tab.path)?.display_title || tabLabel(tab)
 }
 
@@ -148,7 +162,7 @@ export function readActiveTabKeyFor(workspace: string): string | null {
 
 export function persistTabsFor(workspace: string, tabs: Tab[]) {
   if (typeof window === 'undefined' || !workspace) return
-  window.localStorage.setItem(TABS_STORAGE_PREFIX + workspace, JSON.stringify(tabs))
+  window.localStorage.setItem(TABS_STORAGE_PREFIX + workspace, JSON.stringify(tabs.filter((tab) => tab.kind !== 'subagent')))
 }
 
 export function persistActiveTabKeyFor(workspace: string, activeTabKey: string | null) {
@@ -204,7 +218,11 @@ export function TabController({
           ) : tabs.map((tab) => {
             const key = tabKey(tab)
             const label = formatChapterTabLabel(tab, summary, t('tab.lore'))
-            const icon = tab.kind === 'lore' ? <BookMarked className="size-3.5 text-emerald-500" /> : undefined
+            const icon = tab.kind === 'lore'
+              ? <BookMarked className="size-3.5 text-emerald-500" />
+              : tab.kind === 'subagent'
+                ? <Bot className="size-3.5 text-[var(--nova-text-muted)]" />
+                : undefined
             return (
               <SortableWorkbenchTabItem key={key} id={key} label={label} previewIcon={icon}>
                 {(dragHandleProps) => (
@@ -245,11 +263,15 @@ export function TabController({
                       </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent className="min-w-40">
-                      <ContextMenuItem onSelect={() => onTogglePin(tab)}>
-                        {tab.pinned ? <PinOff /> : <Pin />}
-                        {t(tab.pinned ? 'tab.unpin' : 'tab.pin')}
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
+                      {tab.kind !== 'subagent' ? (
+                        <>
+                          <ContextMenuItem onSelect={() => onTogglePin(tab)}>
+                            {tab.pinned ? <PinOff /> : <Pin />}
+                            {t(tab.pinned ? 'tab.unpin' : 'tab.pin')}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                        </>
+                      ) : null}
                       <ContextMenuItem onSelect={() => onCloseTab(tab)}>
                         {t('tab.closeCurrent')}
                       </ContextMenuItem>

@@ -6,6 +6,7 @@ import {
   type AgentPanelView,
   type WritingComposerSettingsController,
 } from '@/components/Chat/AgentPanel'
+import type { AgentSubAgentAskResolver, AgentSubAgentSessionTarget } from '@/components/Chat/AgentSubAgentSessionPanel'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import {
@@ -15,6 +16,8 @@ import {
 } from '@/features/changes/types'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { createProjectAgentChatClient } from '@/hooks/agent-chat-client'
+import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
+import { agentViewAskID } from '@/lib/agent-message-view'
 
 export interface AgentChatPendingAction {
   id: string
@@ -48,12 +51,16 @@ export interface AgentChatConversationTabProps {
   /** Adds host-owned model context while keeping the user's message as the transcript projection. */
   messageTransform?: (message: string) => string
   onConversationStateChange?: (state: AgentChatConversationState) => void
+  activeSubAgentSession?: AgentSubAgentSessionTarget | null
+  onSubAgentSessionOpen?: (target: AgentSubAgentSessionTarget) => void | Promise<void>
   host?: AgentChatConversationHost
 }
 
 export interface AgentChatConversationState {
+  sessionId: string
   messages: AgentPanelProps['messages']
   isStreaming: boolean
+  onResolveAsk?: AgentSubAgentAskResolver
 }
 
 /** Optional controls supplied when a durable conversation is hosted in the Writing dock. */
@@ -79,7 +86,8 @@ export interface AgentChatConversationHost {
   loreReferenceLabels: AgentPanelProps['loreReferenceLabels']
   loreSuggestions: AgentPanelProps['loreSuggestions']
   onInsertIllustration?: AgentPanelProps['onInsertIllustration']
-  onSubAgentDetailsChange?: AgentPanelProps['onSubAgentDetailsChange']
+  activeSubAgentSession?: AgentSubAgentSessionTarget | null
+  onSubAgentSessionOpen?: (target: AgentSubAgentSessionTarget) => void | Promise<void>
   composerContext: {
     references: AgentPanelProps['references']
     loreReferences: AgentPanelProps['loreReferences']
@@ -122,6 +130,8 @@ function AgentChatConversationTabComponent({
   onPendingActionConsumed,
   messageTransform,
   onConversationStateChange,
+  activeSubAgentSession,
+  onSubAgentSessionOpen,
   host,
 }: AgentChatConversationTabProps) {
   const client = useMemo(
@@ -237,9 +247,27 @@ function AgentChatConversationTabComponent({
     onRunningChange?.(projectId, sessionId, chat.isExecutionActive)
   }, [chat.isExecutionActive, onRunningChange, projectId, sessionId])
 
+  const resolveAsk = useCallback<AgentSubAgentAskResolver>(async (view, action) => {
+    const askID = agentViewAskID(view)
+    if (!askID) throw new Error('Cannot resolve an Ask without its interaction ID')
+    return resolveAgentAskAndRefresh(
+      action,
+      {
+        answer: (answers) => client.answerSessionAsk(sessionId, askID, answers),
+        cancel: () => client.cancelSessionAsk(sessionId, askID),
+      },
+      () => chat.loadHistory(sessionId),
+    )
+  }, [chat.loadHistory, client, sessionId])
+
   useEffect(() => {
-    onConversationStateChange?.({ messages: chat.messages, isStreaming: chat.isStreaming })
-  }, [chat.isStreaming, chat.messages, onConversationStateChange])
+    onConversationStateChange?.({
+      sessionId,
+      messages: chat.messages,
+      isStreaming: chat.isStreaming,
+      onResolveAsk: resolveAsk,
+    })
+  }, [chat.isStreaming, chat.messages, onConversationStateChange, resolveAsk, sessionId])
 
   const hostedComposerContext = host?.composerContext
   useEffect(() => {
@@ -375,7 +403,8 @@ function AgentChatConversationTabComponent({
       onApproveProposedPlan={chat.approveProposedPlan}
       onExitPlanMode={chat.exitPlanMode}
       onOpenChangeReview={onOpenChangeReview}
-      onSubAgentDetailsChange={active ? host?.onSubAgentDetailsChange : undefined}
+      activeSubAgentSession={activeSubAgentSession ?? host?.activeSubAgentSession}
+      onSubAgentSessionOpen={onSubAgentSessionOpen ?? host?.onSubAgentSessionOpen}
       onWorkspaceChanged={(paths) => onWorkspaceChanged?.(workspace, paths, {
         impact: 'structure',
         origin: 'external',

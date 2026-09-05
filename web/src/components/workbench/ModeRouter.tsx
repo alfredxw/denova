@@ -104,7 +104,9 @@ export function ModeRouter(props: ModeRouterProps) {
     loreItems,
     styleScenes,
     textSelections,
+    writingAgentConversation,
     onWritingAgentConversationStateChange,
+    onOpenWritingSubAgentSession,
     chatPlanMode,
     hasEarlierMessages,
     isLoadingEarlierHistory,
@@ -212,7 +214,6 @@ export function ModeRouter(props: ModeRouterProps) {
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
-  const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
   const [toolNavigationIntent, setToolNavigationIntent] = useState<ToolNavigationIntent | null>(null)
@@ -294,10 +295,6 @@ export function ModeRouter(props: ModeRouterProps) {
       })
     return () => { cancelled = true }
   }, [workspace])
-
-  useEffect(() => {
-    if (mode !== 'ide' || rightPanel !== 'ai') setAgentSubAgentDetailsOpen(false)
-  }, [mode, rightPanel])
 
   const loreReferenceLabels = useMemo(() => Object.fromEntries(loreItems.map((item) => [item.id, item.name])), [loreItems])
   const loreSuggestions = useMemo(() => loreItems.map((item) => ({
@@ -627,7 +624,14 @@ export function ModeRouter(props: ModeRouterProps) {
     onReviewFeedbackSubmissionFailed: restoreActiveReviewFeedback,
     onOpenChangeReview: openAgentChangeReview,
     onWorkspaceChanged: notifyExternalStructureChange,
-    onSubAgentDetailsChange: setAgentSubAgentDetailsOpen,
+    activeSubAgentSession: activeTab?.kind === 'subagent'
+      ? {
+          parentSessionId: activeTab.parentSessionId,
+          sessionKey: activeTab.sessionKey,
+          name: activeTab.title,
+        }
+      : null,
+    onSubAgentSessionOpen: onOpenWritingSubAgentSession,
     onConversationStateChange: onWritingAgentConversationStateChange,
   })
 
@@ -685,6 +689,7 @@ export function ModeRouter(props: ModeRouterProps) {
         tabs={openTabs}
         activeTabKey={activeTabKey}
         activeTab={activeTab}
+        subAgentConversation={writingAgentConversation}
         summary={summary}
         tabActions={writingInfoActions}
         activeFileKind={activeFileKind}
@@ -824,7 +829,6 @@ export function ModeRouter(props: ModeRouterProps) {
           summary={summary}
           projectVisible={projectVisible && !reviewVisible}
           activityBarExpanded={activityBarExpanded}
-          rightPanelWide={agentSubAgentDetailsOpen && !reviewVisible}
           rightPanelRailVisible={writingAgent.railVisible && !reviewVisible}
           centerFocus={reviewVisible}
           settingsOpen={settingsOpen}

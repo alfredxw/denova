@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
+import type { AgentSubAgentSessionTarget } from '@/components/Chat/AgentSubAgentSessionPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { workspaceChangeImpact, workspaceChangePaths, type WorkspaceChangeMetadata } from '@/features/changes/types'
@@ -34,6 +35,7 @@ import {
 import { AgentChatSecondaryPaneControl } from './AgentChatSecondaryPaneControl'
 import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 import { AgentChatTabContent } from './AgentChatTabContent'
+import type { AgentChatConversationState } from './AgentChatConversationTab'
 import { AgentChatTabDragContext } from './AgentChatTabDragContext'
 import { AgentChatWorkspaceSurface } from './AgentChatWorkspaceSurface'
 import { agentChatSessionBindingKey } from './sidebar-activity'
@@ -59,11 +61,13 @@ import {
   AGENT_CHAT_GROUP_IDS,
   agentChatPageIdsForProjectType,
   type AgentChatDocumentReviewNavigation,
+  type AgentChatAgentTab,
   type AgentChatGroupId,
   type AgentChatPageId,
   type AgentChatPageRenderContext,
   type AgentChatReviewRenderContext,
   type AgentChatReviewTab,
+  type AgentChatSubAgentTab,
   type AgentChatTab,
 } from './types'
 import type { ToolNavigationIntent, ToolNavigationTarget } from '@/components/Chat/tool-navigation'
@@ -133,6 +137,7 @@ export function AgentChatView({
   const [archiveTarget, setArchiveTarget] = useState<AgentChatProject | null>(null)
   /** Once mounted, a tab stays mounted so hidden conversations keep receiving their own stream. */
   const [mountedTabKeys, setMountedTabKeys] = useState<ReadonlySet<string>>(() => new Set())
+  const [conversationStates, setConversationStates] = useState<Record<string, AgentChatConversationState>>({})
   /** Optimistic live state reported by mounted hooks, layered over the project snapshot. */
   const [liveRunningBindings, setLiveRunningBindings] = useState<ReadonlySet<string>>(() => new Set())
   const liveRunningBindingsRef = useRef<ReadonlySet<string>>(new Set())
@@ -276,6 +281,33 @@ export function AgentChatView({
     tabFlushHandlersRef,
     markTerminalTabsClosing,
   })
+  const handleConversationStateChange = useCallback((projectID: string, tabID: string, state: AgentChatConversationState) => {
+    const key = mountedAgentChatTabKey(projectID, tabID)
+    setConversationStates((current) => {
+      const previous = current[key]
+      if (
+        previous?.sessionId === state.sessionId
+        && previous.messages === state.messages
+        && previous.isStreaming === state.isStreaming
+        && previous.onResolveAsk === state.onResolveAsk
+      ) return current
+      return { ...current, [key]: state }
+    })
+  }, [])
+  const openSubAgentSession = useCallback((parentTab: AgentChatAgentTab, target: AgentSubAgentSessionTarget) => {
+    if (target.parentSessionId !== parentTab.sessionId) return
+    openTab({
+      kind: 'subagent',
+      id: createTabId('subagent'),
+      projectId: parentTab.projectId,
+      workspace: parentTab.workspace,
+      group: tabGroup(parentTab) === 'primary' ? 'secondary' : 'primary',
+      parentTabId: parentTab.id,
+      parentSessionId: target.parentSessionId,
+      sessionKey: target.sessionKey,
+      title: target.name,
+    })
+  }, [openTab])
   const {
     commands: terminalCommands,
     statuses: terminalStatuses,
@@ -589,6 +621,8 @@ export function AgentChatView({
       switch (tab.kind) {
         case 'agent':
           return sessionTitles.get(agentChatSessionBindingKey(tab.projectId, tab.sessionId)) || tab.pendingTitle || t('chat.untitledSession')
+        case 'subagent':
+          return tab.title
         case 'terminal':
           return terminalTabLabel(tab, t)
         case 'files':
@@ -770,6 +804,19 @@ export function AgentChatView({
                 conversationSyncSignals.get(agentChatSessionBindingKey(tab.projectId, tab.sessionId)) ?? 0,
               ].join(':')
             : ''
+          const subAgentTab = tab.kind === 'agent'
+            ? state.tabs.find((candidate): candidate is AgentChatSubAgentTab => candidate.kind === 'subagent' && candidate.parentTabId === tab.id)
+            : undefined
+          const activeSubAgentSession = subAgentTab && state.activeTabIds[tabGroup(subAgentTab)] === subAgentTab.id
+            ? {
+                parentSessionId: subAgentTab.parentSessionId,
+                sessionKey: subAgentTab.sessionKey,
+                name: subAgentTab.title,
+              }
+            : null
+          const conversationState = tab.kind === 'subagent'
+            ? conversationStates[mountedAgentChatTabKey(project.id, tab.parentTabId)]
+            : undefined
           return (
             <AgentChatTabContent
               tab={tab}
@@ -777,6 +824,8 @@ export function AgentChatView({
               active={active}
               running={projectRunning}
               conversationSyncRevision={conversationSyncRevision}
+              conversationState={conversationState}
+              activeSubAgentSession={activeSubAgentSession}
               composerSettings={composerSettings}
               tellers={tellers}
               imagePresets={imagePresets}
@@ -801,6 +850,13 @@ export function AgentChatView({
               onOpenChangeReview={openChangeReview}
               onWorkspaceChanged={handleWorkspaceChanged}
               onRunningChange={handleRunningChange}
+              onConversationStateChange={handleConversationStateChange}
+              onOpenSubAgentSession={(parentTab, target) => {
+                openSubAgentSession(parentTab, target)
+                if (!mobileControls.isMobile) return
+                if (tabGroup(parentTab) === 'primary') mobileControls.openRight()
+                else mobileControls.closePane()
+              }}
               onDraftCommitted={(message) => commitDraftSession(project.id, tab.id, message)}
               onTerminalSessionEstablished={(tabID, session) => bindTerminalSession(project.id, tabID, session)}
               onTerminalTitleChange={(tabID, title) => updateTerminalTitle(project.id, tabID, title)}

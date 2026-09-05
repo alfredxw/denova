@@ -189,13 +189,15 @@ export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, proje
     const allowedPages = agentChatPageIdsForProjectType(project.type)
     const projectTabs = source.tabs.filter((tab) => {
       if (tab.kind === 'page') return allowedPages.includes(tab.pageId)
-      return project.type === 'book' || tab.kind === 'agent' || tab.kind === 'terminal' || tab.kind === 'files'
+      return project.type === 'book' || tab.kind === 'agent' || tab.kind === 'subagent' || tab.kind === 'terminal' || tab.kind === 'files'
     })
     // Durable sessions are authoritative only when the project response is complete. If the
     // backend truncated a large history, keep unknown tabs rather than discarding valid data.
-    const eligibleTabs = projectTabs.filter((tab) =>
+    const sessionEligibleTabs = projectTabs.filter((tab) =>
       tab.kind !== 'agent' || tab.draft || !sessionListComplete || visibleSessionIDs.has(tab.sessionId),
     )
+    const eligibleAgentTabIDs = new Set(sessionEligibleTabs.flatMap((tab) => tab.kind === 'agent' ? [tab.id] : []))
+    const eligibleTabs = sessionEligibleTabs.filter((tab) => tab.kind !== 'subagent' || eligibleAgentTabIDs.has(tab.parentTabId))
     const tabs = eligibleTabs.map((tab) => ({
       ...tab,
       projectId: project.id,
@@ -223,7 +225,7 @@ export function persistWorkbenchState(state: AgentChatWorkbenchState) {
     Object.entries(state.projects).map(([projectId, project]) => {
       // Blank drafts are deliberately ephemeral: a reload or app restart must not turn them into
       // durable, indistinguishable conversations.
-      const tabs = project.tabs.filter((tab) => tab.kind !== 'agent' || !tab.draft)
+      const tabs = project.tabs.filter((tab) => tab.kind !== 'subagent' && (tab.kind !== 'agent' || !tab.draft))
       const activeTabIds = Object.fromEntries(
         AGENT_CHAT_GROUP_IDS.map((group) => [group, tabs.some((tab) => tab.id === project.activeTabIds[group]) ? project.activeTabIds[group] : null]),
       ) as ActiveTabIds
@@ -285,6 +287,7 @@ export function dedupeTabs(tabs: AgentChatTab[]): AgentChatTab[] {
   const seenSessions = new Set<string>()
   const seenDraftGroups = new Set<AgentChatGroupId>()
   const seenThreads = new Set<string>()
+  const seenSubAgentParents = new Set<string>()
   let seenFiles = false
   const seenIds = new Set<string>()
   const out: AgentChatTab[] = []
@@ -306,6 +309,10 @@ export function dedupeTabs(tabs: AgentChatTab[]): AgentChatTab[] {
     if (tab.kind === 'review') {
       if (seenThreads.has(tab.threadID)) continue
       seenThreads.add(tab.threadID)
+    }
+    if (tab.kind === 'subagent') {
+      if (seenSubAgentParents.has(tab.parentTabId)) continue
+      seenSubAgentParents.add(tab.parentTabId)
     }
     if (tab.kind === 'files') {
       if (seenFiles) continue
@@ -343,8 +350,8 @@ export function orderTabs(tabs: AgentChatTab[]): AgentChatTab[] {
 /** Drop the oldest unpinned tab until the set fits, never the one just opened. */
 function trimTabs(tabs: AgentChatTab[]): AgentChatTab[] {
   const out = [...tabs]
-  while (out.length > MAX_AGENT_CHAT_TABS) {
-    const index = out.findIndex((tab, position) => !tab.pinned && position < out.length - 1)
+  while (out.filter((tab) => tab.kind !== 'subagent').length > MAX_AGENT_CHAT_TABS) {
+    const index = out.findIndex((tab, position) => tab.kind !== 'subagent' && !tab.pinned && position < out.length - 1)
     if (index === -1) break
     out.splice(index, 1)
   }
@@ -362,12 +369,15 @@ export function appendTab(tabs: AgentChatTab[], next: AgentChatTab): { tabs: Age
     }
     if (tab.kind === 'review' && next.kind === 'review') return tab.threadID === next.threadID
     if (tab.kind === 'files' && next.kind === 'files') return true
+    if (tab.kind === 'subagent' && next.kind === 'subagent') return tab.parentTabId === next.parentTabId
     return false
   })
   if (existing) {
     const updated = existing.kind === 'files' && next.kind === 'files' && next.selectedPath
       ? tabs.map((tab) => tab.id === existing.id ? { ...tab, selectedPath: next.selectedPath } : tab)
-      : tabs
+      : existing.kind === 'subagent' && next.kind === 'subagent'
+        ? orderTabs(tabs.map((tab) => tab.id === existing.id ? { ...next, id: existing.id } : tab))
+        : tabs
     return { tabs: updated, activeId: existing.id }
   }
   return {
@@ -393,13 +403,13 @@ export function moveTab(tabs: AgentChatTab[], sourceId: string, group: AgentChat
 
 /** Pin or unpin a tab; pinning re-sorts it to the front of its own strip. */
 export function setTabPinned(tabs: AgentChatTab[], tabId: string, pinned: boolean): AgentChatTab[] {
-  return orderTabs(tabs.map((tab) => (tab.id === tabId ? { ...tab, pinned: pinned || undefined } : tab)))
+  return orderTabs(tabs.map((tab) => (tab.kind !== 'subagent' && tab.id === tabId ? { ...tab, pinned: pinned || undefined } : tab)))
 }
 
 /** Rename a tab. An empty title clears the override so the derived one takes over again. */
 export function setTabTitle(tabs: AgentChatTab[], tabId: string, title: string): AgentChatTab[] {
   const trimmed = title.trim()
-  return tabs.map((tab) => (tab.id === tabId ? { ...tab, customTitle: trimmed || undefined } : tab))
+  return tabs.map((tab) => (tab.kind !== 'subagent' && tab.id === tabId ? { ...tab, customTitle: trimmed || undefined } : tab))
 }
 
 /** Update the program-owned title without disturbing an explicit user rename. */

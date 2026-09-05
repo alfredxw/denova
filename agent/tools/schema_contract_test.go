@@ -30,17 +30,12 @@ func (schemaTaskExecutor) Respond(context.Context, TaskRef, string, agent.Intera
 }
 func (schemaTaskExecutor) Abort(context.Context, TaskRef, agent.AbortRequest) error { return nil }
 
-type schemaSkillSource struct{}
+type schemaSkillLoader struct{}
 
-func (schemaSkillSource) Identity() agent.CapabilityIdentity {
+func (schemaSkillLoader) Identity() agent.CapabilityIdentity {
 	return agent.CapabilityIdentity{Kind: "skills.schema-test", Version: 1}
 }
-func (schemaSkillSource) List(context.Context, SkillQuery) ([]Skill, error) {
-	return nil, nil
-}
-func (schemaSkillSource) Read(context.Context, SkillRef) (SkillContent, error) {
-	return SkillContent{}, nil
-}
+func (schemaSkillLoader) Load(context.Context, string) (string, error) { return "instructions", nil }
 
 func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 	tests := []struct {
@@ -57,13 +52,6 @@ func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 				"start": {"action", "starts"}, "observe": {"action", "targets"},
 				"steer": {"action", "input", "refs"},
 				"abort": {"action", "reason", "refs"},
-			},
-		},
-		{
-			name: "skill", build: func() agent.Toolset { return Skills(schemaSkillSource{}) },
-			actions: []string{"list", "read"},
-			properties: map[string][]string{
-				"list": {"action", "limit", "query"}, "read": {"action", "refs"},
 			},
 		},
 		{
@@ -120,6 +108,20 @@ func TestTaskWaitUsesOneClosedTargetSchema(t *testing.T) {
 	encoded, err := json.Marshal(schema)
 	if err != nil || !strings.Contains(string(encoded), `"additionalProperties":false`) {
 		t.Fatalf("task_wait schema is not closed: %s, %v", encoded, err)
+	}
+}
+
+func TestSkillToolLoadsOneExactName(t *testing.T) {
+	schema := preparedNamedToolSchema(t, func() agent.Toolset { return Skills(schemaSkillLoader{}) }, "skill")
+	if schema.Type != "object" || len(schema.OneOf) != 0 || !containsString(schema.Required, "name") {
+		t.Fatalf("skill schema = %#v", schema)
+	}
+	if got := schemaPropertyNames(schema); !reflect.DeepEqual(got, []string{"name"}) {
+		t.Fatalf("skill properties = %#v", got)
+	}
+	encoded, err := json.Marshal(schema)
+	if err != nil || !strings.Contains(string(encoded), `"additionalProperties":false`) {
+		t.Fatalf("skill schema is not closed: %s, %v", encoded, err)
 	}
 }
 

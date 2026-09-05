@@ -12,6 +12,11 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Major fixes / 重要修复
+
+- Agent 首轮上下文现在直接包含当前可用的 Skill 目录，按名称加载只需一次工具调用；显式 `/<skill-name>` 仍会直接预载，减少等待和无效上下文消耗。
+- The first Agent context now includes the available Skill catalog, so loading by name takes one tool call; explicit `/<skill-name>` invocations remain preloaded, reducing latency and unnecessary context usage.
+
 ## [v0.4.0] - 2026-09-04
 
 ### Brief / 简要说明

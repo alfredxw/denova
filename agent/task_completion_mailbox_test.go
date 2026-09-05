@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
@@ -71,9 +72,12 @@ func TestTaskCompletionMailboxInjectsAfterToolBoundaryWithoutWait(t *testing.T) 
 	}
 }
 
-func TestTaskCompletionArrivingDuringFinalResponseWaitsForNextTurn(t *testing.T) {
-	ctx := context.Background()
-	model := &finalBoundaryModel{started: make(chan struct{}), release: make(chan struct{})}
+func TestTrackedTaskCompletionsBlockModelUntilAllFinish(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	model := &finalBoundaryModel{
+		started: make(chan struct{}), release: make(chan struct{}),
+	}
 	owner, err := New(ctx, Definition{Name: "parent", Model: model}, WithSessionStore(agentsession.Memory()))
 	if err != nil {
 		t.Fatal(err)
@@ -83,12 +87,29 @@ func TestTaskCompletionArrivingDuringFinalResponseWaitsForNextTurn(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, id := range []string{"first-completion", "second-completion"} {
+		if tracked, trackErr := session.TrackTaskCompletion(ctx, id); trackErr != nil || !tracked {
+			t.Fatalf("track %q accepted=%t err=%v", id, tracked, trackErr)
+		}
+	}
 	first, err := session.Run(ctx, Text("first turn"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-model.started
-	if accepted, enqueueErr := session.EnqueueTaskCompletion(ctx, testTaskCompletion("late-completion", "late answer")); enqueueErr != nil || !accepted {
+	select {
+	case <-model.started:
+		t.Fatal("parent called the model before its tracked children completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	if accepted, enqueueErr := session.EnqueueTaskCompletion(ctx, testTaskCompletion("first-completion", "first answer")); enqueueErr != nil || !accepted {
+		t.Fatalf("enqueue accepted=%t err=%v", accepted, enqueueErr)
+	}
+	select {
+	case <-model.started:
+		t.Fatal("parent called the model while one tracked child remained active")
+	case <-time.After(20 * time.Millisecond):
+	}
+	if accepted, enqueueErr := session.EnqueueTaskCompletion(ctx, testTaskCompletion("second-completion", "second answer")); enqueueErr != nil || !accepted {
 		t.Fatalf("enqueue accepted=%t err=%v", accepted, enqueueErr)
 	}
 	close(model.release)
@@ -96,22 +117,14 @@ func TestTaskCompletionArrivingDuringFinalResponseWaitsForNextTurn(t *testing.T)
 		t.Fatalf("first result=%#v err=%v", result, waitErr)
 	}
 	if calls := model.callCount(); calls != 1 {
-		t.Fatalf("late completion started another model call: %d", calls)
+		t.Fatalf("model calls = %d, want one call after all completions", calls)
 	}
-	watch, err := session.WatchTaskCompletions(ctx, []string{"late-completion"})
-	if err != nil || len(watch.PendingIDs) != 1 {
-		t.Fatalf("late completion pending=%#v err=%v", watch.PendingIDs, err)
-	}
-
-	second, err := session.Run(ctx, Text("second turn"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result, waitErr := second.Wait(ctx); waitErr != nil || result.Status != ResultCompleted {
-		t.Fatalf("second result=%#v err=%v", result, waitErr)
+	watch, err := session.WatchTaskCompletions(ctx, []string{"first-completion", "second-completion"})
+	if err != nil || len(watch.PendingIDs) != 0 {
+		t.Fatalf("delivered completion pending=%#v err=%v", watch.PendingIDs, err)
 	}
 	inputs := model.capturedInputs()
-	if len(inputs) != 2 || countTaskCompletionMessages(inputs[0]) != 0 || countTaskCompletionMessages(inputs[1]) != 1 {
+	if len(inputs) != 1 || countTaskCompletionMessages(inputs[0]) != 2 {
 		t.Fatalf("model inputs = %#v", inputs)
 	}
 }
@@ -239,11 +252,13 @@ func TestTaskCompletionCheckpointFailureKeepsPendingAndSkipsProvider(t *testing.
 }
 
 type finalBoundaryModel struct {
-	mu      sync.Mutex
-	started chan struct{}
-	release chan struct{}
-	once    sync.Once
-	inputs  [][]*Message
+	mu            sync.Mutex
+	started       chan struct{}
+	release       chan struct{}
+	secondStarted chan struct{}
+	once          sync.Once
+	secondOnce    sync.Once
+	inputs        [][]*Message
 }
 
 func (model *finalBoundaryModel) Generate(ctx context.Context, input []*Message, _ ...ModelOption) (*Message, error) {
@@ -270,6 +285,8 @@ func (model *finalBoundaryModel) next(ctx context.Context, input []*Message) (*M
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	} else if call == 2 && model.secondStarted != nil {
+		model.secondOnce.Do(func() { close(model.secondStarted) })
 	}
 	if call > 2 {
 		return nil, errors.New("final-boundary model exhausted")

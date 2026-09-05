@@ -17,11 +17,13 @@ func ComposeSubAgentInstruction(cfg *config.Config, parent SystemPromptCompositi
 
 	fragments := append([]SystemPromptFragment(nil), parent.fragments...)
 	var metadata strings.Builder
+	metadata.WriteString("Only the root Agent may interact with the user. Never ask the user or wait for user input. Make safe assumptions when possible; otherwise return the blocker to the parent Agent.")
 	name := strings.TrimSpace(sub.Name)
 	if name == "" {
 		name = strings.TrimSpace(sub.ID)
 	}
 	if name != "" {
+		metadata.WriteString("\n")
 		metadata.WriteString("Name: " + name)
 	}
 	if description := strings.TrimSpace(sub.Description); description != "" {

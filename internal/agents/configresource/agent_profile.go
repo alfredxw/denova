@@ -136,8 +136,9 @@ func newAgentProfileResource(cfg *config.Config) Adapter {
 }
 
 func validateAgentProfileReadRequest(request ReadRequest, exact bool) error {
-	if strings.TrimSpace(request.Scope) != "" {
-		return fmt.Errorf("agent_profile reads use the singleton %q snapshot and do not accept scope; select user or workspace only on config_apply", agentProfileSnapshotID)
+	scope := strings.TrimSpace(request.Scope)
+	if scope != "" && scope != "user" && scope != "workspace" {
+		return fmt.Errorf("agent_profile read scope must be user or workspace")
 	}
 	if strings.TrimSpace(request.Query) != "" {
 		return fmt.Errorf("agent_profile snapshot does not support query")

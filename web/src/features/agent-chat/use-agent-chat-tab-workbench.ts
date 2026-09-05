@@ -43,6 +43,16 @@ export function useAgentChatTabWorkbench({
       const appended = appendTab(currentState.tabs, tab)
       const opened = appended.tabs.find((item) => item.id === appended.activeId)
       const group = opened ? tabGroup(opened) : tabGroup(tab)
+      const previous = currentState.tabs.find((item) => item.id === appended.activeId)
+      const previousGroup = previous ? tabGroup(previous) : group
+      const activeTabIds = { ...currentState.activeTabIds, [group]: appended.activeId }
+      if (previousGroup !== group && activeTabIds[previousGroup] === appended.activeId) {
+        activeTabIds[previousGroup] = nextActiveTabId(
+          tabsInGroup(currentState.tabs, previousGroup),
+          appended.activeId,
+          appended.activeId,
+        )
+      }
       return {
         activeProjectId: tab.projectId,
         projects: {
@@ -50,7 +60,7 @@ export function useAgentChatTabWorkbench({
           [tab.projectId]: {
             ...currentState,
             tabs: appended.tabs,
-            activeTabIds: { ...currentState.activeTabIds, [group]: appended.activeId },
+            activeTabIds,
             focusedGroup: group,
             secondaryVisible: group === 'secondary' || currentState.secondaryVisible,
           },
@@ -62,9 +72,12 @@ export function useAgentChatTabWorkbench({
 
   const closeTabs = useCallback(async (projectID: string, tabIDs: string[]): Promise<boolean> => {
     if (tabIDs.length === 0) return true
-    const closingKeys = new Set(tabIDs.map((id) => mountedAgentChatTabKey(projectID, id)))
-    if (!(await flushTabDrafts(closingKeys))) return false
     const closing = new Set(tabIDs)
+    for (const tab of workbenchRef.current.projects[projectID]?.tabs ?? []) {
+      if (tab.kind === 'subagent' && closing.has(tab.parentTabId)) closing.add(tab.id)
+    }
+    const closingKeys = new Set([...closing].map((id) => mountedAgentChatTabKey(projectID, id)))
+    if (!(await flushTabDrafts(closingKeys))) return false
     const doomed = workbenchRef.current.projects[projectID]?.tabs.filter((tab) => closing.has(tab.id)) ?? []
     if (doomed.length === 0) return true
     markTerminalTabsClosing(doomed)

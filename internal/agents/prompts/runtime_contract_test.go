@@ -161,6 +161,29 @@ func TestGeneralAgentInstructionUsesProjectNeutralFilesystemRules(t *testing.T) 
 	}
 }
 
+func TestSubAgentInstructionForbidsUserInteraction(t *testing.T) {
+	parent, err := ComposeGeneralInstruction(&config.Config{Workspace: "/workspace"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	composition, err := ComposeSubAgentInstruction(&config.Config{Workspace: "/workspace"}, parent, config.SubAgentConfig{
+		ID: "researcher", Name: "Researcher", Description: "Inspect one bounded question",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruction := composition.Instruction()
+	for _, required := range []string{
+		"Only the root Agent may interact with the user",
+		"Never ask the user or wait for user input",
+		"return the blocker to the parent Agent",
+	} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("SubAgent instruction missing %q:\n%s", required, instruction)
+		}
+	}
+}
+
 func TestBuiltinAgentPromptsDoNotMentionOtherAgentProducts(t *testing.T) {
 	prompts := BuiltinAgentPrompts(&config.Config{}, nil, IDEStoryTeller{})
 	values := map[string]string{

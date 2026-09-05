@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileText, PanelRightOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ToolCallChatMessage } from '@/lib/api'
 import { CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -14,8 +14,9 @@ import { toolDisplayName } from './tool-display-name'
 import { formatMaybeJSON, hasSpecializedToolDetail, ToolCallDetail, toolDetailSummary } from './message-tool-detail'
 import { toolPresentationKind } from '@/lib/tool-presentation'
 import { workspaceFileName } from '@/lib/workspace-path'
+import { taskSubAgentSessionKey } from './subagent-session'
 
-export function ToolExecutionBlock({ message, showAgentSource = true, onResolve, onLayoutChange }: { message: ToolCallChatMessage; showAgentSource?: boolean; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void }) {
+export function ToolExecutionBlock({ message, showAgentSource = true, onResolve, onLayoutChange, onOpenSubAgentSession }: { message: ToolCallChatMessage; showAgentSource?: boolean; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void; onOpenSubAgentSession?: (sessionKey: string) => void }) {
   const { t } = useTranslation()
   const approvalInteraction = message.ask?.kind === 'tool_approval' ? message.ask : undefined
   const approvalPending = approvalInteraction?.status === 'pending'
@@ -60,6 +61,8 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
     }
   }
   const resultBody = stripToolResultMetadata(result)
+  const taskSessionKey = name === 'task' && status === 'success' ? taskSubAgentSessionKey(resultBody) : ''
+  const opensTaskSession = Boolean(taskSessionKey && onOpenSubAgentSession)
   const specializedSummary = canInterpretInput ? toolDetailSummary(name, rawArgs, resultBody, t) : ''
   if (specializedSummary) summary = specializedSummary
   const resultEnvelope = decodeToolResultEnvelope(resultBody)
@@ -81,14 +84,19 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   if (hasResult) displaySummary = specializedSummary || commandDescription || fileResultSummary || resultPreview || t('chat.tool.done')
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result)
-  const canToggleDetail = hasDetail && !isInputStreaming
+  const canToggleDetail = hasDetail && !isInputStreaming && !opensTaskSession
 
   return (
     <div className="flex justify-start">
-      <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[11px] shadow-sm">
+      <Tool open={expanded} onOpenChange={opensTaskSession ? undefined : setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[11px] shadow-sm">
         <CollapsibleTrigger
           type="button"
-          disabled={!canToggleDetail}
+          disabled={!canToggleDetail && !opensTaskSession}
+          onClick={opensTaskSession ? (event) => {
+            event.preventDefault()
+            onOpenSubAgentSession?.(taskSessionKey)
+          } : undefined}
+          aria-label={opensTaskSession ? t('chat.subagent.openSession') : undefined}
           data-nova-tool-header
           className={`grid min-h-9 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 px-2.5 py-1.5 text-left leading-4 transition-colors enabled:cursor-pointer enabled:hover:bg-[var(--nova-hover)] disabled:cursor-default ${showStackedOutcome ? 'gap-y-0.5' : ''}`}
         >
@@ -126,6 +134,9 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
               >
                 {headerSummary}
               </span>
+            )}
+            {opensTaskSession && (
+              <PanelRightOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" aria-hidden="true" />
             )}
           </div>
           {showStackedOutcome && (
@@ -246,9 +257,9 @@ function parseTaskSubagentType(args: string) {
     if (typeof data.subagent_type === 'string') return data.subagent_type
     const starts = Array.isArray(data.starts) ? data.starts : []
     const first = starts[0]
-    return first && typeof first === 'object' && typeof (first as Record<string, unknown>).agent === 'string'
-      ? String((first as Record<string, unknown>).agent)
-      : ''
+    if (!first || typeof first !== 'object') return ''
+    const agent = (first as Record<string, unknown>).agent
+    return typeof agent === 'string' && agent.trim() ? agent : 'general-purpose'
   } catch {
     const match = args.match(/"subagent_type"\s*:\s*"([^"]+)"/)
     return match?.[1] || ''

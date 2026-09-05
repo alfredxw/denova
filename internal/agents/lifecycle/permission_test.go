@@ -70,6 +70,23 @@ func TestDenovaPermissionPolicyBlocksCriticalShellCommand(t *testing.T) {
 	}
 }
 
+func TestNonInteractivePermissionPolicyBlocksApprovalPrompt(t *testing.T) {
+	policy, err := NewPermissionPolicy(PermissionConfig{
+		Mode: config.AgentApprovalAsk, Workspace: t.TempDir(), GOOS: "linux", NonInteractive: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := policy.Evaluate(context.Background(), permissionTestRequest(`{"command":"go test ./..."}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Kind != agent.PermissionBlock || decision.Details.CanRemember ||
+		decision.Reason.Chinese == "" || decision.Reason.English == "" {
+		t.Fatalf("decision=%#v", decision)
+	}
+}
+
 func TestDenovaPermissionRememberIsVisibleImmediatelyAndDoesNotChangeIdentity(t *testing.T) {
 	workspace := t.TempDir()
 	var durable []config.AgentApprovalRule

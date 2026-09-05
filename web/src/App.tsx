@@ -28,8 +28,10 @@ import {
   reorderTabs,
   setTabPinned,
   tabKey,
+  WRITING_SUBAGENT_TAB_KEY,
   type Tab,
 } from '@/components/workbench/TabController'
+import type { AgentSubAgentSessionTarget } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { ModeRouter } from '@/components/workbench/ModeRouter'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import {
@@ -99,6 +101,7 @@ function App() {
   const [characterCardError, setCharacterCardError] = useState('')
   const [loreItems, setLoreItems] = useState<LoreItem[]>([])
   const [writingAgentConversation, setWritingAgentConversation] = useState<AgentChatConversationState>({
+    sessionId: '',
     messages: [],
     isStreaming: false,
   })
@@ -404,7 +407,7 @@ function App() {
       // before publishing the tab state so a deleted file cannot become a ghost tab.
       while (activeKey) {
         const target = restoredTabs.find((tab) => tabKey(tab) === activeKey)
-        if (!target || target.kind === 'lore') break
+        if (!target || target.kind !== 'file') break
         const result = await selectFile(target.path)
         if (cancelled) return
         if (result !== 'missing') break
@@ -416,7 +419,7 @@ function App() {
       setOpenTabs(restoredTabs)
       setActiveTabKey(activeKey)
       const target = activeKey ? restoredTabs.find((tab) => tabKey(tab) === activeKey) : null
-      if (!target || target.kind === 'lore') clearSelectedFile()
+      if (!target || target.kind !== 'file') clearSelectedFile()
     }
     void restoreWorkspaceView()
     return () => { cancelled = true }
@@ -433,7 +436,7 @@ function App() {
   }, [openTabs, workspace])
 
   useEffect(() => {
-    persistActiveTabKeyFor(workspace, activeTabKey)
+    if (activeTabKey !== WRITING_SUBAGENT_TAB_KEY) persistActiveTabKeyFor(workspace, activeTabKey)
   }, [activeTabKey, workspace])
 
   useEffect(() => {
@@ -681,6 +684,10 @@ function App() {
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
+    if (tab.kind === 'subagent') {
+      setActiveTabKey(key)
+      return
+    }
     if (tab.kind === 'lore') {
       await handleOpenLoreTab()
       return
@@ -696,7 +703,7 @@ function App() {
     const key = tabKey(tab)
     const idx = openTabs.findIndex((item) => tabKey(item) === key)
     if (idx === -1) return
-    if (activeTabKey === key && !(await flushEditorDraft())) return
+    if (activeTabKey === key && tab.kind !== 'subagent' && !(await flushEditorDraft())) return
     const next = openTabs.filter((item) => tabKey(item) !== key)
     setOpenTabs(next)
     if (activeTabKey !== key) return
@@ -705,9 +712,42 @@ function App() {
       clearSelectedFile()
       return
     }
-    const fallback = next[idx] ?? next[idx - 1] ?? next[0]
+    const preferredReturnKey = tab.kind === 'subagent' ? tab.returnTabKey : null
+    const fallback = (preferredReturnKey ? next.find((item) => tabKey(item) === preferredReturnKey) : null)
+      ?? next[idx]
+      ?? next[idx - 1]
+      ?? next[0]
     await handleActivateTab(fallback)
   }, [activeTabKey, clearSelectedFile, flushEditorDraft, handleActivateTab, openTabs])
+
+  const handleOpenWritingSubAgentSession = useCallback(async (target: AgentSubAgentSessionTarget) => {
+    if (target.parentSessionId !== writingAgentConversation.sessionId) return
+    if (activeTabKey !== WRITING_SUBAGENT_TAB_KEY && !(await flushEditorDraft())) return
+    setOpenTabs((current) => {
+      const existing = current.find((tab) => tab.kind === 'subagent')
+      const returnTabKey = existing?.kind === 'subagent' && activeTabKey === WRITING_SUBAGENT_TAB_KEY
+        ? existing.returnTabKey
+        : activeTabKey
+      const nextTab: Tab = {
+        kind: 'subagent',
+        parentSessionId: target.parentSessionId,
+        sessionKey: target.sessionKey,
+        title: target.name,
+        returnTabKey,
+      }
+      return existing
+        ? current.map((tab) => tab.kind === 'subagent' ? nextTab : tab)
+        : [...current, nextTab]
+    })
+    setActiveTabKey(WRITING_SUBAGENT_TAB_KEY)
+  }, [activeTabKey, flushEditorDraft, writingAgentConversation.sessionId])
+
+  useEffect(() => {
+    if (!writingAgentConversation.sessionId) return
+    const subAgentTab = openTabs.find((tab) => tab.kind === 'subagent')
+    if (!subAgentTab || subAgentTab.parentSessionId === writingAgentConversation.sessionId) return
+    void handleCloseTab(subAgentTab)
+  }, [handleCloseTab, openTabs, writingAgentConversation.sessionId])
 
   const handleToggleTabPin = useCallback((tab: Tab) => {
     setOpenTabs((current) => setTabPinned(current, tabKey(tab), !tab.pinned))
@@ -883,7 +923,9 @@ function App() {
         loreItems={loreItems}
         styleScenes={styleScenes}
         textSelections={textSelections}
+        writingAgentConversation={writingAgentConversation}
         onWritingAgentConversationStateChange={setWritingAgentConversation}
+        onOpenWritingSubAgentSession={handleOpenWritingSubAgentSession}
         chatPlanMode={planMode}
         hasEarlierMessages={hasEarlierMessages}
         isLoadingEarlierHistory={isLoadingEarlierHistory}

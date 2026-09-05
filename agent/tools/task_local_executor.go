@@ -59,6 +59,8 @@ type LocalTasks struct {
 	completionParent *agent.Session
 	maxResultBytes   int
 	startMu          sync.Mutex
+	watchMu          sync.Mutex
+	watched          map[string]struct{}
 }
 
 func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*LocalTasks, error) {
@@ -106,6 +108,7 @@ func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*Loc
 	return &LocalTasks{
 		agents: resolved, ordered: ordered, parallelism: options.Parallelism,
 		completionParent: options.CompletionParent, maxResultBytes: options.MaxResultBytes,
+		watched: make(map[string]struct{}),
 		identity: toolsetIdentity("tasks.local", struct {
 			Parallelism    int
 			MaxResultBytes int
@@ -151,10 +154,8 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 	if existing, found, existingErr := tasks.existingTask(ctx, candidate, sessionID, commandID); existingErr != nil {
 		return Task{}, existingErr
 	} else if found {
-		if isTaskTerminal(existing.Status) {
-			if completionErr := tasks.enqueueTaskCompletion(ctx, existing); completionErr != nil {
-				return Task{}, completionErr
-			}
+		if completionErr := tasks.resumeCompletionTracking(ctx, existing); completionErr != nil {
+			return Task{}, completionErr
 		}
 		return existing, nil
 	}
@@ -180,7 +181,11 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		return Task{}, fmt.Errorf("start task Run: %w", err)
 	}
 	ref := TaskRef{Agent: candidate.Name, Session: sessionID, Run: run.ID()}
-	tasks.watchCompletion(run, ref)
+	if completionErr := tasks.trackTaskCompletion(ctx, ref); completionErr != nil {
+		_, _ = run.Abort(context.Background(), agent.AbortRequest{Reason: "parent task completion tracking failed"})
+		return Task{}, completionErr
+	}
+	tasks.watchCompletion(ctx, run, ref)
 	return Task{Ref: ref, Status: "running"}, nil
 }
 
@@ -409,6 +414,9 @@ func (tasks *LocalTasks) agent(name string) (LocalTaskAgent, error) {
 		return LocalTaskAgent{}, errors.New("local tasks are unavailable")
 	}
 	name = strings.TrimSpace(name)
+	if name == "" {
+		name = DefaultTaskAgentName
+	}
 	candidate, ok := tasks.agents[name]
 	if !ok {
 		return LocalTaskAgent{}, fmt.Errorf("task Agent %q was not found", name)

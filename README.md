@@ -31,10 +31,6 @@
 
 ![Denova 游戏](./img/interactive.png)
 
-### 剧情分支
-
-![剧情分支](./img/branch.png)
-
 ### 资料库
 
 ![Denova 资料库](./img/setting.png)
@@ -131,7 +127,7 @@ Denova 仍在快速迭代中，欢迎反馈问题、分享用法或讨论创作�
 [Discord 社区](https://discord.gg/QuHu2aPya)
 
 <p align="center">
-  <img src="./img/wechat.jpg" alt="微信交流" width="240">
+  <img src="./img/wechat.png" alt="微信交流" width="240">
 </p>
 
 ## 赞助项目

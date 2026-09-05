@@ -404,7 +404,7 @@ func TestAgentProfileReadNeverReturnsSecrets(t *testing.T) {
 
 func TestAgentProfileGetUsesExactSingletonSnapshotContract(t *testing.T) {
 	readTool := configManagerToolByName(t, &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, "config_read")
-	output, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"agent_profile","ids":["registry"]}`)
+	output, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"agent_profile","ids":["registry"],"scope":"workspace"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,9 +412,12 @@ func TestAgentProfileGetUsesExactSingletonSnapshotContract(t *testing.T) {
 	if result.ID != agentProfileSnapshotID {
 		t.Fatalf("agent_profile snapshot id = %q, want %q", result.ID, agentProfileSnapshotID)
 	}
+	if _, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"agent_profile","scope":"user"}`); err != nil {
+		t.Fatalf("agent_profile rejected a valid read scope hint: %v", err)
+	}
 	for _, arguments := range []string{
 		`{"operation":"get","resource":"agent_profile","ids":["ide"]}`,
-		`{"operation":"get","resource":"agent_profile","ids":["registry"],"scope":"user"}`,
+		`{"operation":"get","resource":"agent_profile","ids":["registry"],"scope":"project"}`,
 		`{"operation":"list","resource":"agent_profile","ids":["registry"]}`,
 	} {
 		if _, err := runToolForTest(context.Background(), readTool, arguments); err == nil {

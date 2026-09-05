@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '@/lib/api'
 import { buildAgentSubAgentTimelineGroups, type AgentMessageView, type AgentMessageViewKind } from '@/lib/agent-message-view'
-import { buildSubAgentProgressMessage, selectSubAgentSessionViews, subAgentStatusFromViews } from './subagent-session'
+import { buildSubAgentSummaryMessage, selectSubAgentSessionViews, subAgentStatusFromViews } from './subagent-session'
 
 describe('selectSubAgentSessionViews', () => {
   it('isolates interleaved concurrent sessions of the same SubAgent type', () => {
@@ -24,11 +24,11 @@ describe('selectSubAgentSessionViews', () => {
     const settled = { ...subAgentView('settled', 'child-session', { kind: 'subagent-status' }), data: { status: 'failed' } }
     expect(subAgentStatusFromViews([content, settled])).toBe('failed')
 
-    const progress = buildSubAgentProgressMessage([
+    const summary = buildSubAgentSummaryMessage([
       { role: 'assistant', content: 'partial output', streaming: true, subagent: true, subagent_session_id: 'child-session' },
       { role: 'system', content: '', subagent: true, subagent_session_id: 'child-session', subagent_status: 'failed' },
     ] as ChatMessage[])
-    expect(progress).toMatchObject({ role: 'assistant', content: 'partial output', subagent_status: 'failed', streaming: false })
+    expect(summary).toMatchObject({ role: 'assistant', content: '', subagent_status: 'failed', streaming: false })
   })
 })
 

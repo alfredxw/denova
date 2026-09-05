@@ -7,12 +7,15 @@ import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { AgentChatConversationTab } from './AgentChatConversationTab'
+import type { AgentChatConversationState } from './AgentChatConversationTab'
+import { AgentSubAgentSessionPanel, type AgentSubAgentSessionTarget } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { TerminalTabView, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
 import type { TerminalSessionInfo } from './terminal/api'
 import { tabGroup } from './tab-state'
 import type {
   AgentChatDocumentReviewNavigation,
   AgentChatGroupId,
+  AgentChatAgentTab,
   AgentChatPageId,
   AgentChatPageRenderContext,
   AgentChatReviewTab,
@@ -29,6 +32,8 @@ interface AgentChatTabContentProps {
   active: boolean
   running: boolean
   conversationSyncRevision: string
+  conversationState?: AgentChatConversationState
+  activeSubAgentSession?: AgentSubAgentSessionTarget | null
   composerSettings: WritingComposerSettingsController
   tellers: Teller[]
   imagePresets: ImagePreset[]
@@ -55,6 +60,8 @@ interface AgentChatTabContentProps {
     metadata: WorkspaceChangeMetadata,
   ) => void | Promise<void>
   onRunningChange: (projectID: string, sessionId: string, running: boolean | null) => void
+  onConversationStateChange: (projectID: string, tabId: string, state: AgentChatConversationState) => void
+  onOpenSubAgentSession: (parentTab: AgentChatAgentTab, target: AgentSubAgentSessionTarget) => void
   onDraftCommitted: (message: string) => void
   onTerminalSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
   onTerminalTitleChange: (tabId: string, title: string) => void
@@ -68,6 +75,8 @@ export function AgentChatTabContent({
   active,
   running,
   conversationSyncRevision,
+  conversationState,
+  activeSubAgentSession,
   composerSettings,
   tellers,
   imagePresets,
@@ -89,6 +98,8 @@ export function AgentChatTabContent({
   onOpenChangeReview,
   onWorkspaceChanged,
   onRunningChange,
+  onConversationStateChange,
+  onOpenSubAgentSession,
   onDraftCommitted,
   onTerminalSessionEstablished,
   onTerminalTitleChange,
@@ -144,6 +155,16 @@ export function AgentChatTabContent({
     workspace: tab.workspace,
     open: (target: ToolNavigationTarget) => onOpenToolTarget(tab.projectId, tabGroup(tab), target),
   }), [onOpenToolTarget, tab.group, tab.projectId, tab.workspace])
+  const handleConversationStateChange = useCallback(
+    (state: AgentChatConversationState) => onConversationStateChange(tab.projectId, tab.id, state),
+    [onConversationStateChange, tab.id, tab.projectId],
+  )
+  const handleOpenSubAgentSession = useCallback(
+    (target: AgentSubAgentSessionTarget) => {
+      if (tab.kind === 'agent') onOpenSubAgentSession(tab, target)
+    },
+    [onOpenSubAgentSession, tab],
+  )
   switch (tab.kind) {
     case 'agent':
       return (
@@ -168,8 +189,21 @@ export function AgentChatTabContent({
           onWorkspaceChanged={handleWorkspaceChanged}
           onRunningChange={onRunningChange}
           onDraftCommitted={onDraftCommitted}
+          onConversationStateChange={handleConversationStateChange}
+          activeSubAgentSession={activeSubAgentSession}
+          onSubAgentSessionOpen={handleOpenSubAgentSession}
         />
         </ToolNavigationProvider>
+      )
+    case 'subagent':
+      return (
+        <AgentSubAgentSessionPanel
+          chrome="tab"
+          projectId={tab.projectId}
+          messages={conversationState?.messages ?? []}
+          sessionKey={tab.sessionKey}
+          onResolveAsk={conversationState?.onResolveAsk}
+        />
       )
     case 'terminal':
       return (

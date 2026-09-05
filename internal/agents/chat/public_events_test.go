@@ -243,6 +243,33 @@ func TestPublicEventProjectorPreservesSubAgentInvocationIdentity(t *testing.T) {
 	}
 }
 
+func TestPublicEventProjectorSubAgentFinalOnlyRepairsMissingDelta(t *testing.T) {
+	var events []agentrun.Event
+	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{
+		AgentKind: "ide", TaskID: "task", RootAgentName: "root",
+	}, func(event agentrun.Event) { events = append(events, event) })
+	source := agent.EventSource{
+		Name: "reviewer", Path: []string{"root", "reviewer"},
+		InvocationID: "child-session", InvocationType: "reviewer",
+	}
+	project := func(payload agent.EventPayload) {
+		projector.Project(agent.Event{RunID: "parent-run", Payload: agent.NestedEvent{
+			Source: source, SessionID: "child-session",
+			Child: agent.Event{RunID: "child-run", Payload: payload},
+		}})
+	}
+
+	project(agent.AssistantDelta{Delta: "Review "})
+	project(agent.AssistantFinal{Content: "Review complete"})
+
+	if len(events) != 2 || events[0].Type != "chunk" || events[1].Type != "chunk" {
+		t.Fatalf("projected events = %#v, want only streamed content", events)
+	}
+	if got := events[0].DataString("content") + events[1].DataString("content"); got != "Review complete" {
+		t.Fatalf("projected content = %q, want repaired final output", got)
+	}
+}
+
 func TestPublicEventProjectorPublishesAndBindsAgentCompaction(t *testing.T) {
 	conversation := &publicEventCompactionConversation{}
 	var events []agentrun.Event

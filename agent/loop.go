@@ -256,16 +256,28 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 	}
 	stablePrefixSeed := cloneMessages(state.Messages[:stablePrefixMessages])
 	for iteration := 0; ; iteration++ {
-		if agent.maxIterations > 0 && iteration >= agent.maxIterations {
-			events.Send(agent.errorEvent(errMaxIterations))
-			return
-		}
 		if err := agent.contextError(ctx, options.cancel); err != nil {
 			events.Send(agent.errorEvent(err))
 			return
 		}
+		// A task batch is a synchronization boundary. Waiting here keeps an
+		// attached child concurrent with the tool batch that launched it, while
+		// preventing the next model response from streaming a provisional final
+		// answer that would have to be discarded when the child completes.
+		if _, waitErr := waitForTrackedTaskCompletionsAtSafePoint(
+			ctx,
+			options.cancel,
+			cancelAfterTools|cancelAfterModel,
+		); waitErr != nil {
+			events.Send(agent.errorEvent(waitErr))
+			return
+		}
 		if err := agent.deliverPendingTaskCompletions(ctx, state, events); err != nil {
 			events.Send(agent.errorEvent(err))
+			return
+		}
+		if agent.maxIterations > 0 && iteration >= agent.maxIterations {
+			events.Send(agent.errorEvent(errMaxIterations))
 			return
 		}
 
@@ -416,6 +428,18 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 				events.Send(agent.errorEvent(cancelErr))
 				return
 			}
+			completionReady, waitErr := waitForTrackedTaskCompletionsAtSafePoint(
+				ctx,
+				options.cancel,
+				cancelAfterModel,
+			)
+			if waitErr != nil {
+				events.Send(agent.errorEvent(waitErr))
+				return
+			}
+			if completionReady {
+				continue
+			}
 			for _, middleware := range agent.middlewares {
 				ctx, err = middleware.AfterAgent(ctx, state)
 				if err != nil {
@@ -489,6 +513,27 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			return
 		}
 	}
+}
+
+func waitForTrackedTaskCompletionsAtSafePoint(
+	ctx context.Context,
+	cancel *cancelControl,
+	point cancelMode,
+) (bool, error) {
+	var interrupt <-chan struct{}
+	if cancel != nil {
+		interrupt = cancel.requestedSignal()
+	}
+	ready, err := waitForTrackedTaskCompletionsFromContext(ctx, interrupt)
+	if !errors.Is(err, errTaskCompletionWaitInterrupted) {
+		return ready, err
+	}
+	if cancelErr := cancel.safePoint(point); cancelErr != nil {
+		return false, cancelErr
+	}
+	// A cancellation request for another safe point must not spin on the
+	// already-closed signal while attached child work remains.
+	return waitForTrackedTaskCompletionsFromContext(ctx, nil)
 }
 
 func (agent *modelToolLoop) publishToolBatchBoundary(

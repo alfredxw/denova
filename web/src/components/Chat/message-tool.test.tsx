@@ -3,6 +3,26 @@ import { describe, expect, it } from 'vitest'
 import { ToolExecutionBlock } from './message-tool'
 
 describe('ToolExecutionBlock', () => {
+  it('opens the child session returned by a task start card', () => {
+    const opened: string[] = []
+    const { container } = render(<ToolExecutionBlock
+      message={{
+        role: 'tool_call',
+        name: 'task',
+        args: JSON.stringify({ action: 'start', starts: [{ prompt: 'inspect' }] }),
+        result: JSON.stringify({ results: [{ index: 0, task: { ref: { agent: 'general-purpose', session: 'child-session', run: 'child-run' }, status: 'running' } }] }),
+        status: 'success',
+        tool_presentation: { call: 'delegation', result: 'delegation' },
+      }}
+      onOpenSubAgentSession={(sessionKey) => opened.push(sessionKey)}
+    />)
+
+    expect(container.querySelector('[data-nova-tool-header]')).toHaveAttribute('aria-label', '打开详情')
+    expect(container.querySelector('[data-nova-tool-header]')).toHaveTextContent('general-purpose')
+    fireEvent.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
+    expect(opened).toEqual(['child-session/child-run'])
+  })
+
   it('progressively formats incomplete JSON tool input without interpreting it as Markdown', async () => {
     const rawInput = '{"path":"chapters/ch01.md","options":{"recursive":tr'
     const { container } = render(<ToolExecutionBlock

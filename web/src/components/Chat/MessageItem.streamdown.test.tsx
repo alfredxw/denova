@@ -54,7 +54,7 @@ describe('MessageItem streaming Markdown', () => {
     )
   })
 
-  it('uses Streamdown code and table controls without download actions', () => {
+  it('uses Streamdown controls without table height limits or download actions', () => {
     const content = [
       '```ts',
       'const greeting = "hello"',
@@ -69,7 +69,10 @@ describe('MessageItem streaming Markdown', () => {
     )
 
     expect(screen.getByRole('button', { name: '复制代码' })).toBeInTheDocument()
-    expect(container.querySelector('[data-streamdown="table"]')).toBeInTheDocument()
+    const table = container.querySelector<HTMLElement>('[data-streamdown="table"]')
+    expect(table).toBeInTheDocument()
+    expect(table?.parentElement).toHaveClass('overflow-x-auto')
+    expect(table?.parentElement?.style.maxHeight).toBe('')
     fireEvent.click(screen.getByTitle('复制表格'))
     expect(screen.getByRole('button', { name: 'Markdown' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'CSV' })).toBeInTheDocument()

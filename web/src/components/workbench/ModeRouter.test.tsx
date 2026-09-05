@@ -654,6 +654,30 @@ describe('ModeRouter autosave navigation policy', () => {
     expect(screen.getByTestId('markdown-search-navigation')).toHaveTextContent('target|12|7')
   })
 
+  it('renders a temporary SubAgent as the active writing content tab', async () => {
+    const user = userEvent.setup()
+    const onCloseTab = vi.fn()
+    const subAgentTab: Tab = {
+      kind: 'subagent',
+      parentSessionId: 'parent-session',
+      sessionKey: 'child-session',
+      title: 'Researcher',
+      returnTabKey: 'file:chapters/ch01.md',
+    }
+    render(withAppProviders(<ModeRouter {...modeRouterProps({
+      openTabs: [{ kind: 'file', path: 'chapters/ch01.md' }, subAgentTab],
+      activeTabKey: 'subagent',
+      writingAgentConversation: { sessionId: 'parent-session', messages: [], isStreaming: true },
+      onCloseTab,
+    })} />))
+
+    expect(await screen.findByRole('tab', { name: /Researcher/ })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /SubAgent/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '关闭 SubAgent 详情' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '关闭 Researcher' }))
+    expect(onCloseTab).toHaveBeenCalledWith(subAgentTab)
+  })
+
   it('routes non-Markdown text tabs to Monaco source editing without transforming content', async () => {
     const path = 'data/events.jsonl'
     const content = '{"event":1}\nnot-json'
@@ -727,6 +751,8 @@ function modeRouterProps(
     loreItems: [],
     styleScenes: [],
     textSelections: [],
+    writingAgentConversation: { sessionId: '', messages: [], isStreaming: false },
+    onOpenWritingSubAgentSession: vi.fn(),
     chatPlanMode: false,
     onSetMode: vi.fn(),
     onToggleActivityBarExpanded: vi.fn(),

@@ -22,6 +22,7 @@ import type { Tab } from './TabController'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ProjectFileDocument } from '@/lib/api-client/project-files'
 import type { AgentChatConversationState } from '@/features/agent-chat/AgentChatConversationTab'
+import type { AgentSubAgentSessionTarget } from '@/components/Chat/AgentSubAgentSessionPanel'
 
 /** Public composition contract for the workbench route host. */
 export interface ModeRouterProps {
@@ -72,7 +73,9 @@ export interface ModeRouterProps {
   loreItems: LoreItem[]
   styleScenes: string[]
   textSelections: TextSelection[]
+  writingAgentConversation: AgentChatConversationState
   onWritingAgentConversationStateChange?: (state: AgentChatConversationState) => void
+  onOpenWritingSubAgentSession: (target: AgentSubAgentSessionTarget) => void | Promise<void>
   chatPlanMode: boolean
   hasEarlierMessages: boolean
   isLoadingEarlierHistory: boolean

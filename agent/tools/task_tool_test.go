@@ -58,7 +58,8 @@ func TestTaskBatchPreservesPartialSuccessAndPerTargetCursors(t *testing.T) {
 		"starts":[
 			{"agent":"researcher","prompt":"inspect"},
 			{"agent":"full","prompt":"inspect"},
-			{"agent":"researcher"}
+			{"agent":"researcher"},
+			{"prompt":"inspect with the default"}
 		]
 	}`)
 	if err != nil {
@@ -70,8 +71,9 @@ func TestTaskBatchPreservesPartialSuccessAndPerTargetCursors(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.ModelContent), &started); err != nil {
 		t.Fatal(err)
 	}
-	if len(started.Results) != 3 || started.Results[0].Task == nil ||
-		started.Results[1].ErrorCode != "capacity_exceeded" || started.Results[2].ErrorCode != "invalid_input" {
+	if len(started.Results) != 4 || started.Results[0].Task == nil ||
+		started.Results[1].ErrorCode != "capacity_exceeded" || started.Results[2].ErrorCode != "invalid_input" ||
+		started.Results[3].Task == nil {
 		t.Fatalf("start results = %#v", started.Results)
 	}
 

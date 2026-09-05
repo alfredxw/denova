@@ -34,7 +34,6 @@ export const INTERACTIVE_STREAM_EVENT_CONTRACT = {
   post_run_verification: 'ignored',
   run_state: 'ignored',
   subagent_artifact: 'ignored',
-  subagent_final: 'ignored',
   subagent_transcript_synchronized: 'ignored',
   tool_target: 'ignored',
   verification: 'ignored',

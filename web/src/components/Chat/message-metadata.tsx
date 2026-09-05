@@ -1,18 +1,13 @@
 import { useState } from 'react'
-import type { CSSProperties } from 'react'
-import { Activity, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, PanelRightOpen, Pencil, RefreshCw, Route } from 'lucide-react'
+import { Activity, Bot, Check, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, Pencil, RefreshCw, Route } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage, RuleRollChatMessage, UserMessageReference } from '@/lib/api'
-import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import {
   DEFAULT_TOOLTIP_DELAY_MS,
   DEFAULT_TOOLTIP_SKIP_DELAY_MS,
   TooltipProvider,
 } from '@/components/ui/tooltip'
-import { StreamingContentStage } from './StreamingContentStage'
-import { MarkdownContent } from './message-content'
-import { buildMarkdownPreview } from './message-tool'
 import { subAgentStatusTranslationKey } from './subagent-session'
 import { useTrajectoryNavigation } from '@/features/trajectory/trajectory-navigation'
 
@@ -309,91 +304,51 @@ async function copyText(content: string) {
   }
 }
 
-export function SubAgentOutputWindow({
+export function SubAgentSessionCard({
   message,
-  content,
-  highlightDialogue,
-  messageStyle,
-  projectId,
   onOpen,
   active,
 }: {
   message: ChatMessage
-  content: string
-  highlightDialogue: boolean
-  messageStyle?: CSSProperties
-  projectId: string
   onOpen?: (message: ChatMessage) => void
   active?: boolean
 }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
   const name = message.agent_name || message.subagent_type || t('chat.subagent.label')
-  const preview = buildMarkdownPreview(content, 220)
-  const hasContent = Boolean(content.trim())
   const statusLabel = t(subAgentStatusTranslationKey(message.subagent_status, message.streaming === true))
-  const detailMode = Boolean(onOpen)
-  const actionLabel = detailMode ? t('chat.subagent.openSession') : (expanded ? t('chat.subagent.collapse') : t('chat.subagent.expand'))
-  const shownContent = detailMode || !expanded ? preview : content
-  const shownTargetContent = message.streaming_target_content && shownContent === content ? message.streaming_target_content : undefined
-  const contentScrollLock = useBottomScrollLock<HTMLDivElement>({
-    enabled: message.streaming === true,
-    resetKey: `${message.id || message.created_at || name}:subagent-output`,
-    contentKey: `${message.streaming ? 'streaming' : 'idle'}:${detailMode ? 'detail' : 'inline'}:${expanded ? 'expanded' : 'collapsed'}:${shownContent.length}`,
-  })
+  const cardContent = (
+    <>
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
+        <Bot className="h-3.5 w-3.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-[var(--nova-text)]">{t('chat.subagent.outputFrom', { name })}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{statusLabel}</span>
+      </span>
+      {onOpen ? (
+        <span className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+          {t('chat.subagent.openSession')}
+        </span>
+      ) : null}
+    </>
+  )
+  const cardClassName = 'flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left'
 
   return (
     <div className="flex justify-start">
       <div className={`w-full overflow-hidden rounded-lg border bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)] ${active ? 'border-[var(--nova-accent)] ring-1 ring-[var(--nova-accent)]/40' : 'border-[var(--nova-border)]'}`}>
-        <button
-          type="button"
-          className="flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
-          onClick={() => {
-            if (onOpen) {
-              onOpen(message)
-              return
-            }
-            setExpanded(!expanded)
-          }}
-          aria-expanded={expanded}
-          aria-label={t('chat.subagent.outputFrom', { name })}
-        >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-            {detailMode ? <PanelRightOpen className="h-3.5 w-3.5" /> : expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium text-[var(--nova-text)]">{t('chat.subagent.outputFrom', { name })}</span>
-            <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{statusLabel}</span>
-          </span>
-          <span className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
-            {actionLabel}
-          </span>
-        </button>
-        <div
-          ref={contentScrollLock.ref}
-          onScroll={contentScrollLock.onScroll}
-          onWheel={contentScrollLock.onWheel}
-          onKeyDown={contentScrollLock.onKeyDown}
-          data-nova-scroll-lock="subagent-output"
-          className={`${detailMode ? 'max-h-28' : expanded ? 'max-h-96' : 'max-h-28'} overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 [overflow-anchor:none]`}
-        >
-          {hasContent ? (
-            <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
-              <StreamingContentStage content={shownContent} targetContent={shownTargetContent} streaming={message.streaming === true}>
-                {(value) => (
-                  <MarkdownContent
-                    content={value}
-                    highlightDialogue={highlightDialogue}
-                    projectId={projectId}
-                    streaming={message.streaming === true}
-                  />
-                )}
-              </StreamingContentStage>
-            </div>
-          ) : (
-            <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.subagent.empty')}</div>
-          )}
-        </div>
+        {onOpen ? (
+          <button
+            type="button"
+            className={cardClassName}
+            onClick={() => onOpen(message)}
+            aria-label={t('chat.subagent.outputFrom', { name })}
+          >
+            {cardContent}
+          </button>
+        ) : (
+          <div className={cardClassName}>{cardContent}</div>
+        )}
       </div>
     </div>
   )

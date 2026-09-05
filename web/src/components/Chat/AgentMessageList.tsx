@@ -22,7 +22,7 @@ import {
   type AgentPartRef,
 } from '@/lib/agent-message-view'
 import { listItem, novaEase, timelineAttachment } from '@/features/motion/motion-tokens'
-import { buildSubAgentProgressMessage } from './subagent-session'
+import { buildSubAgentSummaryMessage } from './subagent-session'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { StableAfterContentBoundary } from './StableAfterContentBoundary'
@@ -680,9 +680,9 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
           continue
         }
       }
-      const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
-      if (progress) {
-        items.push({ kind: 'legacy-message', key: `subagent-${subAgentGroup.key || index}`, message: progress, sourceIndex: index, openView: subAgentGroup.views[0] })
+      const summary = buildSubAgentSummaryMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
+      if (summary) {
+        items.push({ kind: 'legacy-message', key: `subagent-${subAgentGroup.key || index}`, message: summary, sourceIndex: index, openView: subAgentGroup.views[0] })
         continue
       }
     }

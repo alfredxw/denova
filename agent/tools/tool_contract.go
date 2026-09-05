@@ -129,6 +129,15 @@ func normalizeAndDecode[T any](arguments string) (T, error) {
 	return input, nil
 }
 
+// JSONResult constructs a successful bounded structured Tool result.
+func JSONResult(value any) (agent.ToolResult, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return agent.ToolResult{}, fmt.Errorf("encode tool result: %w", err)
+	}
+	return agent.TextToolResult(string(encoded)), nil
+}
+
 func lineNumbers(content string, start int) string {
 	if content == "" {
 		return ""

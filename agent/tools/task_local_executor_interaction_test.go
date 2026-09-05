@@ -131,3 +131,68 @@ func TestTaskWaitRoutesChildInteractionThroughHost(t *testing.T) {
 		t.Fatalf("completed observation = %#v", observation)
 	}
 }
+
+func TestAttachedChildRejectsInteractionInsteadOfWaitingForUser(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	parentOwner := newTaskAgent(t, agentsession.Memory(), &taskModel{})
+	defer parentOwner.Close(context.Background())
+	parent, err := parentOwner.Session(ctx, agent.NamedSession("non-interactive-parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := agent.New(ctx, agent.Definition{
+		Name: DefaultTaskAgentName,
+		Model: &taskModel{responses: []*agent.Message{
+			agent.AssistantMessage("", []agent.ToolCall{{
+				ID: "ask-user", Type: "function",
+				Function: agent.FunctionCall{Name: "ask", Arguments: `{"questions":[{"id":"scope","prompt":"Which scope?","allow_free_text":true}]}`},
+			}}),
+			agent.AssistantMessage("returned blocker to parent", nil),
+		}},
+		ModelIdentity: agent.CapabilityIdentity{Kind: "test.task.non-interactive.model", Version: 1},
+		Tools:         Ask(),
+	}, agent.WithSessionStore(agentsession.Memory()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer child.Close(context.Background())
+	executor, err := NewLocalTasks(LocalTaskOptions{
+		Parallelism: 1, CompletionParent: parent, MaxResultBytes: 4096,
+	}, LocalTaskAgent{
+		Name: DefaultTaskAgentName, Description: "General delegated work", Opener: child,
+		Identity: agent.CapabilityIdentity{Kind: "test.task.non-interactive", Version: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := executor.Start(ctx, TaskRequest{Prompt: "inspect", IdempotencyKey: "non-interactive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childSession, err := child.Session(ctx, agent.SessionKey{
+		Namespace: "task." + DefaultTaskAgentName,
+		ID:        started.Ref.Session,
+		Attributes: map[string]string{
+			"agent": DefaultTaskAgentName,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, found, err := childSession.AttachRun(ctx, started.Ref.Run)
+	if err != nil || !found {
+		t.Fatalf("attach child found=%t err=%v", found, err)
+	}
+	result, err := run.Wait(ctx)
+	if err != nil || result.Status != agent.ResultCompleted {
+		t.Fatalf("child result=%#v err=%v", result, err)
+	}
+	observation, err := executor.Observe(ctx, started.Ref, "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.Output != "returned blocker to parent" {
+		t.Fatalf("child output = %q", observation.Output)
+	}
+}

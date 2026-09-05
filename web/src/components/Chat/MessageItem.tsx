@@ -18,7 +18,7 @@ import {
   MessageInlineMeta,
   RuleRollBlock,
   SentMessageReferences,
-  SubAgentOutputWindow,
+  SubAgentSessionCard,
   TraceLinkButton,
 } from './message-metadata'
 import { ToolExecutionBlock, ToolResultBlock } from './message-tool'
@@ -67,6 +67,9 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
   const versionIndex = message.turn_version_index ?? markedVersionIndex
   const canSwitchVersion = role === 'assistant' && versionCount > 1 && versionIndex >= 0 && Boolean(onSwitchVersion) && !message.streaming
   const showAgentSource = subAgentPresentation !== 'content'
+  const openTaskSubAgentSession = onOpenSubAgentSession
+    ? (sessionKey: string) => onOpenSubAgentSession({ ...message, subagent: true, subagent_session_id: sessionKey })
+    : undefined
 
   switch (role) {
     case 'user':
@@ -86,12 +89,8 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
     case 'assistant': {
       if (message.subagent && subAgentPresentation === 'card') {
         return (
-          <SubAgentOutputWindow
+          <SubAgentSessionCard
             message={message}
-            content={content}
-            highlightDialogue={highlightDialogue}
-            messageStyle={messageStyle}
-            projectId={projectId}
             onOpen={onOpenSubAgentSession}
             active={Boolean(activeSubAgentSessionKey && activeSubAgentSessionKey === subAgentSessionKey(message))}
           />
@@ -159,7 +158,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
       // Live input is an opaque protocol text stream. Specialized renderers may
       // interpret arguments only after the input stream has completed.
       if (message.streaming === true) {
-        return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+        return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} onOpenSubAgentSession={openTaskSubAgentSession} />
       }
       // A completed AI SDK dynamic-tool part contains both call and result
       // phases. Result refinement must win for interactive media when no richer
@@ -171,26 +170,26 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
       switch (renderer) {
         case 'interactive_media':
           return message.status === 'cancelled'
-            ? <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            ? <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} onOpenSubAgentSession={openTaskSubAgentSession} />
             : <InteractiveImageBlock message={message} projectId={projectId} />
         case 'image':
           return message.illustration
             ? <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
-            : <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            : <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} onOpenSubAgentSession={openTaskSubAgentSession} />
         case 'todo':
           return message.status === 'cancelled'
-            ? <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            ? <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} onOpenSubAgentSession={openTaskSubAgentSession} />
             : <TodoListBlock message={message} />
         case 'interaction':
           // A failed interaction never produced durable Ask state. Keep it as a
           // diagnostic tool card instead of parsing its rejected input as pending.
           if (message.status === 'error' || message.status === 'cancelled') {
-            return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} onOpenSubAgentSession={openTaskSubAgentSession} />
           }
           if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
           return <AskInteractionCard message={message} onResolve={onResolveAsk} />
         case 'generic':
-          return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+          return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} onOpenSubAgentSession={openTaskSubAgentSession} />
         default: {
           const exhaustive: never = renderer
           return exhaustive

@@ -562,6 +562,48 @@ describe('AgentChatView project workbenches', () => {
     ]))
   })
 
+  it('reuses a temporary child-Agent tab in the opposite workspace without persisting it', async () => {
+    const user = userEvent.setup()
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [
+            agentTabForProject('agent-tab', 'project-a', '/books/a', 'session-a'),
+            {
+              kind: 'files',
+              id: 'files-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              group: 'secondary',
+            },
+          ],
+          activeTabIds: { primary: 'agent-tab', secondary: 'files-tab' },
+          focusedGroup: 'primary',
+          secondaryVisible: true,
+        },
+      },
+    })
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    await user.click(await screen.findByRole('button', { name: 'open child Agent' }))
+    expect(await screen.findByRole('tab', { name: /Researcher/ })).toBeInTheDocument()
+    expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
+    expect(screen.getByRole('tab', { name: /文件/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'open child Agent' }))
+    expect(screen.getAllByRole('tab', { name: /Researcher/ })).toHaveLength(1)
+    await waitFor(() => {
+      const stored = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.getItem(window.localStorage.key(index) || '') || '').join('\n')
+      expect(stored).not.toContain('"kind":"subagent"')
+    })
+
+    expect(screen.queryByRole('button', { name: '关闭 SubAgent 详情' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '关闭 Researcher' }))
+    expect(await screen.findByTestId('project-files-tab')).toHaveTextContent('no-selection')
+  })
+
   it('opens a tool path in the Files tab owned by that Agent Chat project', async () => {
     const user = userEvent.setup()
     persistWorkbenchState({
