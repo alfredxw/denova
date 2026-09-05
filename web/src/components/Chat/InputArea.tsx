@@ -102,7 +102,6 @@ interface InputAreaProps {
   disabledPlaceholder?: string
   onContextAnalyze?: (message: string) => void | Promise<void>
   tokenUsageMessages?: TokenUsageRecord[]
-  onOpenTrace?: (runID: string) => void
   agentKey?: VisibleAgentKey
   workspace?: string
   conversationBinding?: ConversationConfigBinding
@@ -168,7 +167,6 @@ export function InputArea({
   disabledPlaceholder,
   onContextAnalyze,
   tokenUsageMessages = [],
-  onOpenTrace,
   agentKey,
   workspace,
   conversationBinding,
@@ -766,7 +764,7 @@ export function InputArea({
                   }}
                 />
               ) : null}
-              <TokenUsageDialog projectId={conversationBinding?.project_id} open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
+              <TokenUsageDialog projectId={conversationBinding?.project_id} open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
               {attachments.input}
             </>
           }

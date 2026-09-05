@@ -19,7 +19,6 @@ import {
   RuleRollBlock,
   SentMessageReferences,
   SubAgentSessionCard,
-  TraceLinkButton,
 } from './message-metadata'
 import { ToolExecutionBlock, ToolResultBlock } from './message-tool'
 import { TodoListBlock } from './message-todo'
@@ -50,7 +49,6 @@ interface MessageItemProps {
   onApprovePlan?: (message: ChatMessage) => void
   onContinuePlan?: (message: ChatMessage) => void
   onExitPlanMode?: () => void
-  onOpenTrace?: (runID: string) => void
   onInteractiveCardLayoutChange?: (element?: HTMLElement) => void
   onResolveAsk?: AskInteractionResolver
 }
@@ -64,7 +62,7 @@ export const MessageItem = memo(function MessageItem(props: MessageItemProps) {
     : content
 })
 
-function MessageItemContent({ projectId = '', message, assistantPresentation = 'message', highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
+function MessageItemContent({ projectId = '', message, assistantPresentation = 'message', highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -257,7 +255,6 @@ function MessageItemContent({ projectId = '', message, assistantPresentation = '
           <div className="nova-message-body-with-meta max-w-full">
             <div role="alert" className="flex max-w-full items-start gap-2 rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--nova-danger)]">
               <span className="min-w-0 whitespace-pre-wrap break-words">{content}</span>
-              <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
             </div>
             <MessageInlineMeta projectId={projectId} message={message} content={content} align="left" onRegenerate={canRegenerate ? onRegenerate : undefined} />
           </div>

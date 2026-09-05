@@ -1582,6 +1582,8 @@ html[data-nova-motion="off"] .shimmer {
 
 .nova-message-meta {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.5rem;

@@ -28,7 +28,6 @@ interface AgentExecutionProcessProps {
   messageStyle?: CSSProperties
   onGenerateInteractiveImage?: (view: AgentMessageView) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
-  onOpenTrace?: (runID: string) => void
   onOpenSubAgentSession?: (view: AgentMessageView) => void
   onInteractiveCardLayoutChange?: (element?: HTMLElement) => void
   onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
@@ -46,7 +45,6 @@ export function AgentExecutionProcess({
   messageStyle,
   onGenerateInteractiveImage,
   onInsertIllustration,
-  onOpenTrace,
   onOpenSubAgentSession,
   onInteractiveCardLayoutChange,
   onResolveAsk,
@@ -100,7 +98,6 @@ export function AgentExecutionProcess({
               view={pendingApprovalView}
               highlightDialogue={highlightDialogue}
               messageStyle={messageStyle}
-              onOpenTrace={onOpenTrace}
               onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
               onResolveAsk={onResolveAsk}
             />,
@@ -118,7 +115,6 @@ export function AgentExecutionProcess({
               messageStyle={messageStyle}
               onOpenSubAgentSession={() => onOpenSubAgentSession(subAgentGroup.views[0])}
               activeSubAgentSessionKey={activeSubAgentSessionKey}
-              onOpenTrace={onOpenTrace}
             />,
           )
           continue
@@ -137,7 +133,6 @@ export function AgentExecutionProcess({
             onInsertIllustration={onInsertIllustration}
             onGenerateInteractiveImage={onGenerateInteractiveImage}
             onOpenSubAgentSession={onOpenSubAgentSession}
-            onOpenTrace={onOpenTrace}
             onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
             onResolveAsk={onResolveAsk}
           />

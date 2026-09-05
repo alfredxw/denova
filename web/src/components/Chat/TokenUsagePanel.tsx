@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Clock3, Hash, Route } from 'lucide-react'
+import { BarChart3, Clock3, Hash, Route } from 'lucide-react'
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -52,12 +52,11 @@ type TokenUsageGroup = {
 
 export type TokenUsageRecord = AgentTokenUsageRecord | TokenUsageChatMessage
 
-export function TokenUsageDialog({ projectId, open, messages, onOpenChange, onOpenTrace }: {
+export function TokenUsageDialog({ projectId, open, messages, onOpenChange }: {
   projectId?: string
   open: boolean
   messages: TokenUsageRecord[]
   onOpenChange: (open: boolean) => void
-  onOpenTrace?: (runID: string) => void
 }) {
   const { t } = useTranslation()
   const trajectoryNavigation = useTrajectoryNavigation()
@@ -66,11 +65,6 @@ export function TokenUsageDialog({ projectId, open, messages, onOpenChange, onOp
   const usageRows = useMemo(() => usageGroups.flatMap((group) => group.rows), [usageGroups])
   const stats = useMemo(() => summarizeTokenUsage(usageMessages), [usageMessages])
   const hasUsage = usageRows.length > 0
-  const handleOpenTrace = (runID: string) => {
-    if (!runID) return
-    onOpenChange(false)
-    onOpenTrace?.(runID)
-  }
   const handleOpenTrajectory = (runID: string) => {
     if (!projectId || !runID) return
     onOpenChange(false)
@@ -111,7 +105,6 @@ export function TokenUsageDialog({ projectId, open, messages, onOpenChange, onOp
                       key={group.id}
                       group={group}
                       requestIndex={groupIndex + 1}
-                      onOpenTrace={onOpenTrace ? handleOpenTrace : undefined}
                       onOpenTrajectory={projectId && trajectoryNavigation.enabled ? handleOpenTrajectory : undefined}
                     />
                   ))}
@@ -191,10 +184,10 @@ function TokenUsageSummaryGrid({ stats }: { stats: TokenUsageSummary }) {
   )
 }
 
-function TokenUsageRequestGroup({ group, requestIndex, onOpenTrace, onOpenTrajectory }: { group: TokenUsageGroup; requestIndex: number; onOpenTrace?: (runID: string) => void; onOpenTrajectory?: (runID: string) => void }) {
+function TokenUsageRequestGroup({ group, requestIndex, onOpenTrajectory }: { group: TokenUsageGroup; requestIndex: number; onOpenTrajectory?: (runID: string) => void }) {
   const { t } = useTranslation()
   const message = group.message
-  const runID = message.run_id || message.id || ''
+  const runID = message.run_id?.trim() || ''
   return (
     <section className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border-soft)] bg-[var(--nova-surface)]">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px]">
@@ -213,16 +206,6 @@ function TokenUsageRequestGroup({ group, requestIndex, onOpenTrace, onOpenTrajec
           <span>{t('chat.tokenUsage.totalTokens')}: {formatNumber(numberOrZero(message.total_tokens))}</span>
           <span>{t('chat.tokenUsage.uncachedTokens')}: {formatNumber(messageUncachedPromptTokens(message))}</span>
           <span>{t('chat.tokenUsage.cacheHit')}: {formatPercent(numberOrZero(message.cache_hit_rate))}</span>
-          {runID && onOpenTrace ? (
-            <button
-              type="button"
-              onClick={() => onOpenTrace(runID)}
-              className="nova-nav-item inline-flex h-6 items-center gap-1 rounded border border-[var(--nova-border)] px-1.5 font-sans text-[10px] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
-            >
-              <Activity className="h-3 w-3" />
-              {t('chat.tokenUsage.viewTrace')}
-            </button>
-          ) : null}
           {runID && onOpenTrajectory ? (
             <button
               type="button"

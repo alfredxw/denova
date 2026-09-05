@@ -1,6 +1,6 @@
 import { useRef, type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
-import { Activity, Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Paperclip, Pencil, Plus, RefreshCw, ScrollText, Sparkles, Target, X } from 'lucide-react'
+import { Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Paperclip, Pencil, Plus, RefreshCw, ScrollText, Sparkles, Target, X } from 'lucide-react'
 import { AgentComposerControls } from '@/components/Chat/AgentComposerControls'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { AgentGoalCard } from '@/components/Chat/AgentGoalCard'
@@ -12,12 +12,10 @@ import { InputCommandMenu, type IndexedInputCommandOption } from '@/components/C
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { ImageGenerationSettingsMenu } from '@/components/Chat/ImageGenerationSettingsMenu'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
-import { AgentTracePanel } from '@/components/Chat/AgentTracePanel'
 import { ComposerMenuItem } from '@/components/Chat/ComposerMenuRow'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from '@/components/Chat/composer-token-input'
 import { Button } from '@/components/ui/button'
 import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { AgentRuntimeQueuedCommand, ContextAnalysis } from '@/lib/api'
 import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
@@ -101,8 +99,6 @@ interface StoryStageComposerProps {
     contextAnalysis: ContextAnalysis | null
     tokenUsageOpen: boolean
     tokenUsageMessages: AgentTokenUsageRecord[]
-    traceOpen: boolean
-    selectedTraceRunId: string
     replyEditTarget: {
       turnId: string
       branchId: string
@@ -111,7 +107,6 @@ interface StoryStageComposerProps {
     } | null
     setContextAnalysisOpen: StateSetter<boolean>
     setTokenUsageOpen: StateSetter<boolean>
-    setTraceOpen: StateSetter<boolean>
     closeReplyEditor: () => void
     saveReply: (narrative: string) => Promise<void>
   }
@@ -127,7 +122,6 @@ interface StoryStageComposerProps {
     openMobileNavigation: () => void
     openContextAnalysis: () => void
     removeContextCompaction: () => Promise<void>
-    openTraceRun: (runId: string) => void
     send: (options?: InputAreaSendOptions) => Promise<boolean>
     steerQueuedCommand: (item: AgentRuntimeQueuedCommand) => Promise<boolean>
     deleteQueuedCommand: (item: AgentRuntimeQueuedCommand) => Promise<boolean>
@@ -140,8 +134,8 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
   const { storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
   const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, pendingInterruptionId, operationId, connection, commandSubmitting, queue, queueActionPendingCommandID } = runtime
-  const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor, saveReply } = dialogs
-  const { cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
+  const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, closeReplyEditor, saveReply } = dialogs
+  const { cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
   const activeControlsDisabled = streaming && (!operationId || connection !== 'connected')
   const resumeAvailable = Boolean(pendingInterruptionId) && !editingTurn && !goal.mode
   const attachments = useComposerAttachments(
@@ -347,13 +341,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
           />
         </div>
         <ContextAnalysisDialog open={contextAnalysisOpen} loading={contextAnalysisLoading} error={contextAnalysisError} analysis={contextAnalysis} onOpenChange={setContextAnalysisOpen} onRemoveCompaction={removeContextCompaction} />
-        <TokenUsageDialog projectId={projectId} open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={openTraceRun} />
-        <Dialog open={traceOpen} onOpenChange={setTraceOpen}>
-          <DialogContent className="flex h-[min(88vh,760px)] max-w-[min(96vw,1120px)] flex-col gap-0 overflow-hidden border-[var(--nova-border)] bg-[var(--nova-bg)] p-0 text-[var(--nova-text)]">
-            <DialogHeader className="border-b border-[var(--nova-border)] px-4 py-3"><DialogTitle className="flex items-center gap-2 text-sm"><Activity className="h-4 w-4 text-[var(--nova-text-muted)]" />{t('chat.tracePanel.title')}</DialogTitle></DialogHeader>
-            <div className="min-h-0 flex-1"><AgentTracePanel projectId={projectId} selectedRunId={selectedTraceRunId} /></div>
-          </DialogContent>
-        </Dialog>
+        <TokenUsageDialog projectId={projectId} open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
         {replyEditTarget ? <EditInteractiveReplyDialog key={replyEditTarget.turnId} turnId={replyEditTarget.turnId} initialContent={replyEditTarget.initialContent} onClose={closeReplyEditor} onSave={saveReply} /> : null}
       </div>
     </div>

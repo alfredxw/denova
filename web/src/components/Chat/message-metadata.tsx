@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, Bot, Check, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, Pencil, RefreshCw, Route } from 'lucide-react'
+import { Bot, Check, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage, RuleRollChatMessage, UserMessageReference } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -9,7 +9,7 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip'
 import { subAgentStatusTranslationKey } from './subagent-session'
-import { useTrajectoryNavigation } from '@/features/trajectory/trajectory-navigation'
+import { AgentRunActions } from './AgentRunActions'
 
 const copyFeedbackDurationMs = 1200
 const messageActionTooltipDelayMs = DEFAULT_TOOLTIP_DELAY_MS
@@ -40,21 +40,6 @@ function formatReferenceLines(reference: UserMessageReference): string {
   if (reference.start_line === undefined) return ''
   if (reference.end_line !== undefined && reference.end_line !== reference.start_line) return `:L${reference.start_line}-L${reference.end_line}`
   return `:L${reference.start_line}`
-}
-
-export function TraceLinkButton({ runID, onOpenTrace }: { runID?: string; onOpenTrace?: (runID: string) => void }) {
-  const { t } = useTranslation()
-  if (!runID || !onOpenTrace) return null
-  return (
-    <button
-      type="button"
-      onClick={() => onOpenTrace(runID)}
-      className="nova-nav-item inline-flex h-6 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] px-1.5 text-[10px] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
-    >
-      <Activity className="h-3 w-3" />
-      {t('chat.tracePanel.viewTrace')}
-    </button>
-  )
 }
 
 export function RuleRollBlock({ message }: { message: RuleRollChatMessage }) {
@@ -120,13 +105,12 @@ function formatSignedRuleRollNumber(value: number) {
 
 export function MessageInlineMeta({ projectId, message, content, align, reserveSpace = false, hideActions = false, onEdit, editLabelKey = 'chat.action.editTurn', onCreateBranch, onGenerateInteractiveImage, generatingInteractiveImage = false, interactiveImageGenerationDisabled = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { projectId?: string; message: ChatMessage; content: string; align: 'left' | 'right'; reserveSpace?: boolean; hideActions?: boolean; onEdit?: (message: ChatMessage) => void; editLabelKey?: 'chat.action.editTurn' | 'chat.action.editAssistantReply'; onCreateBranch?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; interactiveImageGenerationDisabled?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
   const { t } = useTranslation()
-  const trajectoryNavigation = useTrajectoryNavigation()
   const [copied, setCopied] = useState(false)
   const formatted = formatMessageHoverTime(message.created_at)
   const runID = message.run_id?.trim()
   const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
-  const canOpenTrajectory = !hideActions && trajectoryNavigation.enabled && Boolean(projectId && runID)
-  const hasMessageAction = !hideActions && Boolean(onEdit || onCreateBranch || onGenerateInteractiveImage || onRegenerate || canSwitchVersion || canOpenTrajectory)
+  const hasRunActions = Boolean(runID && (message.role === 'assistant' || message.role === 'error'))
+  const hasMessageAction = hasRunActions || (!hideActions && Boolean(onEdit || onCreateBranch || onGenerateInteractiveImage || onRegenerate || canSwitchVersion))
   const showCopyAction = !hideActions && Boolean(content.trim())
   const metaTooltip = {
     tooltipSide: 'top' as const,
@@ -160,19 +144,7 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
           </TooltipIconButton>
         )}
-        {canOpenTrajectory && projectId && runID && (
-          <TooltipIconButton
-            label={t('trajectory.openRun')}
-            {...metaTooltip}
-            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-            onClick={(event) => {
-              event.stopPropagation()
-              trajectoryNavigation.open({ projectId, runId: runID })
-            }}
-          >
-            <Route className="h-3 w-3" />
-          </TooltipIconButton>
-        )}
+        {hasRunActions && runID ? <AgentRunActions projectId={projectId} runID={runID} /> : null}
         {onEdit && (
           <TooltipIconButton
             label={t(editLabelKey)}

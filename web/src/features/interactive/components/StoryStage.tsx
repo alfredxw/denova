@@ -112,8 +112,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const [pendingOpeningStoryId, setPendingOpeningStoryId] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
-  const [traceOpen, setTraceOpen] = useState(false)
-  const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
@@ -184,13 +182,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     },
     [updateStageRun],
   )
-
-  const openTraceRun = useCallback((runID: string) => {
-    if (!runID) return
-    setSelectedTraceRunId(runID)
-    setTokenUsageOpen(false)
-    setTraceOpen(true)
-  }, [])
 
   const setStageLiveMessages = useCallback(
     (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => {
@@ -771,8 +762,8 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 onGenerateInteractiveImage={generateImageForView}
                 generatingInteractiveImageTurnId={storyImages.generatingTurnId || undefined}
                 onOpenSubAgentSession={openSubAgentSession}
+                activeRunId={stageRun.runtime.operationId}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
-                onOpenTrace={openTraceRun}
               />
             )}
             {activeSubAgentSessionKey && (
@@ -796,8 +787,8 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         story={{ storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, pendingInterruptionId: stageRun.runtime.pendingInterruptionId, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}
         goal={{ value: conversationGoal.goal, mode: goalMode, pending: conversationGoal.saving, enter: enterGoalMode, exit: () => setGoalMode(false), edit: editGoal, pause: pauseGoal, clear: clearGoal }}
-        dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
-        actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
+        dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
+        actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
       />
     </main>
   )

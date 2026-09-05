@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ChevronLeft, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -39,7 +39,6 @@ import { LoadingState } from '@/components/common/LoadingState'
 import { SessionHistoryPopover } from './SessionHistoryPopover'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { SessionRailToggle } from './SessionRailToggle'
-import { AgentTracePanel } from './AgentTracePanel'
 import { AgentSubAgentSessionPanel, type AgentSubAgentSessionTarget } from './AgentSubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
 import type { ReferencePickerItem } from './FileReferencePicker'
@@ -68,7 +67,7 @@ import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
 import { useAgentQuickPromptControls } from '@/features/agent-quick-prompts/use-agent-quick-prompt-controls'
 import type { AgentQuickPromptScope } from '@/features/agent-quick-prompts/defaults'
 
-export type AgentPanelView = 'chat' | 'sessions' | 'traces'
+export type AgentPanelView = 'chat' | 'sessions'
 export type AgentPanelChrome = 'panel' | 'workbench'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
@@ -289,7 +288,6 @@ function AgentPanelComponent({
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const [fallbackSubAgentSession, setFallbackSubAgentSession] = useState<AgentSubAgentSessionTarget | null>(null)
-  const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const pendingWritingInitRef = useRef<string | null>(null)
   const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
@@ -431,12 +429,6 @@ function AgentPanelComponent({
     }
     setFallbackSubAgentSession(target)
   }, [activeSessionId, onSubAgentSessionOpen, t])
-
-  const openTraceRun = useCallback((runID: string) => {
-    if (!runID) return
-    setSelectedTraceRunId(runID)
-    setView('traces')
-  }, [])
 
   const continuePlanDiscussion = useCallback((message: AgentMessageView) => {
     setView('chat')
@@ -625,8 +617,8 @@ function AgentPanelComponent({
     onApprovePlan: onApproveProposedPlan,
     onContinuePlan: continuePlanDiscussion,
     onExitPlanMode,
-    onOpenTrace: openTraceRun,
     onResolveAsk: resolveAsk,
+    activeRunId: runtimeProjection?.active_operation_id,
     afterContent: lastRuntimeFailure ? (
       <div
         role="alert"
@@ -687,7 +679,6 @@ function AgentPanelComponent({
     quickPrompts: quickPrompts.commands,
     onContextAnalyze: sessionDraft ? undefined : openContextAnalysis,
     tokenUsageMessages,
-    onOpenTrace: openTraceRun,
     agentKey: generalAgent ? ('general' as const) : ('ide' as const),
     workspace,
     conversationBinding: effectiveConversationBinding,
@@ -752,7 +743,8 @@ function AgentPanelComponent({
         <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--nova-border)] px-2">
           <div
             className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5"
-            aria-label={t('chat.panelSwitch')}
+            role="group"
+            aria-label={t('chat.sessionControls')}
           >
             <button
               type="button"
@@ -761,16 +753,7 @@ function AgentPanelComponent({
             >
               {t('chat.view.chat')}
             </button>
-            <button
-              type="button"
-              onClick={() => setView('traces')}
-              className={`flex h-6 items-center rounded-[6px] px-1.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              aria-label={t('chat.view.traces')}
-            >
-              <Activity className="h-3 w-3" />
-            </button>
-          </div>
-          <div className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5">
+            <span aria-hidden="true" className="mx-1 h-3.5 w-px bg-[var(--nova-border)]" />
             <SessionHistoryPopover
               sessions={sessions}
               activeSessionId={activeSessionId}
@@ -820,24 +803,6 @@ function AgentPanelComponent({
         </div>
       )}
 
-      {/*
-        Without the docked header there is no view switcher, so a trace opened from a message
-        card needs its own way back to the conversation.
-      */}
-      {!dockedChrome && view !== 'chat' && (
-        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
-          <button
-            type="button"
-            onClick={() => setView('chat')}
-            className="nova-nav-item flex h-7 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px]"
-          >
-            <ChevronLeft className="h-3 w-3" />
-            {t('chat.view.chat')}
-          </button>
-          <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{t('chat.view.traces')}</span>
-        </div>
-      )}
-
       {view === 'chat' ? (
         <>
           <div className="relative flex min-h-0 flex-1">
@@ -864,7 +829,7 @@ function AgentPanelComponent({
             onRemoveCompaction={removeContextCompaction}
           />
         </>
-      ) : view === 'sessions' ? (
+      ) : (
         <SessionManagementPanel
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -875,8 +840,6 @@ function AgentPanelComponent({
           onDelete={onDeleteSession}
           onEnterChat={() => setView('chat')}
         />
-      ) : (
-        <AgentTracePanel projectId={projectId} disabled={isStreaming} selectedRunId={selectedTraceRunId} />
       )}
       {chatPanePortal}
       {quickPrompts.dialog}

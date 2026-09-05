@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Copy, Loader2, TriangleAlert } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Check, Copy, Loader2, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { cn } from '@/lib/utils'
 
 interface ContextCopyButtonProps {
   content: string
@@ -8,6 +9,8 @@ interface ContextCopyButtonProps {
   copiedLabel: string
   failedLabel: string
   showLabel?: boolean
+  icon?: LucideIcon
+  className?: string
 }
 
 type CopyState = 'idle' | 'copying' | 'copied' | 'failed'
@@ -15,7 +18,7 @@ type CopyState = 'idle' | 'copying' | 'copied' | 'failed'
 const CLIPBOARD_WRITE_TIMEOUT_MS = 2000
 
 /** Copies bounded context diagnostics with feedback and an embedded-browser fallback. */
-export function ContextCopyButton({ content, label, copiedLabel, failedLabel, showLabel = false }: ContextCopyButtonProps) {
+export function ContextCopyButton({ content, label, copiedLabel, failedLabel, showLabel = false, icon = Copy, className }: ContextCopyButtonProps) {
   const [state, setState] = useState<CopyState>('idle')
   const resetTimerRef = useRef<number | null>(null)
 
@@ -37,20 +40,23 @@ export function ContextCopyButton({ content, label, copiedLabel, failedLabel, sh
   }
 
   const currentLabel = state === 'copying' ? `${label}…` : state === 'copied' ? copiedLabel : state === 'failed' ? failedLabel : label
-  const Icon = state === 'copying' ? Loader2 : state === 'copied' ? Check : state === 'failed' ? TriangleAlert : Copy
+  const Icon = state === 'copying' ? Loader2 : state === 'copied' ? Check : state === 'failed' ? TriangleAlert : icon
   return (
-    <Button
+    <TooltipIconButton
       type="button"
       variant="ghost"
       size={showLabel ? 'xs' : 'icon-xs'}
       disabled={!content || state === 'copying'}
-      aria-label={currentLabel}
-      className={showLabel ? 'h-7 shrink-0 gap-1.5 px-2 text-[11px]' : 'size-7 shrink-0 text-[var(--nova-text-faint)]'}
+      label={currentLabel}
+      showTooltip={!showLabel}
+      tooltipSide="top"
+      tooltipSideOffset={3}
+      className={cn(showLabel ? 'h-7 shrink-0 gap-1.5 px-2 text-[11px]' : 'size-7 shrink-0 text-[var(--nova-text-faint)]', className)}
       onClick={() => void handleCopy()}
     >
       <Icon className={state === 'copying' ? 'size-3.5 animate-spin' : 'size-3.5'} />
       {showLabel ? currentLabel : null}
-    </Button>
+    </TooltipIconButton>
   )
 }
 
