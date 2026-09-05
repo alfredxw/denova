@@ -2,6 +2,7 @@ package agentrun
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -27,48 +28,52 @@ type TraceLocation struct {
 }
 
 type RunTraceSummary struct {
-	ID                    string    `json:"id"`
-	CreatedAt             time.Time `json:"created_at"`
-	Path                  string    `json:"path"`
-	Status                string    `json:"status"`
-	Reason                string    `json:"reason,omitempty"`
-	Events                int       `json:"events"`
-	ContextParts          int       `json:"context_parts"`
-	ProjectID             string    `json:"project_id,omitempty"`
-	TaskID                string    `json:"task_id,omitempty"`
-	AgentKind             string    `json:"agent_kind,omitempty"`
-	SessionID             string    `json:"session_id,omitempty"`
-	StoryID               string    `json:"story_id,omitempty"`
-	BranchID              string    `json:"branch_id,omitempty"`
-	TurnID                string    `json:"turn_id,omitempty"`
-	MaintenanceTask       string    `json:"maintenance_task,omitempty"`
-	Phase                 string    `json:"phase,omitempty"`
-	ToolCalls             int       `json:"tool_calls,omitempty"`
-	ToolSuccesses         int       `json:"tool_successes,omitempty"`
-	ToolBlocked           int       `json:"tool_blocked,omitempty"`
-	ToolErrors            int       `json:"tool_errors,omitempty"`
-	ToolTruncated         int       `json:"tool_truncated,omitempty"`
-	InvalidToolArgs       int       `json:"invalid_tool_args,omitempty"`
-	ToolDomainAccepted    int       `json:"tool_domain_accepted,omitempty"`
-	ToolDomainRejected    int       `json:"tool_domain_rejected,omitempty"`
-	ToolDomainPending     int       `json:"tool_domain_pending,omitempty"`
-	ToolDomainDiagnostics int       `json:"tool_domain_diagnostics,omitempty"`
-	LLMCalls              int       `json:"llm_calls,omitempty"`
-	PromptTokens          int       `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens    int       `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens  int       `json:"uncached_prompt_tokens,omitempty"`
-	CacheHitRate          float64   `json:"cache_hit_rate,omitempty"`
-	DurationMS            int64     `json:"duration_ms,omitempty"`
-	Mutations             int       `json:"mutations,omitempty"`
-	VerificationStatus    string    `json:"verification_status,omitempty"`
-	Recoverable           bool      `json:"recoverable,omitempty"`
-	ContentCaptured       bool      `json:"content_captured,omitempty"`
+	ID                    string              `json:"id"`
+	CreatedAt             time.Time           `json:"created_at"`
+	Path                  string              `json:"path"`
+	Status                string              `json:"status"`
+	Reason                string              `json:"reason,omitempty"`
+	Events                int                 `json:"events"`
+	ContextParts          int                 `json:"context_parts"`
+	ProjectID             string              `json:"project_id,omitempty"`
+	TaskID                string              `json:"task_id,omitempty"`
+	AgentKind             string              `json:"agent_kind,omitempty"`
+	AgentName             string              `json:"agent_name,omitempty"`
+	ParentRunID           string              `json:"parent_run_id,omitempty"`
+	ChildRuns             []RunTraceReference `json:"child_runs,omitempty"`
+	SessionID             string              `json:"session_id,omitempty"`
+	StoryID               string              `json:"story_id,omitempty"`
+	BranchID              string              `json:"branch_id,omitempty"`
+	TurnID                string              `json:"turn_id,omitempty"`
+	MaintenanceTask       string              `json:"maintenance_task,omitempty"`
+	Phase                 string              `json:"phase,omitempty"`
+	ToolCalls             int                 `json:"tool_calls,omitempty"`
+	ToolSuccesses         int                 `json:"tool_successes,omitempty"`
+	ToolBlocked           int                 `json:"tool_blocked,omitempty"`
+	ToolErrors            int                 `json:"tool_errors,omitempty"`
+	ToolTruncated         int                 `json:"tool_truncated,omitempty"`
+	InvalidToolArgs       int                 `json:"invalid_tool_args,omitempty"`
+	ToolDomainAccepted    int                 `json:"tool_domain_accepted,omitempty"`
+	ToolDomainRejected    int                 `json:"tool_domain_rejected,omitempty"`
+	ToolDomainPending     int                 `json:"tool_domain_pending,omitempty"`
+	ToolDomainDiagnostics int                 `json:"tool_domain_diagnostics,omitempty"`
+	LLMCalls              int                 `json:"llm_calls,omitempty"`
+	PromptTokens          int                 `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens    int                 `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens  int                 `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate          float64             `json:"cache_hit_rate,omitempty"`
+	DurationMS            int64               `json:"duration_ms,omitempty"`
+	Mutations             int                 `json:"mutations,omitempty"`
+	VerificationStatus    string              `json:"verification_status,omitempty"`
+	Recoverable           bool                `json:"recoverable,omitempty"`
+	ContentCaptured       bool                `json:"content_captured,omitempty"`
 }
 
 type RunTrace struct {
-	Summary   RunTraceSummary  `json:"summary"`
-	Records   []RunTraceRecord `json:"records"`
-	Truncated bool             `json:"truncated"`
+	Summary   RunTraceSummary   `json:"summary"`
+	Children  []RunTraceSummary `json:"children,omitempty"`
+	Records   []RunTraceRecord  `json:"records"`
+	Truncated bool              `json:"truncated"`
 }
 
 // RunTraceExport is the original JSONL trace file retained for support diagnosis.
@@ -149,7 +154,24 @@ func ReadRunTrace(location TraceLocation, id string) (RunTrace, error) {
 	if err != nil {
 		return RunTrace{}, err
 	}
-	return readRunTraceFile(path, defaultRunTraceRecordCap)
+	trace, err := readRunTraceFile(path, defaultRunTraceRecordCap)
+	if err != nil {
+		return RunTrace{}, err
+	}
+	for _, child := range trace.Summary.ChildRuns {
+		// Resolve explicit IDs, independently of catalog size and detail record
+		// caps. Read summaries only; never recursively expand a delegation tree.
+		summary, _, childErr := ScanRunTrace(location, child.ID, nil)
+		if childErr != nil {
+			if !os.IsNotExist(childErr) {
+				slog.Warn("[trajectory] child Run trace read failed", "run_id", id, "child_run_id", child.ID, "error", childErr)
+			}
+			summary = RunTraceSummary{ID: child.ID, AgentName: child.AgentName, SessionID: child.SessionID, Status: "unavailable"}
+		}
+		summary.Path = ""
+		trace.Children = append(trace.Children, summary)
+	}
+	return trace, nil
 }
 
 // ExportRunTrace returns the complete persisted JSONL file for one run.
@@ -270,12 +292,30 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 	}
 	summary.Path = path
 	switch record.Type {
+	case "parent_run":
+		summary.ParentRunID = stringField(record.Data, "id")
+	case "child_run":
+		appendChildRunReference(summary, RunTraceReference{
+			ID: stringField(record.Data, "id"), SessionID: stringField(record.Data, "session_id"),
+			AgentName: stringField(record.Data, "agent_name"), ParentCallID: stringField(record.Data, "parent_call_id"),
+		})
+	case "tool_output":
+		// Older traces already contain durable task.start receipts. Expose their
+		// exact child identity even when child diagnostics were never captured.
+		content, _ := record.Data["content"].(map[string]any)
+		if stringField(content, "tool_name") == "task" {
+			for _, child := range TaskRunTraceReferences(stringField(content, "result")) {
+				child.ParentCallID = stringField(content, "execution_id")
+				appendChildRunReference(summary, child)
+			}
+		}
 	case "llm_input":
 		summary.ContentCaptured = true
 	case "run_created":
 		summary.ProjectID = stringField(record.Data, "project_id")
 		summary.TaskID = stringField(record.Data, "task_id")
 		summary.AgentKind = stringField(record.Data, "agent_kind")
+		summary.AgentName = stringField(record.Data, "agent_name")
 		summary.SessionID = stringField(record.Data, "session_id")
 		summary.StoryID = stringField(record.Data, "story_id")
 		summary.BranchID = stringField(record.Data, "branch_id")

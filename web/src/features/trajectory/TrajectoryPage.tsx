@@ -11,8 +11,9 @@ import { downloadAgentRunTrace, exportAgentRunTrace, getAgentRunTrace, getGlobal
 import type { AgentRunTrace, GlobalAgentRunTraceIssue, GlobalAgentRunTraceSummary } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { TrajectoryRunList } from './TrajectoryRunList'
+import { TrajectoryRunHeader } from './TrajectoryRunHeader'
 import { TrajectoryTraceWorkspace } from './TrajectoryTraceWorkspace'
-import { useTrajectoryNavigation, type TrajectoryNavigationIntent } from './trajectory-navigation'
+import { useTrajectoryNavigation, type TrajectoryNavigationTarget } from './trajectory-navigation'
 
 interface TrajectoryPageProps {
   onClose?: () => void
@@ -49,7 +50,7 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
     [runs, selectedRunURI],
   )
 
-  const loadRuns = useCallback(async (preferred?: { runURI?: string; target?: TrajectoryNavigationIntent }) => {
+  const loadRuns = useCallback(async (preferred?: { runURI?: string; target?: TrajectoryNavigationTarget }) => {
     setLoadingRuns(true)
     setError(null)
     try {
@@ -107,6 +108,7 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
       return
     }
     let cancelled = false
+    setTrace((current) => current?.summary.id === selectedRun.id ? current : null)
     setLoadingTrace(true)
     setError(null)
     void getAgentRunTrace(selectedRun.project_id, selectedRun.id)
@@ -213,7 +215,14 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
               </>
             )}
           >
-            <TrajectoryRunWorkspace runs={visibleRuns} issues={issues} trace={trace} loadingRuns={loadingRuns} loadingTrace={loadingTrace} />
+            <TrajectoryRunWorkspace runs={visibleRuns} issues={issues} trace={trace} loadingRuns={loadingRuns} loadingTrace={loadingTrace}
+              trajectoryURI={selectedRunURI}
+              onOpenRun={(runId) => {
+                if (!selectedRun) return
+                setAgentFilter('all')
+                void loadRuns({ target: { projectId: selectedRun.project_id, runId } })
+              }}
+            />
           </FeaturePageShell>
         )
       }}
@@ -221,12 +230,14 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
   )
 }
 
-function TrajectoryRunWorkspace({ runs, issues, trace, loadingRuns, loadingTrace }: {
+function TrajectoryRunWorkspace({ runs, issues, trace, loadingRuns, loadingTrace, trajectoryURI, onOpenRun }: {
   runs: GlobalAgentRunTraceSummary[]
   issues: GlobalAgentRunTraceIssue[]
   trace: AgentRunTrace | null
   loadingRuns: boolean
   loadingTrace: boolean
+  trajectoryURI: string
+  onOpenRun: (runID: string) => void
 }) {
   const { t } = useTranslation()
   if (loadingRuns && runs.length === 0) {
@@ -243,7 +254,10 @@ function TrajectoryRunWorkspace({ runs, issues, trace, loadingRuns, loadingTrace
         </div>
       ) : null}
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface)]">
-        {trace ? <TrajectoryTraceWorkspace trace={trace} /> : (
+        {trace ? <>
+          <TrajectoryRunHeader key={`header:${trace.summary.id}`} trace={trace} trajectoryURI={trajectoryURI} onOpenRun={onOpenRun} />
+          <div className="min-h-0 flex-1"><TrajectoryTraceWorkspace key={trace.summary.id} trace={trace} /></div>
+        </> : (
           <EmptyPage icon={Activity} title={loadingTrace ? t('common.loading') : t('trajectory.selectRun')} description={t('trajectory.selectRunDescription')} />
         )}
       </section>

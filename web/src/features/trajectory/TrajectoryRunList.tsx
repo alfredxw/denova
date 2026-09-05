@@ -182,7 +182,7 @@ function RunListItem({
     >
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text)]">
-          {grouped ? run.agent_kind || t('trajectory.runs.agent') : run.project_name}
+          {grouped ? run.agent_name || run.agent_kind || t('trajectory.runs.agent') : run.project_name}
         </span>
         <StatusDot status={run.status} />
         <span className="shrink-0 font-mono text-[9px] uppercase text-[var(--nova-text-faint)]">{run.status}</span>

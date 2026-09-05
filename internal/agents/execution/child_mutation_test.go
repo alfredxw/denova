@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"denova/config"
 	"denova/internal/agents/canonicalstore"
 	agentconversation "denova/internal/agents/conversation"
 	agentdelegation "denova/internal/agents/delegation"
+	agentprompts "denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
@@ -19,10 +21,13 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 	agentpermission "github.com/alfredxw/denova/agent/permission"
+	"github.com/alfredxw/denova/agent/providers"
 	publictools "github.com/alfredxw/denova/agent/tools"
 )
 
 func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) {
+	agentrun.SetTraceContentCaptureEnabled(true)
+	t.Cleanup(func() { agentrun.SetTraceContentCaptureEnabled(false) })
 	ctx := context.Background()
 	dataDir, workspace := t.TempDir(), t.TempDir()
 	registry := project.NewRegistry(dataDir)
@@ -68,12 +73,16 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 	}}
 	child := agent.Definition{
 		Key: "test.delegated-writer", Name: "writer", Model: childModel,
-		ModelIdentity: agent.CapabilityIdentity{Kind: "test.child-model", Version: 1},
-		Tools:         toolset, Permission: agentpermission.FullAccess(),
+		AttachmentRoot: layout.StoreRoot,
+		ModelIdentity:  agent.CapabilityIdentity{Kind: "test.child-model", Version: 1},
+		Tools:          toolset, Permission: agentpermission.FullAccess(),
 		Middlewares: []agent.Middleware{agent.IdentifyMiddleware(
 			agenttoolruntime.NewOrchestratorMiddleware(agenttoolruntime.OrchestratorConfig{
 				AgentKind: agentrun.AgentKindIDE, Workspace: workspace,
 			}), agent.CapabilityIdentity{Kind: "test.child-orchestrator", Version: 1},
+		), agent.IdentifyMiddleware(
+			agentrun.NewModelInputLoggingMiddleware(agentrun.AgentKindIDE, providers.ModelConfig{Model: "child-test"}, 0, 0, agentprompts.SystemPromptComposition{}),
+			agent.CapabilityIdentity{Kind: "test.child-model-trace", Version: 1},
 		)},
 	}
 	catalog, err := agentdelegation.NewCatalog(nil, agentdelegation.Config{
@@ -183,6 +192,28 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 	if childKey.ID == "" {
 		t.Fatal("delegated Session is missing")
 	}
+	childRunID := string(committed[0].RuntimeOperation)
+	waitForChildTrace(t, runtime, childRunID)
+	location := agentrun.TraceLocation{Workspace: workspace, StateRoot: layout.StoreRoot}
+	childTrace, err := agentrun.ReadRunTrace(location, childRunID)
+	if err != nil {
+		t.Fatalf("read delegated Run trace: %v", err)
+	}
+	if childTrace.Summary.LLMCalls != 3 || childTrace.Summary.ToolCalls != 2 || childTrace.Summary.Status != "success" ||
+		childTrace.Summary.SessionID != childKey.ID || childTrace.Summary.ParentRunID != string(operation.Receipt().OperationID) || !childTrace.Summary.ContentCaptured {
+		t.Fatalf("delegated Run trace = %#v", childTrace.Summary)
+	}
+	contentRecords := map[string]int{}
+	for _, record := range childTrace.Records {
+		contentRecords[record.Type]++
+	}
+	if contentRecords["llm_input"] != 3 || contentRecords["llm_output"] != 3 || contentRecords["tool_output"] != 2 {
+		t.Fatalf("child boundary content = %v", contentRecords)
+	}
+	parentTrace, err := agentrun.ReadRunTrace(location, string(operation.Receipt().OperationID))
+	if err != nil || len(parentTrace.Children) != 1 || parentTrace.Children[0].ID != childRunID || parentTrace.Summary.LLMCalls != 2 || parentTrace.Summary.ToolCalls != 1 {
+		t.Fatalf("parent trace mixed or lost child execution: %#v, error = %v", parentTrace, err)
+	}
 	if err := runtime.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +276,11 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 	if result, err := coldRun.Wait(ctx); err != nil || result.Status != agent.ResultCompleted {
 		t.Fatalf("cold child result = %#v, error = %v", result, err)
 	}
+	waitForChildTrace(t, reopened, coldRun.ID())
+	coldTrace, err := agentrun.ReadRunTrace(location, coldRun.ID())
+	if err != nil || coldTrace.Summary.Status != "success" || coldTrace.Summary.LLMCalls != 2 || !coldTrace.Summary.ContentCaptured {
+		t.Fatalf("cold child trace = %#v, error = %v", coldTrace.Summary, err)
+	}
 	if len(committed) != 3 || committed[2].Binding.ProjectID != projectRecord.ID ||
 		committed[2].Origin.SessionID != sess.ID || committed[2].Mutation.Workspace != workspace {
 		t.Fatalf("cold child mutation routing = %#v", committed)
@@ -252,5 +288,20 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 	content, err = os.ReadFile(filepath.Join(workspace, "chapter.md"))
 	if err != nil || string(content) != "Final chapter.\n" {
 		t.Fatalf("cold chapter = %q, error = %v", content, err)
+	}
+}
+
+func waitForChildTrace(t *testing.T, runtime *Runtime, runID string) {
+	t.Helper()
+	runtime.public.mu.RLock()
+	handle := runtime.public.runs[runID]
+	runtime.public.mu.RUnlock()
+	if handle == nil {
+		t.Fatalf("child Run %s has no trace consumer", runID)
+	}
+	select {
+	case <-handle.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("child trace did not settle")
 	}
 }

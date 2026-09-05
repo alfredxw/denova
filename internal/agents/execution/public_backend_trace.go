@@ -28,11 +28,13 @@ type publicAgentRunTrace struct {
 	closed         bool
 	modelCallCount int
 	toolArgsBytes  map[string]int
+	parentRunID    string
+	childRuns      map[string]string
 }
 
 func newPublicAgentRunTrace(runID string) *publicAgentRunTrace {
 	return &publicAgentRunTrace{
-		runID: strings.TrimSpace(runID), toolArgsBytes: make(map[string]int),
+		runID: strings.TrimSpace(runID), toolArgsBytes: make(map[string]int), childRuns: make(map[string]string),
 	}
 }
 
@@ -122,6 +124,11 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 		return err
 	}
 	switch payload := event.Payload.(type) {
+	case agent.NestedEvent:
+		return trace.recordChildRun(agentrun.RunTraceReference{
+			ID: payload.Child.RunID, SessionID: payload.SessionID, AgentName: payload.Source.Name,
+			ParentCallID: payload.ParentCallID,
+		})
 	case agent.RunAccepted:
 		return trace.ledger.Record("run_started", map[string]any{
 			"phase": "accepted", "command_id": payload.CommandID,
@@ -182,6 +189,14 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 			ArgsBytes: len(payload.Arguments), ArgsComplete: &argsComplete,
 		})
 	case agent.ToolFinished:
+		if payload.Name == "task" && payload.Projection != nil {
+			for _, child := range agentrun.TaskRunTraceReferences(payload.Projection.ModelContent) {
+				child.ParentCallID = payload.CallID
+				if err := trace.recordChildRun(child); err != nil {
+					return err
+				}
+			}
+		}
 		if trace.observer != nil && trace.observer.HasToolExecution(payload.CallID, payload.Name) {
 			return nil
 		}
@@ -211,6 +226,11 @@ func (trace *publicAgentRunTrace) openLocked(options agentrun.Options) error {
 	}
 	trace.ledger = ledger
 	if ledger != nil {
+		if trace.parentRunID != "" {
+			if err := ledger.Record("parent_run", map[string]any{"id": trace.parentRunID}); err != nil {
+				return err
+			}
+		}
 		trace.rootSpan = agentrun.StartRootTraceSpan(ledger, map[string]any{
 			"project_id": options.ProjectID, "agent_kind": options.AgentKind, "mode": options.Mode,
 		})
@@ -222,6 +242,21 @@ func (trace *publicAgentRunTrace) openLocked(options agentrun.Options) error {
 			ledger, rootSpanID, trace.runID, options.SessionID, options.ReviewThreadID,
 		)
 	}
+	return nil
+}
+
+// Nested events establish navigation only. Child content, status and usage are
+// recorded by the child's own lifecycle, independently of the parent's stream.
+func (trace *publicAgentRunTrace) recordChildRun(child agentrun.RunTraceReference) error {
+	if callID, exists := trace.childRuns[child.ID]; exists && (callID != "" || child.ParentCallID == "") {
+		return nil
+	}
+	if err := trace.ledger.Record("child_run", map[string]any{
+		"id": child.ID, "session_id": child.SessionID, "agent_name": child.AgentName, "parent_call_id": child.ParentCallID,
+	}); err != nil {
+		return err
+	}
+	trace.childRuns[child.ID] = child.ParentCallID
 	return nil
 }
 

@@ -113,6 +113,8 @@ type Settings struct {
 	// AgentQuickPrompts is a user-level UI preference. Workspace configuration
 	// must not replace one creator's personal shortcut layout.
 	AgentQuickPrompts AgentQuickPromptRegistry `toml:"agent_quick_prompts,omitempty" json:"agent_quick_prompts,omitempty"`
+	// AgentQuickPromptsInCommands opts all page scopes into slash suggestions; nil means disabled.
+	AgentQuickPromptsInCommands *bool `toml:"agent_quick_prompts_in_commands,omitempty" json:"agent_quick_prompts_in_commands,omitempty"`
 
 	// Terminal (the AgentChat terminal tabs). A terminal runs arbitrary commands on this
 	// machine, so this entire section is user-scoped and cannot be overridden by a workspacelayout.
@@ -449,6 +451,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentQuickPrompts != nil {
 		out.AgentQuickPrompts = cloneAgentQuickPrompts(child.AgentQuickPrompts)
+	}
+	if child.AgentQuickPromptsInCommands != nil {
+		out.AgentQuickPromptsInCommands = child.AgentQuickPromptsInCommands
 	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize

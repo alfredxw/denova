@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentQuickPromptBehavior, AgentQuickPromptSettings } from '@/features/settings/types'
+import type { QuickPromptSettingsChanges } from './use-agent-quick-prompts'
 
 const MAX_PROMPT_NAME_LENGTH = 128
 const MAX_PROMPT_LENGTH = 64 * 1024
@@ -22,8 +23,9 @@ interface QuickPromptSettingsDialogProps {
   prompts: AgentQuickPromptSettings[]
   defaults: AgentQuickPromptSettings[]
   customized: boolean
+  showInCommands: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (prompts: AgentQuickPromptSettings[] | null) => Promise<void>
+  onSave: (changes: QuickPromptSettingsChanges) => Promise<void>
 }
 
 export function QuickPromptSettingsDialog({
@@ -32,12 +34,14 @@ export function QuickPromptSettingsDialog({
   prompts,
   defaults,
   customized,
+  showInCommands,
   onOpenChange,
   onSave,
 }: QuickPromptSettingsDialogProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<AgentQuickPromptSettings[]>([])
   const [restoreDefaults, setRestoreDefaults] = useState(false)
+  const [commandsDraft, setCommandsDraft] = useState(showInCommands)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -45,13 +49,15 @@ export function QuickPromptSettingsDialog({
     if (!open) return
     setDraft(clonePrompts(prompts))
     setRestoreDefaults(false)
+    setCommandsDraft(showInCommands)
     setSaveError('')
-  }, [open, prompts])
+  }, [open, prompts, showInCommands])
 
   const invalid = draft.some((prompt) => !prompt.name.trim() || !prompt.prompt.trim())
-  const dirty = restoreDefaults
+  const promptsDirty = restoreDefaults
     ? customized
     : JSON.stringify(draft) !== JSON.stringify(prompts)
+  const dirty = promptsDirty || commandsDraft !== showInCommands
   const canRestore = customized || JSON.stringify(draft) !== JSON.stringify(defaults)
 
   const updatePrompt = (index: number, patch: Partial<AgentQuickPromptSettings>) => {
@@ -92,7 +98,10 @@ export function QuickPromptSettingsDialog({
     setSaving(true)
     setSaveError('')
     try {
-      await onSave(restoreDefaults ? null : normalizePrompts(draft))
+      await onSave({
+        ...(promptsDirty ? { prompts: restoreDefaults ? null : normalizePrompts(draft) } : {}),
+        ...(commandsDraft !== showInCommands ? { showInCommands: commandsDraft } : {}),
+      })
       onOpenChange(false)
     } catch (error) {
       console.error('[features/agent-quick-prompts/QuickPromptSettingsDialog.tsx] saving quick prompts failed', { error })
@@ -111,6 +120,13 @@ export function QuickPromptSettingsDialog({
         </DialogHeader>
 
         <div className="min-h-0 overflow-y-auto px-5 py-4">
+          <label className="mb-4 flex cursor-pointer items-center gap-3 rounded-lg border p-3">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{t('chat.quick.settings.showInCommands')}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{t('chat.quick.settings.commandsHint')}</span>
+            </span>
+            <Switch checked={commandsDraft} onCheckedChange={setCommandsDraft} disabled={saving} aria-label={t('chat.quick.settings.showInCommands')} />
+          </label>
           {draft.length === 0 ? (
             <Empty className="min-h-48 border">
               <EmptyHeader>

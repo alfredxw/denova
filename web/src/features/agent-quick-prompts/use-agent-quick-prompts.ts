@@ -1,31 +1,46 @@
 import { useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { patchSettings, refreshSettings, type SettingsPatch } from '@/features/settings/api'
+import { patchSettings, refreshSettings } from '@/features/settings/api'
 import { GLOBAL_SETTINGS_TARGET, settingsQueryOptions } from '@/features/settings/query'
 import type { AgentQuickPromptSettings, LayeredSettings } from '@/features/settings/types'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { queryClient } from '@/lib/query-client'
 
-export function useAgentQuickPrompts(scope: string, defaults: AgentQuickPromptSettings[]) {
-  const query = useQuery(settingsQueryOptions(GLOBAL_SETTINGS_TARGET), queryClient)
+export interface QuickPromptSettingsChanges {
+  prompts?: AgentQuickPromptSettings[] | null
+  showInCommands?: boolean
+}
+
+export function useAgentQuickPrompts(scope: string | undefined, defaults: AgentQuickPromptSettings[]) {
+  const query = useQuery({ ...settingsQueryOptions(GLOBAL_SETTINGS_TARGET), enabled: Boolean(scope) }, queryClient)
   const registry = query.data?.user.agent_quick_prompts
-  const customized = Boolean(registry && Object.prototype.hasOwnProperty.call(registry, scope))
+  const customized = Boolean(scope && registry && Object.prototype.hasOwnProperty.call(registry, scope))
   const prompts = useMemo(
-    () => clonePrompts(customized ? registry?.[scope] ?? [] : defaults),
+    () => clonePrompts(customized && scope ? registry?.[scope] ?? [] : defaults),
     [customized, defaults, registry, scope],
   )
 
-  const save = useCallback(async (next: AgentQuickPromptSettings[] | null): Promise<LayeredSettings> => {
+  const save = useCallback(async (changes: QuickPromptSettingsChanges): Promise<LayeredSettings> => {
+    if (!scope) throw new Error('Quick prompt scope is required')
     const initial = await refreshSettings()
-    return saveWithRevisionRecovery<AgentQuickPromptSettings[] | null, LayeredSettings>({
-      baseline: initial.user.agent_quick_prompts?.[scope] ?? null,
-      draft: next,
+    return saveWithRevisionRecovery<QuickPromptSettingsChanges, LayeredSettings>({
+      baseline: {
+        prompts: initial.user.agent_quick_prompts?.[scope] ?? null,
+        showInCommands: initial.user.agent_quick_prompts_in_commands === true,
+      },
+      draft: changes,
       revision: initial.revisions?.user,
-      save: (draft, revision) => patchSettings('user', quickPromptPatch(scope, draft), revision),
+      save: (draft, revision) => patchSettings('user', {
+        ...(draft.prompts !== undefined ? { agent_quick_prompts: { [scope]: draft.prompts } } : {}),
+        ...(draft.showInCommands !== undefined ? { agent_quick_prompts_in_commands: draft.showInCommands } : {}),
+      }, revision),
       loadLatest: async () => {
         const latest = await refreshSettings()
         return {
-          value: latest.user.agent_quick_prompts?.[scope] ?? null,
+          value: {
+            prompts: latest.user.agent_quick_prompts?.[scope] ?? null,
+            showInCommands: latest.user.agent_quick_prompts_in_commands === true,
+          },
           revision: latest.revisions?.user,
         }
       },
@@ -37,12 +52,9 @@ export function useAgentQuickPrompts(scope: string, defaults: AgentQuickPromptSe
     customized,
     loading: query.isLoading,
     prompts,
+    showInCommands: query.data?.user.agent_quick_prompts_in_commands === true,
     save,
   }
-}
-
-function quickPromptPatch(scope: string, prompts: AgentQuickPromptSettings[] | null): SettingsPatch {
-  return { agent_quick_prompts: { [scope]: prompts } }
 }
 
 function clonePrompts(prompts: AgentQuickPromptSettings[]): AgentQuickPromptSettings[] {

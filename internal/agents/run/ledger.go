@@ -104,6 +104,7 @@ func newLedger(workspace string, policy LedgerPolicy, options Options, runID str
 		"project_id":       options.ProjectID,
 		"task_id":          options.TaskID,
 		"agent_kind":       options.AgentKind,
+		"agent_name":       options.RootAgentName,
 		"session_id":       options.SessionID,
 		"review_thread_id": options.ReviewThreadID,
 		"story_id":         options.StoryID,
@@ -467,7 +468,7 @@ func sanitizeDirectRunLedgerRecord(recordType string, data map[string]any) map[s
 	switch strings.TrimSpace(recordType) {
 	case "run_created", "run_started", "run_context":
 		out := selectLedgerFields(data,
-			"project_id", "task_id", "agent_kind", "session_id", "review_thread_id", "story_id", "branch_id", "turn_id",
+			"project_id", "task_id", "agent_kind", "agent_name", "session_id", "review_thread_id", "story_id", "branch_id", "turn_id",
 			"maintenance_task", "mode", "source", "references", "lore_references", "style_scenes", "selections",
 			"plan_mode", "writing_skill", "message_bytes", "message_chars",
 		)
@@ -476,6 +477,10 @@ func sanitizeDirectRunLedgerRecord(recordType string, data map[string]any) map[s
 			out["message_chars"] = metrics.Chars
 		}
 		return compactLedgerMap(out)
+	case "parent_run":
+		return selectLedgerFields(data, "id")
+	case "child_run":
+		return selectLedgerFields(data, "id", "session_id", "agent_name", "parent_call_id")
 	case "run_finished":
 		out := selectLedgerFields(data, "status", "generated_bytes")
 		appendLedgerErrorClass(out, data, "reason", "error")

@@ -65,7 +65,7 @@ import type { ConversationConfigBinding } from '@/features/conversation-config/t
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
-import { AgentQuickPrompts } from '@/features/agent-quick-prompts/AgentQuickPrompts'
+import { useAgentQuickPromptControls } from '@/features/agent-quick-prompts/use-agent-quick-prompt-controls'
 import type { AgentQuickPromptScope } from '@/features/agent-quick-prompts/defaults'
 
 export type AgentPanelView = 'chat' | 'sessions' | 'traces'
@@ -208,8 +208,6 @@ function AgentPanelComponent({
   quickPromptScope: configuredQuickPromptScope,
   composerDraftScope,
   composerSettings: persistedSettings,
-  currentChapter,
-  selectedFile,
   tellers,
   imagePresets = [],
   messages,
@@ -570,12 +568,6 @@ function AgentPanelComponent({
   }, [onEditQueuedCommand])
 
   const quickPromptScope = configuredQuickPromptScope ?? (generalAgent ? undefined : 'writing')
-  let quickPromptTarget = t('chat.quick.targetWork')
-  if (currentChapter) {
-    quickPromptTarget = t('chat.quick.targetChapter', { title: currentChapter.display_title })
-  } else if (selectedFile) {
-    quickPromptTarget = t('chat.quick.targetFile', { file: selectedFile })
-  }
   const fillQuickPrompt = useCallback((prompt: string) => {
     setInputPrefill((current) => ({
       prompt,
@@ -583,18 +575,16 @@ function AgentPanelComponent({
       mode: 'append',
     }))
   }, [])
+  const quickPrompts = useAgentQuickPromptControls({
+    scope: quickPromptScope,
+    disabled: persistedSettings.loading,
+    onFill: fillQuickPrompt,
+    onSend: sendWithWritingSkill,
+  })
   // Prompt starters belong to the docked page surface. The full AgentChat workbench opens on a
   // clean conversation because its project tabs are not tied to one page task.
   const emptyChatContent =
-    dockedChrome && quickPromptScope && messages.length === 0 && !isStreaming ? (
-      <AgentQuickPrompts
-        scope={quickPromptScope}
-        writingTarget={quickPromptTarget}
-        disabled={persistedSettings.loading}
-        onFill={fillQuickPrompt}
-        onSend={sendWithWritingSkill}
-      />
-    ) : null
+    dockedChrome && messages.length === 0 && !isStreaming ? quickPrompts.cards : null
   const resolveAsk = useCallback(
     async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
       const askID = agentViewAskID(view)
@@ -694,34 +684,40 @@ function AgentPanelComponent({
     onReviewFeedbackOpen,
     onReviewFeedbackRemove,
     skills: skillCommands,
+    quickPrompts: quickPrompts.commands,
     onContextAnalyze: sessionDraft ? undefined : openContextAnalysis,
     tokenUsageMessages,
     onOpenTrace: openTraceRun,
     agentKey: generalAgent ? ('general' as const) : ('ide' as const),
     workspace,
     conversationBinding: effectiveConversationBinding,
-    composerSettingsControl: generalAgent ? undefined : (
+    composerSettingsControl: (
       <>
-        <ImageGenerationSettingsMenu projectId={projectId} disabled={!workspace || persistedSettings.loading || isStreaming}>
-          <WritingImagePresetMenu
-            enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
-            imagePresets={imagePresets}
-            imagePresetID={imagePresetId}
-            saving={persistedSettings.isSaving('ide_image_preset_id')}
-            onChange={(value) => persistedSettings.persist('ide_image_preset_id', value)}
-          />
-        </ImageGenerationSettingsMenu>
-        <WritingComposerSettingsMenu
-          enabled={Boolean(workspace) && !persistedSettings.loading}
-          tellers={tellers}
-          tellerID={ideTellerId}
-          writingSkills={writingSkillOptions}
-          writingSkill={writingSkill}
-          savingTeller={persistedSettings.isSaving('ide_story_teller_id')}
-          savingWritingSkill={persistedSettings.isSaving('writing_skill_default')}
-          onTellerChange={(value) => persistedSettings.persist('ide_story_teller_id', value)}
-          onWritingSkillChange={(value) => persistedSettings.persist('writing_skill_default', value)}
-        />
+        {quickPrompts.menuItem}
+        {!generalAgent ? (
+          <>
+            <ImageGenerationSettingsMenu projectId={projectId} disabled={!workspace || persistedSettings.loading || isStreaming}>
+              <WritingImagePresetMenu
+                enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
+                imagePresets={imagePresets}
+                imagePresetID={imagePresetId}
+                saving={persistedSettings.isSaving('ide_image_preset_id')}
+                onChange={(value) => persistedSettings.persist('ide_image_preset_id', value)}
+              />
+            </ImageGenerationSettingsMenu>
+            <WritingComposerSettingsMenu
+              enabled={Boolean(workspace) && !persistedSettings.loading}
+              tellers={tellers}
+              tellerID={ideTellerId}
+              writingSkills={writingSkillOptions}
+              writingSkill={writingSkill}
+              savingTeller={persistedSettings.isSaving('ide_story_teller_id')}
+              savingWritingSkill={persistedSettings.isSaving('writing_skill_default')}
+              onTellerChange={(value) => persistedSettings.persist('ide_story_teller_id', value)}
+              onWritingSkillChange={(value) => persistedSettings.persist('writing_skill_default', value)}
+            />
+          </>
+        ) : null}
       </>
     ),
     onboardingAnchor: 'agent-input',
@@ -883,6 +879,7 @@ function AgentPanelComponent({
         <AgentTracePanel projectId={projectId} disabled={isStreaming} selectedRunId={selectedTraceRunId} />
       )}
       {chatPanePortal}
+      {quickPrompts.dialog}
     </aside>
   )
 }

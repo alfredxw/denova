@@ -392,6 +392,9 @@ export interface AgentRunTraceSummary {
   duration_ms?: number
   task_id?: string
   agent_kind?: string
+  agent_name?: string
+  parent_run_id?: string
+  child_runs?: Array<{ id: string; session_id: string; agent_name: string; parent_call_id?: string }>
   session_id?: string
   phase?: string
   mutations?: number
@@ -427,6 +430,7 @@ export interface AgentRunTraceRecord {
 
 export interface AgentRunTrace {
   summary: AgentRunTraceSummary
+  children?: AgentRunTraceSummary[]
   records: AgentRunTraceRecord[]
   truncated?: boolean
 }

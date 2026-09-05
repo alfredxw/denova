@@ -20,31 +20,31 @@ describe('agentQuickPromptDefaults', () => {
       'preset-image',
     ]
     const firstPromptIDs = scopes.map((scope) => (
-      agentQuickPromptDefaults(i18n.t, scope, 'current work').prompts[0]?.id
+      agentQuickPromptDefaults(i18n.t, scope).prompts[0]?.id
     ))
 
     expect(new Set(firstPromptIDs).size).toBe(scopes.length)
   })
 
-  it('localizes built-in prompt names and content with the configured language', () => {
+  it.each<AgentQuickPromptScope>([
+    'writing', 'skills', 'agents', 'automation', 'lore',
+    'preset-teller', 'preset-event', 'preset-rule', 'preset-actor-state', 'preset-director', 'preset-image',
+  ])('localizes both names and inserted instructions for %s', (scope) => {
     setConfiguredLocale('zh-CN')
-    const chinese = agentQuickPromptDefaults(i18n.t, 'writing', '当前章节《序章》')
-
-    expect(chinese.prompts[3]).toMatchObject({
-      name: '润色当前章',
-      prompt: '请检查并润色当前章节《序章》，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。',
-      behavior: 'fill',
-      enabled: true,
-    })
-
+    const chinese = agentQuickPromptDefaults(i18n.t, scope)
     setConfiguredLocale('en-US')
-    const english = agentQuickPromptDefaults(i18n.t, 'writing', 'current chapter "Prologue"')
+    const english = agentQuickPromptDefaults(i18n.t, scope)
 
-    expect(english.prompts[3]).toMatchObject({
-      name: 'Polish Current Chapter',
-      prompt: 'Review and polish current chapter "Prologue", focusing on sentence rhythm, action writing, and emotional progression without changing the core plot.',
-      behavior: 'fill',
-      enabled: true,
-    })
+    expect(chinese.prompts.map(({ id, behavior, enabled }) => ({ id, behavior, enabled })))
+      .toEqual(english.prompts.map(({ id, behavior, enabled }) => ({ id, behavior, enabled })))
+    for (const [index, translated] of chinese.prompts.entries()) {
+      expect(translated.name).toMatch(/[\u4e00-\u9fff]/)
+      expect(translated.prompt).toMatch(/[\u4e00-\u9fff]/)
+      expect(english.prompts[index].name).not.toMatch(/[\u4e00-\u9fff]/)
+      expect(english.prompts[index].prompt).not.toMatch(/[\u4e00-\u9fff]/)
+      expect(translated.prompt).not.toBe(english.prompts[index].prompt)
+      expect(translated.prompt).not.toMatch(/\{\{resource\}\}/)
+      expect(english.prompts[index].prompt).not.toMatch(/\{\{resource\}\}/)
+    }
   })
 })

@@ -77,6 +77,7 @@ export interface Settings {
   ide_image_preset_id?: string
   writing_skill_default?: string
   agent_quick_prompts?: AgentQuickPromptRegistry
+  agent_quick_prompts_in_commands?: boolean | null
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
 }

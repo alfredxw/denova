@@ -137,7 +137,6 @@ export function TrajectoryTraceWorkspace({ trace }: TrajectoryTraceWorkspaceProp
             ))}
           </div>
         )}
-        <span className="ml-2 hidden min-w-0 max-w-52 self-center truncate font-mono text-[8px] text-[var(--nova-text-faint)] xl:block">{trace.summary.id}</span>
       </div>
       {trace.truncated && (
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-warning-bg)] px-3 py-1 text-[10px] text-[var(--nova-warning)]">

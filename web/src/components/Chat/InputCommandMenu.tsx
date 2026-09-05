@@ -5,12 +5,21 @@ import { useTranslation } from 'react-i18next'
 import { CommandGroup, CommandItem } from '@/components/ui/command'
 import { INPUT_SUGGESTION_GROUP_CLASS_NAME, InputSuggestionMenu, inputSuggestionItemClassName } from './InputSuggestionMenu'
 
-export interface InputCommandOption {
+interface InputCommandPresentation {
   cmd: string
   description: string
   hint: string
   icon: LucideIcon
-  source: 'builtin' | 'skill'
+}
+
+export type InputCommandOption = InputCommandPresentation & (
+  | { source: 'builtin' | 'skill' }
+  | { source: 'quick-prompt'; id: string; prompt: string }
+)
+
+/** Stable IDs allow duplicate display names and names matching system commands or Skills. */
+export function inputCommandValue(command: InputCommandOption): string {
+  return command.source === 'quick-prompt' ? `quick-prompt:${command.id}` : command.cmd
 }
 
 export interface IndexedInputCommandOption {
@@ -23,6 +32,7 @@ interface InputCommandMenuProps {
   skillsOnly: boolean
   builtinCommands: IndexedInputCommandOption[]
   skillCommands: IndexedInputCommandOption[]
+  quickPromptCommands?: IndexedInputCommandOption[]
   activeIndex: number
   onActiveIndexChange: (index: number) => void
   onSelect: (command: InputCommandOption) => void
@@ -34,13 +44,14 @@ export function InputCommandMenu({
   skillsOnly,
   builtinCommands,
   skillCommands,
+  quickPromptCommands = [],
   activeIndex,
   onActiveIndexChange,
   onSelect,
 }: InputCommandMenuProps) {
   const { t } = useTranslation()
   const itemRefs = useRef<Array<HTMLDivElement | null>>([])
-  const commands = [...builtinCommands, ...skillCommands]
+  const commands = [...builtinCommands, ...quickPromptCommands, ...skillCommands]
   const activeCommand = commands.find(({ index }) => index === activeIndex)?.command ?? commands[0]?.command
 
   useEffect(() => {
@@ -51,20 +62,25 @@ export function InputCommandMenu({
   return (
     <InputSuggestionMenu
       open={open && commands.length > 0}
-      value={activeCommand?.cmd}
+      value={activeCommand ? inputCommandValue(activeCommand) : undefined}
       onValueChange={(value) => {
-        const next = commands.find(({ command }) => command.cmd === value)
+        const next = commands.find(({ command }) => inputCommandValue(command) === value)
         if (next) onActiveIndexChange(next.index)
       }}
       icon={CommandIcon}
       title={skillsOnly ? t('chat.commands.skillsGroup') : t('chat.commands.title')}
-      description={skillsOnly ? t('chat.commands.skillsDescription') : t('chat.commands.description')}
+      description={skillsOnly ? t('chat.commands.skillsDescription') : quickPromptCommands.length ? t('chat.commands.descriptionWithPrompts') : t('chat.commands.description')}
       shortcut="/"
       emptyText={t('chat.commands.empty')}
     >
       {builtinCommands.length > 0 ? (
         <CommandGroup heading={t('chat.commands.group')} className={INPUT_SUGGESTION_GROUP_CLASS_NAME}>
           {builtinCommands.map(({ command, index }) => renderCommandItem(command, index))}
+        </CommandGroup>
+      ) : null}
+      {quickPromptCommands.length > 0 ? (
+        <CommandGroup heading={t('chat.commands.quickPromptsGroup')} className={INPUT_SUGGESTION_GROUP_CLASS_NAME}>
+          {quickPromptCommands.map(({ command, index }) => renderCommandItem(command, index))}
         </CommandGroup>
       ) : null}
       {skillCommands.length > 0 ? (
@@ -84,13 +100,14 @@ export function InputCommandMenu({
 
     return (
       <CommandItem
-        key={cmd}
+        key={inputCommandValue(command)}
         ref={(element) => { itemRefs.current[index] = element }}
-        value={cmd}
+        value={inputCommandValue(command)}
         data-command-source={source}
         onMouseEnter={() => onActiveIndexChange(index)}
         onSelect={() => onSelect(command)}
         aria-label={[cmd, description, hint].join(' · ')}
+        title={[cmd, description, hint].filter(Boolean).join(' · ')}
         className={inputSuggestionItemClassName(active)}
       >
         <span className={`flex size-6 shrink-0 items-center justify-center rounded-md ${
@@ -98,12 +115,12 @@ export function InputCommandMenu({
         }`}>
           <Icon className="size-3.5" />
         </span>
-        <span className="max-w-[42%] shrink-0 truncate font-mono text-xs font-medium text-[var(--nova-text)]">
+        <span className={`${source === 'quick-prompt' ? 'min-w-0 flex-1' : 'max-w-[42%] shrink-0 font-mono'} truncate text-xs font-medium text-[var(--nova-text)]`}>
           {cmd}
         </span>
-        <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text-muted)]">
+        {description ? <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text-muted)]">
           {description}
-        </span>
+        </span> : null}
         <span className="ml-1 shrink-0 text-[11px] text-[var(--nova-text-faint)]">
           {hint}
         </span>

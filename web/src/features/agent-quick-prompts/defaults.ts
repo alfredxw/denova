@@ -25,20 +25,21 @@ export interface AgentQuickPromptDefaults {
 export function agentQuickPromptDefaults(
   t: TFunction,
   scope: AgentQuickPromptScope,
-  writingTarget: string,
 ): AgentQuickPromptDefaults {
+  // Quick prompts become user-visible drafts, so their names and content follow the user's language.
+  // The selected writing Skill owns file layout and execution workflow.
   if (scope === 'writing') {
     return {
       title: t('chat.quickActions'),
       scopeLabel: t('chat.quick.scope.writing'),
       prompts: [
-        quickPrompt('writing-next-group', t('chat.quick.nextGroup'), t('chat.quick.nextGroupPrompt')),
-        quickPrompt('writing-next-chapter', t('chat.quick.writeNextChapter'), t('chat.quick.writeNextChapterPrompt')),
-        quickPrompt('writing-continue', t('chat.quick.continueParagraph'), t('chat.quick.continueParagraphPrompt')),
-        quickPrompt('writing-polish', t('chat.quick.polishChapter'), t('chat.quick.polishChapterPrompt', { target: writingTarget })),
-        quickPrompt('writing-sync-state', t('chat.quick.finalizeState'), t('chat.quick.finalizeStatePrompt', { target: writingTarget })),
-        quickPrompt('writing-consistency', t('chat.quick.consistencyCheck'), t('chat.quick.consistencyCheckPrompt', { target: writingTarget })),
-      ],
+        ['writing-next-group', 'chat.quick.nextGroup', 'chat.quick.nextGroupPrompt'],
+        ['writing-next-chapter', 'chat.quick.writeNextChapter', 'chat.quick.writeNextChapterPrompt'],
+        ['writing-brainstorm', 'chat.quick.brainstorm', 'chat.quick.brainstormPrompt'],
+        ['writing-humanize', 'chat.quick.humanize', 'chat.quick.humanizePrompt'],
+        ['writing-align-style', 'chat.quick.alignStyle', 'chat.quick.alignStylePrompt'],
+        ['writing-review', 'chat.quick.reviewChapter', 'chat.quick.reviewChapterPrompt'],
+      ].map(([id, nameKey, promptKey]) => quickPrompt(id, t(nameKey), t(promptKey))),
     }
   }
 

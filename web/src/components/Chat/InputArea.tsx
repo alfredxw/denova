@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
-import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, Paperclip, ScrollText, Sparkles, Target } from 'lucide-react'
+import { BarChart3, ClipboardList, List, Paperclip, ScrollText, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type FileReferencePickerHandle, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
@@ -21,6 +20,8 @@ import { AgentGoalCard } from './AgentGoalCard'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
 import { InputCommandMenu, type InputCommandOption } from './InputCommandMenu'
+import { useInputCommands, type SkillCommand, type CommandScope, type BuiltinCommand } from './use-input-commands'
+import type { AgentQuickPromptSettings } from '@/features/settings/types'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 import { cn } from '@/lib/utils'
@@ -29,23 +30,6 @@ import { ComposerModeChip } from './ComposerModeChip'
 import { ComposerAttachmentTray, useComposerAttachments } from './ComposerAttachments'
 import { ComposerMenuCheckboxItem, ComposerMenuItem, ComposerMenuShortcut } from './ComposerMenuRow'
 
-/** 可用命令列表 */
-const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
-  { cmd: '/goal', descKey: 'chat.command.goal.desc', hintKey: 'chat.command.goal.hint', icon: Target },
-  { cmd: '/plan', descKey: 'chat.command.plan.desc', hintKey: 'chat.command.plan.hint', icon: ClipboardList },
-  { cmd: '/clear', descKey: 'chat.command.clear.desc', hintKey: 'chat.command.clear.hint', icon: Eraser },
-  { cmd: '/compact', descKey: 'chat.command.compact.desc', hintKey: 'chat.command.compact.hint', icon: Archive },
-  { cmd: '/status', descKey: 'chat.command.status.desc', hintKey: 'chat.command.status.hint', icon: Sparkles },
-  { cmd: '/help', descKey: 'chat.command.help.desc', hintKey: 'chat.command.help.hint', icon: BadgeHelp },
-]
-
-interface SkillCommand {
-  name: string
-  description: string
-}
-
-type CommandScope = 'all' | 'skills' | 'none'
-type BuiltinCommand = typeof COMMANDS[number]['cmd']
 const MAX_TOKEN_USAGE_MENU_COUNT = 10
 const inputDrafts = new Map<string, string>()
 
@@ -110,6 +94,7 @@ interface InputAreaProps {
   onReviewFeedbackOpen?: (selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
   onReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
   skills?: SkillCommand[]
+  quickPrompts?: AgentQuickPromptSettings[]
   commandsEnabled?: boolean
   commandScope?: CommandScope
   builtinCommands?: BuiltinCommand[]
@@ -175,6 +160,7 @@ export function InputArea({
   onReviewFeedbackOpen,
   onReviewFeedbackRemove,
   skills = [],
+  quickPrompts = [],
   commandsEnabled = true,
   commandScope = 'all',
   builtinCommands,
@@ -203,9 +189,6 @@ export function InputArea({
   const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
-  const [showCommands, setShowCommands] = useState(false)
-  const [commandQuery, setCommandQuery] = useState<string | null>(null)
-  const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -217,52 +200,20 @@ export function InputArea({
   const submittingRef = useRef(false)
   const attachments = useComposerAttachments(attachmentsEnabled && !disabled, draftKey ? `chat:${draftKey}` : undefined)
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
-  const defaultPlaceholder = skills.length > 0 && effectiveCommandScope !== 'none'
+  const defaultPlaceholder = (skills.length > 0 || quickPrompts.some((prompt) => prompt.enabled)) && effectiveCommandScope !== 'none'
     ? t('chat.input.placeholderWithSkills')
     : t('chat.input.placeholder')
-  const allCommands = useMemo<InputCommandOption[]>(() => {
-    const allowedBuiltinCommands = builtinCommands ? new Set<string>(builtinCommands) : null
-    const staticCommands = effectiveCommandScope === 'all'
-      ? COMMANDS
-        .filter(({ cmd }) => cmd !== '/goal' || Boolean(onGoalSubmit))
-        .filter(({ cmd }) => !allowedBuiltinCommands || allowedBuiltinCommands.has(cmd))
-        .map(({ cmd, descKey, hintKey, icon }) => ({
-          cmd,
-          description: t(descKey),
-          hint: t(hintKey),
-          icon,
-          source: 'builtin' as const,
-        }))
-      : []
-    const seen = new Set(staticCommands.map((command) => command.cmd))
-    const skillCommands = skills
-      .map((skill) => ({
-        cmd: `/${skill.name}`,
-        description: skill.description || skill.name,
-        hint: t('chat.command.skill.hint'),
-        icon: Sparkles,
-        source: 'skill' as const,
-      }))
-      .filter((command) => {
-        if (seen.has(command.cmd)) return false
-        seen.add(command.cmd)
-        return true
-      })
-    if (effectiveCommandScope === 'skills') return skillCommands
-    if (effectiveCommandScope === 'none') return []
-    return [...staticCommands, ...skillCommands]
-  }, [builtinCommands, effectiveCommandScope, onGoalSubmit, skills, t])
-  const filteredCommands = useMemo(() => {
-    if (commandQuery === null) return []
-    const query = `/${commandQuery}`.toLowerCase()
-    return allCommands.filter((command) => command.cmd.toLowerCase().startsWith(query))
-  }, [allCommands, commandQuery])
-  const filteredBuiltinCommands = useMemo(() => filteredCommands
-    .map((command, index) => ({ command, index }))
-    .filter(({ command }) => command.source === 'builtin'), [filteredCommands])
-  const filteredSkillCommands = useMemo(() => filteredCommands
-    .map((command, index) => ({ command, index }))
-    .filter(({ command }) => command.source === 'skill'), [filteredCommands])
+  const {
+    filteredCommands, filteredBuiltinCommands, filteredQuickPromptCommands, filteredSkillCommands,
+    showCommands, setShowCommands, setCommandQuery, activeCommandIndex, setActiveCommandIndex,
+  } = useInputCommands({
+    scope: effectiveCommandScope,
+    builtinCommands,
+    skills,
+    quickPrompts,
+    goalEnabled: Boolean(onGoalSubmit),
+    draftKey,
+  })
   const hasReviewFeedback = Boolean(reviewFeedback && reviewFeedbackCommentCount(reviewFeedback) > 0)
   const canResume = resumeAvailable && !goalMode
   const hasReferences = textSelections.length > 0 || hasReviewFeedback || attachments.items.length > 0
@@ -292,9 +243,6 @@ export function InputArea({
   useEffect(() => {
     if (!draftKey) return
     setValue(inputDrafts.get(draftKey) || '')
-    setShowCommands(false)
-    setCommandQuery(null)
-    setActiveCommandIndex(0)
     setReferenceQuery(null)
     setStyleSceneQuery(null)
     setGoalMode(false)
@@ -318,10 +266,6 @@ export function InputArea({
     submittingRef.current = false
     setSubmitting(false)
   }, [generationActive])
-
-  useEffect(() => {
-    if (activeCommandIndex >= filteredCommands.length) setActiveCommandIndex(0)
-  }, [activeCommandIndex, filteredCommands.length])
 
   useEffect(() => {
     if (!inputPrefill) return
@@ -425,7 +369,7 @@ export function InputArea({
       if (isNativeComposingKeyboardEvent(e)) return false
       e.preventDefault()
       if (canPickCommand) {
-        selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
+        selectCommand(filteredCommands[activeCommandIndex] ?? filteredCommands[0])
         return true
       }
       if (referenceQuery !== null && referencePickerRef.current?.selectActive()) return true
@@ -437,7 +381,7 @@ export function InputArea({
     if (e.key === 'Tab' && !e.shiftKey) {
       if (canPickCommand) {
         e.preventDefault()
-        selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
+        selectCommand(filteredCommands[activeCommandIndex] ?? filteredCommands[0])
         return true
       }
       const picker = referenceQuery !== null ? referencePickerRef.current : styleSceneQuery !== null ? stylePickerRef.current : null
@@ -549,12 +493,14 @@ export function InputArea({
     void onContextAnalyze?.(value)
   }
   /** 选择命令 */
-  const selectCommand = (cmd: string) => {
-    const command = allCommands.find((item) => item.cmd === cmd)
-    if (cmd === '/goal' && onGoalSubmit) {
+  const selectCommand = (command: InputCommandOption) => {
+    const { cmd } = command
+    if (command.source === 'quick-prompt') {
+      inputRef.current?.replaceActiveTriggerText(command.prompt)
+    } else if (cmd === '/goal' && onGoalSubmit) {
       inputRef.current?.replaceActiveTriggerText('')
       setGoalModeExclusive(true)
-    } else if (command?.source === 'skill') {
+    } else if (command.source === 'skill') {
       const name = cmd.replace(/^\//, '')
       inputRef.current?.replaceActiveTriggerWithToken({ kind: 'skill', value: name, label: name })
     } else {
@@ -616,9 +562,10 @@ export function InputArea({
           skillsOnly={effectiveCommandScope === 'skills'}
           builtinCommands={filteredBuiltinCommands}
           skillCommands={filteredSkillCommands}
+          quickPromptCommands={filteredQuickPromptCommands}
           activeIndex={activeCommandIndex}
           onActiveIndexChange={setActiveCommandIndex}
-          onSelect={(command) => selectCommand(command.cmd)}
+          onSelect={selectCommand}
         />
 
         <FileReferencePicker

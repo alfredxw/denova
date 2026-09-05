@@ -99,6 +99,16 @@ func (backend *publicBackend) resolveTaskDefinition(
 		registration.mu.RUnlock()
 	}
 	options.Workspace = child.Workspace
+	if child.Definition.AttachmentRoot != "" {
+		options.StateRoot = child.Definition.AttachmentRoot
+	}
+	if !agent.IsInspection(ctx) {
+		middleware, traceErr := backend.bindChildTrace(ctx, request, options, registration)
+		if traceErr != nil {
+			return agent.Definition{}, fmt.Errorf("bind delegated Run trace: %w", traceErr)
+		}
+		definition.Middlewares = append(definition.Middlewares, middleware)
+	}
 	// Effects belong to the parent product scope, while the child Session keeps
 	// its own input, tool protocol and output in its standalone journal. Never
 	// bind the parent's conversation Canonical Adapter to this Definition.
