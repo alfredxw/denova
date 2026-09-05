@@ -217,16 +217,17 @@ func appendAgentMutationEffect(result agent.ToolResult, record agenttool.Executi
 	return result, nil
 }
 
-func toolEndpointErrorMessage(toolName string, err error) string {
-	if message, ok := producttools.FormatWorkspaceChangeError(toolName, err); ok {
-		return message
-	}
-	return fmt.Sprintf("[tool error] %v", err)
-}
-
 func projectToolError(decision agenttool.Decision, args string, returned agent.ToolResult, err error, maxBytes int) (agent.ToolResult, agenttool.ExecutionRecord) {
-	message := strings.ToValidUTF8(toolEndpointErrorMessage(decision.ToolName, err), "\uFFFD")
-	errorResult := agent.ToolErrorResult(message, boundedToolErrorDiagnostic(err))
+	message, structured := producttools.FormatWorkspaceChangeError(decision.ToolName, err)
+	display := boundedToolErrorDiagnostic(err)
+	if structured {
+		// Keep item diagnostics available to the UI; the fixed processor owns
+		// result size limits, while the audit error remains independently bounded.
+		display = message
+	} else {
+		message = fmt.Sprintf("[tool error] %v", err)
+	}
+	errorResult := agent.ToolErrorResult(strings.ToValidUTF8(message, "\uFFFD"), display)
 	// Details is a terminal product receipt, not display content. Preserve a
 	// valid receipt even when the tool reports a transport/domain error after the
 	// workspace effect committed.

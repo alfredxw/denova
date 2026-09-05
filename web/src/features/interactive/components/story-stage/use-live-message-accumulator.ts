@@ -201,7 +201,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
       id: renderKeys.user,
       role: 'user',
       text: message,
-      metadata: { display_role: 'user', navigation_turn_id: navigationAnchorId, ...(attachments.length ? { attachments } : {}) },
+      metadata: { display_role: 'user', created_at: new Date().toISOString(), navigation_turn_id: navigationAnchorId, ...(attachments.length ? { attachments } : {}) },
     })
     setMessages((current) => mode === 'replace' ? [userMessage] : [...current, userMessage])
   }, [flush, setMessages])

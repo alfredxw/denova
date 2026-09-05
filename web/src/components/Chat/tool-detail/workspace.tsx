@@ -11,7 +11,7 @@ import {
   numberValue,
   numericMeta,
   parseRecord,
-  parseRecordValue,
+  recordArray,
   recordValue,
   splitCanonicalResult,
   stringArray,
@@ -29,7 +29,7 @@ export const workspaceToolDetailAdapters: Record<string, ToolDetailAdapter> = {
   bash: outputAdapter(renderShellInput, renderShellOutput),
   pwsh: outputAdapter(renderShellInput, renderShellOutput),
   write: inputAdapter(renderWriteInput, renderMutationOutput),
-  edit: inputAdapter(renderEditInput, renderMutationOutput),
+  edit: { ...inputAdapter(renderEditInput, renderMutationOutput), summarize: summarizeEditFailure },
 }
 
 function outputAdapter(renderInput: ToolDetailRenderer, renderOutput: ToolDetailRenderer): ToolDetailAdapter {
@@ -173,9 +173,11 @@ function renderWriteInput({ input, t }: ToolDetailRenderProps) {
   )
 }
 
-function renderEditInput({ input, t }: ToolDetailRenderProps) {
+function renderEditInput({ input, result, t }: ToolDetailRenderProps) {
   const operation = stringValue(input.operation)
-  const edits = Array.isArray(input.edits) ? input.edits.map(parseRecordValue).filter((item): item is Record<string, unknown> => item !== null) : []
+  // Preserve array positions so diagnostics always refer to the original input.
+  const edits = Array.isArray(input.edits) ? input.edits.map(recordValue) : []
+  const failure = parseEditFailure(result)
   return (
     <DetailStack>
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 border-b border-[var(--nova-border)] pb-2">
@@ -184,22 +186,47 @@ function renderEditInput({ input, t }: ToolDetailRenderProps) {
           : <WorkspacePathText className="min-w-0 break-all text-[var(--nova-text)]">{stringValue(input.path)}</WorkspacePathText>}
         {operation === 'delete' ? <span className="text-[10px] text-[var(--nova-danger)]">{t('chat.tool.edit.delete')}</span> : null}
       </div>
-      {edits.map((edit, index) => (
-        <div key={index} className={cn('space-y-1.5', index > 0 && 'border-t border-[var(--nova-border)] pt-2')}>
-          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-2 border-l-2 border-red-500/45 bg-red-500/5 px-2 py-1.5 text-[var(--nova-danger)]">
-            <span aria-hidden>−</span><DetailPre>{stringValue(edit.old_string)}</DetailPre>
+      {edits.map((edit, index) => {
+        const issues = failure?.issues.filter(issue => issue.edit_index === index) || []
+        const oldText = stringValue(edit.old_string)
+        const previewTruncated = issues.length > 0 && oldText.length > 512
+        return (
+          <div key={index} data-nova-edit-index={index} className={cn('space-y-1.5', index > 0 && 'border-t border-[var(--nova-border)] pt-2')}>
+            <div className="font-medium text-[var(--nova-text)]">{t('chat.tool.edit.item', { number: index + 1 })}</div>
+            {issues.map((issue, issueIndex) => (
+              <div key={issueIndex} className="text-[var(--nova-danger)]">{editIssueMessage(issue, t)}</div>
+            ))}
+            <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-2 border-l-2 border-red-500/45 bg-red-500/5 px-2 py-1.5 text-[var(--nova-danger)]">
+              <span aria-hidden>−</span><DetailPre>{previewTruncated ? inlinePreview(oldText, 512) : oldText}</DetailPre>
+            </div>
+            {previewTruncated ? <div className="text-[var(--nova-text-faint)]">{t('chat.tool.edit.previewTruncated')}</div> : null}
+            <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-2 border-l-2 border-emerald-500/45 bg-emerald-500/5 px-2 py-1.5 text-[var(--nova-accent-green)]">
+              <span aria-hidden>+</span><DetailPre>{stringValue(edit.new_string)}</DetailPre>
+            </div>
+            {edit.replace_all === true ? <div className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tool.edit.replaceAll')}</div> : null}
           </div>
-          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-2 border-l-2 border-emerald-500/45 bg-emerald-500/5 px-2 py-1.5 text-[var(--nova-accent-green)]">
-            <span aria-hidden>+</span><DetailPre>{stringValue(edit.new_string)}</DetailPre>
-          </div>
-          {edit.replace_all === true ? <div className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tool.edit.replaceAll')}</div> : null}
-        </div>
-      ))}
+        )
+      })}
     </DetailStack>
   )
 }
 
-function renderMutationOutput({ result, t }: ToolDetailRenderProps) {
+function renderMutationOutput(props: ToolDetailRenderProps) {
+  const { result, t } = props
+  const failure = parseEditFailure(result)
+  if (failure) {
+    return (
+      <DetailStack>
+        <div>{t('chat.tool.edit.failedBatch')}</div>
+        {failure.issues.map((issue, index) => {
+          const editIndex = numberValue(issue.edit_index)
+          return <div key={index}>{editIndex === undefined ? '' : `${t('chat.tool.edit.item', { number: editIndex + 1 })}: `}{editIssueMessage(issue, t)}</div>
+        })}
+        {failure.truncated ? <div>{t('chat.tool.edit.issuesTruncated')}</div> : null}
+        <div>{t('chat.tool.edit.retryBatch')}</div>
+      </DetailStack>
+    )
+  }
   const receipt = parseRecord(result)
   const schema = stringValue(receipt?.schema)
   if (schema !== 'workspace_change.tool_result.v1' && schema !== 'workspace_change.tool_noop.v1') {
@@ -213,6 +240,43 @@ function renderMutationOutput({ result, t }: ToolDetailRenderProps) {
     numberValue(stats.characters) === undefined ? '' : t('chat.tool.change.characters', { count: numberValue(stats.characters) }),
   ].filter(Boolean)
   return <span>{details.join(' · ')}</span>
+}
+
+function parseEditFailure(result: string) {
+  const receipt = parseRecord(result.replace(/^\[tool error\]\s*/, ''))
+  if (receipt?.schema !== 'workspace_change.tool_error.v1' || receipt.code !== 'invalid_edit' || receipt.workspace_mutated !== false) return null
+  const details = recordValue(receipt.details)
+  if (!Array.isArray(details.issues)) return null
+  return { issues: recordArray(details.issues), truncated: details.issues_truncated === true }
+}
+
+function summarizeEditFailure({ result, t }: ToolDetailRenderProps) {
+  const failure = parseEditFailure(result)
+  if (!failure) return ''
+  const numbers = [...new Set(failure.issues.map(issue => numberValue(issue.edit_index)))]
+    .filter((index): index is number => index !== undefined && Number.isInteger(index) && index >= 0)
+    .map(index => index + 1)
+  return numbers.length
+    ? t('chat.tool.edit.failedItems', { items: numbers.join(t('chat.tool.edit.itemSeparator')) })
+    : t('chat.tool.edit.failedBatch')
+}
+
+function editIssueMessage(issue: Record<string, unknown>, t: ToolDetailRenderProps['t']) {
+  const details = recordValue(issue.details)
+  const otherIndex = numberValue(details.other_edit_index)
+  switch (issue.code) {
+    case 'not_found': return t('chat.tool.edit.issue.notFound')
+    case 'not_unique': return t('chat.tool.edit.issue.notUnique')
+    case 'empty_old_string': return t('chat.tool.edit.issue.emptyOldString')
+    case 'no_change': return t('chat.tool.edit.issue.noChange')
+    case 'fragment_too_large': return t('chat.tool.edit.issue.fragmentTooLarge')
+    case 'scan_limit': return t('chat.tool.edit.issue.scanLimit')
+    case 'replacement_limit': return t('chat.tool.edit.issue.replacementLimit')
+    case 'total_replacement_limit': return t('chat.tool.edit.issue.totalReplacementLimit')
+    case 'duplicate_id': return otherIndex === undefined ? t('chat.tool.edit.issue.invalid') : t('chat.tool.edit.issue.duplicateID', { number: otherIndex + 1 })
+    case 'overlap': return otherIndex === undefined ? t('chat.tool.edit.issue.invalid') : t('chat.tool.edit.issue.overlap', { number: otherIndex + 1 })
+    default: return t('chat.tool.edit.issue.invalid')
+  }
 }
 
 function renderCanonicalSearchOutput(props: ToolDetailRenderProps, render: (content: string) => ReactNode) {

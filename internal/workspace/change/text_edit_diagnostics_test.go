@@ -96,6 +96,9 @@ func TestEditDiagnosticsExplainMissingTextWithoutChangingBatch(t *testing.T) {
 	if issue.EditIndex != 1 || issue.Code != editIssueNotFound || !strings.Contains(suggestion, "Read the target file again") || !strings.Contains(suggestion, "whitespace") {
 		t.Fatalf("missing exact-text recovery guidance: %+v", issue)
 	}
+	if !strings.Contains(err.Error(), `"state.md"`) || !strings.Contains(err.Error(), "edits[1]: old_string was not found") || !strings.Contains(err.Error(), "No changes applied") {
+		t.Fatalf("plain error must locate the failed item and state the atomic outcome: %v", err)
+	}
 	after, applied, err = planTextEdits("state.md", "existing text", []TextEdit{
 		{OldString: "existing", NewString: "updated"},
 		{OldString: "text", NewString: "replacement"},

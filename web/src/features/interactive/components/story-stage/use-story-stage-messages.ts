@@ -135,6 +135,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
     text: turn.user,
     metadata: {
       display_role: 'user',
+      created_at: turn.ts,
       turn_id: turn.id,
       navigation_turn_id: turn.id,
       ...(turn.attachments?.length ? { attachments: turn.attachments } : {}),
@@ -229,6 +230,7 @@ function projectNarrativeMessage(
   const imageStatus = images?.length ? 'success' : latestImageStatus(deferredImageEvents)
   const metadata: AgentMessageMetadata = {
     display_role: 'assistant',
+    created_at: turn.ts,
     turn_id: turn.id,
     navigation_turn_id: turn.id,
     run_id: turn.run_id,

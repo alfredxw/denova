@@ -63,9 +63,18 @@ func (issues editValidationIssues) err(path string) *Error {
 	if issues.total > len(issues.items) {
 		details["issues_truncated"] = true
 	}
+	var message strings.Builder
+	fmt.Fprintf(&message, "%d edit item issue(s) in %q. No changes applied.\n", issues.total, path)
+	for _, issue := range issues.items {
+		fmt.Fprintf(&message, "edits[%d]: %s\n", issue.EditIndex, issue.Message)
+	}
+	if issues.total > len(issues.items) {
+		fmt.Fprintf(&message, "%d additional issue(s) omitted.\n", issues.total-len(issues.items))
+	}
+	message.WriteString("Correct the reported items, then resubmit all edits together.")
 	return newError(
 		ErrorCodeInvalidEdit,
-		fmt.Sprintf("%d edit item issue(s) found; first issue: %s", issues.total, issues.items[0].Message),
+		message.String(),
 		details,
 	)
 }

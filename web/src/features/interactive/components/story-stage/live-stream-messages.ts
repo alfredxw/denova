@@ -24,7 +24,7 @@ export function appendBufferedLiveMessage(messages: AgentUIMessage[], { id, role
       },
     ]
   }
-  const nextMetadata = { ...metadata, streaming_target_content: content }
+  const nextMetadata = { ...metadata, created_at: metadata.created_at || new Date().toISOString(), streaming_target_content: content }
   if (role === 'assistant') {
     return [...messages, createAgentTextMessage({ id, role: 'assistant', text: '', state: 'streaming', metadata: nextMetadata })]
   }
@@ -57,6 +57,7 @@ export function promoteMessageTarget(message: AgentUIMessage): AgentUIMessage {
 export function streamMetadataFromPayload(payload: Record<string, unknown>): AgentMessageMetadata {
   const runPath = Array.isArray(payload.run_path) ? payload.run_path.filter((item): item is string => typeof item === 'string') : undefined
   return {
+    created_at: typeof payload.created_at === 'string' ? payload.created_at : undefined,
     run_id: typeof payload.run_id === 'string' ? payload.run_id : undefined,
     agent_cycle: typeof payload.agent_cycle === 'number' ? payload.agent_cycle : undefined,
     display_segment_id: typeof payload.display_segment_id === 'string' ? payload.display_segment_id : undefined,

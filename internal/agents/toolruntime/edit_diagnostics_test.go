@@ -42,7 +42,7 @@ func TestEditDiagnosticsReachModelThroughPublicAgent(t *testing.T) {
 				})},
 				ResultProcessor: agenttoolresult.Standard(agenttoolresult.Policy{MaxBytes: 4096}),
 			}
-			result, err, _ := runPublicToolLifecycle(t, definition, agentrun.NewObserver(nil, ""))
+			result, err, projections := runPublicToolLifecycle(t, definition, agentrun.NewObserver(nil, ""))
 			if err != nil || result.Status != agent.ResultCompleted {
 				t.Fatalf("public Agent failed: result=%+v err=%v", result, err)
 			}
@@ -54,6 +54,9 @@ func TestEditDiagnosticsReachModelThroughPublicAgent(t *testing.T) {
 			}
 			if feedback == nil {
 				t.Fatal("model did not receive the edit result")
+			}
+			if display := projections["edit"].DisplayContent; display != feedback.Content {
+				t.Fatalf("display lost structured edit diagnostics: display=%q model=%q", display, feedback.Content)
 			}
 			var receipt struct {
 				WorkspaceMutated bool `json:"workspace_mutated"`

@@ -91,7 +91,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   const detailResult = resultEnvelope ? formatMaybeJSON(resultBody) : result
   let displaySummary = summary
   if (status === 'cancelled') displaySummary = t('chat.tool.result.cancelled')
-  if (status === 'error') displaySummary = buildPreview(resultBody, 160) || t('chat.tool.failed')
+  if (status === 'error') displaySummary = (name === 'edit' ? specializedSummary : '') || buildPreview(resultBody, 160) || t('chat.tool.failed')
   if (hasResult) displaySummary = specializedSummary || commandDescription || fileResultSummary || resultPreview || t('chat.tool.done')
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result)

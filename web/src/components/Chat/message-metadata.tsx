@@ -128,7 +128,6 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
   return (
     <TooltipProvider delayDuration={messageActionTooltipDelayMs} skipDelayDuration={messageActionTooltipSkipDelayMs} disableHoverableContent>
       <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
-        {formatted ? <span className="nova-message-time">{formatted}</span> : null}
         {showCopyAction && (
           <TooltipIconButton
             label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
@@ -229,6 +228,7 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
             </TooltipIconButton>
           </>
         )}
+        {formatted ? <time className="nova-message-time" dateTime={message.created_at}>{formatted}</time> : null}
       </div>
     </TooltipProvider>
   )
