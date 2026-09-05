@@ -29,7 +29,7 @@ type listLoreItemsInput struct {
 
 type writeLoreItemsInput struct {
 	Message   string               `json:"message,omitempty" jsonschema:"description=Optional change summary for this lore update; summarize briefly in Chinese."`
-	Items     []writeLoreItemInput `json:"items,omitempty" jsonschema:"description=Lore items to create or partially update. Creation requires at least name. Updates require an existing id and only changed fields; omitted fields retain their values."`
+	Items     []writeLoreItemInput `json:"items,omitempty" jsonschema:"description=Lore items to create or partially update. Each array element is one independently retrievable entity or coherent topic; use separate elements for distinct characters, locations, factions, items, or world rules. Do not put the entire library or several unrelated entities into one element. Creation requires at least name. Updates require an existing id and only changed fields; omitted fields retain their values."`
 	DeleteIDs []string             `json:"delete_ids,omitempty" jsonschema:"description=Lore item IDs to delete. Use only when the author explicitly requests deletion."`
 }
 
@@ -43,7 +43,7 @@ type writeLoreItemInput struct {
 	BriefDescription string   `json:"brief_description,omitempty" jsonschema:"description=Index description. Start with type and name, then use 3-5 sentences for identity, aliases, key facts, use cases, and trigger terms. Omission on creation generates it from the body; omission on update retains the current value."`
 	Keywords         []string `json:"keywords,omitempty" jsonschema:"description=Aliases, keywords, or trigger terms. Omission during update retains the current value; an empty array clears it."`
 	LoadMode         string   `json:"load_mode,omitempty" jsonschema:"description=Load mode: resident, auto, or manual. Creation infers it automatically; omission during update retains the current value."`
-	Content          string   `json:"content,omitempty" jsonschema:"description=Chinese Markdown body for stable long-lived canon, core relationships, ability systems, and tracked setting facts. Omission during update retains the current value. Put per-chapter current location, injuries, psychology, and goals in setting/character-states.md instead of lore."`
+	Content          string   `json:"content,omitempty" jsonschema:"description=Markdown body for this entity or coherent topic only, in the author's language. Include its stable canon and relevant relationships; put other independently retrievable entities in separate items. On update this replaces the entire body: read the existing item first and preserve still-valid facts. Omission retains the current value. Put per-chapter current location, injuries, psychology, and goals in setting/character-states.md instead of lore."`
 }
 
 type loreToolsOptions struct {
@@ -190,7 +190,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if !allowWrite {
 		return tools, nil
 	}
-	writeTool, err := agent.InferTool("write_lore_items", "Batch-create, partially update, or delete lore items. Use it for stable canon such as character identity, characterization, long-term relationships, ability systems, world rules, locations, factions, and items. Creation requires at least name; updates require an existing id and only changed fields, while omitted fields retain their values. The backend may generate brief_description on creation. Put post-chapter current location, injuries, psychology, goals, and possessions in setting/character-states.md instead of lore. Do not store chapter planning or future plot in lore.", func(ctx context.Context, input writeLoreItemsInput) (agent.ToolResult, error) {
+	writeTool, err := agent.InferTool("write_lore_items", "Batch-create, partially update, or delete lore items. Each item is one independently retrievable entity or coherent topic, such as a character, location, faction, item, or world rule. Organize library-wide updates into separate items in the same batch, not one omnibus entry. Keep related facts about the same entity together. Find matching existing items with list_lore_items and read their bodies before updating; reuse their exact IDs instead of creating duplicates. Creation requires at least name; updates send only changed fields, while omitted fields retain their values. A supplied content replaces the whole body, so preserve still-valid canon. The backend may generate brief_description on creation. Put post-chapter current location, injuries, psychology, goals, and possessions in setting/character-states.md instead of lore. Do not store chapter planning or future plot in lore.", func(ctx context.Context, input writeLoreItemsInput) (agent.ToolResult, error) {
 		_ = ctx
 		if workspace == "" {
 			return agent.ToolResult{}, fmt.Errorf("cannot write lore because the current workspace is unavailable")

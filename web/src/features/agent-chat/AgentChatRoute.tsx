@@ -6,12 +6,12 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { ProjectWritingSurface } from '@/features/writing/ProjectWritingSurface'
+import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import { AgentChatView } from './AgentChatView'
 import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
 import { LoadingState } from '@/components/common/LoadingState'
 
 const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
-const ChangeReviewWorkspace = lazy(() => import('@/features/changes/review/ChangeReviewWorkspace').then((module) => ({ default: module.ChangeReviewWorkspace })))
 const VersionPanel = lazy(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel })))
 
 interface AgentChatRouteProps {
