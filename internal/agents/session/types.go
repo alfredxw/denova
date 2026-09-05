@@ -147,6 +147,7 @@ type messageRecord struct {
 
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
 type DisplayEvent struct {
+	AgentCycle       int                     `json:"agent_cycle,omitempty"`
 	ID               string                  `json:"id,omitempty"`
 	Role             string                  `json:"role"`
 	DisplayPhase     string                  `json:"display_phase,omitempty"`

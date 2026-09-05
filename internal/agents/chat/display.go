@@ -76,6 +76,7 @@ type displayAssistantRunFinalizer interface {
 
 type displayEventSourceKey struct {
 	runID             string
+	cycle             int
 	agentName         string
 	runPath           string
 	subAgent          bool
@@ -224,6 +225,7 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 			Status:            "running",
 			ToolPresentation:  eventDataToolPresentation(ev.Data),
 			RunID:             meta.RunID,
+			AgentCycle:        meta.AgentCycle,
 			AgentKind:         meta.AgentKind,
 			AgentName:         meta.AgentName,
 			RootAgentName:     meta.RootAgentName,
@@ -301,6 +303,7 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 			Ask:               ask,
 			CreatedAt:         ask.CreatedAt,
 			RunID:             meta.RunID,
+			AgentCycle:        meta.AgentCycle,
 			AgentKind:         meta.AgentKind,
 			AgentName:         meta.AgentName,
 			RootAgentName:     meta.RootAgentName,
@@ -378,6 +381,7 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 			Content:           content,
 			Status:            eventDataString(ev.Data, "status"),
 			RunID:             meta.RunID,
+			AgentCycle:        meta.AgentCycle,
 			AgentKind:         meta.AgentKind,
 			AgentName:         meta.AgentName,
 			RootAgentName:     meta.RootAgentName,
@@ -435,7 +439,7 @@ func (r *displayEventRecorder) flushSource(meta agentEventMetadata) {
 
 func displaySourceKey(meta agentEventMetadata) displayEventSourceKey {
 	return displayEventSourceKey{
-		runID: meta.RunID, agentName: meta.AgentName,
+		runID: meta.RunID, cycle: meta.AgentCycle, agentName: meta.AgentName,
 		runPath: strings.Join(meta.RunPath, "\x00"), subAgent: meta.SubAgent, subAgentSessionID: meta.SubAgentSessionID,
 	}
 }
@@ -479,6 +483,7 @@ func (r *displayEventRecorder) thinkingDisplayEvent(source *displaySourceRecorde
 		Role:              "thinking",
 		Content:           content,
 		RunID:             source.thinking.meta.RunID,
+		AgentCycle:        source.thinking.meta.AgentCycle,
 		AgentKind:         source.thinking.meta.AgentKind,
 		AgentName:         source.thinking.meta.AgentName,
 		RootAgentName:     source.thinking.meta.RootAgentName,
@@ -525,6 +530,7 @@ func (r *displayEventRecorder) assistantDisplayEvent(source *displaySourceRecord
 		DisplayPhase:      displayPhase,
 		Content:           content,
 		RunID:             source.assistant.meta.RunID,
+		AgentCycle:        source.assistant.meta.AgentCycle,
 		AgentKind:         source.assistant.meta.AgentKind,
 		AgentName:         source.assistant.meta.AgentName,
 		RootAgentName:     source.assistant.meta.RootAgentName,

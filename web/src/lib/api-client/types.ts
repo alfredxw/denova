@@ -35,6 +35,7 @@ interface ChatMessageBase {
   turn_id?: string
   navigation_turn_id?: string
   run_id?: string
+  agent_cycle?: number
   display_segment_id?: string
   display_phase?: 'candidate' | 'progress' | 'final' | 'partial'
   agent_kind?: string

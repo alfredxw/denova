@@ -399,6 +399,7 @@ export interface TurnResult {
 }
 
 export interface TurnDisplayEvent {
+  agent_cycle?: number
   id?: string
   role: 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'narrative'
   content?: string

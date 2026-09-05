@@ -758,6 +758,7 @@ func (projector *PublicEventProjector) ProjectPreparedContext(run agent.RunView,
 	// Context preparation can run before the event observer receives RunStarted.
 	// Use the preparation's durable identity for these cycle-local Skill cards.
 	projector.bindRunIDLocked(run.ID)
+	projector.recorder.cycle = run.Cycle
 	meta := projector.rootMetadata()
 	for index, invocation := range prepared.ExplicitSkills {
 		name := strings.TrimSpace(invocation.Name)
@@ -957,6 +958,11 @@ func (projector *PublicEventProjector) ProjectCanonicalOutput(message *agent.Mes
 
 func (projector *PublicEventProjector) emitEvent(event agentrun.Event) {
 	if projector.recorder != nil {
+		// One public Run can contain several replies. Carry its durable cycle in
+		// every sourced display event so live and restored views share a boundary.
+		if data, ok := event.Data.(map[string]any); ok && projector.recorder.cycle > 0 && event.DataString("run_id") == projector.runID {
+			data["agent_cycle"] = projector.recorder.cycle
+		}
 		projector.recorder.Record(event)
 	}
 	if projector.emit != nil {

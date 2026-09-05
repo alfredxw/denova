@@ -12,6 +12,7 @@ export interface AgentMessageMetadata {
 	display_phase?: 'candidate' | 'progress' | 'final' | 'partial'
 	history_type?: string
   run_id?: string
+  agent_cycle?: number
   display_segment_id?: string
   agent_kind?: string
   agent_name?: string
@@ -506,6 +507,7 @@ function agentMetadataFromProvider(metadata: unknown): AgentMessageMetadata {
     agent && typeof agent === 'object' && !Array.isArray(agent) ? (agent as Record<string, unknown>) : (metadata as Record<string, unknown>)
 	return {
 		run_id: readString(raw.run_id) || undefined,
+		agent_cycle: typeof raw.agent_cycle === 'number' ? raw.agent_cycle : undefined,
 		display_segment_id: readString(raw.display_segment_id) || undefined,
 		display_phase: readDisplayPhase(raw.display_phase),
     agent_kind: readString(raw.agent_kind) || undefined,

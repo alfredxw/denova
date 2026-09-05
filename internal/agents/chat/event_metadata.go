@@ -11,6 +11,7 @@ import (
 type agentEventMetadata struct {
 	AgentKind         string
 	RunID             string
+	AgentCycle        int
 	AgentName         string
 	RootAgentName     string
 	RunPath           []string
@@ -93,7 +94,7 @@ func (m agentEventMetadata) appendTo(data map[string]interface{}) map[string]int
 }
 
 func eventMetadataFromData(data interface{}) agentEventMetadata {
-	meta := agentEventMetadata{}
+	meta := agentEventMetadata{AgentCycle: eventDataInt(data, "agent_cycle")}
 	switch typed := data.(type) {
 	case map[string]string:
 		meta.AgentKind = typed["agent_kind"]

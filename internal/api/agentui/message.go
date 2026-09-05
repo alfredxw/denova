@@ -256,6 +256,9 @@ func addMetadataPayload(target map[string]any, entry appsvc.AgentSessionHistoryE
 	if entry.RunID != "" {
 		target["run_id"] = entry.RunID
 	}
+	if entry.AgentCycle > 0 {
+		target["agent_cycle"] = entry.AgentCycle
+	}
 	if entry.AgentKind != "" {
 		target["agent_kind"] = entry.AgentKind
 	}

@@ -68,6 +68,7 @@ export function buildSubAgentSummaryMessage(views: AgentMessageView[]): ChatMess
     created_at: metadata.created_at,
     run_id: metadata.run_id,
     display_segment_id: metadata.display_segment_id,
+    agent_cycle: metadata.agent_cycle,
     agent_kind: metadata.agent_kind,
     agent_name: metadata.agent_name,
     root_agent_name: metadata.root_agent_name,

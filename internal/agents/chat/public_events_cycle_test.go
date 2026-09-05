@@ -24,17 +24,24 @@ func TestPublicEventProjectorKeepsDisplayIdentityAcrossCyclesAndReload(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	live := map[string]string{}
+	type displayContent struct {
+		Content string
+		Cycle   int
+	}
+	live := map[string]displayContent{}
 	for cycle := 1; cycle <= 2; cycle++ {
 		projector := NewPublicEventProjector(agentconversation.NewSessionConversation(sess), ChatRequest{}, agentrun.Options{}, func(event agentrun.Event) {
 			if event.Type != "thinking" && event.Type != "chunk" {
 				return
 			}
 			id := event.DataString(displaySegmentIDEventKey)
-			if id == "" || live[id] != "" {
+			if id == "" || live[id].Content != "" {
 				t.Fatalf("cycle %d reused display identity %q: %#v", cycle, id, live)
 			}
-			live[id] = event.DataString("content")
+			if eventDataInt(event.Data, "agent_cycle") != cycle {
+				t.Fatalf("cycle %d lost its live display boundary: %#v", cycle, event)
+			}
+			live[id] = displayContent{Content: event.DataString("content"), Cycle: cycle}
 		})
 		projector.ProjectRunStarted("same-run", cycle, "same-command", "follow_up", time.Now())
 		for _, source := range []agent.EventSource{{Name: "root"}, {Name: "child", InvocationID: "child-session", Path: []string{"root", "child"}}} {
@@ -52,15 +59,15 @@ func TestPublicEventProjectorKeepsDisplayIdentityAcrossCyclesAndReload(t *testin
 		t.Fatal(err)
 	}
 	for _, history := range [][]session.HistoryEntry{sess.History(), reloaded.History()} {
-		persisted := map[string]string{}
+		persisted := map[string]displayContent{}
 		for _, entry := range history {
 			if entry.Role != "thinking" && entry.Role != "assistant" {
 				continue
 			}
-			if persisted[entry.ID] != "" {
+			if persisted[entry.ID].Content != "" {
 				t.Fatalf("duplicate persisted display identity: %#v", entry)
 			}
-			persisted[entry.ID] = entry.Content
+			persisted[entry.ID] = displayContent{Content: entry.Content, Cycle: entry.AgentCycle}
 		}
 		if len(live) != 8 || !reflect.DeepEqual(persisted, live) {
 			t.Fatalf("persisted display = %#v, live = %#v", persisted, live)

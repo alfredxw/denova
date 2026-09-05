@@ -320,6 +320,7 @@ const DisplayEventRoleNarrative = "narrative"
 // Role 为 narrative 的事件是正文位置锚点：正文本身不进入 DisplayEvents，
 // 锚点只标记正文在事件流中的相对位置，供前端按真实顺序穿插渲染。
 type DisplayEvent struct {
+	AgentCycle        int                     `json:"agent_cycle,omitempty"`
 	ID                string                  `json:"id,omitempty"`
 	Role              string                  `json:"role"`
 	Content           string                  `json:"content,omitempty"`

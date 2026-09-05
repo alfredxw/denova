@@ -58,6 +58,7 @@ export function streamMetadataFromPayload(payload: Record<string, unknown>): Age
   const runPath = Array.isArray(payload.run_path) ? payload.run_path.filter((item): item is string => typeof item === 'string') : undefined
   return {
     run_id: typeof payload.run_id === 'string' ? payload.run_id : undefined,
+    agent_cycle: typeof payload.agent_cycle === 'number' ? payload.agent_cycle : undefined,
     display_segment_id: typeof payload.display_segment_id === 'string' ? payload.display_segment_id : undefined,
     display_phase: readStreamDisplayPhase(payload.display_phase),
     agent_kind: typeof payload.agent_kind === 'string' ? payload.agent_kind : undefined,

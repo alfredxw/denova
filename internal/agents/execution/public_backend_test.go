@@ -1195,6 +1195,7 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 		t.Fatalf("follow-up canonical messages=%#v", messages)
 	}
 	displayIDs := map[string]string{}
+	var displayCycles []int
 	for _, entry := range sess.History() {
 		if entry.Role != "assistant" {
 			continue
@@ -1203,9 +1204,10 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 			t.Fatalf("follow-up reused display identity %q: %#v", entry.ID, sess.History())
 		}
 		displayIDs[entry.ID] = entry.Content
+		displayCycles = append(displayCycles, entry.AgentCycle)
 	}
-	if len(displayIDs) != 2 {
-		t.Fatalf("follow-up display replies=%#v", displayIDs)
+	if len(displayIDs) != 2 || displayCycles[0] != 1 || displayCycles[1] != 2 {
+		t.Fatalf("follow-up display replies=%#v cycles=%v", displayIDs, displayCycles)
 	}
 	eventsMu.Lock()
 	projected := append([]agentrun.Event(nil), events...)

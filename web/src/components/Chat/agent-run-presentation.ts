@@ -9,7 +9,7 @@ import {
   type AgentMessageView,
 } from '@/lib/agent-message-view'
 
-/** Display-only projection for one contiguous root Agent run. */
+/** Display-only projection for one contiguous root Agent cycle. */
 export interface AgentRunPresentation {
   key: string
   nextIndex: number
@@ -34,6 +34,7 @@ export function buildAgentRunPresentation(
   const first = views[startIndex]
   const runID = first?.metadata.run_id?.trim() || ''
   if (!runID || !isRootRunView(first)) return null
+  const cycle = first.metadata.agent_cycle
 
   const runViews: AgentMessageView[] = []
   let settled = false
@@ -46,6 +47,10 @@ export function buildAgentRunPresentation(
       continue
     }
     const subAgentBridge = isAgentSubAgentTimelineBridgeView(view, runViews)
+    // Follow Up keeps the Run identity while beginning an independent reply.
+    // Child journals have their own cycle counter; only root cycles divide it.
+    const viewCycle = view.metadata.agent_cycle
+    if (!view.metadata.subagent && cycle !== undefined && viewCycle !== undefined && viewCycle !== cycle) break
     if (
       (view.metadata.run_id !== runID && !subAgentBridge) ||
       (!isRootRunView(view) && !isAgentSubAgentTimelineView(view) && !subAgentBridge)
@@ -55,7 +60,9 @@ export function buildAgentRunPresentation(
   }
   if (runViews.length === 0) return null
 
-  const active = !settled && isActiveRunSlice(views, nextIndex, isStreaming)
+  const nextCycle = views[nextIndex]?.metadata.agent_cycle
+  const cycleCompleted = nextCycle !== undefined && nextCycle !== cycle
+  const active = !settled && !cycleCompleted && isActiveRunSlice(views, nextIndex, isStreaming)
   const resultIndex = selectTerminalResultIndex(runViews, active)
 
   return {

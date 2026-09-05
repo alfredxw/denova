@@ -271,6 +271,7 @@ function displayEventMetadata(event: TurnDisplayEvent): AgentMessageMetadata {
   return {
     created_at: event.created_at,
     run_id: event.run_id,
+    agent_cycle: event.agent_cycle,
     display_segment_id: event.id,
     agent_kind: event.agent_kind,
     agent_name: event.agent_name,

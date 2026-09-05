@@ -534,6 +534,7 @@ func messageMetadataFromData(data map[string]any) map[string]any {
 		"display_phase",
 		"history_type",
 		"run_id",
+		"agent_cycle",
 		"agent_kind",
 		"agent_name",
 		"root_agent_name",

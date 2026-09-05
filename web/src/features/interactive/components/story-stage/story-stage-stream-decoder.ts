@@ -9,6 +9,7 @@ import {
 
 const metadataSchema = z.object({
   run_id: z.string().optional(),
+  agent_cycle: z.number().int().nonnegative().optional(),
   display_segment_id: z.string().optional(),
   display_phase: z.enum(['candidate', 'progress', 'final', 'partial']).optional(),
   agent_kind: z.string().optional(),

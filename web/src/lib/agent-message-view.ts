@@ -874,6 +874,7 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     display_segment_id: readString(agent.display_segment_id) || undefined,
     history_type: readString(agent.history_type) || undefined,
     run_id: readString(agent.run_id) || undefined,
+    agent_cycle: readNumber(agent.agent_cycle) || undefined,
     agent_kind: readString(agent.agent_kind) || undefined,
     agent_name: readString(agent.agent_name) || undefined,
     root_agent_name: readString(agent.root_agent_name) || undefined,

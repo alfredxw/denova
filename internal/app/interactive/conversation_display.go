@@ -59,6 +59,7 @@ func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
 		CreatedAt:         createdAt,
 		AgentKind:         event.AgentKind,
 		RunID:             event.RunID,
+		AgentCycle:        event.AgentCycle,
 		AgentName:         event.AgentName,
 		RootAgentName:     event.RootAgentName,
 		RunPath:           append([]string(nil), event.RunPath...),
