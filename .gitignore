@@ -29,6 +29,11 @@ docs/tests/*
 !docs/agent-package-migration-parity-audit.md
 !docs/agent-prompt-architecture-audit.md
 !docs/agent-prompt-context-architecture-benchmark.md
+!docs/plugin-developer-guide.md
+!docs/game-developer-guide.md
+!docs/plugin-platform-design.md
+!docs/plugin-platform-api.md
+docs/plugin-platform-research-audit.md
 !docs/portable-denova-data-directory-design.md
 .worktrees/
 .pnpm-store/
