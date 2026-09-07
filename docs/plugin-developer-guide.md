@@ -4,6 +4,8 @@
 
 配套：[游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md) · [API 参考](plugin-platform-api.md)。
 
+第一版交付工具／工具集、静态 Agent 定义与 Skills，并验证它们在写作和游戏中的使用。动态上下文、flow／planner、面板和编辑扩展属于后续能力。通信采用 HTTP + JSON，运行事件采用 SSE；SDK 是可选封装，直接使用 HTTP 客户端即可接入。
+
 ## 1. 插件扩展能力，游戏交付作品
 
 **插件是对 Denova 能力的扩展。** 它给平台增加工具、Agent 定义、Skills、上下文来源、规划／流程能力、编辑辅助或界面扩展，供写作、聊天、游戏以及其他获准插件选择使用。
@@ -35,7 +37,7 @@
 
 目标路径为“**共通能力 → 插件 → 开发中 → 创建插件**”。
 
-1. 选择“Agent／Skill”“工具／上下文”“界面扩展”或“后端能力”模板。
+1. 第一版选择“Agent／Skill”或“HTTP 工具（Node 后端）”模板；其他模板随对应能力增加。
 2. 选择普通 Project 中的空目录，填写插件 ID 和中英文名称；创建前展示文件，不覆盖已有内容。
 3. 在现有工作台中使用文件编辑器、终端和 Agent 开发。插件源码不是新的 Project 类型。
 4. 点击“检查”校验清单、入口、schema、本地化和依赖；检查不执行包内脚本。
@@ -52,11 +54,12 @@
 text-tools/
   denova.plugin.json
   package.json
-  src/extension.ts
+  src/server.ts
+  src/count-characters.ts
   tools/count-characters.json
   locales/zh-CN.json
   locales/en-US.json
-  dist/extension.mjs
+  dist/server.mjs
 ```
 
 ### 4.1 插件清单
@@ -70,10 +73,19 @@ text-tools/
   "name": { "zh-CN": "文本工具", "en-US": "Text Tools" },
   "development": { "build": { "command": "pnpm", "args": ["build"] } },
   "distribution": { "files": ["dist", "tools", "locales"] },
-  "runtime": { "extension": { "kind": "module", "entry": "dist/extension.mjs" } },
+  "runtime": {
+    "backend": {
+      "launch": { "kind": "runtime", "runtime": "node", "entry": "dist/server.mjs", "args": [] },
+      "protocol": "denova-runtime-v1"
+    }
+  },
   "permissions": { "required": [], "optional": [] },
   "contributes": {
-    "tools": [{ "id": "count-characters", "definition": "tools/count-characters.json" }],
+    "tools": [{
+      "id": "count-characters",
+      "definition": "tools/count-characters.json",
+      "endpoint": { "method": "POST", "path": "/tools/count-characters/invoke" }
+    }],
     "toolsets": [{ "id": "text-utils", "tools": ["count-characters"] }]
   },
   "locales": { "zh-CN": "locales/zh-CN.json", "en-US": "locales/en-US.json" }
@@ -82,7 +94,7 @@ text-tools/
 
 此工具只计算输入，无须申请项目文件或模型调用权限。`contributes` 声明对外可选能力，完整名称为 `alice.text-tools/text-utils`。清单不声明游戏、游戏开局或游戏存档；安装此插件不会在游戏列表中增加一部作品。
 
-`development.build` 引用模板 package.json 中的构建命令。`distribution.files` 是发行文件白名单，不包含开发依赖、密钥和测试数据。locale 文件在本例可为空对象；增加用户可见面板、错误和工具标题时维护两份独立资源。
+`development.build` 引用模板 package.json 中的构建命令。`distribution.files` 是发行文件白名单，不包含开发依赖、密钥和测试数据。locale 文件包含下方示例所需的错误文案；用户可见面板、错误和工具标题维护两份独立资源。
 
 ### 4.2 工具定义
 
@@ -107,28 +119,38 @@ text-tools/
 }
 ```
 
-`src/extension.ts` 的目标作者接口片段：
+清单声明普通 HTTP 端点 `POST /tools/count-characters/invoke`，请求体直接使用工具的 inputSchema，成功响应为 `{content, data}`。模板的 `src/server.ts` 负责监听、启动握手、宿主请求认证、请求体大小限制和错误处理，并把路由交给以下处理器。`Request`／`Response` 是标准 Web 类型，模板适配到 Node HTTP 服务，不要求专用 SDK。
+
+`src/count-characters.ts` 的处理器片段：
 
 ```ts
-export function activate(ctx: ExtensionContext) {
-  ctx.tools.register("count-characters", async (_call, input) => {
-    if (input === null || typeof input !== "object" || Array.isArray(input)
-      || typeof input.text !== "string") {
-      throw new Error("Expected a text field");
-    }
-    const count = Array.from(input.text).length;
-    return { content: `Character count: ${count}`, data: { count } };
+export async function countCharacters(request: Request): Promise<Response> {
+  const input = await request.json();
+  if (input === null || typeof input !== "object" || Array.isArray(input)
+    || typeof input.text !== "string") {
+    return Response.json({
+      code: "INVALID_ARGUMENT",
+      messageKey: "errors.invalidText",
+      diagnostic: "Expected a text field",
+    }, { status: 400 });
+  }
+  const count = Array.from(input.text).length;
+  return Response.json({
+    content: `Character count: ${count}`,
+    data: { count },
   });
 }
 ```
 
-`ExtensionContext` 是拟定 SDK 类型，目前没有可安装的 SDK。模板在独立提供器进程内调用 activate，宿主校验输入与结果，并将函数绑定为当前激活的调用端点。
+本例的 locale 文件分别包含 `errors.invalidText`：中文为“请输入文本”，英文为“Enter text”。工具 schema 和英文 diagnostic 供模型与开发者使用，用户界面按 messageKey 展示当前语言。
+
+宿主根据清单和已验证的后台监听地址绑定端点，校验输入与结果。作者也可以使用自己的 HTTP 框架实现相同契约；不需要 activate/register、远程函数代理或 JSON-RPC。完整启动与授权说明见 API 参考，以上片段不是可单独运行的服务器。
 
 ### 4.3 在写作和游戏中选择使用
 
-预览成功后，把工具集加入测试 Agent 的工具选择，实际执行一次调用。安装只使工具集可选，不会把它自动添加到所有 Agent。游戏也可以通过声明依赖，选择这个工具集。
+预览成功后，把工具集加入测试 Agent 的工具选择，实际执行一次调用。安装只使工具集可选，不会把它自动添加到所有 Agent。游戏可以通过声明依赖选择工具集，也可以通过公开 HTTP 工具调用接口直接使用已授权工具，无须额外调用模型。
 
-注册 ID 必须在清单中，重复 ID 或缺失实现会导致激活失败。禁用时停止工作、撤销注册；自己创建的连接和监听通过 `ctx.onDispose` 清理。`effect: pure` 描述工具效果，不代表原生程序被 OS 沙箱限制。
+工具 ID 和相对 HTTP 端点必须在清单中，重复 ID 或无效绑定会导致激活失败。禁用时停止工作、撤销绑定；后台收到停止请求后清理自己的连接和监听。`effect: pure` 描述工具效果，不代表原生程序被 OS 沙箱限制。
 
 ## 5. 增加其他扩展（P3）
 
@@ -138,9 +160,9 @@ Agent 定义声明指令、模型用途、工具、Skills、上下文和委派�
 
 写作扩展通过 `editor.context` 读取授权文档和选区，通过 `editor.propose` 提出修改，在原生审阅界面采纳。文件 revision 与未保存草稿都要校验，冲突时保留提案。
 
-界面插件可以在声明的位置挂载前端视图；纯前端面板通过受限桥接调用平台即可，不强制启动后端。模型工具、后台上下文等需要独立于页面运行的实现放在提供器中。关闭面板不应意外终止仍被游戏使用的能力。
+界面插件可以在声明的位置挂载前端视图；纯前端面板通过范围受限的 HTTP API 调用平台即可，不强制启动后端。模型工具、后台上下文等需要独立于页面运行的实现放在提供器中。关闭面板不应意外终止仍被游戏使用的能力。
 
-需要自有 HTTP 服务、Python 或原生程序时使用后端能力模板。宿主按启动协议提供临时通道和路径，服务报告 readiness；前端通过实例专用来源访问业务路由。后端同时提供工具时使用 `runtime.extension: {"kind":"backend"}`，同一插件激活不重复启动 module 进程。
+需要自有 HTTP 服务时使用 runtime.backend，工具端点与业务路由可由同一后台服务承载，每个插件激活最多一个后台进程。宿主按启动协议提供临时通道和路径，服务报告 readiness；前端通过实例专用来源访问业务路由。第一版提供 Node 模板，Python 和原生程序的运行支持在后续按需求增加。
 
 本地程序按当前操作系统账户权限运行，单独进程不等于安全沙箱；插件 API 授权不能阻止原生代码直接访问账户可访问的文件和网络。安装与预览如实展示本地代码执行和环境要求。
 
@@ -156,16 +178,20 @@ Agent 定义声明指令、模型用途、工具、Skills、上下文和委派�
 
 1. 检查并执行模板构建，命令和输出在工作台可见。
 2. 从发行白名单生成不可变候选包，在干净测试范围验证声明的能力。
-3. 导出插件包，或将同一产物放到 GitHub 发行目录供安装；导出不会自动向外发布。
+3. 第一版导出本地插件包；GitHub 等分发来源后续接入同一安装校验流程，导出不会自动向外发布。
 4. 安装时预览准确来源、发行、能力、权限与运行条件，再启用；依赖需要独立展示和授权。
 5. 验证写作与游戏中的选择、调用、取消、禁用和故障反馈，以及声明支持的平台、主题与语言。
 
-更新插件不会静默改变已有游戏存档绑定的版本；游戏明确升级依赖时，先停止相关工作并处理数据兼容性。禁用或卸载前展示受影响的游戏与会话，保留数据和仍被引用的发行；依赖不可用时给出原因，不偷偷替换实现。
+更新插件不会静默改变已有游戏存档绑定的版本。第一版允许用户显式选择开发者声明兼容原存档格式的适配发行，先停止、备份并检查依赖，失败恢复原绑定与数据；需要转换存档格式的升级在后续支持。禁用或卸载前展示受影响的游戏与会话，保留数据和仍被引用的发行；依赖不可用时给出原因，不偷偷替换实现。
+
+清单的 apiMajor 声明适用的平台 API 主版本。Denova 提供接口文档、示例和不兼容变更说明，插件开发者负责修改和发布适配版本；主版本不匹配时宿主拒绝激活并给出明确提示，不自动改写插件或维护多版本兼容层。固定插件发行不保证新版 Denova 继续提供旧 API。
+
+发行可以仅包含运行产物；源码是否提供、是否使用 Agent 开发，由开发者决定。平台不要求源码交付，不增加专门的 Agent 修复流程。开发与发布通过已有 Project 工作台和安装流程完成。
 
 插件 ID、发行与能力 ID 独立于显示名和源码目录。修改内容使用用户副本，独立 Fork 插件使用新 ID 并遵守许可证。密钥、授权、私人会话和测试数据不随分享导出。
 
 ## 8. 验收边界
 
-插件闭环的结果是：作者能在 App 内开发并安装一种扩展，用户能在目标场景选择、配置、运行和停用它。工具、Skill、面板和后台提供器各有样例，至少一项能力可同时用于写作和游戏。
+插件闭环的结果是：作者能在 App 内开发并安装一种扩展，用户能在目标场景选择、配置、运行和停用它。第一版验证工具、静态 Agent／Skill 和 Node 后台，至少一项能力可同时用于写作和游戏，并以普通 HTTP 客户端验证调用和 API 主版本不兼容提示；面板等样例随后续能力增加。
 
 游戏作品的开发与运行是另一条闭环，见[游戏开发手册](game-developer-guide.md)。两者共用基础机制，但不互相冒充产品对象。

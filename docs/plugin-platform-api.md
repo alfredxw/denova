@@ -4,6 +4,8 @@
 
 入口：[插件开发手册](plugin-developer-guide.md) · [游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md)。本草案按系统设计的 A—C 阶段随实际样例冻结，不保留上一版未发布接口的兼容层。
 
+第一版以普通 HTTP + JSON 提供 Agent、工具与自管实例文件能力，以 SSE 提供运行事件。SDK 可选，HTTP 方法、路径和 DTO 是公开调用契约。后续阶段的操作表只描述业务语义，尚未确定的 HTTP 路由不提前冻结；点分操作名不是 JSON-RPC method，也不代表必须使用 SDK。
+
 ## 1. 产品与接口边界
 
 - 插件提供 Denova 能力扩展；游戏是游戏页中的具体可玩作品。
@@ -60,7 +62,7 @@ PackageRef 仅是安装／资源来源的技术引用，kind 参与身份；不�
 
 AgentRef 指向 Denova 管理的逻辑会话，自管游戏实例本身不是 StateOwner。普通 NPC 根会话使用 Product journal，真正委派的子 Agent 使用自包含 journal；游戏引用它们，不复制 transcript。
 
-所有文件 path 使用 `/` 规范相对路径。game-data 相对于自管实例 data，不开放安装目录、其他实例或 canonical journals。授权来自通道和目标交集，不能省略目标后回退到当前工作区。RPC 仅传可序列化 DTO，大文件走独立传输。
+所有文件 path 使用 `/` 规范相对路径。game-data 相对于自管实例 data，不开放安装目录、其他实例或 canonical journals。授权来自受信请求凭证和目标交集，不能省略目标后回退到当前工作区。HTTP 请求／响应只传可序列化 DTO，大文件使用单独的 HTTP 上传下载接口。
 
 ## 3. 两种 manifest
 
@@ -80,7 +82,11 @@ AgentRef 指向 Denova 管理的逻辑会话，自管游戏实例本身不是 St
 | requires | `{pluginId, versionRange, contributions: string[]}[]`；只引用插件公开能力，安装解析准确发行 |
 | prepare | 可选源码发行准备步骤，展示执行内容和环境要求，检查／安装预览不执行 |
 
-ID 使用小写字母、数字、点和连字符，以字母开头、分段非空，禁止路径分隔符，生成目录还要校验跨平台保留名称。解包拒绝路径逃逸、符号链接、特殊文件与大小写冲突。同产品同版本摘要不同报冲突，预览构建不覆盖正式发行。
+第一版安装本地开发产物或安装包，消费已经构建的运行文件；源码准备和远程分发属于后续能力。源码是否随包交付不影响安装资格，平台不要求可自动修复的源码格式或专用迁移材料。
+
+apiMajor 声明产物适用的平台 API 主版本。宿主在安装检查和激活时验证，不匹配则返回 API_INCOMPATIBLE，保留已有安装信息和用户数据，不切换旧 API 或自动修改插件。平台提供当前接口文档、示例和不兼容变更说明，开发者负责适配并发布新版本；主版本识别不等于维护多版本兼容层。固定发行不保证升级后的宿主仍提供它需要的旧 API。
+
+ID 使用小写字母、数字、点和连字符，以字母开头、分段非空，禁止路径分隔符；builtin 与 local 是能力提供方的保留 ID，不能用于第三方插件。生成目录还要校验跨平台保留名称。解包拒绝路径逃逸、符号链接、特殊文件与大小写冲突。同产品同版本摘要不同报冲突，预览构建不覆盖正式发行。
 
 一个候选包根目录必须且只能有 denova.plugin.json 或 denova.game.json。两类产品分别版本化；同仓库可分别打包，安装不能根据 display name 或 tags 猜测类型。
 
@@ -90,15 +96,17 @@ ID 使用小写字母、数字、点和连字符，以字母开头、分段非�
 
 | 字段 | 内容 |
 | --- | --- |
-| contributes.agents / tools / toolsets / skills / contexts | Agent 定义、工具 schema、工具集合、Skill 资源与有界上下文 |
+| contributes.agents / tools / toolsets / skills | 第一版：静态 Agent 定义、工具 schema 与 HTTP endpoint、工具集合、Skill 资源 |
+| contributes.contexts | 后续：有来源和容量上限的动态上下文 |
 | contributes.flows / planners | 可复用动作与规划协议及输入输出 schema |
 | contributes.panels | `{id, titleKey, placement, viewId}`；writing-panel、chat-panel、game-panel、tool-result、settings |
 | contributes.stateSchemas | 为可选择的 Product Session 扩展声明托管 schema 与初值 |
 | contributes.connections | 命名外部连接范围和方法，不包含凭证 |
 | resources | 随能力附带的默认内容、模板和素材，不单独形成游戏目录项 |
-| runtime.extension | `{kind: module, entry}`，或 `{kind: backend}` 共用插件后端 |
 
-插件可以是静态 Agent／Skill、纯前端面板或后端能力。后台工具和上下文不能依赖某个面板持续打开；需要此类 handler 时在独立提供器进程注册。一个插件激活最多一个后台进程，module 不和独立 backend 重复声明。
+工具条目为 `{id, definition, endpoint: {method: "POST", path}}`，path 是后台服务的相对 HTTP 路径，不接受任意回调 URL。宿主从已验证的 runtime.backend 监听地址绑定端点；定义文件提供 inputSchema 与可选 outputSchema，不把函数写入清单。
+
+插件可以是静态 Agent／Skill、纯前端面板或后端能力。后台工具和上下文不能依赖某个面板持续打开；需要此类实现时使用 runtime.backend。一个插件激活最多一个后台进程，工具端点和自有业务路由共用该服务；静态定义与纯前端视图不需要后台。
 
 插件清单不接受 applications、games 或 gameModes 贡献。能力目录中的一个 flow 是可复用算法，不是可玩的游戏作品。
 
@@ -123,7 +131,7 @@ type GameDeclaration = {
 };
 ```
 
-`game` 是一个 GameDeclaration。`definitions` 可声明本游戏私有 agents、tools、toolsets、skills、contexts、flows、planners；字段结构与相应能力描述复用，引用使用 local:id，只在本游戏解析。私有 handler 由游戏后端绑定；纯前端也可以只调用内置／插件能力或直接提交授权状态。
+`game` 是一个 GameDeclaration。`definitions` 可声明本游戏私有 agents、tools、toolsets、skills、contexts、flows、planners；字段结构与相应能力描述复用，引用使用 local:id，只在本游戏解析。私有工具的 HTTP 端点绑定到游戏后端；纯前端也可以只调用内置／插件能力。第一版仅支持 storage.kind: self，通用托管状态、动态 context、flow 和 planner 在后续阶段按样例确定。
 
 `resources` 描述游戏角色、场景和素材，用 `format + formatVersion` 声明语义。游戏配置不向公共贡献目录写入任何条目，game.uses 对其他插件的引用必须被 requires 覆盖。纯内容导入走资源流程，不因有若干 JSON 文件就注册插件或游戏。
 
@@ -166,7 +174,7 @@ type GameDeclaration = {
 | games.catalog.previewUpdate / installUpdate / uninstall | 管理游戏代码，卸载不级联卸载共享插件或默认删除存档 |
 | games.instances.create | `{gameId, releaseId, title, setup, projectId?}` → GameInstance；按存储方式创建自管实例或既有 Story，托管方式必须有 projectId |
 | games.instances.list / get / open / stop | 列出、读取、继续或停止某个 GameInstanceRef |
-| games.instances.upgrade | 目标游戏发行、依赖与配置 → 停止、备份、显式迁移和原子领域绑定更新 |
+| games.instances.upgrade | 显式选择目标游戏／依赖发行 → 停止、备份、兼容检查和领域绑定更新；第一版仅接受开发者明确声明兼容原存档格式的更新，失败恢复原绑定与数据；需要数据迁移的升级后续支持 |
 | games.instances.export / remove | 导出或明确删除游玩数据；数据库先停止或使用可靠快照，删除提供恢复路径 |
 | games.instances.fork / rewind | 仅对已验证支持的存储实现开放；托管使用 Story 提交和 NPC 完整前缀恢复 |
 
@@ -185,11 +193,11 @@ type RuntimeStatus = "stopped" | "starting" | "running" | "stopping" | "failed";
 
 ## 5. 启动与客户端
 
-本地进程通过临时 bootstrap 通道接收准确来源、scope、packageDir、可写 dataDir（如果该运行拥有自有数据）、tempDir、监听信息和授权连接。凭证不在 argv、URL 或日志中；绝对路径只用于当前运行。
+本地进程通过临时 bootstrap 通道接收准确来源、scope、packageDir、可写 dataDir（如果该运行拥有自有数据）、tempDir、监听信息和范围受限的 HTTP API 凭证。凭证不在 argv、URL 或日志中；绝对路径只用于当前运行。
 
-游戏后端与插件后端都是进程协议使用方，各归自己的身份和范围。宿主验证 readiness、监听地址和通道后装载视图／登记 handler。游戏的业务 HTTP／WebSocket 路由通过专用来源代理，不强制改写为平台 RPC。
+游戏后端与插件后端都是进程协议使用方，各归自己的身份和范围。宿主验证 readiness、监听地址和通道后装载视图／绑定清单端点。Denova 调用插件工具、游戏／插件调用 Denova 都使用 HTTP。游戏的业务 HTTP／WebSocket 路由通过专用来源代理，保持自己的业务协议；平台能力调用不要求 WebSocket。
 
-浏览器模板验证来源、挂载身份和一次性握手后接收 MessagePort：
+浏览器模板验证来源、挂载身份和一次性握手后取得当前 HTTP 连接信息；postMessage 只用于启动握手与宿主界面通知，不承载业务 RPC。HTTP 请求使用 Authorization 头中的临时范围凭证；SSE 可用支持请求头的 fetch 流读取，不把凭证放进事件 URL。调用者身份与可用范围由服务器校验，不以调用方自报的 scope 为准。
 
 ```ts
 type RuntimeContext = {
@@ -203,7 +211,7 @@ type Capability = {
 };
 ```
 
-`platform.connect(port)` 返回 `{api: PlatformClient, context: RuntimeContext}`。PlatformClient 是拟定有类型客户端名，不是目前已发布的 SDK。语言／主题变化由同一受信通道通知；权限或目标变化重建连接并撤销旧通道。
+可选客户端由 HTTP base URL 和临时范围凭证初始化；PlatformClient 只是本文操作表的便捷客户端名称，没有独立协议，也不是目前已发布的 SDK。所有业务操作均可直接使用 fetch、curl 或其他 HTTP 客户端完成。语言／主题变化由受信界面通知同步；权限或目标变化撤销旧凭证并重建绑定。
 
 | 方法 | 调用方与效果 |
 | --- | --- |
@@ -212,9 +220,11 @@ type Capability = {
 | ui.requestProject | B 的用户操作 → 可信项目选择和授权，返回 projectId 并重建范围连接 |
 | runtime.snapshot / stop | H；B/S 可查看或请求停止自己的运行，不能停止别的游戏 |
 
-建议传输为 `/api/platform/rpc` 上的 `{requestId, method, params}`，认证在头部或连接握手，流与大文件另设通道。游戏与插件分别路由到同一授权语义，不直接暴露现有内部 API。
+公开能力以 `/api/platform/v1` 为基础路径，v1 对应 apiMajor: 1；下文 HTTP 路径相对此前缀。请求使用普通 HTTP 方法、路径和 JSON，错误使用合适的 HTTP 状态码及 PlatformError，不另设 `/rpc` 或 method/params 信封。HTTP 请求 ID 用于诊断，commandId 用于持久业务去重。
 
-没有 SDK 的网页仍可被运行容器托管；要使用 Denova 或插件能力时接入客户端。远程页面需遵守嵌入策略，远程后端的直接授权和网络可达性另行设计，不因嵌入 URL 自动开放本机 API。
+`GET /capabilities` 返回当前范围内的能力状态和上限，`GET /context` 返回 RuntimeContext，`GET /openapi.json` 提供当前公开 HTTP 契约。平台维护与实现一致的接口文档、示例和不兼容变更说明；不增加插件源码修复协议。
+
+没有 SDK 的网页仍可直接调用获准 HTTP API。远程页面需遵守嵌入策略，远程后端的直接授权和网络可达性另行设计，不因嵌入 URL 自动开放本机 API。独立来源和 CORS 不替代授权，旧内部 API 与 WebSocket 也必须校验来源和权限。
 
 ## 6. Agent、工具与内容的调用
 
@@ -232,6 +242,23 @@ AgentDefinition 组合 instructions、modelSlot、tools／toolsets、skills、co
 | agents.runs.wait / abort | RunRef → 终态等待／停止请求；取消网络等待不等于停止运行 |
 | agents.runs.steer / queue / cancelQueued / followUp | 显式当前运行控制；排队句柄仅进程内有效，不承诺重启重放 |
 | agents.respond | `{run, interactionId, answer}`；普通问答可代理，平台权限只能由 H 批准 |
+
+第一版 HTTP 路由如下；steer／queue／followUp 等额外控制随后续实际需求开放。
+
+| HTTP 路由 | 输入／结果 |
+| --- | --- |
+| GET /agents/definitions | 当前范围内的可选定义 |
+| POST /agents/sessions | ensure 的请求体 → 创建或复用的会话，首次创建返回 201，复用返回 200 |
+| GET /agents/sessions/{sessionId} | 当前会话快照 |
+| GET /agents/sessions/{sessionId}/history | 分页显示消息 |
+| POST /agents/sessions/{sessionId}/runs | `{commandId, input}` → 202 与 RunRef |
+| GET /agents/sessions/{sessionId}/runs?commandId=… | 查回原执行的 RunResult，未知 commandId 返回 404 |
+| GET /agents/runs/{runId} | 当前 RunResult，终态包含结果或错误 |
+| GET /agents/runs/{runId}/events | SSE：先发快照，再发后续运行事件 |
+| POST /agents/runs/{runId}/cancel | 请求停止当前运行；关闭 HTTP／SSE 连接本身不取消 Agent |
+| POST /agents/runs/{runId}/interactions/{interactionId}/responses | 普通问答响应；平台权限只能由 H 批准 |
+
+URL 中的 sessionId 和 runId 都必须属于当前授权范围，不能只凭 ID 访问其他游戏。客户端的 wait 仅组合状态查询与事件订阅，没有单独等待协议。
 
 ensure 的稳定范围来自认证通道中的调用产品身份、持久目标、projectId 与 key，不使用 activationId、releaseId、路径或端口。创建来源和准确定义写 Session canonical 配置记录，索引可重建；同 key 的定义变化要求显式配置变更。不同开局中的同名 NPC 不共享会话。
 
@@ -266,25 +293,19 @@ type ContextFragment = {
   source: string; purpose: string; resource: string;
   stability: "stable" | "session" | "turn"; content: string; maxBytes: number;
 };
-type ProviderCall = {
-  scope: ActivationScope; signal: AbortSignal; agent?: AgentRef;
-  api: PlatformClient;
-  action?: { owner: StateOwner; stage(changes: StateChange[]): void };
-};
-type ImplementationBindings = {
-  tools: { register(id: string, handler: (call: ProviderCall, input: JsonValue) => Promise<ToolResult>): void };
-  contexts: { register(id: string, handler: (call: ProviderCall, input: JsonValue) => Promise<ContextFragment[]>): void };
-  flows: { register(id: string, handler: (call: ActionContext, input: JsonValue) => Promise<FlowOutput>): void };
-  planners: { register(id: string, handler: (call: ActionContext, input: JsonValue) => Promise<PlanProposal>): void };
-  onDispose(handler: () => void | Promise<void>): void;
-};
-type ExtensionContext = ImplementationBindings;
-type GameImplementationContext = ImplementationBindings;
+type ToolEndpoint = { method: "POST"; path: string };
 ```
 
-同形类型复用 handler 语义，不表示权限相同。插件入口 activate 的注册上限是 contributes；游戏后端入口 bind 的上限是 definitions，且仅在本游戏解析 local:id。能力身份和可见性由启动通道确定，客户端无法切换两种角色。
+插件的 contributes 和游戏的 definitions 使用相同工具条目结构，但不具有相同可见性。宿主将插件端点绑定为公开可选能力，将游戏端点绑定为当前游戏的 local:id；绑定信息由清单和启动通道确定，不接受客户端自称另一个产品。
 
-函数留在作者进程，SDK 将其绑定为有类型 RPC handler，不跨边界传函数对象。重复 ID、缺失实现或非法依赖导致激活失败；停止撤销注册并清理资源。没有动态 handler 的纯前端游戏只需 Consumer API。
+工具调用分两步，均使用普通 HTTP：
+
+1. 游戏或获准插件向 Denova 发出 `POST /tools/{providerId}/{toolId}/invoke`，请求体为 `{input: JsonValue}`；宿主解析当前范围内已选工具并执行同一输入校验与授权。当前游戏私有工具使用保留的 providerId `local`，只能解析本游戏的 definitions。Agent 内部调用也复用该执行边界。
+2. 宿主向已绑定后台的相对 endpoint 发出 POST，请求体直接为工具 input；后台以 200 返回 ToolResult，错误使用 HTTP 状态码和 PlatformError。宿主校验结果后返回调用方。
+
+后台端点只接受宿主认证的请求；需要调用 Denova 时使用启动时获准的 HTTP 连接。调用取消应传播到当前后台工作，具体停止通知由运行协议承载。直接工具调用的响应丢失不自动重试未知副作用，也不因为 HTTP 有请求 ID 就承诺持久去重；Agent 运行的查回与去重使用第 6 节的 commandId。
+
+无需 activate/register 或远程函数代理。重复 ID、无效端点或非法依赖导致激活失败；运行中端点不可用则返回明确调用错误。停止撤销绑定并清理后台资源。没有动态实现的纯前端游戏只需 Consumer API。动态 context、flow 和 planner 的 HTTP 契约在对应阶段按实际样例确定，不提前提供函数型 SDK。
 
 工具定义为 `{description, inputSchema, outputSchema?, effect, titleKey?}`。输入校验给出字段错误，可选 outputSchema 校验 ToolResult.data；effect 为 pure／read／propose／write，表达效果而非授权。英文模型说明与用户本地化标题分开。
 
@@ -296,11 +317,13 @@ type GameImplementationContext = ImplementationBindings;
 
 ### 8.1 自管数据
 
-| 方法 | 当前授权范围内的输入／效果 |
+| HTTP 路由 | 当前授权范围内的输入／效果 |
 | --- | --- |
-| gameData.list / read | 自管游戏开局的 path → 文件列表或 `{content, revision}` |
-| gameData.write / remove | path、内容及 expectedRevision → 冲突校验后写入或删除 |
-| pluginData.list / read / write / remove | 当前插件在明确 scope 的非会话服务数据；同样执行路径、授权和 revision 校验 |
+| GET /game-data/files?directory=… | 当前自管开局的目录 → 文件列表 |
+| GET /game-data/file?path=… | path → `{content, revision}` |
+| PUT /game-data/file | `{path, content, expectedRevision}` → 冲突校验后写入 |
+| DELETE /game-data/file | `{path, expectedRevision}` → 冲突校验后删除 |
+| /plugin-data/files 与 /plugin-data/file | 使用相同 HTTP 方法和参数，仅访问当前插件在明确 scope 的非会话服务数据 |
 
 调用通道决定产品和数据范围，不能传另一个 instanceId／pluginId 越权；插件读游戏数据需另有当前游戏的明确授权。expectedRevision 为 null 表示只允许新建，旧 revision 冲突不能静默覆盖。大文件走资产传输。
 
@@ -327,26 +350,15 @@ type ActionSnapshot = {
 };
 type FlowOutput = { changes?: StateChange[]; result: JsonValue };
 type PlanProposal = { content: JsonValue; schemaVersion: number };
-type ActionContext = {
-  owner: StateOwner; actionId: string; signal: AbortSignal;
-  api: PlatformClient;
-  state: { read(): Promise<StateSnapshot> };
-  stage(changes: StateChange[]): void;
-  agents: {
-    ensure(input: { definition: DefinitionId; key: string }): Promise<{ ref: AgentRef }>;
-    start(input: { agent: AgentRef; input: { text: string } }): Promise<RunRef>;
-    wait(input: { run: RunRef }): Promise<RunResult>;
-  };
-  adopt(completion: CompletionRef): void;
-  progress(value: JsonValue): void;
-};
 ```
+
+这些类型描述后续持久状态和动作结果，不定义远程可调用对象。读取候选状态、暂存变更、调用 Agent、采纳完成位置和进度通知等能力，在阶段 C 通过明确的 HTTP 请求与 SSE 事件实现；第一版不实现这一套通用动作协议。
 
 owner 必须已经绑定 schema。Game 的 schema 在 Story 创建时由游戏声明冻结；Product 扩展按选定定义冻结。使用成熟 JSON Schema dialect，禁止远程 $ref；先支持 document 替换，删除显式 remove，大素材保存资产引用。
 
 一个 owner 一次一个写动作；同 owner 的嵌套 start 被拒绝，动作中的独立 state.commit 返回 OWNER_BUSY。去重先于 head 校验，accepted 在副作用前持久化，成功 committed 一次保存正式结果、状态、规划及采纳的 NPC 前缀。纯 state.commit 直接用提交结果去重。
 
-ctx.api 的调用继承动作授权与取消范围，不能借此重入同 owner 的公共动作；文件、网络等副作用仍不纳入状态事务。ctx.state.read 读取候选视图，外部 state.read 读取正式结果。并行修改同一 document 明确报冲突，不按返回时序决定胜者。handler 完成前收束所有工作，并 adopt 采纳的会话位置；schema 失败、取消或异常不提交候选状态。
+动作内的 HTTP 调用继承动作授权与取消范围，不能借此重入同 owner 的公共动作；文件、网络等副作用仍不纳入状态事务。动作内读取候选视图，外部读取正式结果。并行修改同一 document 明确报冲突，不按返回时序决定胜者。动作完成前收束所有工作并明确采纳会话位置；schema 失败、取消或异常不提交候选状态。
 
 规划模板是资源，planner 是算法，已采纳计划是 owner 数据。默认小说 RPG 仍以 BranchPlan 为唯一计划事实，新游戏使用声明的 planDocument；不另建规划数据库。未配置的 planning 返回 UNSUPPORTED，Agent Goal/Todo 不是游戏剧情规划。
 
@@ -368,7 +380,7 @@ fork／rewind 从提交位置建立自包含 NPC 会话前缀，恢复 Compactio
 
 ## 10. 事件、停止与权限
 
-`events.subscribe({target, after?})` 原子提供 `{snapshot, cursor}` 和后续事件，unsubscribe 释放订阅。目标为当前可访问的 Run、动作、游戏运行或插件激活；不得广播其他 NPC 的私有历史和其他游戏状态。cursor 过期返回 CURSOR_EXPIRED 并重取快照。
+运行事件使用 SSE，先原子取得并发送 `{snapshot, cursor}`，再发送该位置之后的事件；断开连接释放订阅。目标为当前可访问的 Run，后续按需增加动作、游戏运行或插件激活；不得广播其他 NPC 的私有历史和其他游戏状态。重连携带 cursor，过期返回 CURSOR_EXPIRED 并重取快照。SSE 重连只恢复观测，不重新启动任务。
 
 默认退出游戏停止该局及仅由它持有的插件激活。后台继续需声明 activity.run、明确选择并在宿主运行列表可见；插件长期活动仍绑定其目标范围。停止顺序为拒绝新调用、传播取消、收束清理、终止本地进程树、撤销通道。远程取消不保证终止远端程序。
 
@@ -377,6 +389,7 @@ Agent 默认无总时长或迭代硬限制；用户可配置实际需要的预�
 | 权限 | 有效范围 |
 | --- | --- |
 | agents.run | 获准角色与目标会话，不扩大工具权限 |
+| tools.invoke | 直接调用当前范围内已选择的工具，仍须满足该工具所需的目标授权 |
 | gameData / pluginData | 当前实例或插件 scope 的自有文件 |
 | state.read / state.write | 已绑定 owner、namespace 和 schema；动作内写入为 stage |
 | resources.read | 授权资源，私有游戏定义不公开给其他游戏 |
@@ -386,17 +399,19 @@ Agent 默认无总时长或迭代硬限制；用户可配置实际需要的预�
 
 有效权限为来源申请、用户授权、目标范围、实际角色／能力选择的交集。UI 隔离、旧 API、代理与本地服务都需校验；API facade 不约束原生程序本来具有的 OS 文件和网络权限。
 
-错误至少区分 INVALID_ARGUMENT、LIMIT_EXCEEDED、PERMISSION_DENIED、NOT_CONFIGURED、UNSUPPORTED、RUNTIME_UNAVAILABLE、DEPENDENCY_UNAVAILABLE、SESSION_BUSY、OWNER_BUSY、STATE_CONFLICT、DOCUMENT_CONFLICT、IDEMPOTENCY_CONFLICT、CURSOR_EXPIRED、RUNTIME_FAILED。用户错误使用独立中英文 messageKey，英文 diagnostic 包含产品、发行、范围和 run/action 身份，不含凭证。
+错误至少区分 INVALID_ARGUMENT、LIMIT_EXCEEDED、PERMISSION_DENIED、NOT_CONFIGURED、UNSUPPORTED、API_INCOMPATIBLE、RUNTIME_UNAVAILABLE、DEPENDENCY_UNAVAILABLE、SESSION_BUSY、OWNER_BUSY、STATE_CONFLICT、DOCUMENT_CONFLICT、IDEMPOTENCY_CONFLICT、CURSOR_EXPIRED、RUNTIME_FAILED，按对应阶段的能力提供。用户错误使用独立中英文 messageKey，英文 diagnostic 包含产品、发行、范围和 run/action 身份，不含凭证。
 
-## 11. 冻结前的行为验收
+## 11. 按阶段冻结的行为验收
 
 1. 插件安装只增加可选扩展；游戏安装只增加可玩作品；纯内容不混入任一代码目录。
 2. 同一个插件可供写作和多部游戏选择；游戏私有定义不外泄、不覆盖公共贡献。
 3. 纯前端游戏可用平台＋插件运行并保存；自定义前后端游戏保持自己的业务协议，二者均可开始、退出、继续。
 4. 自管实例不强制创建空 Session／Story；托管实例复用 Story，所有绑定与恢复状态只有一个事实源。
-5. 同一请求跨刷新和重启可查且不重复执行；状态失败不采纳，完整回档含 NPC 前缀恢复。
+5. 第一版 Agent 请求跨刷新和重启可查且不重复执行；阶段 C 另行验证状态失败不采纳，以及包含 NPC 前缀的完整回档。
 6. 停一局不停止其他局；卸载游戏不移除共享插件；禁用插件显示影响并停止依赖工作。
-7. 游戏发行与插件依赖准确固定，迁移失败恢复代码和数据；被存档引用的发行不静默清理。
+7. 游戏发行与插件依赖准确固定，被存档引用的发行不静默清理；存档格式兼容时允许显式更换发行并验证备份与失败恢复，需要数据迁移的升级另行验收。
 8. 两类产物在 App 中分别开发、预览、检查、打包和安装；macOS、WSL、Windows 原生分别验证声明支持的进程与路径。
+9. 第一版直接使用 HTTP 客户端完成 Agent、工具、实例文件和 SSE 调用；不依赖专用 SDK 或 JSON-RPC。
+10. API 主版本不兼容时明确报错并保留用户数据；开发者按变更说明适配，不要求发行提供源码，不自动改写插件。
 
 当前源码复用点与阶段出口见[系统设计](plugin-platform-design.md)。所有接口均需实际样例和领域适配验证，不能直接把现有内部路由改名后宣称平台开放完成。

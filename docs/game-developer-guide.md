@@ -4,17 +4,19 @@
 
 配套：[插件开发手册](plugin-developer-guide.md) · [系统设计](plugin-platform-design.md) · [API 参考](plugin-platform-api.md)。
 
+第一版完成静态前端／Node 后端游戏的开发、安装、开局、Agent 和插件工具调用、自管存档、退出与继续。通信使用 HTTP + JSON，运行事件使用 SSE；SDK 可选。第三方托管状态、flow／planner、完整回档、更多后端环境和需要转换存档格式的升级属于后续能力，本文相应章节描述其职责边界。
+
 ## 1. 游戏是可以开始和继续游玩的作品
 
 **一个游戏是 Denova 游戏页中的一部具体作品**，拥有自己的名称、介绍、入口、玩法、内容和开局方式。玩家安装或添加游戏后，可以开始新游戏、继续已有进度、退出和管理存档。
 
-游戏作者拥有完整前端和可选后端，可使用 HTML、React、Canvas、WebGL／Three.js 等实现界面，也可运行 Node、Python、Go 等后端。Denova 提供平台外壳、运行管理与开放能力；游戏选择需要的能力，并决定如何组织体验。
+游戏作者拥有完整前端和可选后端，可使用 HTML、React、Canvas、WebGL／Three.js 等实现界面。第一版提供 Node 后端运行，Python、Go 等运行环境随后续需求增加。Denova 提供平台外壳、运行管理与开放能力；游戏选择需要的能力，并决定如何组织体验。
 
 | 游戏实现 | 作者负责 | Denova 与插件可提供 |
 | --- | --- | --- |
 | 纯前端 + 平台能力 | 舞台、交互和玩法代码 | Agent、图像、资产、实例文件、可选托管状态 |
 | 纯前端 + 平台插件 | 舞台、具体角色与内容、能力组合 | NPC、规划、回合规则等可复用能力 |
-| 自定义前端 + 自定义后端 | 游戏服务、规则、数据库和页面 | 按需调用平台能力；无须把业务路由改成 Denova RPC |
+| 自定义前端 + 自定义后端 | 游戏服务、规则、数据库和页面 | 按需调用公开 HTTP 能力，保留游戏自己的业务路由 |
 
 插件提供通用能力，游戏负责具体作品。同一个 NPC 插件可以支撑多部游戏；游戏可以完全不依赖第三方插件。游戏私有的 Agent 定义、工具或剧情算法可直接随游戏交付，只有需要作为平台扩展独立复用时才拆成插件。
 
@@ -26,14 +28,14 @@
 2. 在普通 Project 的空目录中创建源码，填写稳定 gameId、名称、介绍和游戏入口。
 3. 使用已有文件、终端和 Agent 工作台开发前后端；游戏开发不新增 Project 身份或第二套 IDE。
 4. 检查游戏清单、产物、内容、插件依赖和权限；需要构建或准备环境时，在可见终端执行已展示命令。
-5. 创建独立测试开局，配置模型与插件。需要项目能力时选择测试 Project，不能默认读取真实书籍或正式存档。
-6. 预览与正式游戏使用相同容器和 SDK，预览显示开发标识。前端可以热更新，后端或能力变化先结束旧激活再重载。
+5. 创建独立测试开局，配置模型与插件。使用持久 Agent 或其他项目能力时，在开局阶段选择并绑定测试 Project，不能默认读取真实书籍或正式存档，也不在每次 NPC 对话时重新选择项目。
+6. 预览与正式游戏使用相同容器和 HTTP API，SDK 可选，预览显示开发标识。前端可以热更新，后端或能力变化先结束旧激活再重载。
 
 “停止预览”保留测试进度，“重置测试开局”单独展示删除范围并提供备份。源码位置、测试目标和正式存档互相独立。
 
 ## 3. 一个纯前端 NPC 城镇（G2）
 
-假设目标平台的示例库已提供 `alice.npc` 插件，它贡献 `character` Agent；下面的游戏复用它，同时提供自己的场景与交互。这个插件及 SDK 都是拟建示例，目前不可直接安装运行。
+假设目标平台的示例库已提供 `alice.npc` 插件，它贡献 `character` Agent；下面的游戏复用它，同时提供自己的场景与交互。这个插件和公开 HTTP 接口都是拟建示例，目前不可直接安装运行。
 
 ```text
 moonlit-town/
@@ -83,25 +85,38 @@ moonlit-town/
 
 ### 3.2 对话逻辑
 
-模板处理宿主握手，提供 `PlatformClient` 与当前游戏范围。作者逻辑只需选择明确项目、定义和稳定 NPC key：
+模板处理宿主握手，提供 HTTP base URL、临时范围凭证和已绑定的 Project。base URL 已包含 `/api/platform/v1`；这些连接信息仅用于当前运行，不写入存档。下面直接使用 fetch，创建／复用 NPC 会话后启动对话，不依赖 SDK：
 
 ```ts
-async function talkToNPC(
-  api: PlatformClient,
-  projectId: string,
+async function startNPCConversation(
+  connection: { apiBaseUrl: string; token: string; projectId: string },
   intent: { npcId: string; commandId: string; text: string },
 ) {
-  const session = await api.agents.sessions.ensure({
-    projectId,
-    definition: "alice.npc/character",
-    key: intent.npcId,
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${connection.token}`,
+  };
+  const sessionResponse = await fetch(`${connection.apiBaseUrl}/agents/sessions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      projectId: connection.projectId,
+      definition: "alice.npc/character",
+      key: intent.npcId,
+    }),
   });
-  const run = await api.agents.runs.start({
-    agent: session.ref,
-    commandId: intent.commandId,
-    input: { text: intent.text },
-  });
-  return api.agents.runs.wait({ run });
+  if (!sessionResponse.ok) return { error: await sessionResponse.json() };
+  const session = await sessionResponse.json();
+  const runResponse = await fetch(
+    `${connection.apiBaseUrl}/agents/sessions/${encodeURIComponent(session.ref.sessionId)}/runs`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ commandId: intent.commandId, input: { text: intent.text } }),
+    },
+  );
+  if (!runResponse.ok) return { error: await runResponse.json() };
+  return { run: await runResponse.json() };
 }
 ```
 
@@ -109,13 +124,15 @@ async function talkToNPC(
 
 完整页面需要处理：
 
-1. `platform.describe` 查询可用能力。宿主完成模型配置；未绑定项目时，由玩家操作触发项目选择并建立授权。
+1. `GET /capabilities` 查询可用能力；宿主在开局时完成模型与所需 Project 绑定。纯自管且不用 Agent 的游戏不必创建空 Session／Story。
 2. 玩家提交动作时生成 commandId，先保存输入与这个 ID，再调用。重复提交和重连沿用同一 ID，新的玩家意图才创建新 ID。
-3. `events.subscribe` 展示流式内容和状态；waiting 转到宿主问答，取消调用 `agents.runs.abort`。平台权限不能由游戏替玩家批准。
-4. 完成后保存结果。断线或重启先 `agents.runs.find`，不要盲目重复生成；incomplete 显示给玩家决定下一步。
+3. `GET /agents/runs/{runId}/events` 以 SSE 展示流式内容和状态；waiting 转到宿主问答，取消使用 `POST /agents/runs/{runId}/cancel`。平台权限不能由游戏替玩家批准，关闭事件连接不等于取消 Agent。
+4. 用 `GET /agents/runs/{runId}` 查询状态与结果。断线或重启先按会话与 commandId 查回运行，不要盲目重复生成；incomplete 显示给玩家决定下一步。HTTP 错误按返回的 messageKey 展示当前语言，网络错误由页面处理。
 5. 游戏保存结果时记录 commandId，防止“模型已完成、游戏保存响应丢失”导致重复采纳。
 
 对话历史由 Denova 保存，游戏只记录会话引用和业务结果。平台事件 cursor 不能当作永久存档位置。
+
+游戏也可直接向 Denova 的 `POST /tools/{providerId}/{toolId}/invoke` 提交 `{input}`，调用已选择且授权的插件工具；无需为确定性的工具操作额外调用模型。平台转发到已绑定的插件 HTTP 端点，游戏不自行寻找插件进程端口。
 
 ## 4. 自定义后端（G3）
 
@@ -143,7 +160,9 @@ async function talkToNPC(
 
 本地程序按宿主账户权限运行，进程隔离不是 OS 沙箱。缺少 Node／Python、平台产物不匹配或启动失败时展示准确原因，不暗中安装完整开发环境。
 
-## 5. 选择存储、剧情与恢复能力（G4）
+## 5. 存储归属与后续托管恢复（G4）
+
+第一版第三方游戏使用自管存储，提供保存与继续，不承诺同时回退世界状态和 NPC 记忆。既有内置游戏继续使用 Story；下表的第三方托管接入在阶段 C 提供。
 
 | 方式 | 状态事实源 | 能力边界 |
 | --- | --- | --- |
@@ -174,9 +193,13 @@ async function talkToNPC(
 
 1. 构建并从发行白名单生成不可变游戏候选包，排除密钥、测试存档和私人历史。
 2. 在干净环境安装同一产物，验证依赖、开局、交互、取消、退出、继续、导出和错误反馈。
-3. 导出游戏包，或提供 GitHub 固定来源。游戏安装器只接受游戏产物；插件依赖单独列出，安装和授权可在同一向导完成但记录仍分开。
+3. 第一版导出和导入本地游戏包；GitHub 等固定来源在后续接入。游戏安装器只接受游戏产物；插件依赖单独列出，安装和授权可在同一向导完成但记录仍分开。
 4. 玩家在游戏页打开作品详情，开始新游戏或继续某个已有存档；一个游戏发行可对应多个独立开局。
-5. 更新安装提供新的游戏发行；旧存档继续使用原游戏发行与准确插件依赖。升级已有存档需停止、备份并显式迁移，失败回到原代码和数据。
+5. 更新安装提供新的游戏发行；旧存档保留原绑定。第一版可显式选择开发者声明兼容原存档格式的游戏／插件适配发行，先停止、备份并检查 API 与依赖，失败恢复原绑定和数据；需要转换存档格式的升级后续由开发者提供必要的数据迁移。
+
+游戏与插件均通过 apiMajor 声明适用的平台 API 主版本。Denova 出现不兼容变更时，开发者根据接口文档、示例和变更说明发布适配版本；宿主对不兼容产物明确报错并保留存档，不维护多版本兼容层。固定旧发行不保证它能继续调用新宿主已删除的 API。
+
+是否分发源码、是否使用 Agent 开发由作者决定。游戏可仅交付运行产物，平台不要求源码，不提供自动改写作品的修复流程。
 
 卸载游戏不卸载其他作品仍在使用的插件；卸载插件前显示受影响的游戏。存档默认保留，依赖不可用时说明原因，不静默切换算法。复制或导出必须匹配存档所需的代码和内容版本，在线数据库一致备份需要专门适配。
 
