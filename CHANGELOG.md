@@ -4,13 +4,35 @@ Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据�
 
 Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.4.3）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.3 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本（当前为 v0.4.4）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.4 后从未发布的中间格式不计入。
 
-`Unreleased` compares against the latest release (currently v0.4.3) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.3 are excluded.
+`Unreleased` compares against the latest release (currently v0.4.4) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.4 are excluded.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
+
+## [v0.4.4] - 2026-09-08
+
+### Brief / 简要说明
+
+#### 中文
+
+- 修复长写作会话无法继续的问题，已有会话可在重新加载后正常续写。
+- 修复同一轮对话中后续工具审批失败或卡片消失的问题，可连续审批并继续执行。
+
+#### English
+
+- Fixed long writing conversations failing to continue; existing sessions can resume after reloading.
+- Fixed subsequent tool approvals failing or disappearing within a run, allowing consecutive approvals and continued execution.
+
+### Fixed / 修复
+
+- 修复长写作会话因上下文索引错位而无法继续的问题，已有会话可在重新加载后正常续写。
+- Fixed context index mismatches blocking long writing conversations; existing sessions can continue after reloading.
+
+- 修复同一轮对话后续工具审批提交失败，以及待审批卡片被历史刷新覆盖的问题。
+- Fixed subsequent tool approvals failing within a run and history refreshes hiding pending approval cards.
 
 ## [v0.4.3] - 2026-09-07
 

@@ -82,6 +82,8 @@ type Fragment struct {
 }
 
 type AssembleRequest struct {
+	// Final-user fragments target the latest user request, preserving any
+	// following tool exchange, context-state update, or task completion.
 	Messages     []*agent.Message
 	Fragments    []Fragment
 	PreviewChars int
@@ -144,10 +146,17 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 	ledger := make([]LedgerPart, 0, len(requestedFragments))
 	analysis := make([]AnalysisPart, 0, len(requestedFragments))
 	injectedBytes := 0
-	hasFinalUserMessage := len(messages) > 0 && messages[len(messages)-1] != nil && messages[len(messages)-1].Role == agent.User
+	finalUserIndex := -1
+	for index := len(messages) - 1; index >= 0; index-- {
+		message := messages[index]
+		if message != nil && message.Role == agent.User && !agent.IsContextStateMessage(message) && message.TaskCompletion == nil {
+			finalUserIndex = index
+			break
+		}
+	}
 
 	for _, fragment := range requestedFragments {
-		resolved, err := resolveFragment(fragment, budget, hasFinalUserMessage)
+		resolved, err := resolveFragment(fragment, budget, finalUserIndex >= 0)
 		if err != nil {
 			return Result{}, err
 		}
@@ -188,11 +197,14 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 			leadingMessages = append(leadingMessages, message)
 		}
 		messages = append(leadingMessages, messages...)
+		if finalUserIndex >= 0 {
+			finalUserIndex += len(leadingMessages)
+		}
 	}
-	if len(finalUser) > 0 && len(messages) > 0 {
-		last := *messages[len(messages)-1]
-		last.Content = renderer.RenderFinalUser(last.Content, finalUser)
-		messages[len(messages)-1] = &last
+	if len(finalUser) > 0 && finalUserIndex >= 0 {
+		user := *messages[finalUserIndex]
+		user.Content = renderer.RenderFinalUser(user.Content, finalUser)
+		messages[finalUserIndex] = &user
 	}
 
 	return Result{

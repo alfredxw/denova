@@ -9,7 +9,7 @@ import {
 import { openAgentChatSession, openAgentChatWorkbench, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus } from '../support/model'
 
-test('enforces Ask, Write, and Full access on a real external filesystem read', async ({ page, request }) => {
+test('enforces consecutive Ask approvals, Write, and Full access on real external reads', async ({ page, request }) => {
   // Three complete permission flows need the slow-test budget on CI.
   // Keep individual assertion timeouts unchanged.
   test.slow()
@@ -36,10 +36,22 @@ test('enforces Ask, Write, and Full access on a real external filesystem read', 
   let composer = await openAgentChatSession(page, project.id, askSession.title)
   await expect(page.getByRole('button', { name: 'Agent 安全模式: Ask' }).filter({ visible: true })).toBeVisible()
   await submitAgentChatMessage(page, composer, 'Read the external E2E file. E2E_EXTERNAL_READ_ASK')
-  let approval = page.getByRole('region', { name: '需要你的确认' }).filter({ visible: true })
+  let approval = page.getByRole('region', { name: '需要你的确认' }).filter({
+    visible: true,
+    has: page.getByRole('button', { name: '仅允许本次' }),
+  })
   const displayedExternalPath = modelStatus.external_secret_path.replaceAll('\\', '/')
-  await expect(approval).toContainText(displayedExternalPath)
-  await approval.getByRole('button', { name: '仅允许本次' }).click()
+  const answeredApprovals = new Set<string>()
+  for (let index = 0; index < 3; index += 1) {
+    await expect(approval).toContainText(displayedExternalPath)
+    const answerResponse = page.waitForResponse(response => response.request().method() === 'POST'
+      && response.url().includes('/agent-chat/session/asks/') && response.url().endsWith('/answer'))
+    await approval.getByRole('button', { name: '仅允许本次' }).click()
+    const answer = await answerResponse
+    expect(answer.status(), `Approval ${index + 1}: ${await answer.text()}`).toBe(200)
+    expect(answeredApprovals.has(answer.url()), 'Each approval must belong to a new tool call').toBe(false)
+    answeredApprovals.add(answer.url())
+  }
   await expect(page.getByText('External read completed in Ask mode.', { exact: true }).filter({ visible: true })).toBeVisible()
 
   composer = await openAgentChatSession(page, project.id, writeSession.title)

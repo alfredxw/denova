@@ -192,7 +192,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     loadSessions,
     sessions,
     setActiveSessionId,
-  } = useWritingAgentHistory({ setMessages: setUIMessages, client })
+  } = useWritingAgentHistory({ setMessages: setUIMessages, client, transportStreaming })
   refreshSessionsRef.current = loadSessions
   const [references, setReferences] = useState<string[]>([])
   const [loreReferences, setLoreReferences] = useState<string[]>([])

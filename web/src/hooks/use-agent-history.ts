@@ -7,14 +7,18 @@ import { writingAgentChatClient, type AgentChatClient } from './agent-chat-clien
 interface WritingAgentHistoryOptions {
   setMessages: (messages: AgentUIMessage[] | ((messages: AgentUIMessage[]) => AgentUIMessage[])) => void
   client?: AgentChatClient
+  transportStreaming?: boolean
 }
 
 /**
  * Owns writing-session history loading and its request ordering guarantees.
+ * Background refreshes cannot replace an active stream's newer approval events.
  * Authoritative reloads replace provisional stream state; pagination only
  * prepends a page when no newer authoritative reload has superseded it.
  */
-export function useWritingAgentHistory({ setMessages, client = writingAgentChatClient }: WritingAgentHistoryOptions) {
+export function useWritingAgentHistory({ setMessages, client = writingAgentChatClient, transportStreaming = false }: WritingAgentHistoryOptions) {
+  const transportStreamingRef = useRef(transportStreaming)
+  transportStreamingRef.current = transportStreaming
   const fixedSessionId = client.fixedSessionId || ''
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState(fixedSessionId)
@@ -48,8 +52,9 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
     }
   }, [client, fixedSessionId])
 
-  const loadHistoryAuthoritative = useCallback(
-    async (sessionId?: string) => {
+  const loadHistoryPage = useCallback(
+    async (sessionId: string | undefined, mode: 'when-idle' | 'authoritative') => {
+      if (mode === 'when-idle' && transportStreamingRef.current) return
       const generation = historyRequestGenerationRef.current + 1
       historyRequestGenerationRef.current = generation
       earlierHistoryRequestRef.current += 1
@@ -58,6 +63,7 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
 
       const targetSessionId = fixedSessionId || sessionId
       const page = await client.getMessagesPage(targetSessionId || undefined)
+      if (mode === 'when-idle' && transportStreamingRef.current) return
       if (generation !== historyRequestGenerationRef.current) {
         throw new Error('Writing history reload was superseded before it could become authoritative')
       }
@@ -73,15 +79,20 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
     [client, fixedSessionId, setMessages],
   )
 
+  const loadHistoryAuthoritative = useCallback(
+    (sessionId?: string) => loadHistoryPage(sessionId, 'authoritative'),
+    [loadHistoryPage],
+  )
+
   const loadHistory = useCallback(
     async (sessionId?: string) => {
       try {
-        await loadHistoryAuthoritative(sessionId)
+        await loadHistoryPage(sessionId, 'when-idle')
       } catch (error) {
         console.error('Failed to load conversation history', error)
       }
     },
-    [loadHistoryAuthoritative],
+    [loadHistoryPage],
   )
 
   const loadEarlierHistory = useCallback(async () => {
