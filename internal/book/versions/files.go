@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -164,9 +165,14 @@ func isTextBytes(data []byte) bool {
 	return true
 }
 
+// Journal leases coordinate live processes and cannot be read while held on
+// Windows. Exclude only Denova's lease names, preserving user files such as Cargo.lock.
+var journalLeaseName = regexp.MustCompile(`\.jsonl\.(?:domain|mutation|agent-[0-9a-f]{32})\.lock$`)
+
 func isVersionExcludedRelPath(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
-	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
+	return journalLeaseName.MatchString(filepath.Base(cleanRel)) ||
+		cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
 		cleanRel == workspacelayout.CurrentRel("runs") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("runs")+"/") ||
 		cleanRel == workspacelayout.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("runs")+"/") ||
 		cleanRel == workspacelayout.CurrentRel("changes") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("changes")+"/") ||
