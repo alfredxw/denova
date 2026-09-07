@@ -49,7 +49,7 @@ import {
   UI_FONT_SIZE_STEPS,
 } from './font-size-steps'
 import { TextSizeControl } from './TextSizeControl'
-import { RemoteAccessConnections } from '@/features/remote-access/RemoteAccessConnections'
+import { LANAccessSettings } from './LANAccessSettings'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -449,24 +449,8 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
       group: t('settings.group.common'),
       title: t('settings.section.access'),
       children: (
-        <>
-          <BoolTri label={t('settings.access.allowLan')} value={draft.allow_lan_access ?? null}
-                   inherited={inherited.allow_lan_access}
-                   onChange={(v) => setField('allow_lan_access', v)} />
-          <Text label={t('settings.access.username')} value={draft.remote_access_username}
-                placeholder={placeholderFor('remote_access_username')}
-                onChange={(v) => setField('remote_access_username', v)} />
-          <Text label={t('settings.access.password')} value={draft.remote_access_password}
-                placeholder={(draft.remote_access_password_set || inherited.remote_access_password_set)
-                  ? t('settings.access.passwordSetPlaceholder')
-                  : t('settings.access.passwordPlaceholder')}
-                onChange={(v) => setField('remote_access_password', v)}
-                type="password" />
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-            {t('settings.access.restartHint')}
-          </div>
-          <RemoteAccessConnections />
-        </>
+        visible && <LANAccessSettings draft={draft} inherited={inherited}
+          onChange={patch => setDraft(current => ({ ...current, ...patch }))} />
       ),
     },
     {

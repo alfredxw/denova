@@ -1,0 +1,9 @@
+diff --git a/esm/vs/base/browser/domSanitize.js b/esm/vs/base/browser/domSanitize.js
+index 95061a20c8ecd48ff3ca732dbb1848cd213f7965..4bbb061da3fc2115cfc1917759b1660959dd308f 100644
+--- a/esm/vs/base/browser/domSanitize.js
++++ b/esm/vs/base/browser/domSanitize.js
+@@ -1,3 +1,3 @@
+ import { Schemas } from '../common/network.js';
+ import { reset } from './dom.js';
+-import purify from './dompurify/dompurify.js';
++import purify from 'dompurify';

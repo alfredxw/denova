@@ -51,20 +51,43 @@ func LANHTTPURL(port int) string {
 }
 
 func LANAddress() string {
-	addrs, err := net.InterfaceAddrs()
+	interfaces, err := net.Interfaces()
 	if err != nil {
 		return LANHTTPHost
 	}
-	for _, addr := range addrs {
-		ipNet, ok := addr.(*net.IPNet)
-		if !ok || ipNet.IP == nil || ipNet.IP.IsLoopback() {
+	var addrs []net.Addr
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-		if ip := ipNet.IP.To4(); ip != nil {
-			return ip.String()
+		if addresses, err := iface.Addrs(); err == nil {
+			addrs = append(addrs, addresses...)
 		}
 	}
-	return LANHTTPHost
+	return selectLANAddress(addrs)
+}
+
+// Prefer private IPv4 addresses for device-to-device access. Benchmark networks
+// (198.18.0.0/15) are also used by local proxy tunnels and must not be advertised.
+func selectLANAddress(addrs []net.Addr) string {
+	fallback := LANHTTPHost
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipNet.IP.To4()
+		if ip == nil || !ip.IsGlobalUnicast() || (ip[0] == 198 && (ip[1] == 18 || ip[1] == 19)) {
+			continue
+		}
+		if ip.IsPrivate() {
+			return ip.String()
+		}
+		if fallback == LANHTTPHost {
+			fallback = ip.String()
+		}
+	}
+	return fallback
 }
 
 // PrepareUserSettingsForWrite normalizes remote-access credentials before

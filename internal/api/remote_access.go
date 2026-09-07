@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"log/slog"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -106,12 +107,46 @@ func (g *remoteAccessGate) registerRoutes(h *hertzserver.Hertz) {
 	h.POST("/api/auth/link", localHostEffectMiddleware, g.link)
 }
 
+// A loopback proxy may serve the browser on a different port (for example Vite).
+// Keep its HTTP endpoint while replacing only the host with the LAN address;
+// forwarded headers from direct remote peers are never trusted.
+func (g *remoteAccessGate) lanHTTPURL(c *app.RequestContext) string {
+	fallback := config.LANHTTPURL(g.port)
+	if !isLocalClientIP(directClientIP(c)) {
+		return fallback
+	}
+	host := string(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		return fallback
+	}
+	scheme := string(c.GetHeader("X-Forwarded-Proto"))
+	if scheme == "" {
+		scheme = "http"
+	}
+	if scheme != "http" && scheme != "https" {
+		return fallback
+	}
+	endpoint, err := url.Parse(scheme + "://" + host)
+	if err != nil || endpoint.Host != host || endpoint.Hostname() == "" {
+		return fallback
+	}
+	address := config.LANAddress()
+	if port := endpoint.Port(); port != "" {
+		number, err := strconv.Atoi(port)
+		if err != nil || number < 1 || number > 65535 {
+			return fallback
+		}
+		address = net.JoinHostPort(address, port)
+	}
+	return scheme + "://" + address
+}
+
 func (g *remoteAccessGate) status(_ context.Context, c *app.RequestContext) {
 	local := isLocalClientIP(requestClientIP(c))
 	access := g.config()
 	result := map[string]any{"local": local, "authenticated": local || g.sessions.authorized(string(c.Cookie(g.cookieName)), access)}
 	if local && access.AllowLANAccess && g.listeningLAN {
-		result["lan_url"] = config.LANHTTPURL(g.port) + "/"
+		result["lan_url"] = g.lanHTTPURL(c) + "/"
 	}
 	c.Response.Header.Set("Cache-Control", "no-store")
 	c.JSON(consts.StatusOK, result)
@@ -175,7 +210,7 @@ func (g *remoteAccessGate) link(ctx context.Context, c *app.RequestContext) {
 	}
 	c.Response.Header.Set("Cache-Control", "no-store")
 	// The fragment never reaches access logs or Referer headers.
-	c.JSON(consts.StatusOK, map[string]any{"url": config.LANHTTPURL(g.port) + "/#pair=" + token, "expires_in": int(pairingLinkLifetime.Seconds())})
+	c.JSON(consts.StatusOK, map[string]any{"url": g.lanHTTPURL(c) + "/#pair=" + token, "expires_in": int(pairingLinkLifetime.Seconds())})
 	slog.InfoContext(ctx, "remote_pairing_link_created")
 }
 

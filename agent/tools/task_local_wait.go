@@ -288,6 +288,12 @@ func markTaskCompletionReady(ready map[int]bool, indexes map[string][]int, ids [
 }
 
 func (tasks *LocalTasks) taskSnapshot(ctx context.Context, ref TaskRef) (Task, error) {
+	return retryClosedTaskRead(ctx, func() (Task, error) {
+		return tasks.readTaskSnapshot(ctx, ref)
+	})
+}
+
+func (tasks *LocalTasks) readTaskSnapshot(ctx context.Context, ref TaskRef) (Task, error) {
 	_, session, err := tasks.open(ctx, ref)
 	if err != nil {
 		return Task{}, err

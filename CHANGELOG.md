@@ -18,21 +18,43 @@ Denova records only major user-visible features, important compatibility or data
 
 #### 中文
 
-- 修复长写作会话无法继续的问题，已有会话可在重新加载后正常续写。
+- 首次开启局域网访问时自动生成随机用户名和密码，支持查看、复制与重新生成密码。
+- 修复局域网地址误用代理虚拟网卡、开发环境端口不正确的问题。
+- 修复长写作会话无法继续，以及子 Agent 完成后偶发的结果读取失败。
 - 修复同一轮对话中后续工具审批失败或卡片消失的问题，可连续审批并继续执行。
+- 更新编辑器和 HTML 清理依赖，修复已知安全问题。
 
 #### English
 
-- Fixed long writing conversations failing to continue; existing sessions can resume after reloading.
+- Automatically generate a random username and password when enabling LAN access for the first time, with password viewing, copying, and regeneration.
+- Fixed LAN links selecting proxy tunnel addresses or the wrong port in development.
+- Fixed long writing conversations failing to continue and intermittent failures when reading completed SubAgent results.
 - Fixed subsequent tool approvals failing or disappearing within a run, allowing consecutive approvals and continued execution.
+- Updated editor and HTML sanitization dependencies to address known security issues.
+
+### Changed / 调整
+
+- 首次开启局域网访问时自动补齐缺失的用户名和密码并一并保存，已有凭据继续保留；新密码可在当前设置页面查看、复制或重新生成。
+- Enabling LAN access now generates and saves missing credentials together while preserving existing credentials; newly entered or generated passwords can be viewed, copied, or regenerated in the current settings page.
 
 ### Fixed / 修复
+
+- 局域网链接优先使用有效的内网地址，跳过代理使用的测试网段，并在本机开发代理下沿用实际网页端口；地址提示与配对二维码保持一致。
+- LAN links now prefer valid private network addresses, exclude proxy benchmarking networks, and preserve the actual web port behind a local development proxy; displayed addresses and pairing codes stay consistent.
 
 - 修复长写作会话因上下文索引错位而无法继续的问题，已有会话可在重新加载后正常续写。
 - Fixed context index mismatches blocking long writing conversations; existing sessions can continue after reloading.
 
 - 修复同一轮对话后续工具审批提交失败，以及待审批卡片被历史刷新覆盖的问题。
 - Fixed subsequent tool approvals failing within a run and history refreshes hiding pending approval cards.
+
+- 修复多个观察者同时读取子 Agent 完成结果时，会话句柄关闭导致的偶发失败。
+- Fixed intermittent completed SubAgent result reads failing when another observer closes the shared session handle.
+
+### Security / 安全
+
+- 更新 Tiptap 与 DOMPurify，修复编辑器属性处理及 HTML 清理中的已知安全问题。
+- Updated Tiptap and DOMPurify to fix known security issues in editor attribute handling and HTML sanitization.
 
 ## [v0.4.3] - 2026-09-07
 
