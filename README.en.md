@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.4.2</strong> (2026-09-06) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.4.4</strong> (2026-09-08) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)
@@ -46,6 +46,10 @@
 ### Workspace
 
 ![Denova workspace](./img/workspace.png)
+
+Supports LAN access, responsive mobile layouts, and PWA apps.
+
+<img src="./img/mobile.png" alt="Denova mobile layout" width="360">
 
 </details>
 
@@ -116,7 +120,9 @@ The recommended setup is through Settings: add a provider connection, select or 
 
 ## Remote Access and Phone Usage
 
-Enable LAN access under **Settings → Remote Access**, then set a username and password. Other devices can open the address shown on that page, and phone browsers can add Denova to the home screen.
+Enable LAN access under **Settings → Access**, set a username and password, and restart. Other devices can sign in at the displayed address. The host can also create a one-use sign-in QR code and link that expire after 5 minutes. Scan with a phone on the same LAN, or copy the link to another device. The browser stays signed in for 30 days across refreshes and server restarts; sign out from Settings. Phone browsers can add Denova to the home screen.
+
+When running from source, QR codes and connection links use the backend port to serve the `web/dist` build. Run `pnpm --dir web build` and restart the backend before first use or after frontend changes. The local Vite entry point remains available for development with hot reload.
 
 For public or domain-based deployments, put Denova behind an HTTPS reverse proxy such as Caddy or Nginx so login credentials are not transmitted in cleartext.
 

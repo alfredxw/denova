@@ -1,3 +1,4 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Bot, Clock3, Inbox, Loader2, Play, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -5,9 +6,8 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace, useResponsiveAgentOpen } from '@/components/layout/resource-workspace'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
-import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
@@ -75,13 +75,11 @@ export function AutomationsView({
   projectId = '',
   projectType = 'book',
   onOpenAgentChat,
-  onClose,
 }: {
   projectId?: string
   projectType?: AgentChatProjectType
   workspace: string
   onOpenAgentChat?: () => void
-  onClose?: () => void
 }) {
   const { t, i18n } = useTranslation()
   const unassignedProjectTarget = useMemo(
@@ -98,7 +96,7 @@ export function AutomationsView({
   const [draft, setDraft] = useState<AutomationTask>(() => newAutomationTask(unassignedProjectTarget, t('automations.defaultName')))
   const [creating, setCreating] = useState(false)
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
-  const [agentOpen, setAgentOpen] = useState(false)
+  const [agentOpen, setAgentOpen] = useResponsiveAgentOpen()
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [saving, setSaving] = useState(false)
   const [initialLoadComplete, setInitialLoadComplete] = useState(false)
@@ -311,6 +309,7 @@ export function AutomationsView({
     draftDirtyRef.current = false
     setCreating(false)
     setPanelView('config')
+    closeMobilePanes()
   }
 
   const createNew = async (owner?: AutomationProjectOption) => {
@@ -326,6 +325,7 @@ export function AutomationsView({
     draftDirtyRef.current = true
     setCreating(true)
     setPanelView('config')
+    closeMobilePanes()
   }
 
   const setDraftTemplate = (templateId: string | null) => {
@@ -611,6 +611,7 @@ export function AutomationsView({
 
   return (
     <FeaturePageShell
+      mobileHeader={agentOpen ? 'hidden' : 'toolbar'}
       icon={Clock3}
       title={t('automations.title')}
       leadingContent={(
@@ -622,10 +623,6 @@ export function AutomationsView({
       subtitle={t('automations.summary', { tasks: tasks.length, running: catalogActiveRuns.length })}
       error={error}
       errorTitle={t('automations.error')}
-      onClose={onClose ? () => {
-        void flushAutomationAutosave().then((flushed) => { if (flushed) onClose() })
-      } : undefined}
-      closeLabel={t('automations.close')}
       onSaveShortcut={activeId && !creating ? flushAutomationAutosave : undefined}
       className="bg-[var(--nova-bg)] text-[var(--nova-text)]"
       actions={(
@@ -662,7 +659,14 @@ export function AutomationsView({
       {!initialLoadComplete ? (
         <LoadingState label={t('common.loading')} className="min-h-0 flex-1" />
       ) : (
-      <AdaptiveSurface
+      <ResourceWorkspace
+        title={t('automations.title')}
+        contentViews={{
+          value: panelView,
+          items: [{ value: 'config', label: t('automations.mobile.task') }, { value: 'inbox', label: t('automations.mobile.inbox') }],
+          onValueChange: (value) => { if (value === 'config' || value === 'inbox') setPanelView(value) },
+        }}
+        secondaryView={{ label: t('workbench.mobile.agent'), available: true, open: agentOpen, onOpenChange: setAgentOpen }}
         left={{
           id: 'automation-tasks',
           title: t('automations.title'),
@@ -714,23 +718,9 @@ export function AutomationsView({
           mainMinSize: '240px',
         }}
       >
-        {({ isMobile, openLeft, openRight }) => (
+        {() => (
           <main className="flex h-full min-h-0 flex-col">
-            <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 sm:px-4">
-              {isMobile && (
-                <MobilePaneTrigger
-                  side="left"
-                  label={t('workbench.mobile.openSidePanel', { label: t('automations.title') })}
-                  onClick={openLeft}
-                />
-              )}
-              {isMobile && agentOpen ? (
-                <MobilePaneTrigger
-                  side="right"
-                  label={t('workbench.mobile.openSidePanel', { label: t('automations.view.agent') })}
-                  onClick={openRight}
-                />
-              ) : null}
+            <div className="hidden h-10 shrink-0 items-center gap-2 overflow-x-auto lg:flex border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 sm:px-4">
               <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
                 <button
                   type="button"
@@ -761,7 +751,7 @@ export function AutomationsView({
             {panelContent}
           </main>
         )}
-      </AdaptiveSurface>
+      </ResourceWorkspace>
       )}
       <ConfirmDialog
         open={Boolean(deleteTarget)}

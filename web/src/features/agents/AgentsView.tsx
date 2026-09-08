@@ -1,12 +1,12 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, Brain, FolderOpen, ScrollText, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace, useResponsiveAgentOpen } from '@/components/layout/resource-workspace'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
-import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -38,7 +38,7 @@ import {
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
-export function AgentsView({ target, onClose, toolNavigationIntent }: { target: ResourceTarget; onClose?: () => void; toolNavigationIntent?: ToolNavigationIntent | null }) {
+export function AgentsView({ target, toolNavigationIntent }: { target: ResourceTarget; toolNavigationIntent?: ToolNavigationIntent | null }) {
   const { t } = useTranslation()
   const targetKind = target.kind
   const projectId = target.kind === 'project' ? target.projectId : ''
@@ -60,7 +60,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const [createOpen, setCreateOpen] = useState(false)
   const [createRuntimeKind, setCreateRuntimeKind] = useState<AgentRuntimeKind>('ide')
   const [skills, setSkills] = useState<SkillSummary[]>([])
-  const [agentChatOpen, setAgentChatOpen] = useState(false)
+  const [agentChatOpen, setAgentChatOpen] = useResponsiveAgentOpen()
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const toolNavigationNonceRef = useRef(0)
 
@@ -232,16 +232,19 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
       void saveNow().then(() => {
         setActiveLayer('user')
         setActiveSelection(selection)
+        closeMobilePanes()
       }).catch(() => undefined)
       return
     }
     setActiveSelection(selection)
+    closeMobilePanes()
   }
 
   const openCreateAgent = (runtimeKind: AgentRuntimeKind) => {
     const open = () => {
       setActiveLayer('user')
       setCreateRuntimeKind(runtimeKind)
+      closeMobilePanes()
       setCreateOpen(true)
     }
     if (activeLayer === 'workspace') {
@@ -311,6 +314,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
 
   return (
     <FeaturePageShell
+      mobileHeader={agentChatOpen ? 'hidden' : 'toolbar'}
       icon={Bot}
       title="Agents"
       leadingContent={(
@@ -323,10 +327,6 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
       topbarClassName="max-md:flex-wrap max-md:overflow-x-hidden"
       error={error}
       errorTitle={t('agents.saveError')}
-      onClose={onClose ? () => {
-        void saveNow().then(() => onClose()).catch(() => undefined)
-      } : undefined}
-      closeLabel={t('agents.close')}
       onSaveShortcut={() => saveNow().catch(() => undefined)}
       headerContent={(
         <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
@@ -364,7 +364,9 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
       {!layered ? (
         <LoadingState label={t('common.loading')} className="min-h-0 flex-1" />
       ) : (
-      <AdaptiveSurface
+      <ResourceWorkspace
+        title={'Agents'}
+        secondaryView={{ label: t('workbench.mobile.agent'), available: agentAvailable, open: agentChatOpen, onOpenChange: setAgentChatOpen }}
         left={{
           id: 'agents-list',
           title: 'Agents',
@@ -419,17 +421,8 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
           mainMinSize: '240px',
         }}
       >
-        {({ isMobile, openLeft, openRight }) => (
+        {() => (
           <main className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
-            {isMobile && (
-              <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
-                <MobilePaneTrigger side="left" label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft} />
-                <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{activeAgentTitle}</span>
-                {agentAvailable && agentChatOpen && (
-                  <MobilePaneTrigger side="right" label={t('workbench.mobile.openSidePanel', { label: t('agents.configAgent.title') })} onClick={openRight} className="ml-auto" />
-                )}
-              </div>
-            )}
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} customAgent={selectedCustomAgent} onArchive={selectedCustomAgent ? archiveCustomAgent : undefined} />
               {selectedCustomAgent ? <CustomAgentIdentitySection agent={selectedCustomAgent} value={layerCustomAgent} onChange={setCustomIdentity} /> : null}
@@ -522,7 +515,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
             </div>
           </main>
         )}
-      </AdaptiveSurface>
+      </ResourceWorkspace>
       )}
       <CreateCustomAgentDialog
         open={createOpen}

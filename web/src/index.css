@@ -793,19 +793,6 @@ html[data-nova-motion="off"] .shimmer {
 /* Scroll containment is opt-in via `overscroll-contain`. Nested editors must
    otherwise be able to hand wheel and touch gestures to their parent scroller. */
 
-.nova-mobile-nav {
-  padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
-}
-
-.nova-mobile-nav-scroll {
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.nova-mobile-nav-scroll::-webkit-scrollbar {
-  display: none;
-}
-
 .nova-mobile-drawer-backdrop {
   -webkit-tap-highlight-color: transparent;
 }
@@ -877,16 +864,6 @@ html[data-nova-motion="off"] .shimmer {
     flex-shrink: 0;
   }
 
-  [data-nova-mobile-shell="true"] .nova-agent-composer {
-    border-radius: 12px;
-    padding: 0.5rem;
-  }
-
-  [data-nova-mobile-shell="true"] .nova-agent-composer-toolbar {
-    align-items: flex-end;
-    gap: 0.5rem;
-  }
-
   [data-nova-mobile-shell="true"] .nova-command-menu {
     width: min(calc(100vw - 1.5rem), 384px) !important;
   }
@@ -951,13 +928,11 @@ html[data-nova-motion="off"] .shimmer {
 
 /* Primary navigation should acknowledge the press immediately. The route itself may contain a
    large editor or Markdown tree, so its button feedback must not inherit the global 220ms pace. */
-.nova-activity-bar .nova-icon-button,
-.nova-mobile-nav-item {
+.nova-activity-bar .nova-icon-button {
   transition-duration: var(--nova-motion-fast);
 }
 
-.nova-activity-bar .nova-icon-button:active,
-.nova-mobile-nav-item:active {
+.nova-activity-bar .nova-icon-button:active {
   background: var(--nova-hover);
   transform: scale(0.98);
   transition-duration: 0ms;

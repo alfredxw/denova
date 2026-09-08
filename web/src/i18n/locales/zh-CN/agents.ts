@@ -1,7 +1,6 @@
 const agents = {
   'agents.layer.workspace': '当前工作区',
   'agents.layer.user': '用户配置',
-  'agents.close': '关闭 Agents',
   'agents.saveError': '配置保存失败',
   'agents.group.general': '通用',
   'agents.group.writing': '创作',

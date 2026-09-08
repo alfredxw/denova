@@ -669,6 +669,7 @@ func (cfg *Config) RemoteAccessConfig() RemoteAccessConfig {
 		return RemoteAccessConfig{}
 	}
 	return RemoteAccessConfig{
+		DataDir:        cfg.DataDir(),
 		AllowLANAccess: cfg.AllowLANAccess,
 		Username:       cfg.RemoteAccessUsername,
 		PasswordHash:   cfg.RemoteAccessPasswordHash,

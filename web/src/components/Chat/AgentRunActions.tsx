@@ -7,7 +7,7 @@ import { ContextCopyButton } from './ContextCopyButton'
 const actionClassName = 'size-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] [&_svg]:size-3'
 
 /** Actions target this reply's Run, including unfinished runs without terminal prose. */
-export function AgentRunActions({ projectId, runID }: { projectId?: string; runID: string }) {
+export function AgentRunActions({ projectId, runID, showLabels = false, onNavigate }: { projectId?: string; runID: string; showLabels?: boolean; onNavigate?: () => void }) {
   const { t } = useTranslation()
   const trajectory = useTrajectoryNavigation()
   if (!runID) return null
@@ -16,22 +16,25 @@ export function AgentRunActions({ projectId, runID }: { projectId?: string; runI
     <>
       <ContextCopyButton
         key={runID}
+        showLabel={showLabels}
         content={runID}
         icon={Hash}
         label={t('chat.action.copyRunId')}
         copiedLabel={t('chat.action.runIdCopied')}
         failedLabel={t('chat.action.copyRunIdFailed')}
-        className={actionClassName}
+        className={showLabels ? 'w-full justify-start gap-2 px-3 text-sm' : actionClassName}
       />
       {projectId && trajectory.enabled ? (
         <TooltipIconButton
+          showTooltip={!showLabels}
           label={t('trajectory.openRun')}
           tooltipSide="top"
           tooltipSideOffset={3}
-          className={actionClassName}
-          onClick={() => trajectory.open({ projectId, runId: runID })}
+          className={showLabels ? 'w-full justify-start gap-2 px-3 text-sm' : actionClassName}
+          onClick={() => { onNavigate?.(); trajectory.open({ projectId, runId: runID }) }}
         >
           <Route />
+          {showLabels ? t('trajectory.openRun') : null}
         </TooltipIconButton>
       ) : null}
     </>

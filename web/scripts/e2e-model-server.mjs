@@ -479,11 +479,13 @@ const server = createServer(async (request, response) => {
   ]) {
     if (!requestIncludesMarker(body, marker)) continue
     recordRequest(marker)
-    if (!requestHasToolResult(body)) {
+    const completedReads = toolResultMessages(body, 'read').length
+    const requiredReads = marker === externalReadAskMarker ? 3 : 1
+    if (completedReads < requiredReads) {
       writeChatCompletion(response, toolCompletionFrames(
         'read',
         JSON.stringify({ path: externalSecretPath }),
-        `call-external-read-${label.toLowerCase().replaceAll(' ', '-')}`,
+        `call-external-read-${label.toLowerCase().replaceAll(' ', '-')}-${completedReads + 1}`,
       ))
       return
     }

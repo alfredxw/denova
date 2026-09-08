@@ -110,7 +110,7 @@ export function AgentChatProjectGroup({
         {group === 'primary' && mobileControls.isMobile && (
           <MobilePaneTrigger
             side="left"
-            className="size-7 shrink-0"
+            className="size-7 shrink-0 max-lg:hidden"
             label={t('agentChat.sidebar.projects')}
             onClick={mobileControls.openLeft}
           />

@@ -101,7 +101,7 @@ export function VersionDiffWorkspace({
       <header className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
         <div className="flex min-h-12 flex-wrap items-center gap-1.5 px-2.5 py-1.5 sm:px-3">
           {isMobile && (
-            <Button type="button" variant="outline" size="icon-sm" onClick={onOpenSidebar} aria-label={t('versions.openHistorySidebar')}>
+            <Button type="button" variant="outline" size="icon-sm" className="max-lg:hidden" onClick={onOpenSidebar} aria-label={t('versions.openHistorySidebar')}>
               <PanelLeft />
             </Button>
           )}

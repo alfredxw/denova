@@ -1,3 +1,4 @@
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderPlus, FolderX } from 'lucide-react'
@@ -115,6 +116,7 @@ export function AgentChatView({
   onBooksChange,
   onWorkspaceChanged,
 }: AgentChatViewProps) {
+  const isPhone = useIsMobile()
   const { t } = useTranslation()
   const [projects, setProjects] = useState<AgentChatProject[]>([])
   const [projectsLoading, setProjectsLoading] = useState(true)
@@ -889,7 +891,7 @@ export function AgentChatView({
   )
   const secondaryProjectLayers = projects.map((project) => {
     const state = workbench.projects[project.id] ?? emptyProjectTabState()
-    const visible = project.id === activeProjectId && state.secondaryVisible
+    const visible = project.id === activeProjectId && (isPhone || state.secondaryVisible)
     return (
       <section key={project.id} hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
         {renderProjectGroup(project, state, 'secondary', visible, DESKTOP_SECONDARY_PANE_CONTROLS)}
@@ -907,6 +909,9 @@ export function AgentChatView({
           sidebarProps={treeProps}
           desktopSecondaryControl={desktopSecondaryControl}
           secondaryPane={{
+            focused: activeProjectState?.focusedGroup === 'secondary',
+            onFocus: (focused) => { if (activeProject) focusGroup(activeProject.id, focused ? 'secondary' : 'primary') },
+            available: Boolean(activeProjectState && tabsInGroup(activeProjectState.tabs, 'secondary').length),
             content: <div className="relative h-full min-h-0">{secondaryProjectLayers}</div>,
             visible: secondaryVisible,
             layoutKey: `nova-agent-chat-secondary-layout:v1:${activeProjectId || 'empty'}`,

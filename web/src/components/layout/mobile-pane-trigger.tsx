@@ -21,7 +21,7 @@ export function MobilePaneTrigger({ side, label, onClick, children, className, a
       type="button"
       variant={compact ? 'ghost' : 'outline'}
       size={children ? 'sm' : compact ? 'icon-xs' : 'icon'}
-      className={cn(!compact && 'nova-icon-button', 'text-muted-foreground', className)}
+      className={cn(!compact && !children && 'nova-icon-button', 'text-muted-foreground', className)}
       aria-label={label}
       onClick={onClick}
     >

@@ -1,3 +1,4 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
@@ -60,7 +61,7 @@ export function SectionedNavigation<TID extends string>({
                             size={item.description ? 'lg' : 'default'}
                             isActive={active}
                             aria-current={active ? 'page' : undefined}
-                            onClick={() => onSelect(item.id)}
+                            onClick={() => { onSelect(item.id); closeMobilePanes() }}
                           >
                             {Icon ? <Icon aria-hidden="true" /> : null}
                             <span className="grid min-w-0 flex-1 gap-0.5">

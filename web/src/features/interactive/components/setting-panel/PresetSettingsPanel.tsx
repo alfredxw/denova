@@ -1,3 +1,4 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useEffect, useRef, useState } from 'react'
 import { Bot, Compass, Database, Dice5, RotateCcw, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -7,9 +8,8 @@ import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import type { AutosaveStatus } from '@/components/forms/autosave-status'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace, useResponsiveAgentOpen } from '@/components/layout/resource-workspace'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
-import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { Button } from '@/components/ui/button'
 import { withErrorLogID } from '@/lib/api-client'
 import {
@@ -59,7 +59,6 @@ interface PresetSettingsPanelProps {
   onStoryDirectorsChange?: (directors: GamePlanningTemplate[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   embedded?: boolean
-  onClose?: () => void
   toolNavigationIntent?: ToolNavigationIntent | null
 }
 
@@ -83,13 +82,12 @@ export function PresetSettingsPanel({
   onStoryDirectorsChange,
   onImagePresetsChange,
   embedded = false,
-  onClose,
   toolNavigationIntent,
 }: PresetSettingsPanelProps) {
   const { t } = useTranslation()
   const [saving, setSaving] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
-  const [agentOpen, setAgentOpen] = useState(false)
+  const [agentOpen, setAgentOpen] = useResponsiveAgentOpen()
   const [deletePresetTarget, setDeletePresetTarget] = useState<PresetDeleteTarget | null>(null)
   const [presetConfigValid, setPresetConfigValid] = useState(true)
   const presetConfigValidRef = useRef(true)
@@ -566,11 +564,6 @@ export function PresetSettingsPanel({
     })
   }
 
-  const closePanel = async () => {
-    if (!onClose || !(await flushPresetResourceAutoSave())) return
-    onClose()
-  }
-
   const currentPresetDraft = () => {
     if (presetResourceKind === 'director') return storyDirectorDraft
     if (presetResourceKind === 'image') return imagePresetDraft
@@ -621,7 +614,10 @@ export function PresetSettingsPanel({
 
   return (
     <section className="preset-workspace h-full min-h-0 text-[var(--nova-text)]">
-      <AdaptiveSurface
+      <ResourceWorkspace
+        title={t('settingPanel.mode.teller')}
+        embedded={embedded}
+        secondaryView={{ label: t('workbench.mobile.agent'), available: true, open: agentOpen, onOpenChange: setAgentOpen }}
         left={{
           id: 'setting-directory',
           title: t('settingPanel.mode.teller'),
@@ -683,32 +679,15 @@ export function PresetSettingsPanel({
         }}
         collapseAt={embedded ? 760 : 820}
       >
-        {({ isMobile, openLeft, openRight, closePane }) => {
-          closeDirectoryRef.current = closePane
+        {({ closePane }) => {
+          closeDirectoryRef.current = () => { closeMobilePanes(); closePane() }
           return (
           <main className="preset-workspace-main flex h-full min-h-0 min-w-0 flex-1 flex-col">
             <FeaturePageShell
               icon={titleIcon}
               title={title}
               subtitle={subtitle}
-              leadingContent={isMobile ? (
-                <div className="flex items-center gap-1">
-                  <MobilePaneTrigger
-                    side="left"
-                    label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.mode.teller') })}
-                    onClick={openLeft}
-                  />
-                  {agentOpen ? (
-                    <MobilePaneTrigger
-                      side="right"
-                      label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.tellerAgent.title') })}
-                      onClick={openRight}
-                    />
-                  ) : null}
-                </div>
-              ) : undefined}
               onSaveShortcut={flushActivePresetAutosave}
-              onClose={onClose ? () => void closePanel() : undefined}
               actions={(
                 <>
                   {activeDraft ? (
@@ -766,7 +745,7 @@ export function PresetSettingsPanel({
           </main>
           )
         }}
-      </AdaptiveSurface>
+      </ResourceWorkspace>
       <ConfirmDialog
         open={Boolean(deletePresetTarget)}
         onOpenChange={(open) => {

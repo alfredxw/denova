@@ -1,4 +1,7 @@
 const tab = {
+  'tab.actions': 'Current tab actions',
+  'tab.moveLeft': 'Move left',
+  'tab.moveRight': 'Move right',
   'tab.empty': 'No page is open',
   'tab.close': 'Close {{label}}',
   'tab.closeCurrent': 'Close',

@@ -1,6 +1,8 @@
-import { lazy, memo } from 'react'
+import { MOBILE_PROJECT_OPEN_EVENT, showMobileWritingView } from '@/components/layout/mobile-pane-events'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { lazy, memo, useCallback } from 'react'
 import type { ComponentProps, ReactNode } from 'react'
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react'
+import { ArrowRight, FolderOpen, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, PenLine, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImageFilePreview } from './ImageFilePreview'
 import { WritingDocumentEditor } from '@/components/Editor/WritingDocumentEditor'
@@ -17,6 +19,8 @@ import { TabController } from './TabController'
 import { WorkbenchRouteLayer } from './WorkbenchRouteHost'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
+import { Button } from '@/components/ui/button'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import type { AgentChatConversationState } from '@/features/agent-chat/AgentChatConversationTab'
 
 const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
@@ -144,6 +148,20 @@ export function WritingMainRoute({
   emptyLoreAction,
   onRequestWritingInit,
 }: WritingMainRouteProps) {
+  const isMobile = useIsMobile()
+  const { t } = useTranslation()
+  const quoteInAgent = useCallback((selection: TextSelection) => {
+    onQuoteSelection(selection)
+    showMobileWritingView('agent')
+  }, [onQuoteSelection])
+  const referenceInAgent = useCallback((id: string) => {
+    onReferenceLoreItem?.(id)
+    showMobileWritingView('agent')
+  }, [onReferenceLoreItem])
+  const toggleAgent = useCallback(() => {
+    if (isMobile) showMobileWritingView('agent')
+    else onToggleAgent()
+  }, [isMobile, onToggleAgent])
   const reviewVisible = Boolean(activeReviewThreadID)
   const activeDocument = fileDocument?.path === selectedFile ? fileDocument : null
   return (
@@ -161,7 +179,7 @@ export function WritingMainRoute({
             tabs={tabs}
             activeTabKey={activeTabKey}
             summary={summary}
-            actions={tabActions}
+            actions={isMobile ? undefined : tabActions}
             onActivateTab={onActivateTab}
             onCloseTab={onCloseTab}
             onTogglePin={onToggleTabPin}
@@ -185,7 +203,7 @@ export function WritingMainRoute({
                   toolNavigationIntent={toolNavigationIntent}
                   onEditorFlushHandlerChange={onEditorFlushHandlerChange}
                   onOpenLibrary={onOpenLoreLibrary}
-                  onReferenceItem={onReferenceLoreItem}
+                  onReferenceItem={onReferenceLoreItem ? referenceInAgent : undefined}
                 />
               ) : activeFileKind === 'image' || activeDocument?.kind === 'image' ? (
                 <StableImageFilePreview projectId={projectId} path={selectedFile || activeTab.path} revision={fileRevision} />
@@ -199,7 +217,7 @@ export function WritingMainRoute({
                   document={activeDocument}
                   onSelectFile={onSelectFile}
                   onSave={onSaveCurrentFile}
-                  onQuoteSelection={onQuoteSelection}
+                  onQuoteSelection={quoteInAgent}
                   saveSignal={saveSignal}
                   autoSaveEnabled={editorAutoSaveEnabled}
                   autoSaveDelayMs={editorAutoSaveDelayMs}
@@ -213,7 +231,7 @@ export function WritingMainRoute({
                   content={fileContent}
                   revision={fileRevision}
                   onSave={onSaveCurrentFile}
-                  onQuoteSelection={onQuoteSelection}
+                  onQuoteSelection={quoteInAgent}
                   saveSignal={saveSignal}
                   autoSaveEnabled={editorAutoSaveEnabled}
                   autoSaveDelayMs={editorAutoSaveDelayMs}
@@ -229,6 +247,18 @@ export function WritingMainRoute({
                   readingTypography={readingTypography}
                 />
               )
+            ) : isMobile ? (
+              <Empty className="nova-mobile-writing-empty h-full overflow-y-auto">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><PenLine /></EmptyMedia>
+                  <EmptyTitle>{t(loreEmpty ? 'router.mobileEmptyIdeaTitle' : 'router.mobileEmptyContinueTitle')}</EmptyTitle>
+                  <EmptyDescription>{t(loreEmpty ? 'router.mobileEmptyIdeaDescription' : 'router.chooseFileMobile')}</EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  {loreEmpty && <Button size="lg" onClick={onRequestWritingInit}>{t('router.mobileEmptyStart')}<ArrowRight data-icon="inline-end" /></Button>}
+                  <Button variant={loreEmpty ? 'ghost' : 'default'} size="lg" onClick={() => window.dispatchEvent(new Event(MOBILE_PROJECT_OPEN_EVENT))}><FolderOpen data-icon="inline-start" />{t('router.mobileEmptyOpenFiles')}</Button>
+                </EmptyContent>
+              </Empty>
             ) : loreEmpty ? (
               <EmptyLoreGuide
                 emptyText={emptyText}
@@ -254,7 +284,7 @@ export function WritingMainRoute({
             disabled={isStreaming}
             selectedPath={selectedFile}
             agentVisible={agentVisible}
-            onToggleAgent={onToggleAgent}
+            onToggleAgent={toggleAgent}
             onClose={onCloseReview}
             onOpenFile={onOpenReviewFile}
             onWorkspaceChanged={onWorkspaceChanged}

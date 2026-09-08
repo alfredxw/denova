@@ -92,7 +92,7 @@ function AgentChatRouteComponent({
         )
       case 'versions':
         return (
-          <VersionPanel
+          <VersionPanel embedded
             projectId={projectId}
             workspace={tabWorkspace}
             refreshSignal={context.refreshSignal}

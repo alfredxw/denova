@@ -322,6 +322,16 @@ func resolveWebRoot() string {
 		if root == "" {
 			continue
 		}
+		// A checkout's web/index.html loads TypeScript that only Vite can serve.
+		// LAN links use this server, so serve the checkout's build just like a
+		// release bundle. Never fall back to exposing the uncompiled source tree.
+		if _, err := os.Stat(filepath.Join(root, "src", "main.tsx")); err == nil {
+			root = filepath.Join(root, "dist")
+			if _, err := os.Stat(filepath.Join(root, "index.html")); err != nil {
+				slog.WarnContext(context.Background(), "[startup] Compiled frontend missing; run pnpm --dir web build to enable browser access", "path", root)
+				continue
+			}
+		}
 		if fi, err := os.Stat(root); err == nil && fi.IsDir() {
 			if _, err := os.Stat(filepath.Join(root, "index.html")); err == nil {
 				return root

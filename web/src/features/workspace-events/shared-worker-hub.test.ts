@@ -86,7 +86,7 @@ describe('SharedProjectEventHub', () => {
     late.receive({ type: 'unsubscribe' })
   })
 
-  it('pauses on a Basic auth challenge and reconnects with updated credentials', async () => {
+  it('pauses on a cookie challenge and reconnects after an authenticated page subscribes', async () => {
     const events = controlledStream<SSEEvent>()
     const openStream = vi.fn<ProjectEventStreamFactory>()
       .mockRejectedValueOnce(new ProjectEventStreamHTTPError(401, true))
@@ -99,9 +99,9 @@ describe('SharedProjectEventHub', () => {
     await eventually(() => expect(port.sent).toContainEqual({ type: 'remote-access-required' }))
     expect(openStream).toHaveBeenCalledTimes(1)
 
-    port.receive({ type: 'authorization', authorization: 'Basic valid' })
+    port.receive({ type: 'subscribe', projectId: 'project-demo' })
     await eventually(() => expect(openStream).toHaveBeenCalledTimes(2))
-    expect(openStream.mock.calls[1]?.[0].authorization).toBe('Basic valid')
+    expect(openStream.mock.calls[1]?.[0].projectId).toBe('project-demo')
 
     port.receive({ type: 'unsubscribe' })
   })

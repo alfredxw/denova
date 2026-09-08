@@ -38,7 +38,6 @@ const versions = {
   'versions.moreChangedFiles': '{{count}} more files',
   'versions.refresh': 'Refresh version status',
   'versions.resizeHistorySidebar': 'Resize version history',
-  'versions.close': 'Close Version Management',
   'versions.createFailed': 'Create version failed',
   'versions.diffReadFailed': 'Failed to read version diff',
   'versions.firstVersionHint': 'Save the first version to view history and restore.',

@@ -57,7 +57,9 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 	h := hertzserver.Default(options...)
 	h.Use(requestObservabilityMiddleware)
 	h.Use(corsMiddleware)
-	h.Use(remoteAccessMiddleware(application))
+	accessGate := newRemoteAccessGate(application.RemoteAccessConfig, port)
+	h.Use(accessGate.middleware)
+	accessGate.registerRoutes(h)
 	// The gzip middleware buffers body streams before compressing them. Exclude
 	// every SSE route at the server boundary so browsers can consume events as
 	// they arrive even when their automatic Accept-Encoding header includes gzip.

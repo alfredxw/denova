@@ -3,7 +3,6 @@ const home = {
   'home.authorPlaceholder': '作者（选填，留空则使用当前系统用户）',
   'home.authorUnset': '佚名',
   'home.bookTitlePlaceholder': '书名（必填）',
-  'home.close': '关闭书籍管理',
   'home.cover': '封面',
   'home.coverDefaultPreset': '默认图像方案',
   'home.coverFile': '封面文件',

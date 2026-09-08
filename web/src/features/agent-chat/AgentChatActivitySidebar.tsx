@@ -1,3 +1,4 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DndContext, KeyboardSensor, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -174,6 +175,7 @@ export function AgentChatActivitySidebar({
                     onCreateSession={(customAgentId) => {
                       preferences.recordProjectOpened(project.id)
                       onCreateSession(project, customAgentId)
+                      closeMobilePanes()
                     }}
                     onTogglePinned={() => preferences.toggleProjectPinned(project.id)}
                     onRename={() => onRenameProject(project)}
@@ -183,11 +185,13 @@ export function AgentChatActivitySidebar({
                     onOpenSession={(session) => {
                       preferences.recordProjectOpened(project.id)
                       onOpenSession(project, session)
+                      closeMobilePanes()
                     }}
                     onRenameSession={(session) => onRenameSession(project, session)}
                     onOpenActivity={(activity) => {
                       preferences.recordProjectOpened(project.id)
                       onOpenActivity(project, activity)
+                      closeMobilePanes()
                     }}
                   />
                 ))}
@@ -332,14 +336,17 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
             onOpenActivity={(project, activity) => {
               setPeeking(false)
               tree.onOpenActivity(project, activity)
+                      closeMobilePanes()
             }}
             onOpenSession={(project, session) => {
               setPeeking(false)
               tree.onOpenSession(project, session)
+                      closeMobilePanes()
             }}
             onCreateSession={(project, customAgentId) => {
               setPeeking(false)
               tree.onCreateSession(project, customAgentId)
+                      closeMobilePanes()
             }}
             onOpenHistory={(project) => {
               setPeeking(false)

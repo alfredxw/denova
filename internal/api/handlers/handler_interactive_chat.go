@@ -108,7 +108,9 @@ func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *
 	}
 	analysis, err := h.app.AnalyzeInteractiveContext(body.StoryID, body.Branch, body.Message, body.StyleScenes, requestLocale(c))
 	if err != nil {
-		writeError(c, consts.StatusConflict, err.Error())
+		if !writeAgentHistoryError(c, err) {
+			writeError(c, consts.StatusConflict, err.Error())
+		}
 		return
 	}
 	writeJSON(c, consts.StatusOK, analysis)

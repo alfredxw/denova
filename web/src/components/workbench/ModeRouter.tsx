@@ -9,6 +9,7 @@ import { useInteractiveStore } from '@/features/interactive/stores/interactive-s
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { ChapterIllustration, ChapterSummary, DocumentPreview, WorkspaceSearchResult } from '@/lib/api'
 import { GLOBAL_RESOURCE_TARGET, projectResourceTarget } from '@/lib/api'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { GLOBAL_SETTINGS_TARGET } from '@/features/settings/api'
@@ -55,6 +56,7 @@ function normalizeReadingFontSize(value: unknown) {
 }
 
 export function ModeRouter(props: ModeRouterProps) {
+  const isMobile = useIsMobile()
   const { t, i18n } = useTranslation()
   const {
     mode,
@@ -498,14 +500,10 @@ export function ModeRouter(props: ModeRouterProps) {
     onOpenChangeReview: openChangeReview,
   })
   const reviewVisible = Boolean(activeReviewThreadID)
-  const closeBooks = useCallback(() => {
-    onSetMode(lastCreationRoute)
-  }, [lastCreationRoute, onSetMode])
   const chapters = summary?.chapters ?? EMPTY_CHAPTERS
   const fileSuggestions = useMemo(() => flattenFileTree(tree), [tree])
-  const returnToContentMode = useCallback(() => onSetMode(lastCreationRoute), [lastCreationRoute, onSetMode])
   const openAgentChatRoute = useCallback(() => onSetMode('agentchat'), [onSetMode])
-  const selectOutlineFile = useCallback((path: string) => { void selectWorkspacePath(path) }, [selectWorkspacePath])
+  const selectOutlineFile = selectWorkspacePath
   const openLoreLibrary = useCallback(() => {
     void flushBeforeWorkspaceSwitch().then((saved) => {
       if (saved) onSetMode('lore')
@@ -565,7 +563,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const writingAgent = useWritingAgentPanel({
     projectId,
     workspace,
-    active: presentedMainRoute === 'ide-writing' && presentedRightPanel === 'ai',
+    active: presentedMainRoute === 'ide-writing' && (isMobile || presentedRightPanel === 'ai'),
     chrome: 'panel',
     composerSettings,
     currentChapter,
@@ -759,7 +757,6 @@ export function ModeRouter(props: ModeRouterProps) {
             workspace={workspace}
             refreshSignal={versionRefreshSignal}
             visible={versionsVisible}
-            onClose={returnToContentMode}
           />
         </WorkbenchRouteLayer>
       )}
@@ -770,7 +767,6 @@ export function ModeRouter(props: ModeRouterProps) {
             projectId={projectId}
             documentReview={documentReviewController}
             documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
-            onClose={returnToContentMode}
             onFlushHandlerChange={handleLoreLibraryFlushHandlerChange}
             toolNavigationIntent={toolNavigationIntent}
           />
@@ -778,7 +774,7 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {routeHost.isMounted('presets') && (
         <WorkbenchRouteLayer visible={presentedMainRoute === 'presets'} loadingLabel={t('router.loading')}>
-          <SettingPanel projectId={projectId} mode="teller" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={returnToContentMode} toolNavigationIntent={toolNavigationIntent} />
+          <SettingPanel projectId={projectId} mode="teller" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} toolNavigationIntent={toolNavigationIntent} />
         </WorkbenchRouteLayer>
       )}
 
@@ -787,11 +783,9 @@ export function ModeRouter(props: ModeRouterProps) {
         isMounted={routeHost.isMounted}
         loadingLabel={t('router.loading')}
         home={{ workspace, novaDir, books, bookSortMode, onSwitch: onSwitchBook,
-          onBeforeSwitch: flushBeforeWorkspaceSwitch, onBooksChange, onOpenCharacterCardImport, onClose: closeBooks }}
-        automations={{ projectId, workspace, onOpenAgentChat: openAgentChatRoute, onClose: returnToContentMode }}
+          onBeforeSwitch: flushBeforeWorkspaceSwitch, onBooksChange, onOpenCharacterCardImport, onBookImported: () => onSetMode(lastCreationRoute) }}
+        automations={{ projectId, workspace, onOpenAgentChat: openAgentChatRoute }}
         resourceTarget={resourceTarget}
-        onReturnToContentMode={returnToContentMode}
-        onCloseSettings={onCloseSettings}
         toolNavigationIntent={toolNavigationIntent}
       />
       <AgentChatWorkbenchRoute
@@ -840,7 +834,6 @@ export function ModeRouter(props: ModeRouterProps) {
           onSetMode={onSetMode}
           onToggleActivityBarExpanded={onToggleActivityBarExpanded}
           onSetInteractiveSubmode={setInteractiveSubmode}
-          onSetRightPanel={onSetRightPanel}
           onToggleSettings={onToggleSettings}
           onCloseSettings={onCloseSettings}
           onQuickSwitchBook={quickSwitchBook}

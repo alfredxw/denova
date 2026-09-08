@@ -190,6 +190,12 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 }
 
 func (tasks *LocalTasks) Observe(ctx context.Context, ref TaskRef, cursor string) (TaskObservation, error) {
+	return retryClosedTaskRead(ctx, func() (TaskObservation, error) {
+		return tasks.observe(ctx, ref, cursor)
+	})
+}
+
+func (tasks *LocalTasks) observe(ctx context.Context, ref TaskRef, cursor string) (TaskObservation, error) {
 	_, session, err := tasks.open(ctx, ref)
 	if err != nil {
 		return TaskObservation{}, err

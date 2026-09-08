@@ -1,3 +1,4 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, RefreshCw, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -7,9 +8,8 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace, useResponsiveAgentOpen } from '@/components/layout/resource-workspace'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
-import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { Button } from '@/components/ui/button'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
@@ -27,7 +27,6 @@ import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 interface SkillsViewProps {
   target: SkillCatalogTarget
-  onClose?: () => void
   toolNavigationIntent?: ToolNavigationIntent | null
 }
 
@@ -77,7 +76,7 @@ function skillSummaryOf(value: SkillSummary): SkillSummary {
   return { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at }
 }
 
-export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsViewProps) {
+export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
   const { t } = useTranslation()
   const targetKind = target.kind
   const projectId = target.kind === 'project' ? target.projectId : ''
@@ -101,7 +100,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<SkillsMode>('editor')
-  const [agentOpen, setAgentOpen] = useState(false)
+  const [agentOpen, setAgentOpen] = useResponsiveAgentOpen()
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
   const [documentReloadVersion, setDocumentReloadVersion] = useState(0)
@@ -523,6 +522,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
   const openMode = async (nextMode: SkillsMode) => {
     if (!await flushActiveAutosave()) return
     setMode(nextMode)
+    closeMobilePanes()
     setError(null)
   }
 
@@ -531,6 +531,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
     setSelectedKey(key)
     setMode('editor')
     setError(null)
+    closeMobilePanes()
   }
 
   useEffect(() => {
@@ -550,11 +551,6 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
     toolNavigationNonceRef.current = intent.nonce
     void selectSkill(keyOf(skill))
   }, [snapshot.skills, toolNavigationIntent?.nonce])
-
-  const closeSkills = async () => {
-    if (!onClose || !await flushActiveAutosave()) return
-    onClose()
-  }
 
   const agentContext = useMemo(() => {
     const targetName = document?.name || 'new-skill'
@@ -587,6 +583,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
 
   return (
     <FeaturePageShell
+      mobileHeader={agentOpen ? 'hidden' : 'toolbar'}
       icon={Sparkles}
       title={t('skills.title')}
       leadingContent={(
@@ -598,7 +595,6 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
       subtitle={t('skills.subtitle')}
       error={error}
       errorTitle={t('skills.error')}
-      onClose={onClose ? () => void closeSkills() : undefined}
       onSaveShortcut={() => flushActiveAutosave(true)}
       className="bg-[var(--nova-bg)] text-[var(--nova-text)]"
       actions={(
@@ -631,7 +627,9 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
         </>
       )}
     >
-      <AdaptiveSurface
+      <ResourceWorkspace
+        title={t('skills.title')}
+        secondaryView={{ label: t('workbench.mobile.agent'), available: agentAvailable, open: agentOpen, onOpenChange: setAgentOpen }}
         left={{
           id: 'skills-list',
           title: t('skills.title'),
@@ -682,25 +680,8 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
           mainMinSize: '240px',
         }}
       >
-        {({ isMobile, openLeft, openRight }) => (
+        {() => (
           <main className="flex h-full min-h-0 flex-col">
-            {isMobile && (
-              <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
-                <MobilePaneTrigger
-                  side="left"
-                  label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })}
-                  onClick={openLeft}
-                />
-                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{document?.name || t('skills.title')}</span>
-                {agentAvailable && agentOpen && (
-                  <MobilePaneTrigger
-                    side="right"
-                    label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })}
-                    onClick={openRight}
-                  />
-                )}
-              </div>
-            )}
             {mode === 'create' ? (
               <SkillCreatePanel
                 target={catalogTarget}
@@ -767,7 +748,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
             )}
           </main>
         )}
-      </AdaptiveSurface>
+      </ResourceWorkspace>
 
       {confirmContent && (
         <ConfirmDialog

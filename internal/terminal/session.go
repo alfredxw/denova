@@ -157,7 +157,7 @@ func (s *Session) OwnerTabID() string { return s.spec.OwnerTabID }
 
 // Token returns the attach token. The create endpoint is already authenticated; the token keeps
 // the WebSocket attach restricted to its creator even though browsers cannot send an
-// Authorization header on WebSocket handshakes.
+// Authorization header on WebSocket handshakes; browser authentication uses a cookie.
 func (s *Session) Token() string { return s.token }
 
 // Info returns a session snapshot.

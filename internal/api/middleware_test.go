@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
 	"net/http"
 	"testing"
 
@@ -42,28 +41,6 @@ func TestNewServerUsesLANHostWhenEnabled(t *testing.T) {
 	server := NewServer(application, "0")
 	if server.host != config.LANHTTPHost {
 		t.Fatalf("server host = %q, want %q", server.host, config.LANHTTPHost)
-	}
-}
-
-func TestRemoteAccessAuthorized(t *testing.T) {
-	hash, err := config.HashRemoteAccessPassword("secret")
-	if err != nil {
-		t.Fatal(err)
-	}
-	header := "Basic " + base64.StdEncoding.EncodeToString([]byte("reader:secret"))
-	if !remoteAccessAuthorized(config.RemoteAccessConfig{
-		AllowLANAccess: true,
-		Username:       "reader",
-		PasswordHash:   hash,
-	}, header) {
-		t.Fatalf("expected valid basic auth")
-	}
-	if remoteAccessAuthorized(config.RemoteAccessConfig{
-		AllowLANAccess: true,
-		Username:       "reader",
-		PasswordHash:   hash,
-	}, "Basic "+base64.StdEncoding.EncodeToString([]byte("reader:wrong"))) {
-		t.Fatalf("wrong password should be rejected")
 	}
 }
 

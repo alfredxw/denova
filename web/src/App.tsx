@@ -38,7 +38,6 @@ import {
   CharacterCardImportDialog,
   type CharacterCardTargetMode,
 } from '@/components/workbench/CharacterCardImportDialog'
-import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
 import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
 import {
@@ -1042,7 +1041,6 @@ function App() {
         isStreaming={writingAgentConversation.isStreaming}
         onNavigate={handleOnboardingNavigate}
       />
-      <RemoteAccessLogin />
     </NovaMotionProvider>
   )
 }

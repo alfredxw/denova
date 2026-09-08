@@ -11,7 +11,6 @@ import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import { workspaceFileName } from '@/lib/workspace-path'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { AgentComposerControls } from './AgentComposerControls'
@@ -183,7 +182,6 @@ export function InputArea({
   const approvalReady = conversationBinding
     ? conversationConfig.initialized && !conversationConfig.saving
     : defaultApproval.initialized && !defaultApproval.saving
-  const keyboardInset = useKeyboardInset()
   const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
@@ -281,13 +279,8 @@ export function InputArea({
     const element = rootRef.current
     if (!element) return
     const height = Math.ceil(element.getBoundingClientRect().height)
-    // Floating composers pin to the layout-viewport bottom, so on iOS the
-    // on-screen keyboard covers them. They lift by `keyboardInset` (see the
-    // root style below), and the clearance a message list must reserve is the
-    // composer height plus that inset. Non-floating composers are in normal
-    // flow and ignore the inset.
-    onHeightChange?.(floating ? height + keyboardInset : height)
-  }, [onHeightChange, floating, keyboardInset])
+    onHeightChange?.(height)
+  }, [onHeightChange])
 
   useLayoutEffect(() => {
     syncHeight()
@@ -363,7 +356,7 @@ export function InputArea({
     }
 
     // Enter 发送
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && (!isMobile || e.metaKey || e.ctrlKey)) {
       if (isNativeComposingKeyboardEvent(e)) return false
       e.preventDefault()
       if (canPickCommand) {
@@ -548,7 +541,6 @@ export function InputArea({
       ref={rootRef}
       {...attachments.dropProps}
       data-onboarding-anchor={onboardingAnchor}
-      style={floating ? { bottom: keyboardInset } : undefined}
       className={cn(
         floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3',
         floating && contentClassName && 'nova-chat-input-area-content-aligned',
@@ -664,7 +656,7 @@ export function InputArea({
               minRows={1}
               maxRows={isMobile ? 5 : 10}
               multilineMode="always"
-              enterKeyHint="send"
+              enterKeyHint={isMobile ? 'enter' : 'send'}
               className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
             />
           }

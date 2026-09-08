@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { ArrowLeft, ChevronDown, ChevronUp, Crosshair, GitBranch, Move, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { MobileBranchTimeline } from './MobileBranchTimeline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -8,7 +10,7 @@ import type { BranchSummary, PlotNode, Snapshot } from '../types'
 import { CreateBranchDialog } from './branching/CreateBranchDialog'
 import { branchCreationSourceFromPlotNode, branchDisplayName, plotNodesFromSnapshot, type BranchCreationSource } from './branching/model'
 
-interface BranchTimelineProps {
+export interface BranchTimelineProps {
   projectId: string
   snapshot: Snapshot | null
   branches: BranchSummary[]
@@ -99,7 +101,12 @@ const BRANCH_COLORS = [
   { color: '#72b8b7', soft: 'rgba(114,184,183,0.14)' },
 ]
 
-export function BranchTimeline({
+export function BranchTimeline(props: BranchTimelineProps) {
+  const isMobile = useIsMobile()
+  return isMobile ? <MobileBranchTimeline {...props} /> : <DesktopBranchTimeline {...props} />
+}
+
+function DesktopBranchTimeline({
   projectId,
   snapshot,
   branches,

@@ -3,11 +3,14 @@ import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { arrayMove } from '@dnd-kit/sortable'
-import { Group, Panel, Separator } from 'react-resizable-panels'
-import { BookOpen, Bot, Clock3, Database, Gamepad2, History, Menu, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
+import { MobileWritingWorkspace } from './MobileWritingWorkspace'
+import { BookOpen, Bot, Clock3, Database, Gamepad2, History, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
-import { MOBILE_NAVIGATION_OPEN_EVENT, WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
+import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
+import { MobileWorkspaceHeaderProvider, MobileWorkspaceHeaderOutlet } from '@/components/layout/mobile-workspace-header'
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
+import { Button } from '@/components/ui/button'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { MessageCenterButton } from '@/features/messages/MessageCenter'
 import type { AutomationMessageNavigation } from '@/features/messages/types'
@@ -15,12 +18,12 @@ import { requestAutomationNavigation } from '@/features/automations/automation-n
 import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { BookRecord, WorkspaceSummary } from '@/lib/api'
-import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
+import { useWorkspaceStore, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
-import { WorkbenchAppSidebar, WorkbenchBrandIcon } from './WorkbenchAppSidebar'
+import { WorkbenchAppSidebar } from './WorkbenchAppSidebar'
 import {
   defaultActivityOrderForScope,
   isActivityItemID,
@@ -58,7 +61,6 @@ interface WorkbenchShellProps {
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
   onSetInteractiveSubmode: (mode: InteractiveSubmode) => void
-  onSetRightPanel: (panel: RightPanel) => void
   onToggleSettings: () => void
   onCloseSettings: () => void
   onQuickSwitchBook: (path: string) => Promise<boolean>
@@ -96,7 +98,6 @@ export function WorkbenchShell({
   onSetMode,
   onToggleActivityBarExpanded,
   onSetInteractiveSubmode,
-  onSetRightPanel,
   onToggleSettings,
   onCloseSettings,
   onQuickSwitchBook,
@@ -478,57 +479,28 @@ export function WorkbenchShell({
   )
 
   if (isMobile) {
-    const compactMobileNavigation = true
-    const mobileTopBar = (
-      <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <WorkbenchBrandIcon />
-            <BookSwitcher
-              books={books}
-              currentBookName={currentBookName}
-              currentChapterCount={summary?.chapter_count}
-              currentWordCount={summary?.total_words}
-              workspace={workspace}
-              compact
-              onSwitchBook={onQuickSwitchBook}
-              onManageBooks={manageBooks}
-            />
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <MessageCenterButton className="!size-8 !min-w-8" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
-            <button
-              type="button"
-              onClick={() => setCommandOpen(true)}
-              className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-              aria-label={t('command.openButton')}
-            >
-              <Search className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event(MOBILE_NAVIGATION_OPEN_EVENT))}
-              className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-              aria-label={t('workbench.mobile.navigationMenu')}
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-          </div>
+    const mobileNavigationTools = (
+      <div className="nova-mobile-navigation-tools flex min-w-0 flex-col gap-3">
+        <div className="nova-mobile-book-context">
+          <span className="nova-mobile-section-label">{t('workbench.mobile.currentBook')}</span>
+          <BookSwitcher
+            books={books} currentBookName={currentBookName}
+            currentChapterCount={summary?.chapter_count} currentWordCount={summary?.total_words}
+            workspace={workspace} compact
+            onSwitchBook={async (path) => { const switched = await onQuickSwitchBook(path); if (switched) closeMobilePanes(); return switched }}
+            onManageBooks={() => { closeMobilePanes(); manageBooks() }}
+          />
         </div>
-        {notice && (
-          <div className="mt-2 flex justify-end">
-            <WorkbenchNoticePill
-              expanded
-              notice={notice}
-              starSecondaryText="description"
-              onOpenSettings={onToggleSettings}
-              onDismiss={onDismissNotice}
-            />
-          </div>
-        )}
-      </header>
+        <div className="nova-mobile-quick-actions grid grid-cols-2 gap-2">
+          <Button variant="secondary" className="w-full" onClick={() => { closeMobilePanes(); setCommandOpen(true) }} aria-label={t('command.openButton')}>
+            <Search />{t('command.openButton')}
+          </Button>
+          <MessageCenterButton showLabel className="!min-h-11 !w-full justify-center" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
+        </div>
+        {notice && <WorkbenchNoticePill expanded notice={notice} starSecondaryText="description" onOpenSettings={() => { closeMobilePanes(); onToggleSettings() }} onDismiss={onDismissNotice} />}
+      </div>
     )
-    const mobileActivityItems: MobileNavItem[] = activityItems
+    const mobileActivityItems: MobileNavItem[] = allActivityItems
       .map((item) => ({
         id: item.id,
         label: item.label,
@@ -540,49 +512,18 @@ export function WorkbenchShell({
       id: 'project' as const,
       title: t('workbench.mobile.project'),
       icon: <PanelLeft className="h-4 w-4" />,
-      side: 'left' as const,
+      side: 'right' as const,
       content: sidebar,
     } : undefined
-    // Direction B: editor + Agent in a vertical split (Agent docked at bottom,
-    // always visible) instead of Agent hidden in a right drawer. Only when the
-    // Agent panel is active and no full-workspace panel covers the screen.
-    const mobileAgentDocked = writingContentVisible && Boolean(rightPanelContent)
-    const mobileMain = (
-      <div className="relative flex h-full min-h-0 flex-col">
-        {mobileAgentDocked ? (
-          <Group
-            orientation="vertical"
-            disableCursor
-            resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <Panel id="nova-mobile-editor" minSize="30%" className="min-h-0">
-              {mainContentSlot}
-            </Panel>
-            <Separator aria-label={t('layout.resize.bottom')} className="nova-resize-handle h-2.5 shrink-0 cursor-row-resize border-y border-[var(--nova-border)] bg-[var(--nova-surface-2)] transition-colors" />
-            <Panel id="nova-mobile-agent" defaultSize="38%" minSize="20%" className="min-h-0">
-              {rightPanelContent}
-            </Panel>
-          </Group>
-        ) : mainContentSlot}
-        {/* Floating button to reopen the Agent dock when it's hidden */}
-        {writingContentVisible && !mobileAgentDocked && (
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-lg hover:bg-[var(--nova-hover)]"
-            onClick={() => onSetRightPanel('ai')}
-            aria-label={t('chat.agent')}
-          >
-            <Bot className="h-5 w-5" />
-          </button>
-        )}
-      </div>
-    )
+    const mobileMain = writingContentVisible ? (
+      <MobileWritingWorkspace editor={mainContentSlot} agent={rightPanelContent} />
+    ) : mainContentSlot
 
     return (
-      <>
+      <MobileWorkspaceHeaderProvider route={presentedLayout}>
         <WorkspaceMobileLayout
-          topBar={mobileTopBar}
+          topBar={<MobileWorkspaceHeaderOutlet title={settingsOpen ? t('workbench.activity.settings') : mobileActivityItems.find((item) => item.active)?.label || currentBookName} />}
+          navigationTools={mobileNavigationTools}
           main={mobileMain}
           activityItems={mobileActivityItems}
           projectDrawer={mobileProjectDrawer}
@@ -595,16 +536,14 @@ export function WorkbenchShell({
           }}
           closeLabel={t('common.close')}
           navigationLabel={t('workbench.mobile.navigation')}
-          compactNavigation={compactMobileNavigation}
-          compactNavigationLabel={t('workbench.mobile.navigationMenu')}
         />
         {mainContentPortal}
-      </>
+      </MobileWorkspaceHeaderProvider>
     )
   }
 
   return (
-    <>
+    <MobileWorkspaceHeaderProvider route={presentedLayout}>
       <SidebarProvider
         open={activityBarExpanded}
         style={{
@@ -626,7 +565,7 @@ export function WorkbenchShell({
         />
       </SidebarProvider>
       {mainContentPortal}
-    </>
+    </MobileWorkspaceHeaderProvider>
   )
 }
 

@@ -1,6 +1,5 @@
 const automations = {
   'automations.title': 'Automations',
-  'automations.close': 'Close Automations',
   'automations.error': 'Automation error',
   'automations.newTask': 'New automation',
   'automations.defaultName': 'Untitled automation',
@@ -17,6 +16,8 @@ const automations = {
   'automations.enabled': 'Enabled',
   'automations.disabled': 'Disabled',
   'automations.group.running': '{{count}} running',
+  'automations.mobile.task': 'Task',
+  'automations.mobile.inbox': 'Inbox',
   'automations.view.config': 'Task Config',
   'automations.view.inbox': 'Trigger Inbox',
   'automations.view.agent': 'Configuration Manager',

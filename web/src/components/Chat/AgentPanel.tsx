@@ -335,7 +335,8 @@ function AgentPanelComponent({
   }, [ideTellerId, tellers])
 
   useEffect(() => {
-    if (generalAgent) return
+    // Cached configuration and workbench conversations must not consume Writing's entry action.
+    if (generalAgent || chrome === 'workbench' || (configuredQuickPromptScope && configuredQuickPromptScope !== 'writing')) return
     if (!active) return
     const handleWritingInitRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
@@ -361,7 +362,7 @@ function AgentPanelComponent({
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [active, generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
+  }, [active, chrome, configuredQuickPromptScope, generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
 
   useEffect(() => {
     if (generalAgent) return
@@ -740,9 +741,9 @@ function AgentPanelComponent({
         workbench only.
       */}
       {dockedChrome && (
-        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--nova-border)] px-2">
+        <div className="nova-writing-agent-toolbar flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--nova-border)] px-2 max-lg:h-11">
           <div
-            className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5"
+            className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5 max-lg:h-11 max-lg:p-0"
             role="group"
             aria-label={t('chat.sessionControls')}
           >

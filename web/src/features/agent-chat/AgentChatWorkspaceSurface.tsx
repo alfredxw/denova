@@ -1,6 +1,7 @@
+import { ResourceWorkspace } from '@/components/layout/resource-workspace'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AdaptiveSurface, type AdaptiveSurfaceControls } from '@/components/layout/adaptive-surface'
+import { type AdaptiveSurfaceControls } from '@/components/layout/adaptive-surface'
 import {
   AgentChatActivitySidebar,
   AgentChatSidebarRail,
@@ -14,6 +15,9 @@ interface AgentChatWorkspaceSurfaceProps {
   sidebarProps: SidebarProps
   desktopSecondaryControl: ReactNode
   secondaryPane: {
+    available: boolean
+    focused: boolean
+    onFocus: (focused: boolean) => void
     content: ReactNode
     visible: boolean
     layoutKey: string
@@ -66,7 +70,10 @@ export function AgentChatWorkspaceSurface({
   )
 
   return (
-    <AdaptiveSurface
+    <ResourceWorkspace
+      title={t('workbench.activity.agentchat')}
+      secondaryView={{ available: secondaryPane.available, open: secondaryPane.focused, onOpenChange: secondaryPane.onFocus, returnToContentOnSelection: false, label: t('workbench.mobile.secondary') }}
+      contentViews={{ value: 'content', items: [{ value: 'content', label: t('workbench.mobile.primary') }], onValueChange: () => {} }}
       className="h-full min-h-0"
       collapseAt={720}
       desktopOverlay={(
@@ -115,6 +122,6 @@ export function AgentChatWorkspaceSurface({
       }}
     >
       {children}
-    </AdaptiveSurface>
+    </ResourceWorkspace>
   )
 }

@@ -1,3 +1,4 @@
+import { closeMobilePanes, showMobileWritingView } from '@/components/layout/mobile-pane-events'
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -27,7 +28,7 @@ interface WritingSidebarProps {
   revealRequest: OutlineRevealRequest | null
   projectExplorerRefreshSignal: number
   onSetSidebarView: (view: 'outline' | 'files' | 'search') => void
-  onSelectOutlineFile: (path: string) => void
+  onSelectOutlineFile: (path: string) => boolean | void | Promise<boolean | void>
   onOpenLoreTab: () => Promise<boolean>
   onReferenceFile: (path: string) => void
   onRevealFile: (path: string) => void | Promise<void>
@@ -116,8 +117,8 @@ export const WritingSidebar = memo(function WritingSidebar({
             selectedFile={selectedFile}
             loreTabActive={loreTabActive}
             revealRequest={revealRequest}
-            onSelectFile={onSelectOutlineFile}
-            onOpenLoreTab={onOpenLoreTab}
+            onSelectFile={async (path) => { const accepted = await onSelectOutlineFile(path); if (accepted !== false) { showMobileWritingView('editor'); closeMobilePanes() } }}
+            onOpenLoreTab={async () => { const accepted = await onOpenLoreTab(); if (accepted) { showMobileWritingView('editor'); closeMobilePanes() } return accepted }}
             onReferenceFile={onReferenceFile}
             onRevealFile={onRevealFile}
             onRenameItem={onRenameItem}
@@ -133,7 +134,7 @@ export const WritingSidebar = memo(function WritingSidebar({
               <div className="h-full overflow-y-auto p-2">
                 <StableSearchPanel
                   projectId={projectId}
-                  onSelectResult={onSelectSearchResult}
+                  onSelectResult={(result, query) => { onSelectSearchResult(result, query); showMobileWritingView('editor'); closeMobilePanes() }}
                   onBeforeReplace={onBeforeReplace}
                   onWorkspaceChanged={onExternalContentChange}
                 />
@@ -147,7 +148,7 @@ export const WritingSidebar = memo(function WritingSidebar({
                 workspace={workspace}
                 selectedPath={selectedFile}
                 structureRefreshSignal={projectExplorerRefreshSignal}
-                onSelectFile={onSelectFile}
+                onSelectFile={async (path) => { const accepted = await onSelectFile(path); if (accepted !== false) { showMobileWritingView('editor'); closeMobilePanes() } return accepted }}
                 onReferenceFile={onReferenceFile}
                 onCreateItem={onCreateItem}
                 onDeleteItem={onDeleteItem}

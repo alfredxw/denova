@@ -1,4 +1,7 @@
 const messages = {
+  'messages.back': '返回消息列表',
+  'messages.filters': '消息分类',
+  'messages.unread': '未读',
   'messages.title': '消息中心',
   'messages.description': '统一查看自动化进度、待处理事项和产品通知。',
   'messages.label': '消息',

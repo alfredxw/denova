@@ -1,3 +1,4 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -14,9 +15,8 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace, useResponsiveAgentOpen } from '@/components/layout/resource-workspace'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
-import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import type { ResourceDirectoryBadge, ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -67,7 +67,6 @@ interface SettingPanelProps {
   documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
   refreshSignal?: number
   embedded?: boolean
-  onClose?: () => void
   onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
   toolNavigationIntent?: ToolNavigationIntent | null
 }
@@ -85,7 +84,6 @@ export function SettingPanel({
   documentReviewNavigationIntent,
   refreshSignal = 0,
   embedded = false,
-  onClose,
   onFlushHandlerChange,
   toolNavigationIntent,
 }: SettingPanelProps) {
@@ -101,12 +99,11 @@ export function SettingPanel({
         onStoryDirectorsChange={onStoryDirectorsChange}
         onImagePresetsChange={onImagePresetsChange}
         embedded={embedded}
-        onClose={onClose}
         toolNavigationIntent={toolNavigationIntent}
       />
     )
   }
-  return <LoreSettingPanel mode={activeMode} projectId={projectId} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} documentReview={documentReview} documentReviewNavigationIntent={documentReviewNavigationIntent} refreshSignal={refreshSignal} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} toolNavigationIntent={toolNavigationIntent} />
+  return <LoreSettingPanel mode={activeMode} projectId={projectId} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} documentReview={documentReview} documentReviewNavigationIntent={documentReviewNavigationIntent} refreshSignal={refreshSignal} embedded={embedded} onFlushHandlerChange={onFlushHandlerChange} toolNavigationIntent={toolNavigationIntent} />
 }
 
 function LoreSettingPanel({
@@ -118,7 +115,6 @@ function LoreSettingPanel({
   documentReviewNavigationIntent,
   refreshSignal,
   embedded,
-  onClose,
   onFlushHandlerChange,
   toolNavigationIntent,
 }: {
@@ -130,7 +126,6 @@ function LoreSettingPanel({
   documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
   refreshSignal: number
   embedded: boolean
-  onClose?: () => void
   onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
   toolNavigationIntent?: ToolNavigationIntent | null
 }) {
@@ -165,7 +160,7 @@ function LoreSettingPanel({
   const [loreImageBatchInstruction, setLoreImageBatchInstruction] = useState('')
   const [loreImageBatchOverwrite, setLoreImageBatchOverwrite] = useState(false)
   const [pendingLoreImageTask, setPendingLoreImageTask] = useState<{ key: string; instruction: string } | null>(null)
-  const [agentOpen, setAgentOpen] = useState(false)
+  const [agentOpen, setAgentOpen] = useResponsiveAgentOpen()
   const [deleteLoreTarget, setDeleteLoreTarget] = useState<LoreItem | null>(null)
   const [saving, setSaving] = useState(false)
   const loreDraftRef = useRef<LoreItem | null>(null)
@@ -754,13 +749,8 @@ function LoreSettingPanel({
     return () => onFlushHandlerChange?.(null)
   }, [flushActiveAutosave, onFlushHandlerChange])
 
-  const closePanel = async () => {
-    if (!onClose || !(await flushActiveAutosave())) return
-    onClose()
-  }
-
   const handleSelectLore = useCallback(async (id: string) => {
-    if (id === activeId) return
+    if (id === activeId) { closeMobilePanes(); return }
     try {
       if (activeId === CREATOR_ENTRY_ID) {
         await (creatorAutosave.flushPending() ?? creatorAutosave.saveNow('auto'))
@@ -770,6 +760,7 @@ function LoreSettingPanel({
         await flushLoreAutosave()
       }
       setActiveId(id)
+      closeMobilePanes()
     } catch (error) {
       console.error('[lore-editor] failed to flush autosave before switching resources', error)
       toast.error((error as Error).message || t('editor.saveFailed'))
@@ -977,7 +968,10 @@ function LoreSettingPanel({
 
   return (
     <section className="h-full min-h-0 bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
-      <AdaptiveSurface
+      <ResourceWorkspace
+        title={panelTitle(activeMode, t)}
+        embedded={embedded}
+        secondaryView={{ label: t('workbench.mobile.agent'), available: true, open: agentOpen, onOpenChange: setAgentOpen }}
         left={{
           id: 'setting-directory',
           title: panelTitle(activeMode, t),
@@ -1032,30 +1026,13 @@ function LoreSettingPanel({
           mainMinSize: '240px',
         }}
       >
-        {({ isMobile, openLeft, openRight }) => (
+        {() => (
           <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <FeaturePageShell
               icon={editorHeaderIcon}
               title={editorHeaderTitle}
               subtitle={editorHeaderSubtitle}
-              leadingContent={isMobile ? (
-                <div className="flex items-center gap-1">
-                  <MobilePaneTrigger
-                    side="left"
-                    label={t('workbench.mobile.openSidePanel', { label: panelTitle(activeMode, t) })}
-                    onClick={openLeft}
-                  />
-                  {agentOpen ? (
-                    <MobilePaneTrigger
-                      side="right"
-                      label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.loreAgent.title') })}
-                      onClick={openRight}
-                    />
-                  ) : null}
-                </div>
-              ) : undefined}
               onSaveShortcut={flushActiveAutosave}
-              onClose={onClose ? () => void closePanel() : undefined}
               actions={(
                 <>
                   {isCreatorActive || isOpeningPresetActive || draft ? (
@@ -1129,7 +1106,7 @@ function LoreSettingPanel({
             </FeaturePageShell>
           </main>
         )}
-      </AdaptiveSurface>
+      </ResourceWorkspace>
       <LoreClassificationDialog
         open={loreClassificationOpen}
         projectId={projectId}

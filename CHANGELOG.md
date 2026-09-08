@@ -4,13 +4,93 @@ Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据�
 
 Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.4.2）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.2 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本（当前为 v0.4.4）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.4 后从未发布的中间格式不计入。
 
-`Unreleased` compares against the latest release (currently v0.4.2) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.2 are excluded.
+`Unreleased` compares against the latest release (currently v0.4.4) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.4 are excluded.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
+
+## [v0.4.4] - 2026-09-08
+
+### Brief / 简要说明
+
+#### 中文
+
+- 首次开启局域网访问时自动生成随机用户名和密码，支持查看、复制与重新生成密码。
+- 修复局域网地址误用代理虚拟网卡、开发环境端口不正确的问题。
+- 修复长写作会话无法继续、子 Agent 结果读取失败，以及 Windows 版本管理报错。
+- 修复同一轮对话中后续工具审批失败或卡片消失的问题，可连续审批并继续执行。
+- 更新编辑器和 HTML 清理依赖，修复已知安全问题。
+
+#### English
+
+- Automatically generate a random username and password when enabling LAN access for the first time, with password viewing, copying, and regeneration.
+- Fixed LAN links selecting proxy tunnel addresses or the wrong port in development.
+- Fixed long writing conversations failing to continue, completed SubAgent result reads, and version management errors on Windows.
+- Fixed subsequent tool approvals failing or disappearing within a run, allowing consecutive approvals and continued execution.
+- Updated editor and HTML sanitization dependencies to address known security issues.
+
+### Changed / 调整
+
+- 首次开启局域网访问时自动补齐缺失的用户名和密码并一并保存，已有凭据继续保留；新密码可在当前设置页面查看、复制或重新生成。
+- Enabling LAN access now generates and saves missing credentials together while preserving existing credentials; newly entered or generated passwords can be viewed, copied, or regenerated in the current settings page.
+
+### Fixed / 修复
+
+- 局域网链接优先使用有效的内网地址，跳过代理使用的测试网段，并在本机开发代理下沿用实际网页端口；地址提示与配对二维码保持一致。
+- LAN links now prefer valid private network addresses, exclude proxy benchmarking networks, and preserve the actual web port behind a local development proxy; displayed addresses and pairing codes stay consistent.
+
+- 修复 Windows 上活动会话的锁文件导致版本状态读取及快照创建失败的问题。
+- Fixed active session lock files blocking version status and snapshot creation on Windows.
+
+- 修复长写作会话因上下文索引错位而无法继续的问题，已有会话可在重新加载后正常续写。
+- Fixed context index mismatches blocking long writing conversations; existing sessions can continue after reloading.
+
+- 修复同一轮对话后续工具审批提交失败，以及待审批卡片被历史刷新覆盖的问题。
+- Fixed subsequent tool approvals failing within a run and history refreshes hiding pending approval cards.
+
+- 修复多个观察者同时读取子 Agent 完成结果时，会话句柄关闭导致的偶发失败。
+- Fixed intermittent completed SubAgent result reads failing when another observer closes the shared session handle.
+
+### Security / 安全
+
+- 更新 Tiptap 与 DOMPurify，修复编辑器属性处理及 HTML 清理中的已知安全问题。
+- Updated Tiptap and DOMPurify to fix known security issues in editor attribute handling and HTML sanitization.
+
+## [v0.4.3] - 2026-09-07
+
+### Brief / 简要说明
+
+#### 中文
+
+- 改善手机网页与 PWA 的写作、游戏、导航和输入体验。
+- 修复局域网登录与刷新后的认证，支持一次性二维码登录。
+- 修复 Agent 设置保存覆盖无关配置，并将异常对话历史的影响限制在对应会话内。
+
+#### English
+
+- Improved writing, gameplay, navigation, and input on mobile web and PWA.
+- Fixed LAN sign-in and authentication after refresh, with one-use QR sign-in.
+- Prevented Agent settings saves from overwriting unrelated profiles and isolated invalid conversation history to the affected session.
+
+
+### Changed / 调整
+
+- 优化手机网页与 PWA 的导航、写作和游戏交互：全屏工作面板、独立正文与 Agent 视图、剧情历史与分支列表，以及适应软键盘的输入布局；保留桌面布局。
+- Improved mobile web and PWA navigation, writing, and gameplay with full-screen panels, separate editor and Agent views, readable story history and branches, and keyboard-aware input while preserving desktop layouts.
+
+### Fixed / 修复
+
+- 异常对话历史仅阻止对应会话或故事加载，避免影响其他会话和工作台使用。
+- Invalid conversation history now blocks only the affected session or story, keeping other conversations and the workbench usable.
+
+- 修复切换模型或保存 Agent 设置时覆盖无关配置文件的问题；按文件检查冲突并保留可恢复的变更记录。
+- Fixed model selection and Agent settings saves overwriting unrelated profiles; each changed file now checks for conflicts and retains recoverable history.
+
+- 修复局域网登录页面无法显示及刷新后反复认证的问题；浏览器可保持登录 30 天，并支持本机生成短时一次性登录二维码和链接。
+- Fixed LAN sign-in pages failing to load and repeated authentication after refresh; browsers stay signed in for 30 days and can connect through short-lived, one-use QR codes and links created on the host.
 
 ## [v0.4.2] - 2026-09-06
 

@@ -19,8 +19,6 @@ interface SharedWorkbenchRoutesProps {
   home: ComponentProps<typeof HomeView>
   automations: ComponentProps<typeof AutomationsView>
   resourceTarget: ResourceTarget
-  onReturnToContentMode: () => void
-  onCloseSettings: () => void
   toolNavigationIntent: ToolNavigationIntent | null
 }
 
@@ -32,8 +30,6 @@ export function SharedWorkbenchRoutes({
   home,
   automations,
   resourceTarget,
-  onReturnToContentMode,
-  onCloseSettings,
   toolNavigationIntent,
 }: SharedWorkbenchRoutesProps) {
   return (
@@ -45,12 +41,12 @@ export function SharedWorkbenchRoutes({
       )}
       {isMounted('skills') && (
         <WorkbenchRouteLayer visible={route === 'skills'} loadingLabel={loadingLabel}>
-          <SkillsView target={resourceTarget} onClose={onReturnToContentMode} toolNavigationIntent={toolNavigationIntent} />
+          <SkillsView target={resourceTarget} toolNavigationIntent={toolNavigationIntent} />
         </WorkbenchRouteLayer>
       )}
       {isMounted('agents') && (
         <WorkbenchRouteLayer visible={route === 'agents'} loadingLabel={loadingLabel}>
-          <AgentsView target={resourceTarget} onClose={onReturnToContentMode} toolNavigationIntent={toolNavigationIntent} />
+          <AgentsView target={resourceTarget} toolNavigationIntent={toolNavigationIntent} />
         </WorkbenchRouteLayer>
       )}
       {isMounted('automations') && (
@@ -60,12 +56,12 @@ export function SharedWorkbenchRoutes({
       )}
       {isMounted('trajectory') && (
         <WorkbenchRouteLayer visible={route === 'trajectory'} loadingLabel={loadingLabel}>
-          <TrajectoryPage onClose={onReturnToContentMode} />
+          <TrajectoryPage />
         </WorkbenchRouteLayer>
       )}
       {isMounted('settings') && (
         <WorkbenchRouteLayer visible={route === 'settings'} loadingLabel={loadingLabel}>
-          <SettingsView visible={route === 'settings'} onClose={onCloseSettings} />
+          <SettingsView visible={route === 'settings'} />
         </WorkbenchRouteLayer>
       )}
     </>

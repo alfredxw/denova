@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// ErrInvalidCanonicalMessages identifies invalid history in one Session. Hosts
+// should reject that conversation's admission without disabling the Agent or
+// retrying the request as an uncertain provider failure. Import never repairs
+// raw messages implicitly: cleanup and compaction refer to their stable indices.
+var ErrInvalidCanonicalMessages = errors.New("agent canonical history is invalid")
+
 // LoadCanonicalMessages refreshes an idle host-backed Session from the
 // canonical conversation lane. Host-canonical logs keep only a compact
 // checkpoint; standalone logs remain self-contained and persist the imported
@@ -18,11 +24,11 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 	}
 	ordered := canonicalContextStateOrder(messages)
 	if err := validateImportedTranscript(ordered); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrInvalidCanonicalMessages, err)
 	}
 	contextState, err := rebuildContextStateSnapshot(ordered)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrInvalidCanonicalMessages, err)
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()

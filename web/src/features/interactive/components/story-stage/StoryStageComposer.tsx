@@ -1,6 +1,6 @@
 import { useRef, type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
-import { Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Paperclip, Pencil, Plus, RefreshCw, ScrollText, Sparkles, Target, X } from 'lucide-react'
+import { Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Paperclip, Pencil, RefreshCw, ScrollText, Sparkles, Target, X } from 'lucide-react'
 import { AgentComposerControls } from '@/components/Chat/AgentComposerControls'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { AgentGoalCard } from '@/components/Chat/AgentGoalCard'
@@ -34,7 +34,6 @@ interface StoryStageComposerProps {
     projectId: string
     creatingStory: boolean
     isMobile: boolean
-    keyboardInset: number
     inputTextStyle: CSSProperties
     workspace?: string
     inputFloatRef: RefObject<HTMLDivElement | null>
@@ -119,7 +118,6 @@ interface StoryStageComposerProps {
     handleInputTriggerChange: (trigger: ComposerTrigger | null) => void
     handleTokenRemove: (token: ComposerTokenSpec) => void
     toggleHotChoices: () => void
-    openMobileNavigation: () => void
     openContextAnalysis: () => void
     removeContextCompaction: () => Promise<void>
     send: (options?: InputAreaSendOptions) => Promise<boolean>
@@ -130,12 +128,12 @@ interface StoryStageComposerProps {
 }
 
 export function StoryStageComposer({ layout, editor, story, runtime, goal, dialogs, actions }: StoryStageComposerProps) {
-  const { projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
+  const { projectId, creatingStory, isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
   const { storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
   const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, pendingInterruptionId, operationId, connection, commandSubmitting, queue, queueActionPendingCommandID } = runtime
   const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, closeReplyEditor, saveReply } = dialogs
-  const { cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
+  const { cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openContextAnalysis, removeContextCompaction, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
   const activeControlsDisabled = streaming && (!operationId || connection !== 'connected')
   const resumeAvailable = Boolean(pendingInterruptionId) && !editingTurn && !goal.mode
   const attachments = useComposerAttachments(
@@ -173,7 +171,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
     return accepted
   }
   return (
-    <div ref={inputFloatRef} style={{ bottom: keyboardInset }} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
+    <div ref={inputFloatRef} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
       <div className="pointer-events-auto mx-auto max-w-5xl">
         {editingTurn && !streaming ? (
           <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
@@ -269,7 +267,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
                     return true
                   }
                 }
-                if (event.key === 'Enter' && !event.shiftKey) {
+                if (event.key === 'Enter' && !event.shiftKey && (!isMobile || event.metaKey || event.ctrlKey)) {
                   if (isNativeComposingKeyboardEvent(event)) return false
                   event.preventDefault()
                   if (canPickSkill) selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
@@ -288,7 +286,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
               style={inputTextStyle}
               disabled={branchTerminal || !approvalReady || goal.pending}
               inputMode="text"
-              enterKeyHint="send"
+              enterKeyHint={isMobile ? 'enter' : 'send'}
               autoCapitalize="sentences"
               placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : goal.mode ? t('chat.goal.placeholder') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
             />}
@@ -334,8 +332,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
             </>}
             toolbarEnd={<>
               <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={!approvalReady} runActive={streaming} />
-              <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{!isMobile ? t('storyStage.hotChoices.button') : null}</Button>
-              {isMobile ? <Button type="button" variant="outline" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')}><Plus className="h-3.5 w-3.5" /></Button> : null}
+              <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{t('storyStage.hotChoices.button')}</Button>
             </>}
             submitControl={<AgentComposerControls generationActive={streaming} hasSendableContent={Boolean(input.trim() || attachments.files.length)} resumeAvailable={resumeAvailable} onStop={() => { void stop() }} onSend={() => { void submit() }} sendDisabled={!approvalReady || !storyId || (!input.trim() && attachments.files.length === 0 && !resumeAvailable) || goal.pending} disabled={branchTerminal} abortPending={abortPending} actionPending={commandSubmitting || goal.pending} activeControlsDisabled={activeControlsDisabled} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw data-icon="inline-start" /> : undefined} />}
           />

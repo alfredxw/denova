@@ -48,6 +48,9 @@ test('runs General Agent tools in ordinary directories without crossing Project 
 })
 
 test('keeps concurrent sessions independent and delivers Follow Up to its exact session', async ({ page, request }) => {
+  // Multiple session switches and a reload need the slow-test budget on CI.
+  // Keep individual assertion timeouts unchanged.
+  test.slow()
   const projectPath = path.resolve('test-results', 'runtime', 'parallel-session-project')
   await mkdir(projectPath, { recursive: true })
   const project = await registerAgentChatProject(request, projectPath)

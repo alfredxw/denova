@@ -1,6 +1,7 @@
 import { memo, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { LoadingState } from '@/components/common/LoadingState'
+import { MobileWorkspaceHeaderScope } from '@/components/layout/mobile-workspace-header'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { WorkbenchPresentedLayout } from './WorkbenchShell'
 
@@ -123,9 +124,11 @@ interface WorkbenchRouteLayerProps {
 export function WorkbenchRouteLayer({ visible, loadingLabel, children }: WorkbenchRouteLayerProps) {
   return (
     <section hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
-      <Suspense fallback={<LoadingState label={loadingLabel} className="h-full min-h-0" />}>
-        {children}
-      </Suspense>
+      <MobileWorkspaceHeaderScope visible={visible}>
+        <Suspense fallback={<LoadingState label={loadingLabel} className="h-full min-h-0" />}>
+          {children}
+        </Suspense>
+      </MobileWorkspaceHeaderScope>
     </section>
   )
 }

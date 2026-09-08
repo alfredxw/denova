@@ -5,3 +5,11 @@ minimumReleaseAgeExclude:
 # Activity/Suspense effects. Remove this once an upstream release resets them.
 patchedDependencies:
   '@monaco-editor/react@4.7.0': patches/@monaco-editor__react@4.7.0.patch
+  # Route Monaco's vendored sanitizer import through its patched dependency.
+  monaco-editor@0.55.1: patches/monaco-editor@0.55.1.patch
+# Monaco pins an older sanitizer; keep its browser content sanitization patched.
+overrides:
+  monaco-editor>dompurify: 3.4.13
+allowBuilds:
+  # The test dependency's optional browser-worker installer is not used here.
+  msw: false

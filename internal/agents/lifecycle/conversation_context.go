@@ -135,7 +135,7 @@ func firstContextValue(values ...string) string {
 
 func lastUserMessage(messages []*agent.Message) *agent.Message {
 	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index] != nil && messages[index].Role == agent.User {
+		if messages[index] != nil && messages[index].Role == agent.User && !agent.IsContextStateMessage(messages[index]) && messages[index].TaskCompletion == nil {
 			return messages[index].Clone()
 		}
 	}

@@ -1,0 +1,629 @@
+/* Compact workspace only. Desktop geometry and saved panel preferences are unchanged. */
+@media (max-width: 1023px) {
+  /* A quiet, shared rhythm for compact chrome; reading typography remains user-controlled. */
+  :root {
+    --nova-mobile-height: 100dvh;
+    --nova-mobile-radius: 18px;
+    --nova-mobile-title-size: max(17px, var(--nova-ui-font-size));
+    --nova-mobile-label-size: max(15px, var(--nova-ui-compact-font-size));
+  }
+
+  [data-nova-mobile-shell="true"] {
+    height: var(--nova-mobile-height, 100dvh);
+    top: var(--nova-mobile-top, 0px);
+    padding-top: max(0px, calc(env(safe-area-inset-top) - var(--nova-mobile-top, 0px)));
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  }
+
+  .nova-mobile-topbar {
+    background: var(--nova-bg);
+    border-color: var(--nova-border-soft);
+    box-shadow: none;
+    color: var(--nova-text);
+  }
+
+  .nova-mobile-topbar [data-mobile-header-fallback] {
+    font-size: var(--nova-mobile-title-size);
+    font-weight: 600;
+    text-align: center;
+    padding-right: 48px;
+  }
+
+  .nova-mobile-page-title {
+    font-size: var(--nova-mobile-title-size);
+    font-weight: 600;
+  }
+
+  .nova-mobile-topbar button > svg,
+  .nova-mobile-sheet [data-mobile-drawer-header] button > svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.8;
+  }
+
+  /* The hit area stays 44px high while the segmented surface has breathing room. */
+  .nova-mobile-topbar .nova-mobile-view-tabs {
+    position: relative;
+    height: 44px;
+    padding: 0 3px;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+    isolation: isolate;
+  }
+
+  .nova-mobile-view-tabs::before {
+    content: "";
+    position: absolute;
+    inset: 5px 0;
+    z-index: -1;
+    border-radius: 11px;
+    background: var(--nova-hover);
+  }
+
+  .nova-mobile-view-tabs [data-slot="tabs-trigger"] {
+    height: 44px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    font-size: var(--nova-mobile-label-size);
+  }
+
+  .nova-mobile-view-tabs [data-slot="tabs-trigger"]::after {
+    inset: 8px 0;
+    height: auto;
+    border-radius: 8px;
+    background: var(--nova-bg);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--nova-text) 12%, transparent);
+    z-index: -1;
+  }
+
+  .nova-mobile-view-tabs [data-state="active"]::after {
+    opacity: 1;
+  }
+
+  .nova-mobile-topbar:has([data-mobile-header-content]) > [data-mobile-header-fallback],
+  .nova-mobile-topbar:not(:has([data-mobile-header-content])) > .nova-mobile-header-slot {
+    display: none;
+  }
+
+  .nova-mobile-topbar .nova-mobile-header-slot [data-slot="tabs-list"] {
+    min-height: 44px;
+  }
+
+  :root[data-nova-keyboard-open="true"] .nova-mobile-sheet {
+    padding-bottom: 0;
+  }
+
+  :is([data-nova-mobile-shell="true"], [data-slot="sheet-content"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"], [data-slot="select-content"]) :is(button, [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="combobox"], [role="option"]):where(:not([role="radio"], [role="checkbox"], [role="switch"])) {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+
+  :is([data-nova-mobile-shell="true"], [data-slot="sheet-content"], [data-slot="dialog-content"], [data-slot="popover-content"]) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select, [contenteditable="true"], .nova-agent-token-input) {
+    font-size: max(16px, var(--nova-ui-font-size)) !important;
+  }
+
+  .nova-mobile-sheet[data-slot="sheet-content"] {
+    top: var(--nova-mobile-top, 0px);
+    bottom: auto;
+    height: var(--nova-mobile-height, 100dvh);
+    width: calc(100% - 2rem);
+    max-width: 24rem;
+    overflow: hidden;
+    background: var(--nova-bg);
+    border-color: var(--nova-border-soft);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  .nova-mobile-sheet[data-side="right"] {
+    max-width: 32rem;
+    border-radius: 24px 0 0 24px;
+  }
+
+  .nova-mobile-sheet[data-side="left"] {
+    border-radius: 0 24px 24px 0;
+  }
+
+  .nova-mobile-sheet [data-mobile-drawer-header] {
+    min-height: 56px;
+    padding-inline: 12px;
+    background: var(--nova-bg);
+    border: 0;
+    box-shadow: none;
+  }
+
+  .nova-mobile-sheet [data-mobile-drawer-header] [data-slot="sheet-title"] {
+    font-size: var(--nova-mobile-title-size);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+
+  .nova-mobile-section-label {
+    display: block;
+    margin: 0 0 8px 12px;
+    color: var(--nova-text-muted);
+    font-size: max(12px, var(--nova-ui-micro-font-size));
+    font-weight: 500;
+  }
+
+  .nova-mobile-book-context [data-slot="dropdown-menu-trigger"] {
+    width: 100%;
+    max-width: none;
+    min-height: 52px;
+    gap: 12px;
+    padding: 8px 14px;
+    border: 0;
+    border-radius: var(--nova-mobile-radius);
+    background: var(--nova-surface);
+    color: var(--nova-text);
+    font-size: var(--nova-mobile-title-size);
+  }
+
+  .nova-mobile-book-context [data-slot="dropdown-menu-trigger"] > svg:first-child {
+    display: block;
+    width: 22px;
+    height: 22px;
+    stroke-width: 1.6;
+  }
+
+  .nova-mobile-quick-actions > button {
+    gap: 8px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--nova-surface);
+    font-size: var(--nova-mobile-label-size);
+  }
+
+  .nova-mobile-nav-group {
+    overflow: hidden;
+    border-radius: var(--nova-mobile-radius);
+    background: var(--nova-surface);
+  }
+
+  .nova-mobile-nav-group .nova-mobile-nav-row {
+    position: relative;
+    width: 100%;
+    min-height: 52px;
+    height: auto;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 8px 14px;
+    border: 0;
+    border-radius: 0;
+    text-align: left;
+    white-space: normal;
+    color: var(--nova-text);
+    font-size: var(--nova-mobile-label-size);
+    font-weight: 400;
+  }
+
+  .nova-mobile-nav-row + .nova-mobile-nav-row::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 48px;
+    right: 0;
+    height: 1px;
+    background: var(--nova-border-soft);
+  }
+
+  .nova-mobile-nav-row > svg {
+    width: 14px;
+    height: 14px;
+    color: var(--nova-text-faint);
+  }
+
+  .nova-mobile-nav-icon {
+    display: flex;
+    width: 22px;
+    height: 24px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    color: var(--nova-text-muted);
+  }
+
+  .nova-mobile-nav-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.7;
+  }
+
+  .nova-mobile-nav-row[aria-current="page"] {
+    background: var(--nova-active);
+    font-weight: 600;
+  }
+
+  .nova-mobile-nav-row[aria-current="page"] :is(svg, .nova-mobile-nav-icon) {
+    color: inherit;
+  }
+
+  [data-mobile-nav-group="creation"] .nova-mobile-nav-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    background: transparent;
+    overflow: visible;
+  }
+
+  [data-mobile-nav-group="creation"] .nova-mobile-nav-row {
+    min-height: 58px;
+    gap: 10px;
+    border-radius: var(--nova-mobile-radius);
+    background: var(--nova-surface);
+    font-weight: 600;
+  }
+
+  [data-mobile-nav-group="creation"] .nova-mobile-nav-row[aria-current="page"] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  [data-mobile-nav-group="creation"] .nova-mobile-nav-row::before,
+  [data-mobile-nav-group="creation"] .nova-mobile-nav-row > svg {
+    display: none;
+  }
+
+  .nova-mobile-navigation button:not(:disabled):active {
+    opacity: 0.72;
+    transform: none;
+  }
+
+  .nova-mobile-navigation-sheet[data-slot="sheet-content"] {
+    bottom: calc(100dvh - var(--nova-mobile-height, 100dvh) - var(--nova-mobile-top, 0px));
+    max-height: calc(var(--nova-mobile-height, 100dvh) - max(1rem, env(safe-area-inset-top)));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  [data-slot="dialog-content"], [data-slot="alert-dialog-content"] {
+    top: calc(var(--nova-mobile-top, 0px) + var(--nova-mobile-height, 100dvh) / 2);
+    max-height: calc(var(--nova-mobile-height, 100dvh) - max(1rem, env(safe-area-inset-top)) - max(1rem, env(safe-area-inset-bottom))) !important;
+    max-width: calc(100vw - 1.5rem) !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-padding-block: 1rem;
+    border-radius: 24px;
+  }
+
+  [data-slot="dialog-header"] {
+    padding-right: 2.5rem;
+  }
+
+  [data-slot="popover-content"], [data-slot="dropdown-menu-content"], [data-slot="dropdown-menu-sub-content"], [data-slot="select-content"] {
+    max-width: calc(100vw - 1rem);
+    max-height: min(var(--radix-popper-available-height, 80dvh), calc(var(--nova-mobile-height, 100dvh) - 1rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: var(--nova-mobile-radius);
+  }
+
+  :is([data-slot="dropdown-menu-content"], [data-slot="select-content"]) [role^="menuitem"],
+  [data-slot="select-content"] [role="option"] {
+    font-size: var(--nova-mobile-label-size);
+    padding-block: 10px;
+    border-radius: 10px;
+  }
+
+  [data-nova-mobile-shell="true"] .nova-agent-composer,
+  [data-nova-mobile-shell="true"] .nova-agent-composer:focus-within {
+    border-radius: 24px;
+    border-color: var(--nova-border-soft);
+    background: color-mix(in srgb, var(--nova-surface) 72%, transparent);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    padding: 8px;
+    box-shadow: 0 4px 18px color-mix(in srgb, var(--nova-bg-deep) 12%, transparent);
+  }
+
+  [data-nova-mobile-shell="true"] .nova-agent-composer:focus-within {
+    border-color: var(--nova-field-focus-border);
+  }
+
+  .nova-agent-composer :is(.nova-agent-composer-icon, .nova-agent-composer-pill) {
+    border-color: transparent;
+    background: transparent;
+    border-radius: 12px;
+    box-shadow: none;
+  }
+
+  .nova-agent-composer .nova-agent-composer-submit {
+    border-radius: 50%;
+    box-shadow: none;
+  }
+
+  .nova-agent-composer .nova-agent-composer-submit:not(:disabled) {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .nova-agent-composer .nova-agent-composer-body {
+    padding: 4px;
+  }
+
+  /* A whole row belongs to the draft, even when it is still empty or one line. */
+  .nova-agent-composer .nova-agent-composer-toolbar {
+    grid-template-areas: "body body" "start end";
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .nova-agent-composer:has(.nova-agent-composer-textarea[data-nova-multiline="true"]) .nova-agent-composer-toolbar {
+    grid-template-areas: "body body" "start end";
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .nova-agent-composer .nova-agent-composer-body {
+    width: 100%;
+  }
+
+  .nova-agent-composer-toolbar-end,
+  .nova-agent-composer-toolbar-start {
+    gap: 0.25rem;
+  }
+
+  .nova-agent-composer-toolbar-end [data-model-profile-trigger="true"] {
+    max-width: min(40vw, 16rem);
+  }
+
+  .nova-agent-composer-textarea {
+    max-height: min(25dvh, 10rem);
+    overflow-y: auto;
+  }
+
+  [data-testid="story-stage-hot-choices-list"] {
+    max-height: min(25dvh, 12rem);
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  [data-testid="story-stage-hot-choices-list"] > button {
+    padding: 12px;
+    border-radius: 12px;
+    border-color: transparent;
+    font-size: var(--nova-mobile-label-size);
+    line-height: 1.5;
+  }
+
+  .nova-chat-input-area-floating,
+  .nova-story-input-float {
+    padding: 8px 12px;
+    /* Keep controls above the home indicator without insetting the reading surface. */
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  @media (display-mode: standalone) {
+    .nova-chat-input-area-floating,
+    .nova-story-input-float {
+      /* Keep installed-app composers close to the usable viewport edge. */
+      padding-bottom: 8px;
+    }
+  }
+
+  [data-nova-mobile-shell="true"] :is(.nova-chat-input-area-floating, .nova-story-input-float) {
+    /* Only the floating composer obscures content; reading continues beneath its margins. */
+    background: transparent;
+  }
+
+  :root[data-nova-keyboard-open="true"] :is(.nova-chat-input-area-floating, .nova-story-input-float) {
+    padding-bottom: 8px;
+  }
+
+  .nova-mobile-topbar [data-layout="inline"] {
+    width: auto;
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+  }
+
+  /* The selected story supplies context; a second label costs reading space. */
+  .nova-mobile-topbar [data-layout="inline"] > span {
+    display: none;
+  }
+
+  .nova-mobile-topbar [data-layout="inline"] > div {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .nova-mobile-topbar .nova-mobile-story-title {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    padding-inline: 0.5rem;
+    font-size: var(--nova-mobile-title-size);
+    font-weight: 600;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .nova-mobile-story-title > span {
+    flex: 0 1 auto;
+  }
+
+  .nova-mobile-topbar .nova-mobile-story-title > svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .story-state-ledger > header {
+    height: auto;
+    min-height: 52px;
+    gap: 0.25rem;
+  }
+
+  .story-state-ledger > header > div {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  /* Actions cannot depend on mouse hover on a compact touch workspace. */
+  :is([data-nova-mobile-shell="true"], .nova-mobile-sheet) .group :is(button, [role="button"])[class*="group-hover:opacity-100"] {
+    opacity: 1;
+  }
+
+  [data-nova-mobile-shell="true"] .nova-message-meta {
+    flex-wrap: wrap;
+    opacity: 1;
+  }
+
+  [data-nova-mobile-shell="true"] .nova-user-message {
+    border: 0;
+    border-radius: 18px 18px 6px 18px;
+    background: var(--nova-user-message-bg-to);
+    box-shadow: none;
+  }
+
+  [data-nova-mobile-shell="true"] [data-slot="scroll-area-viewport"] > div {
+    display: block !important;
+    max-width: 100% !important;
+  }
+
+  [data-nova-mobile-shell="true"] [data-slot="feature-page-body"] {
+    min-width: 0;
+  }
+
+  :is([data-nova-mobile-shell="true"], .nova-mobile-sheet) [data-slot="tabs-list"] {
+    height: auto;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  [data-nova-mobile-shell="true"] [data-slot="workbench-tab-strip"] {
+    height: 48px;
+    background: var(--nova-bg);
+    border-color: var(--nova-border-soft);
+  }
+
+  .nova-mobile-editor-toolbar,
+  .nova-writing-agent-toolbar {
+    background: var(--nova-bg);
+    border-color: var(--nova-border-soft);
+    box-shadow: none;
+  }
+
+  .nova-mobile-editor-toolbar [data-slot="button"] > svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .nova-mobile-writing-empty {
+    gap: 24px;
+    padding: 32px;
+    border: 0;
+  }
+
+  .nova-mobile-writing-empty [data-slot="empty-header"] {
+    max-width: 20rem;
+    gap: 12px;
+  }
+
+  .nova-mobile-writing-empty [data-slot="empty-icon"] {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 8px;
+    border-radius: 22px;
+    background: var(--nova-surface);
+  }
+
+  .nova-mobile-writing-empty [data-slot="empty-icon"] svg {
+    width: 28px;
+    height: 28px;
+    stroke-width: 1.5;
+  }
+
+  .nova-mobile-writing-empty [data-slot="empty-title"] {
+    font-size: max(24px, var(--nova-ui-large-font-size));
+    font-weight: 600;
+    letter-spacing: -0.035em;
+  }
+
+  .nova-mobile-writing-empty [data-slot="empty-description"] {
+    font-size: var(--nova-mobile-label-size);
+    line-height: 1.7;
+  }
+
+  .nova-mobile-writing-empty [data-slot="empty-content"] {
+    max-width: 16rem;
+    gap: 8px;
+  }
+
+  .nova-mobile-writing-empty [data-slot="button"] {
+    width: 100%;
+    min-height: 48px;
+    gap: 8px;
+    border-radius: 14px;
+    font-size: var(--nova-mobile-label-size);
+  }
+
+  .nova-settings-view [data-nova-settings-content] {
+    padding: 16px;
+    background: var(--nova-bg);
+  }
+
+  .nova-settings-view section {
+    border-bottom: 0;
+    padding-block: 8px 16px;
+  }
+
+  .nova-settings-view section > button {
+    padding-inline: 12px;
+    font-size: var(--nova-mobile-label-size);
+  }
+
+  .nova-settings-view .nova-settings-section-card {
+    padding: 4px 12px;
+    gap: 0;
+    border: 0;
+    border-radius: var(--nova-mobile-radius);
+    background: var(--nova-surface);
+  }
+
+  .nova-settings-section-card > .nova-settings-row {
+    padding: 14px 4px;
+    border-radius: 0;
+  }
+
+  .nova-settings-section-card > .nova-settings-row + .nova-settings-row {
+    border-top: 1px solid var(--nova-border-soft);
+  }
+
+  .nova-settings-row [data-slot="field-title"],
+  .nova-settings-row [data-slot="field-label"] {
+    font-size: var(--nova-mobile-label-size);
+  }
+
+  .nova-settings-row [data-slot="field-description"] {
+    line-height: 1.6;
+  }
+
+  .nova-mobile-sheet .director-console > header {
+    padding-block: 0.5rem;
+  }
+
+  .nova-mobile-sheet .director-console > header :is(h2, [data-testid="director-panel-icon"]) {
+    display: none;
+  }
+
+  [data-nova-mobile-shell="true"] [data-slot="feature-page-header"] {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  [data-nova-mobile-shell="true"] [data-slot="feature-page-actions"] {
+    max-width: 100%;
+    flex-wrap: wrap;
+    margin-left: auto;
+  }
+
+  .nova-message-center[data-slot="sheet-content"] {
+    top: var(--nova-mobile-top, 0px);
+    bottom: auto;
+    height: var(--nova-mobile-height, 100dvh);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+}

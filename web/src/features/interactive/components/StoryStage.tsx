@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { PanelRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -9,7 +8,6 @@ import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE } from '@/components/Chat/ContextAna
 import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
 import type { ComposerTokenInputHandle, ComposerTokenSpec, ComposerTrigger } from '@/components/Chat/composer-token-input'
-import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
 import type { ContextAnalysis } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentMessageDisplayText, createAgentDataMessage } from '@/lib/agent-ui-message'
@@ -24,7 +22,7 @@ import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-s
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { useInteractiveAgentCommands, type StoryStageRuntimeUpdater } from '../use-interactive-agent-commands'
 import { DEFAULT_NARRATIVE_STYLE_ID } from '../narrative-style'
-import { StoryPicker } from './StoryPicker'
+import { StoryStageControls } from './story-stage/StoryStageControls'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
 import { TurnNavigator } from './TurnNavigator'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
@@ -44,7 +42,6 @@ import { buildStoryStageCommandMenu } from './story-stage/story-stage-commands'
 import { branchCreationSourceFromMessage, branchCreationSourceFromTurn } from './branching/model'
 import type { StoryStageProps } from './story-stage/story-stage-props'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import type { InputAreaSendOptions } from '@/components/Chat/InputArea'
 
 const DEFAULT_READING_FONT_SIZE = 18
@@ -63,11 +60,9 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const conversationConfig = useConversationConfig(setupConversationBinding)
   const approvalReady = conversationConfig.initialized && !conversationConfig.saving
   const isMobile = useIsMobile()
-  const keyboardInset = useKeyboardInset()
   const storyStateModel = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
   const [input, setInput] = useState('')
   const [goalMode, setGoalMode] = useState(false)
-  const [stageControlsOpen, setStageControlsOpen] = useState(false)
   const [styleScenes, setStyleScenes] = useState<string[]>([])
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [showSkillCommands, setShowSkillCommands] = useState(false)
@@ -281,7 +276,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   )
   const canUseHotChoices = hotChoices.length > 0 && !branchTerminal && !streaming && !editingTurn && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
-  const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + keyboardInset + 20 : undefined
+  const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + 20 : undefined
   const loadEarlierMessages = useCallback(async () => {
     if (!storyId || !historyWindow.beforeCursor || historyLoading) return
     setHistoryLoading(true)
@@ -625,35 +620,19 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   }
 
   const stageControls = (
-    <>
-      <StoryPicker
-        stories={stories}
-        currentStoryId={storyId}
-        onSelect={(id) => {
-          setStageControlsOpen(false)
-          setCreatingStory(false)
-          setPendingOpeningStoryId('')
-          onStorySelect(id)
-        }}
-        onCreate={() => {
-          setStageControlsOpen(false)
-          setPendingOpeningStoryId('')
-          setCreatingStory(true)
-        }}
-        onDeleteStories={onStoryDelete}
-        onRenameStory={onStoryRename}
-      />
-      {onToggleDirectorPanel && (
-        <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${directorPanelVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleDirectorPanel} aria-label={directorPanelVisible ? t('storyStage.hideDirectorPanel') : t('storyStage.showDirectorPanel')}>
-          <PanelRight className="h-3.5 w-3.5" />
-          {t('storyStage.directorPanel')}
-        </Button>
-      )}
-    </>
+    <StoryStageControls
+      isMobile={isMobile}
+      picker={{
+        stories, currentStoryId: storyId,
+        onSelect: (id) => { setCreatingStory(false); setPendingOpeningStoryId(''); onStorySelect(id) },
+        onCreate: () => { setPendingOpeningStoryId(''); setCreatingStory(true) },
+        onDeleteStories: onStoryDelete, onRenameStory: onStoryRename,
+      }}
+      history={{ items: turnNavigationItems, activeAnchorId: activeTurnAnchorId, onSelect: handleTurnNavigationSelect }}
+      directorPanelVisible={directorPanelVisible}
+      onToggleDirectorPanel={onToggleDirectorPanel}
+    />
   )
-  const openMobileNavigation = () => {
-    window.dispatchEvent(new Event(MOBILE_NAVIGATION_OPEN_EVENT))
-  }
   const waitingToStartOpening = pendingOpeningStoryId === storyId
   const committedTurnCount = Math.max(story?.turn_count || 0, snapshot?.turn_count || 0, snapshot?.turns?.length || 0)
   const openingRuntimeActive = streaming
@@ -673,10 +652,10 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
       <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
-        <StoryStageHeader isMobile={isMobile} controlsOpen={stageControlsOpen} onControlsOpenChange={setStageControlsOpen} controls={stageControls} t={t} />
+        <StoryStageHeader isMobile={isMobile} controls={stageControls} />
 
         <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
-          <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />
+          {!isMobile && <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />}
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             {historyWindow.stageKey === stageKey && !historyWindow.followLatest ? (
               <Button type="button" variant="secondary" size="sm" className="absolute right-4 top-3 z-30 shadow-md" onClick={resetHistoryToLatest}>
@@ -782,13 +761,13 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         </div>
       </div>
       <StoryStageComposer
-        layout={{ projectId, creatingStory: storySetupVisible || waitingToStartOpening, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
+        layout={{ projectId, creatingStory: storySetupVisible || (waitingToStartOpening && (!isMobile || !streaming)), isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, pendingInterruptionId: stageRun.runtime.pendingInterruptionId, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}
         goal={{ value: conversationGoal.goal, mode: goalMode, pending: conversationGoal.saving, enter: enterGoalMode, exit: () => setGoalMode(false), edit: editGoal, pause: pauseGoal, clear: clearGoal }}
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
-        actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
+        actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openContextAnalysis, removeContextCompaction, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
       />
     </main>
   )

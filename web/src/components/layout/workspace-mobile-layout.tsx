@@ -1,159 +1,83 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Check, ChevronRight } from 'lucide-react'
 import { MobilePaneHost, type MobilePane } from './mobile-pane-host'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { closeMobilePanes, MOBILE_NAVIGATION_OPEN_EVENT, MOBILE_PROJECT_OPEN_EVENT } from './mobile-pane-events'
+import { useMobileViewport } from '@/hooks/useMobileViewport'
+import { Button } from '@/components/ui/button'
 
-export const MOBILE_NAVIGATION_OPEN_EVENT = 'nova:mobile-navigation-open'
+export { MOBILE_NAVIGATION_OPEN_EVENT, MOBILE_PROJECT_OPEN_EVENT } from './mobile-pane-events'
 
 export interface MobileNavItem {
   id: string
   label: string
   icon: ReactNode
   active?: boolean
-  expanded?: boolean
   disabled?: boolean
   onClick: () => void
 }
 
-interface MobileDrawer {
-  id: 'project' | 'agent'
-  title: string
-  icon: ReactNode
-  side: 'left' | 'right'
-  content: ReactNode
-  onOpen?: () => void
-  onClose?: () => void
-}
-
 interface WorkspaceMobileLayoutProps {
   topBar: ReactNode
+  navigationTools: ReactNode
   main: ReactNode
   activityItems: MobileNavItem[]
   settingsItem: MobileNavItem
-  projectDrawer?: MobileDrawer
-  agentDrawer?: MobileDrawer
+  projectDrawer?: MobilePane
   closeLabel: string
   navigationLabel: string
-  compactNavigation?: boolean
-  compactNavigationLabel?: string
 }
 
-export function WorkspaceMobileLayout({
-  topBar,
-  main,
-  activityItems,
-  settingsItem,
-  projectDrawer,
-  agentDrawer,
-  closeLabel,
-  navigationLabel,
-  compactNavigation = false,
-  compactNavigationLabel,
-}: WorkspaceMobileLayoutProps) {
-  const [navigationOpen, setNavigationOpen] = useState(false)
-  const drawers = [projectDrawer, agentDrawer].filter((drawer): drawer is MobileDrawer => Boolean(drawer)).map((drawer) => ({
-    ...drawer,
-    className: drawer.side === 'left' ? 'w-[min(90vw,390px)]' : 'w-[min(90vw,390px)]',
-  })) as MobilePane[]
-
+export function WorkspaceMobileLayout({ topBar, navigationTools, main, activityItems, settingsItem, projectDrawer, closeLabel, navigationLabel }: WorkspaceMobileLayoutProps) {
+  const { t } = useTranslation()
+  useMobileViewport()
+  const [openPaneId, setOpenPaneId] = useState<string | null>(null)
   useEffect(() => {
-    if (!compactNavigation) return
-    const openNavigation = () => setNavigationOpen(true)
+    const openNavigation = () => { closeMobilePanes(); setOpenPaneId('navigation') }
+    const openProject = () => { closeMobilePanes(); setOpenPaneId('project') }
     window.addEventListener(MOBILE_NAVIGATION_OPEN_EVENT, openNavigation)
-    return () => window.removeEventListener(MOBILE_NAVIGATION_OPEN_EVENT, openNavigation)
-  }, [compactNavigation])
-
-  useEffect(() => {
-    if (!compactNavigation) setNavigationOpen(false)
-  }, [compactNavigation])
-
+    window.addEventListener(MOBILE_PROJECT_OPEN_EVENT, openProject)
+    return () => {
+      window.removeEventListener(MOBILE_NAVIGATION_OPEN_EVENT, openNavigation)
+      window.removeEventListener(MOBILE_PROJECT_OPEN_EVENT, openProject)
+    }
+  }, [])
+  // Group destinations for scanning without introducing another navigation state.
+  const navigationGroups = [
+    { id: 'creation', title: t('workbench.mobile.creation'), items: activityItems.filter((item) => item.id === 'writing' || item.id === 'story') },
+    { id: 'tools', title: t('workbench.mobile.tools'), items: activityItems.filter((item) => item.id !== 'writing' && item.id !== 'story') },
+    { id: 'settings', title: undefined, items: [settingsItem] },
+  ]
+  const navigation: MobilePane = {
+    id: 'navigation', title: t('workbench.mobile.navigationMenu'), side: 'left', swipeToOpen: true,
+    content: (
+      <div className="nova-mobile-navigation flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain">
+        <div className="shrink-0 px-4 pt-2">{navigationTools}</div>
+        <nav className="flex flex-col gap-5 p-4" aria-label={navigationLabel}>
+          {navigationGroups.map((group) => (
+            <section key={group.id} data-mobile-nav-group={group.id} aria-label={group.title}>
+              {group.title && <h3 className="nova-mobile-section-label">{group.title}</h3>}
+              <div className="nova-mobile-nav-group">
+                {group.items.map((item) => (
+                  <Button key={item.id} type="button" variant="ghost" className="nova-mobile-nav-row" disabled={item.disabled} aria-label={item.label} aria-current={item.active ? 'page' : undefined} onClick={() => { setOpenPaneId(null); item.onClick() }}>
+                    <span className="nova-mobile-nav-icon" aria-hidden="true">{item.icon}</span>
+                    <span className="min-w-0 flex-1">{item.label}</span>
+                    {item.active ? <Check data-icon="inline-end" aria-hidden="true" /> : <ChevronRight data-icon="inline-end" aria-hidden="true" />}
+                  </Button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </nav>
+      </div>
+    ),
+  }
   return (
-    <MobilePaneHost panes={drawers} closeLabel={closeLabel} className="h-dvh w-screen overflow-hidden">
-      {({ openPaneId, closePane, togglePane }) => {
-        const runNavAction = (action: () => void) => {
-          closePane()
-          setNavigationOpen(false)
-          action()
-        }
-        const navigationItems: MobileNavItem[] = [
-          ...(projectDrawer ? [{
-            id: projectDrawer.id,
-            label: projectDrawer.title,
-            icon: projectDrawer.icon,
-            expanded: openPaneId === projectDrawer.id,
-            onClick: () => {
-              setNavigationOpen(false)
-              togglePane(projectDrawer.id)
-            },
-          }] : []),
-          ...activityItems.map((item) => ({ ...item, onClick: () => runNavAction(item.onClick) })),
-          ...(agentDrawer ? [{
-            id: agentDrawer.id,
-            label: agentDrawer.title,
-            icon: agentDrawer.icon,
-            expanded: openPaneId === agentDrawer.id,
-            onClick: () => {
-              setNavigationOpen(false)
-              togglePane(agentDrawer.id)
-            },
-          }] : []),
-          { ...settingsItem, onClick: () => runNavAction(settingsItem.onClick) },
-        ]
-        const navigationSheet = (
-          <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
-            <SheetContent side="bottom" showCloseButton={false} aria-describedby={undefined} className="max-h-[70dvh] gap-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
-              <div className="nova-topbar flex h-11 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
-                <SheetTitle className="text-xs font-semibold text-[var(--nova-text)]">{compactNavigationLabel || navigationLabel}</SheetTitle>
-                <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={closeLabel} onClick={() => setNavigationOpen(false)}>
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="grid max-h-[calc(70dvh-2.75rem)] grid-cols-3 gap-2 overflow-y-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                {navigationItems.map((item) => (
-                  <MobileNavButton key={item.id} item={item} />
-                ))}
-              </div>
-            </SheetContent>
-          </Sheet>
-        )
-        return (
-          <div data-nova-app-shell="true" data-nova-mobile-shell="true" className="relative flex h-dvh w-screen flex-col overflow-hidden bg-[var(--nova-bg)] text-[var(--nova-text)]">
-            {topBar}
-            <div className="min-h-0 flex-1 overflow-hidden">
-              {main}
-            </div>
-            {compactNavigation ? (
-              navigationSheet
-            ) : (
-              <nav className="nova-mobile-nav flex shrink-0 items-stretch gap-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] px-0.5 py-1.5" aria-label={navigationLabel}>
-                {projectDrawer ? <MobileNavButton item={navigationItems[0]} /> : null}
-                {activityItems.map((item) => (
-                  <MobileNavButton key={item.id} item={{ ...item, onClick: () => runNavAction(item.onClick) }} />
-                ))}
-                {agentDrawer ? <MobileNavButton item={navigationItems[projectDrawer ? activityItems.length + 1 : activityItems.length]} /> : null}
-                <MobileNavButton item={{ ...settingsItem, onClick: () => runNavAction(settingsItem.onClick) }} />
-              </nav>
-            )}
-          </div>
-        )
-      }}
+    <MobilePaneHost panes={[navigation, ...(projectDrawer ? [projectDrawer] : [])]} closeLabel={closeLabel} openPaneId={openPaneId} onOpenPaneChange={setOpenPaneId} className="h-full min-h-0">
+      <div data-nova-app-shell="true" data-nova-mobile-shell="true" className="fixed inset-x-0 flex w-full min-w-0 flex-col overflow-hidden bg-background text-foreground">
+        {topBar}
+        <div className="min-h-0 flex-1 overflow-hidden">{main}</div>
+      </div>
     </MobilePaneHost>
-  )
-}
-
-function MobileNavButton({ item }: { item: MobileNavItem }) {
-  return (
-    <button
-      type="button"
-      className={`nova-mobile-nav-item flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--nova-radius)] px-1 text-[10px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:opacity-45 ${item.active ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : ''} ${item.expanded && !item.active ? 'is-expanded border border-[var(--nova-border)] text-[var(--nova-text-muted)]' : ''}`}
-      disabled={item.disabled}
-      aria-label={item.label}
-      aria-current={item.active ? 'page' : undefined}
-      aria-expanded={item.expanded || undefined}
-      onClick={item.onClick}
-    >
-      <span className="flex h-5 w-5 items-center justify-center">{item.icon}</span>
-      <span className="max-w-full truncate max-md:hidden">{item.label}</span>
-    </button>
   )
 }

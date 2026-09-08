@@ -77,7 +77,15 @@ func loadCanonicalMessages(
 	if err != nil {
 		return err
 	}
-	return session.LoadCanonicalMessages(ctx, messages)
+	if err := session.LoadCanonicalMessages(ctx, messages); err != nil {
+		if errors.Is(err, agent.ErrInvalidCanonicalMessages) {
+			key := session.Key()
+			slog.ErrorContext(ctx, "[agent] rejected invalid canonical history for Session",
+				"session_namespace", key.Namespace, "session_id", key.ID, "error", err)
+		}
+		return err
+	}
+	return nil
 }
 
 func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (agentrun.CommandReceipt, error) {

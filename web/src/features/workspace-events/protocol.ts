@@ -4,8 +4,7 @@ import type { SSEEvent } from '@/lib/api-client/types'
 const WORKSPACE_CHANGE_TYPES = new Set<WorkspaceFileChangeType>(['added', 'updated', 'deleted'])
 
 export type WorkspaceEventClientMessage =
-  | { type: 'subscribe'; projectId: string; authorization?: string }
-  | { type: 'authorization'; authorization?: string }
+  | { type: 'subscribe'; projectId: string }
   | { type: 'unsubscribe' }
 
 export type WorkspaceEventWorkerMessage =
@@ -25,13 +24,9 @@ export function isWorkspaceEventClientMessage(value: unknown): value is Workspac
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const message = value as Record<string, unknown>
   if (message.type === 'unsubscribe') return true
-  if (message.type === 'authorization') {
-    return message.authorization === undefined || typeof message.authorization === 'string'
-  }
   return message.type === 'subscribe' &&
     typeof message.projectId === 'string' &&
-    message.projectId.length > 0 &&
-    (message.authorization === undefined || typeof message.authorization === 'string')
+    message.projectId.length > 0
 }
 
 export function isWorkspaceEventWorkerMessage(value: unknown): value is WorkspaceEventWorkerMessage {

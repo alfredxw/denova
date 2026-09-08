@@ -25,6 +25,7 @@ const chat = {
   'chat.tool.inspector.status.cancelled': '已取消',
   'chat.agent': '创作Agent',
   'chat.sessionControls': '会话操作',
+  'chat.action.more': '消息操作',
   'chat.action.copyRunId': '复制 Run ID',
   'chat.action.runIdCopied': '已复制 Run ID',
   'chat.action.copyRunIdFailed': '复制 Run ID 失败',

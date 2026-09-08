@@ -47,8 +47,8 @@ interface HomeViewProps {
   onBooksChange: () => void | Promise<void>
   /** 打开酒馆角色卡导入弹窗 */
   onOpenCharacterCardImport?: () => void
-  /** 关闭全局书籍管理弹窗 */
-  onClose?: () => void
+  /** Returns to the creation workspace after the imported book is opened. */
+  onBookImported?: () => void
 }
 
 const ghostButtonCls = 'nova-nav-item border border-transparent bg-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -57,7 +57,7 @@ const iconButtonCls = 'nova-nav-item text-[var(--nova-text-faint)] hover:bg-[var
 type BookDialogState = { mode: 'create'; book: null } | { mode: 'edit'; book: BookRecord }
 
 /** 书籍管理视图：集中展示、创建、打开和编辑 Nova 数据目录中的书籍。 */
-export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, onBeforeSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
+export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, onBeforeSwitch, onBooksChange, onOpenCharacterCardImport, onBookImported }: HomeViewProps) {
   const { t } = useTranslation()
   const [showNovelImport, setShowNovelImport] = useState(false)
   const [bookDialog, setBookDialog] = useState<BookDialogState | null>(null)
@@ -201,8 +201,6 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
       icon={LibraryBig}
       title={t('home.title')}
       subtitle={t('home.bookCount', { count: books.length })}
-      onClose={onClose}
-      closeLabel={t('home.close')}
       className="nova-sidebar min-w-0 text-[var(--nova-text)]"
     >
 
@@ -431,7 +429,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
         onImported={async (result) => {
           await Promise.resolve(onSwitch(result.workspace))
           await Promise.resolve(onBooksChange())
-          onClose?.()
+          onBookImported?.()
         }}
       />
       <BookFormDialog

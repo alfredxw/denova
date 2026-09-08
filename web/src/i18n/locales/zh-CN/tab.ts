@@ -1,4 +1,7 @@
 const tab = {
+  'tab.actions': '当前标签页操作',
+  'tab.moveLeft': '向左移动',
+  'tab.moveRight': '向右移动',
   'tab.empty': '未打开任何页面',
   'tab.close': '关闭 {{label}}',
   'tab.closeCurrent': '关闭',

@@ -25,6 +25,7 @@ const chat = {
   'chat.tool.inspector.status.cancelled': 'Cancelled',
   'chat.agent': 'Writing Agent',
   'chat.sessionControls': 'Conversation controls',
+  'chat.action.more': 'Message actions',
   'chat.action.copyRunId': 'Copy Run ID',
   'chat.action.runIdCopied': 'Run ID copied',
   'chat.action.copyRunIdFailed': 'Failed to copy Run ID',

@@ -5,6 +5,7 @@
 // PNGs for the installable manifest and the Apple touch icon, so we render
 // the SVG onto an opaque Nova background (#1a1a1a = --nova-bg) for the
 // standard icons, and add an 80% safe-zone for the maskable variant.
+// The Apple touch icon uses a full-bleed light shell with system-owned corners.
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -17,6 +18,22 @@ const svgPath = path.join(publicDir, 'favicon.svg')
 // --nova-bg from src/index.css (dark theme). Kept opaque so home-screen
 // tiles never show a transparent fringe.
 const BACKGROUND = { r: 26, g: 26, b: 26 }
+
+async function renderAppleTouchIcon() {
+  // iOS supplies the outer mask. Expand the favicon's inset shell to the
+  // canvas and omit its decorative rim/shadow so no dark frame is baked in.
+  const svg = (await readFile(svgPath, 'utf8'))
+    .replaceAll('x="80" y="80" width="864" height="864" rx="188"',
+      'x="0" y="0" width="1024" height="1024"')
+    .replace(' filter="url(#iconShadow)"', '')
+    .replace(/\s*<rect[^>]*fill="none"[^>]*\/>/g, '')
+  await sharp(Buffer.from(svg))
+    .resize(180, 180)
+    .removeAlpha()
+    .png()
+    .toFile(path.join(publicDir, 'apple-touch-icon.png'))
+  console.log('  ✓ apple-touch-icon.png (180x180, full-bleed)')
+}
 
 async function renderIcon(size, file) {
   const layer = await sharp(svgPath).resize(size, size).png().toBuffer()
@@ -48,7 +65,7 @@ async function main() {
     process.exit(1)
   }
   console.log('Generating PWA icons from favicon.svg…')
-  await renderIcon(180, 'apple-touch-icon.png')
+  await renderAppleTouchIcon()
   await renderIcon(192, 'pwa-192.png')
   await renderIcon(512, 'pwa-512.png')
   await renderMaskable(512, 'pwa-maskable-512.png')

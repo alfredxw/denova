@@ -1,6 +1,7 @@
 import { parseJsonEventStream, uiMessageChunkSchema, type UIMessageChunk } from 'ai'
 import i18next from '@/i18n'
 import { toast } from 'sonner'
+import { queryClient } from '@/lib/query-client'
 
 export { parseSSEStream } from './sse'
 
@@ -8,8 +9,16 @@ export const jsonHeaders = { 'Content-Type': 'application/json' }
 const REQUEST_ID_HEADER = 'X-Request-ID'
 const BACKEND_UNAVAILABLE_TOAST_ID = 'nova-backend-unavailable'
 const BACKEND_UNAVAILABLE_STATUS = new Set([502, 503, 504])
-const REMOTE_ACCESS_CREDENTIALS_KEY = 'nova.remoteAccess.credentials'
-const REMOTE_ACCESS_REQUIRED_EVENT = 'nova:remote-access-required'
+// Give mobile foreground recovery and query retries time to restore the connection.
+const BACKEND_CHECK_DELAY_MS = 1500
+const BACKEND_CHECK_TIMEOUT_MS = 5000
+let backendCheck: AbortController | undefined
+let backendCheckTimer: ReturnType<typeof setTimeout> | undefined
+let backendUnavailableShown = false
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', clearBackendUnavailable)
+}
 
 type APIRequestInit = RequestInit & {
   suppressBackendUnavailableToast?: boolean
@@ -36,9 +45,10 @@ export class APIError extends Error {
 
 export async function fetchAPI(input: RequestInfo | URL, init?: APIRequestInit): Promise<Response> {
   const { suppressBackendUnavailableToast = false, ...baseInit } = init ?? {}
-  const requestInit = withRemoteAccessAuth(input, baseInit)
+  const requestInit = baseInit
   try {
     const res = await fetch(input, requestInit)
+    if (res.status < 500 && isLocalAPIRequest(input)) clearBackendUnavailable()
     if (!suppressBackendUnavailableToast) notifyBackendUnavailableIfNeeded(input, res.status)
     notifyRemoteAccessRequiredIfNeeded(input, res)
     return res
@@ -155,27 +165,9 @@ export function parseUIMessageStream(body: ReadableStream<Uint8Array>): Readable
   }))
 }
 
-export function setRemoteAccessCredentials(username: string, password: string) {
-  const credentials = { username: username.trim(), password }
-  if (!credentials.username || !credentials.password) return
-  window.sessionStorage.setItem(REMOTE_ACCESS_CREDENTIALS_KEY, JSON.stringify(credentials))
-}
-
-export function clearRemoteAccessCredentials() {
-  window.sessionStorage.removeItem(REMOTE_ACCESS_CREDENTIALS_KEY)
-}
-
-/** Returns the tab-scoped Basic credential that a SharedWorker cannot read itself. */
-export function getRemoteAccessAuthorization(): string | undefined {
-  const credentials = readRemoteAccessCredentials()
-  if (!credentials) return undefined
-  return `Basic ${encodeBasicAuth(credentials.username, credentials.password)}`
-}
-
-/** Applies the same login challenge behavior used by regular API requests. */
+/** Recheck the cookie with the server so a late 401 cannot discard a newer login. */
 export function handleRemoteAccessChallenge() {
-  clearRemoteAccessCredentials()
-  window.dispatchEvent(new CustomEvent(REMOTE_ACCESS_REQUIRED_EVENT))
+  void queryClient.invalidateQueries({ queryKey: ['remote-access'] })
 }
 
 function notifyBackendUnavailableIfNeeded(input: RequestInfo | URL, status: number) {
@@ -185,42 +177,8 @@ function notifyBackendUnavailableIfNeeded(input: RequestInfo | URL, status: numb
 
 function notifyRemoteAccessRequiredIfNeeded(input: RequestInfo | URL, res: Response) {
   if (res.status !== 401 || !isLocalAPIRequest(input)) return
-  if (!res.headers.get('WWW-Authenticate')?.toLowerCase().includes('basic')) return
+  if (res.headers.get('X-Denova-Auth') !== 'required') return
   handleRemoteAccessChallenge()
-}
-
-function withRemoteAccessAuth(input: RequestInfo | URL, init?: RequestInit): RequestInit | undefined {
-  if (!isLocalAPIRequest(input)) return init
-  const authorization = getRemoteAccessAuthorization()
-  if (!authorization) return init
-  const headers = new Headers(init?.headers ?? requestHeaders(input))
-  if (!headers.has('Authorization')) {
-    headers.set('Authorization', authorization)
-  }
-  return { ...init, headers }
-}
-
-function readRemoteAccessCredentials(): { username: string; password: string } | null {
-  try {
-    const raw = window.sessionStorage.getItem(REMOTE_ACCESS_CREDENTIALS_KEY)
-    if (!raw) return null
-    const value = JSON.parse(raw) as { username?: string; password?: string }
-    if (!value.username || !value.password) return null
-    return { username: value.username, password: value.password }
-  } catch {
-    clearRemoteAccessCredentials()
-    return null
-  }
-}
-
-function requestHeaders(input: RequestInfo | URL): HeadersInit | undefined {
-  if (typeof input === 'object' && !(input instanceof URL)) return input.headers
-  return undefined
-}
-
-function encodeBasicAuth(username: string, password: string): string {
-  const value = `${username}:${password}`
-  return window.btoa(String.fromCharCode(...new TextEncoder().encode(value)))
 }
 
 function shouldNotifyBackendUnavailable(input: RequestInfo | URL, error: unknown): boolean {
@@ -234,10 +192,57 @@ function shouldNotifyBackendUnavailable(input: RequestInfo | URL, error: unknown
 }
 
 function notifyBackendUnavailable() {
+  if (backendCheck || document.visibilityState === 'hidden') return
+  const controller = new AbortController()
+  backendCheck = controller
+  backendCheckTimer = setTimeout(() => { void checkBackendAvailability(controller) }, BACKEND_CHECK_DELAY_MS)
+}
+
+async function checkBackendAvailability(controller: AbortController) {
+  if (backendCheck !== controller) return
+  if (document.visibilityState === 'hidden') {
+    clearBackendUnavailable()
+    return
+  }
+  const timeout = setTimeout(() => controller.abort(), BACKEND_CHECK_TIMEOUT_MS)
+  let failure: unknown
+  try {
+    // Verify reachability independently; never replay a failed write or stream.
+    // Auth status is available before login and must not be served from cache.
+    const response = await fetch('/api/auth/status', { cache: 'no-store', signal: controller.signal })
+    if (backendCheck !== controller) return
+    if (response.status < 500) {
+      clearBackendUnavailable()
+      // Recovery may arrive after the startup query exhausted its retry.
+      void queryClient.invalidateQueries({ queryKey: ['remote-access'], predicate: query => query.state.status === 'error' })
+      return
+    }
+    failure = `HTTP ${response.status}`
+  } catch (error) {
+    failure = error
+  } finally {
+    clearTimeout(timeout)
+  }
+  if (backendCheck !== controller) return
+  backendCheck = undefined
+  if (document.hidden) return
+  if (!backendUnavailableShown) console.warn('[api] Backend connection verification failed', failure)
+  backendUnavailableShown = true
   toast.error(i18next.t('common.backendUnavailable.title'), {
     id: BACKEND_UNAVAILABLE_TOAST_ID,
     description: i18next.t('common.backendUnavailable.description'),
   })
+}
+
+function clearBackendUnavailable() {
+  clearTimeout(backendCheckTimer)
+  backendCheckTimer = undefined
+  backendCheck?.abort()
+  backendCheck = undefined
+  if (backendUnavailableShown) {
+    toast.dismiss(BACKEND_UNAVAILABLE_TOAST_ID)
+    backendUnavailableShown = false
+  }
 }
 
 function isLocalAPIRequest(input: RequestInfo | URL): boolean {

@@ -142,9 +142,8 @@ func (h *Handlers) HandleTerminalSessionDelete(ctx context.Context, c *hertzapp.
 
 // HandleTerminalAttach upgrades the HTTP connection to a WebSocket attached to one session.
 //
-// Auth: browsers cannot send an Authorization header on a WebSocket handshake, so this route is
-// exempt from Basic Auth in the middleware and instead validates the token handed out when the
-// session was created (see middleware.go).
+// The browser cookie authenticates LAN requests in the middleware; the attach token
+// additionally binds the socket to the terminal session selected by the client.
 func (h *Handlers) HandleTerminalAttach(ctx context.Context, c *hertzapp.RequestContext) {
 	manager := h.app.Terminals()
 	if manager == nil {

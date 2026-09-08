@@ -9,7 +9,9 @@ import { WritingDocumentEditor } from '@/components/Editor/WritingDocumentEditor
 import type { ReadingTypographySettings } from '@/components/Editor/EditorSettingsPanel'
 import { WritingSourceEditor } from '@/components/Editor/WritingSourceEditor'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace } from '@/components/layout/resource-workspace'
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { ChapterOutline } from '@/components/workbench/outline/ChapterOutline'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { DocumentReviewController } from '@/features/document-review/controller'
@@ -66,6 +68,7 @@ export function ProjectWritingSurface({
   onFlushHandlerChange,
   onWorkspaceChanged,
 }: ProjectWritingSurfaceProps) {
+  const isPhone = useIsMobile()
   const { t } = useTranslation()
   const [tree, setTree] = useState<ProjectBookFileNode[]>([])
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
@@ -210,7 +213,7 @@ export function ProjectWritingSurface({
   }, [])
 
   const selectOutlineFile = useCallback((path: string) => {
-    void selectFile(path)
+    void selectFile(path).then((accepted) => { if (accepted) closeMobilePanes() })
   }, [selectFile])
 
   const navigationPath = navigationIntent?.projectId === projectId
@@ -325,11 +328,11 @@ export function ProjectWritingSurface({
 
   return (
     <section className="h-full min-h-0 min-w-0 bg-[var(--nova-bg)]" aria-label={t('agentChat.page.reader')}>
-      <AdaptiveSurface
+      <ResourceWorkspace embedded title={t('agentChat.page.reader')}
         left={{
           id: `project-writing-outline:${projectId}`,
           side: 'left',
-          title: t('agentChat.reader.outline'),
+          title: t('agentChat.page.reader'),
           icon: <BookOpen className="h-4 w-4" />,
           content: directory,
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
@@ -367,7 +370,7 @@ export function ProjectWritingSurface({
                     documentReview={documentReview}
                     documentReviewNavigationIntent={navigationPath === document.path ? navigationIntent : null}
                     readingTypography={readingTypography}
-                    onOpenOutline={isMobile ? openLeft : undefined}
+                    onOpenOutline={isMobile && !isPhone ? openLeft : undefined}
                   />
                 ) : document.kind === 'text' ? (
                   <WritingSourceEditor
@@ -404,7 +407,7 @@ export function ProjectWritingSurface({
             )}
           </div>
         )}
-      </AdaptiveSurface>
+      </ResourceWorkspace>
     </section>
   )
 }

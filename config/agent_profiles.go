@@ -242,9 +242,13 @@ func loadUserSettingsWithProfiles(dataDir string) (Settings, error) {
 }
 
 func loadAgentProfileSettingsFromRoot(root string) (Settings, error) {
+	return loadAgentProfileSettingsUsing(root, os.ReadFile)
+}
+
+func loadAgentProfileSettingsUsing(root string, readFile func(string) ([]byte, error)) (Settings, error) {
 	settings := Settings{}
 	defaultsPath := filepath.Join(root, "main", agentProfileDefaultsFilename)
-	if content, err := os.ReadFile(defaultsPath); err == nil {
+	if content, err := readFile(defaultsPath); err == nil {
 		document, decodeErr := decodeAgentProfileDefaults(defaultsPath, content)
 		if decodeErr != nil {
 			slog.Warn("[config/agent_profiles.go] ignored invalid Agent Profile defaults", "path", defaultsPath, "error", decodeErr)
@@ -256,7 +260,7 @@ func loadAgentProfileSettingsFromRoot(root string) (Settings, error) {
 	}
 	for _, profile := range fixedAgentProfiles {
 		path := filepath.Join(root, "main", profile.Filename)
-		content, err := os.ReadFile(path)
+		content, err := readFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
@@ -272,12 +276,12 @@ func loadAgentProfileSettingsFromRoot(root string) (Settings, error) {
 			slog.Warn("[config/agent_profiles.go] ignored invalid main Agent Profile", "path", path, "error", err)
 		}
 	}
-	settings.CustomAgents = loadCustomAgentProfiles(filepath.Join(root, "custom"))
-	settings.SubAgents = loadSubAgentProfiles(filepath.Join(root, "subagents"))
+	settings.CustomAgents = loadCustomAgentProfiles(filepath.Join(root, "custom"), readFile)
+	settings.SubAgents = loadSubAgentProfiles(filepath.Join(root, "subagents"), readFile)
 	return sanitizeEditableSettings(settings), nil
 }
 
-func loadCustomAgentProfiles(directory string) []CustomAgentConfig {
+func loadCustomAgentProfiles(directory string, readFile func(string) ([]byte, error)) []CustomAgentConfig {
 	entries, err := os.ReadDir(directory)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -292,7 +296,7 @@ func loadCustomAgentProfiles(directory string) []CustomAgentConfig {
 			continue
 		}
 		path := filepath.Join(directory, entry.Name())
-		content, readErr := os.ReadFile(path)
+		content, readErr := readFile(path)
 		if readErr != nil {
 			slog.Warn("[config/agent_profiles.go] ignored unreadable Custom Main Agent Profile", "path", path, "error", readErr)
 			continue
@@ -308,7 +312,7 @@ func loadCustomAgentProfiles(directory string) []CustomAgentConfig {
 	return result
 }
 
-func loadSubAgentProfiles(directory string) []SubAgentConfig {
+func loadSubAgentProfiles(directory string, readFile func(string) ([]byte, error)) []SubAgentConfig {
 	entries, err := os.ReadDir(directory)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -323,7 +327,7 @@ func loadSubAgentProfiles(directory string) []SubAgentConfig {
 			continue
 		}
 		path := filepath.Join(directory, entry.Name())
-		content, readErr := os.ReadFile(path)
+		content, readErr := readFile(path)
 		if readErr != nil {
 			slog.Warn("[config/agent_profiles.go] ignored unreadable SubAgent Profile", "path", path, "error", readErr)
 			continue

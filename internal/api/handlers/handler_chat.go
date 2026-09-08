@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
+	agent "github.com/alfredxw/denova/agent"
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
@@ -81,6 +82,9 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
+	if writeAgentHistoryError(c, err) {
+		return
+	}
 	if errors.Is(err, novaApp.ErrAgentCommandIDRequired) {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
 		return
@@ -119,6 +123,18 @@ func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
 		return
 	}
 	writeError(c, consts.StatusInternalServerError, err.Error())
+}
+
+// An invalid imported transcript rejects only the selected conversation before
+// admission. A 4xx response lets clients settle the attempt instead of retaining
+// an uncertain command identity as they must for network and server failures.
+func writeAgentHistoryError(c *app.RequestContext, err error) bool {
+	if !errors.Is(err, agent.ErrInvalidCanonicalMessages) {
+		return false
+	}
+	writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.invalid_history",
+		messageKey(c, "api.chat.invalidHistory"), nil)
+	return true
 }
 
 func (h *Handlers) HandleChatContextCompaction(ctx context.Context, c *app.RequestContext) {
