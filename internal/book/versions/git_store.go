@@ -350,6 +350,8 @@ func (s *Service) commitFiles(id string) (map[string]versionFileData, error) {
 
 // commitFileIndex projects a commit from tree/blob metadata only. Callers that
 // only compare versions never decompress or copy file contents into memory.
+// Apply current visibility rules to historical snapshots too: older commits
+// may contain runtime files that are now excluded from workspace collection.
 func (s *Service) commitFileIndex(id string) (map[string]versionFileData, error) {
 	repo, err := s.openVersionRepo()
 	if err != nil {
@@ -365,6 +367,9 @@ func (s *Service) commitFileIndex(id string) (map[string]versionFileData, error)
 	}
 	files := map[string]versionFileData{}
 	err = iter.ForEach(func(file *object.File) error {
+		if isVersionExcludedRelPath(file.Name) {
+			return nil
+		}
 		files[file.Name] = versionFileData{
 			Path: file.Name,
 			Hash: file.Hash.String(),

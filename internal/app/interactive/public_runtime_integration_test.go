@@ -597,8 +597,8 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 		t.Fatal("Story Store lost canonical rich tool history while Agent Cleanup was active")
 	}
 
-	compacted, err := runtime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
-		Action: agentstructural.Compact, CommandID: "game-public-compact", Options: publicGameOptions(workspace, story.ID, "main"),
+	compacted, err := runtime.ExecuteStructuralOperation(ctx, publicGameMaintenanceCycle(store, workspace, story.ID, cfg, cleanup), agentstructural.Spec{
+		Action: agentstructural.Compact, CommandID: "game-public-compact",
 		Ref: agentrun.ContextCompactionRef{Force: true},
 	})
 	if err != nil || !compacted.Compaction.Triggered {
@@ -608,8 +608,8 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 	if err != nil || status.Compaction == nil {
 		t.Fatalf("public Game Compaction status=%#v err=%v", status.Compaction, err)
 	}
-	removed, err := runtime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
-		Action: agentstructural.Remove, CommandID: "game-public-remove", Options: publicGameOptions(workspace, story.ID, "main"),
+	removed, err := runtime.ExecuteStructuralOperation(ctx, publicGameMaintenanceCycle(store, workspace, story.ID, cfg, cleanup), agentstructural.Spec{
+		Action: agentstructural.Remove, CommandID: "game-public-remove",
 		Ref: agentrun.ContextCompactionRef{CompactionID: status.Compaction.ID},
 	})
 	if err != nil || !removed.Removed {
@@ -686,8 +686,8 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 	if err != nil || mainBeforeEdit.Cleanup == nil {
 		t.Fatalf("main bootstrap status=%#v err=%v", mainBeforeEdit, err)
 	}
-	compacted, err := runtime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
-		Action: agentstructural.Compact, CommandID: "game-edit-compact", Options: publicGameOptions(workspace, story.ID, "main"),
+	compacted, err := runtime.ExecuteStructuralOperation(ctx, publicGameMaintenanceCycle(store, workspace, story.ID, cfg, cleanup), agentstructural.Spec{
+		Action: agentstructural.Compact, CommandID: "game-edit-compact",
 		Ref: agentrun.ContextCompactionRef{Force: true},
 	})
 	if err != nil || !compacted.Compaction.Triggered {

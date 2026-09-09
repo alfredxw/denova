@@ -4,13 +4,42 @@ Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据�
 
 Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.4.4）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.4 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本（当前为 v0.4.5）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.5 后从未发布的中间格式不计入。
 
-`Unreleased` compares against the latest release (currently v0.4.4) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.4 are excluded.
+`Unreleased` compares against the latest release (currently v0.4.5) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.5 are excluded.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
+
+## [v0.4.5] - 2026-09-09
+
+### Brief / 简要说明
+
+#### 中文
+
+- 修复写作与游戏的手动压缩和长故事反复压缩，摘要在继续回合与重启后保持有效。
+- 修复版本对比显示旧快照中的运行时文件，以及 Windows 开发环境的请求连接延迟。
+- 更新默认创作指令与内置叙事风格，迁移前备份旧默认内容，保留用户自定义内容。
+
+#### English
+
+- Fixed manual compaction in Writing and Game and repeated compaction in long stories; summaries remain valid across subsequent turns and restarts.
+- Fixed version comparisons exposing runtime files from older snapshots and request connection delays in Windows development.
+- Updated default creative instructions and built-in narrative styles, backing up retired defaults and preserving user customizations.
+
+### Changed / 调整
+
+- 清理默认创作指令中的破限提示，移除“直白情色”内置叙事风格；升级时备份并清理未修改的旧默认内容，保留用户自定义内容。
+- Remove unrestricted-content instructions from the default creator template and retire the Direct Erotica preset; back up unchanged released defaults during migration and preserve user customizations.
+
+### Fixed / 修复
+
+- 修复写作和游戏在查看上下文分析或重启后无法手动压缩的问题，以及游戏继续回合后摘要失效、长故事反复压缩的问题。
+- Fix manual context compaction after context analysis or restart in writing and games, and preserve game checkpoints across subsequent turns to prevent repeated compaction in long stories.
+
+- 版本对比沿用当前文件排除规则，不再显示旧快照中的会话锁等运行时文件；改善 Windows 开发环境的 API 连接复用与本机双栈连接。
+- Apply current file exclusions to historical version comparisons so runtime files such as session locks stay hidden; improve API connection reuse and local dual-stack connections in Windows development.
 
 ## [v0.4.4] - 2026-09-08
 

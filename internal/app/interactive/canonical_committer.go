@@ -94,10 +94,24 @@ func (committer *canonicalConversationCommitter) CommitOutput(
 			return agent.OutputCommitReceipt{}, err
 		}
 	}
+	// Settled Story history projects tool prose, thinking, and response metadata
+	// differently from a live model call. Use that same journal projection now
+	// so the next load cannot mistake a successful turn for a historical edit.
+	// Read the committed branch directly: regeneration's input snapshot ends
+	// before the replacement turn and is no longer the output boundary.
+	conversation := committer.config.Conversation
+	storyContext, err := conversation.store.StoryContext(conversation.storyID, receipt.Turn.BranchID)
+	if err != nil {
+		return agent.OutputCommitReceipt{}, err
+	}
+	canonical, err := conversation.canonicalMessagesForSnapshot(storyContext.Snapshot)
+	if err != nil {
+		return agent.OutputCommitReceipt{}, err
+	}
 	return agent.OutputCommitReceipt{
 		Revision: receipt.Revision,
 		Transcript: &agent.OutputProjection{
-			Content: receipt.Turn.Narrative, Thinking: receipt.Turn.Thinking,
+			Content: receipt.Turn.Narrative, Thinking: receipt.Turn.Thinking, CanonicalMessages: canonical,
 		},
 	}, nil
 }

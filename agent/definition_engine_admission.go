@@ -133,14 +133,19 @@ func (engine *definitionEngine) verifyCanonicalInputCommit(
 	return nil
 }
 
+type committedOutput struct {
+	output            *Message
+	canonicalMessages []*Message
+}
+
 func (engine *definitionEngine) commitCanonicalOutput(
 	ctx context.Context,
 	request runstate.EngineRequest,
 	message *Message,
 	adapter CanonicalAdapter,
-) (*Message, error) {
+) (committedOutput, error) {
 	if adapter == nil {
-		return CloneMessage(message), nil
+		return committedOutput{output: CloneMessage(message)}, nil
 	}
 	identity := canonicalCommitIdentity(engine.key, request.Snapshot, CommitOutput)
 	hash, err := hashCanonical(struct {
@@ -148,24 +153,34 @@ func (engine *definitionEngine) commitCanonicalOutput(
 		Message Message
 	}{Version: 1, Message: *CloneMessage(message)})
 	if err != nil {
-		return nil, err
+		return committedOutput{}, err
 	}
 	receipt, err := adapter.CommitOutput(ctx, OutputCommitRequest{
 		Identity: identity, Hash: hash, Message: *CloneMessage(message),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("commit canonical Agent output: %w", err)
+		return committedOutput{}, fmt.Errorf("commit canonical Agent output: %w", err)
 	}
 	receipt.Revision = strings.TrimSpace(receipt.Revision)
 	if receipt.Revision == "" {
-		return nil, errors.New("commit canonical Agent output returned an empty revision")
+		return committedOutput{}, errors.New("commit canonical Agent output returned an empty revision")
 	}
 	effective := CloneMessage(message)
 	if receipt.Transcript != nil {
 		effective.Content = receipt.Transcript.Content
 		effective.ReasoningContent = receipt.Transcript.Thinking
 	}
-	return effective, nil
+	var canonicalMessages []*Message
+	if receipt.Transcript != nil && receipt.Transcript.CanonicalMessages != nil {
+		canonicalMessages = canonicalContextStateOrder(receipt.Transcript.CanonicalMessages)
+		if err := validateImportedTranscript(canonicalMessages); err != nil {
+			return committedOutput{}, fmt.Errorf("invalid canonical output transcript: %w", err)
+		}
+		if len(canonicalMessages) == 0 || canonicalMessages[len(canonicalMessages)-1].Role != Assistant {
+			return committedOutput{}, errors.New("canonical output transcript requires a final assistant message")
+		}
+	}
+	return committedOutput{output: effective, canonicalMessages: canonicalMessages}, nil
 }
 
 func (engine *definitionEngine) commitCanonicalContext(

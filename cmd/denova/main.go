@@ -192,7 +192,13 @@ func startViteDev(port, host, backendPort string) {
 		}
 	}
 
-	cmd := exec.Command("pnpm", "dev", "--host", host, "--port", port)
+	args := []string{"dev", "--port", port, "--host"}
+	// Let Node choose a dual-stack listener for LAN access. Binding only IPv4
+	// makes localhost clients wait for IPv6 fallback on each new connection.
+	if host != config.LANHTTPHost {
+		args = append(args, host)
+	}
+	cmd := exec.Command("pnpm", args...)
 	cmd.Dir = webDir
 	cmd.Env = viteDevEnv(os.Environ(), port, backendPort)
 	cmd.Stdout = os.Stdout

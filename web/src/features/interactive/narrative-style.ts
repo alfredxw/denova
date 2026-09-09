@@ -3,7 +3,7 @@ import type { Teller } from './types'
 
 export const DEFAULT_NARRATIVE_STYLE_ID = 'rhythm'
 
-const BUILTIN_NARRATIVE_STYLE_IDS = new Set(['rhythm', 'classic', 'screenwriter', 'grimdark', 'direct-erotica'])
+const BUILTIN_NARRATIVE_STYLE_IDS = new Set(['rhythm', 'classic', 'screenwriter', 'grimdark'])
 
 /** Resolve an available selection without depending on backend list ordering. */
 export function resolveNarrativeStyle(tellers: Teller[], requestedID: string | undefined): Teller | undefined {
