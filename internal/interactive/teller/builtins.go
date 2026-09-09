@@ -1,11 +1,10 @@
 package teller
 
 var builtinTellers = map[string]Definition{
-	"rhythm":         builtinTeller("rhythm", "节奏叙事", "情节紧凑，推进直接，回报鲜明，兼顾人物、文笔与可读性。", rhythmSystemPrompt, rhythmTurnContext),
-	"classic":        builtinTeller("classic", "稳健叙事", "因果完整，人物稳定，节奏从容，在自然推进中保持长期一致性。", steadySystemPrompt, steadyTurnContext),
-	"screenwriter":   builtinTeller("screenwriter", "编剧风格", "使用标准剧本格式呈现场景、动作和对白，尽量保持原有情节与人物逻辑。", screenwriterSystemPrompt, screenwriterTurnContext),
-	"grimdark":       builtinTeller("grimdark", "暗黑压抑", "压迫持续存在，选择伴随代价，希望稀缺却真实，后果冷峻而可信。", bleakSystemPrompt, bleakTurnContext),
-	"direct-erotica": builtinTeller("direct-erotica", "直白情色", "以事件驱动故事，自然导向情色场景，文风直白粗俗", directEroticaSystemPrompt, directEroticaTurnContext),
+	"rhythm":       builtinTeller("rhythm", "节奏叙事", "情节紧凑，推进直接，回报鲜明，兼顾人物、文笔与可读性。", rhythmSystemPrompt, rhythmTurnContext),
+	"classic":      builtinTeller("classic", "稳健叙事", "因果完整，人物稳定，节奏从容，在自然推进中保持长期一致性。", steadySystemPrompt, steadyTurnContext),
+	"screenwriter": builtinTeller("screenwriter", "编剧风格", "使用标准剧本格式呈现场景、动作和对白，尽量保持原有情节与人物逻辑。", screenwriterSystemPrompt, screenwriterTurnContext),
+	"grimdark":     builtinTeller("grimdark", "暗黑压抑", "压迫持续存在，选择伴随代价，希望稀缺却真实，后果冷峻而可信。", bleakSystemPrompt, bleakTurnContext),
 }
 
 func builtinTeller(id, name, description, systemPrompt, turnContext string) Definition {
@@ -63,7 +62,3 @@ const bleakSystemPrompt = `你采用暗黑压抑的叙事，让危险、匮乏�
 语言冷静、具体、有分量，善用环境痕迹、物质条件和克制的反应承载压力。血腥、绝望宣言与抽象说教不能代替人物和世界本身，黑暗也不要求所有角色都冷酷或所有场景都处在最大强度。`
 
 const bleakTurnContext = `让当前最真实的压力落到人物正在保护、争取或害怕失去的具体事物上，并让环境、资源、规则与关系共同参与局面。人物以符合自身的方式作出选择，成功或失败都形成真实结果与持续影响。用克制而具体的细节保留代价，也让来之不易的主动权、善意和希望拥有应有的重量。`
-
-const directEroticaSystemPrompt = "你是一个专为情色小说服务的讲述者，风格直白粗俗，毫不隐晦。你的任务是设计各种事件和情境，将故事自然导向情色发展，而非每轮强制插入性爱场面。你要让主角的行动影响剧情，让性成为情节的自然结果。使用最直接、最露骨的词汇描写性器官、性行为和性快感，避免委婉语或文艺修饰。保持剧情连贯，让情色内容服务于故事推进。必须使用下流露骨的词汇刻画性器官和其他身体部位，包括但不限于“奶子,乳房,奶头,乳头,小穴,阴道,尻穴,逼,逼穴,阴蒂,阴唇,屁眼,肛门,菊花,肉棒,鸡巴,精液”等。禁止性器官使用：花心 / 肉刃 / 花径 / 花穴 等美化词汇"
-
-const directEroticaTurnContext = "根据当前剧情阶段，决定是否引入情色元素。在铺垫期，重点推进故事、制造悬念、塑造人物关系、安排诱惑或暧昧情境；当情节点积累到合适时，才展开直白粗俗的性爱描写。不要强行让每轮都发生性行为，而是让事件驱动角色进入情色场景。描写时仍采用直白语言，详细刻画身体反应、性行为过程，但需确保情节合理、节奏有起伏。"

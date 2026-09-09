@@ -7,8 +7,6 @@ const narrativeStyle = {
   'narrativeStyle.builtin.screenwriter.description': '使用标准剧本格式呈现场景、动作和对白，尽量保持原有情节与人物逻辑。',
   'narrativeStyle.builtin.grimdark.name': '暗黑压抑',
   'narrativeStyle.builtin.grimdark.description': '压迫持续存在，选择伴随代价，希望稀缺却真实，后果冷峻而可信。',
-  'narrativeStyle.builtin.direct-erotica.name': '直白情色',
-  'narrativeStyle.builtin.direct-erotica.description': '以事件驱动故事，自然导向情色场景，文风直白粗俗。',
 } as const
 
 export default narrativeStyle

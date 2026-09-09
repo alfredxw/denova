@@ -20,7 +20,7 @@ func TestStructuralOperationRejectsInvalidPublicRequestBeforeOpeningSession(t *t
 		{Action: agentstructural.Compact, CommandID: strings.Repeat("x", 4<<10+1)},
 		{Action: agentstructural.Action("future-action"), CommandID: "unsupported-structural-action"},
 	} {
-		if _, err := backend.executeStructural(context.Background(), spec); !errors.Is(err, agent.ErrInvalidInput) {
+		if _, err := backend.executeStructural(context.Background(), Cycle{}, spec); !errors.Is(err, agent.ErrInvalidInput) {
 			t.Fatalf("executeStructural(%#v) error = %v, want ErrInvalidInput", spec, err)
 		}
 	}

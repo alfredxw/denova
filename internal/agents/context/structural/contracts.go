@@ -29,5 +29,4 @@ type Spec struct {
 	CommandID string
 	Action    Action
 	Ref       agentrun.ContextCompactionRef
-	Options   agentrun.Options
 }

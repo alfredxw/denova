@@ -916,6 +916,21 @@ loopControlsStopped:
 	if final == nil || len(final.ToolCalls) != 0 {
 		return runstate.EngineResult{}, errors.New("Agent modelToolLoop completed without a final assistant message")
 	}
+	emitTrace(ctx, engine.trace, TraceEvent{
+		Kind: TraceModelFinished, Session: engine.key, RunID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
+	})
+	committed, err := engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
+	final = committed.output
+	if len(transcript) == 0 || transcript[len(transcript)-1] == nil || transcript[len(transcript)-1].Role != Assistant {
+		return runstate.EngineResult{}, errors.New("Agent transcript lost the final assistant message")
+	}
+	transcript[len(transcript)-1] = CloneMessage(final)
+	if committed.canonicalMessages != nil {
+		transcript = committed.canonicalMessages
+	}
 	var finalCapabilityUpdates []runstate.EngineCapabilityState
 	var finalCleanupCompleted *runstate.EngineCleanupCompleted
 	if pendingCleanup != nil {
@@ -936,13 +951,6 @@ loopControlsStopped:
 		}
 		cleanupState, cleanupPresent = nextCleanup, true
 	}
-	emitTrace(ctx, engine.trace, TraceEvent{
-		Kind: TraceModelFinished, Session: engine.key, RunID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
-	})
-	final, err = engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical)
-	if err != nil {
-		return runstate.EngineResult{}, err
-	}
 	_, finishClass := classifyResponseFinishReason(final.ResponseMeta)
 	incomplete := finishClass.Incomplete()
 	var continuation *runstate.EngineContinuation
@@ -954,10 +962,6 @@ loopControlsStopped:
 			return runstate.EngineResult{}, err
 		}
 	}
-	if len(transcript) == 0 || transcript[len(transcript)-1] == nil || transcript[len(transcript)-1].Role != Assistant {
-		return runstate.EngineResult{}, errors.New("Agent transcript lost the final assistant message")
-	}
-	transcript[len(transcript)-1] = CloneMessage(final)
 	encoded, err := encodeEngineTranscript(prepared, transcript)
 	if err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("encode Agent transcript: %w", err)

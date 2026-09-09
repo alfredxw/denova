@@ -25,9 +25,13 @@ func (c *Conversation) CanonicalMessages(ctx context.Context) ([]*agent.Message,
 	if err != nil {
 		return nil, err
 	}
-	turnCount := SnapshotTurnCount(storyContext.Snapshot)
+	return c.canonicalMessagesForSnapshot(storyContext.Snapshot)
+}
+
+func (c *Conversation) canonicalMessagesForSnapshot(snapshot interactive.Snapshot) ([]*agent.Message, error) {
+	turnCount := SnapshotTurnCount(snapshot)
 	history, err := c.store.ReadModelHistory(c.storyID, interactive.StoryModelHistoryQuery{
-		BranchID: storyContext.Snapshot.BranchID, StartTurn: 0, EndTurn: turnCount,
+		BranchID: snapshot.BranchID, StartTurn: 0, EndTurn: turnCount,
 	})
 	if err != nil {
 		return nil, err
@@ -36,7 +40,7 @@ func (c *Conversation) CanonicalMessages(ctx context.Context) ([]*agent.Message,
 	// complete unmodified canonical branch so future cleanup/compaction targets
 	// stable raw message indices instead of a second Story-store projection.
 	projection, err := BuildModelContextProjection(
-		history, nil, storyContext.Snapshot,
+		history, nil, snapshot,
 		canonicalToolContextPolicy(c.ToolResultContextPolicy()), c.AgentCycleIdentitySnapshot(),
 	)
 	if err != nil {

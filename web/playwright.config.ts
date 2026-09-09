@@ -14,7 +14,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   reporter: process.env.CI
-    ? [['line'], ['html', { open: 'never' }]]
+    ? [['line'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/playwright.json' }]]
     : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,

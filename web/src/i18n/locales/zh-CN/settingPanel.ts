@@ -735,7 +735,7 @@ const settingPanel = {
   'settingPanel.switch.disableRule': '停用规则',
   'settingPanel.target.system.label': '系统提示',
   'settingPanel.target.system.summary': 'Agent 初始化时注入',
-  'settingPanel.target.system.detail': '和 CREATOR.md 同处系统提示层，定义叙事定位、题材倾向和长期叙事原则。',
+  'settingPanel.target.system.detail': '作为叙事风格的系统提示，定义叙事定位、题材倾向和长期叙事原则。CREATOR.md 单独作为项目创作指令提供。',
   'settingPanel.target.turnContext.label': '本轮上下文',
   'settingPanel.target.turnContext.summary': '每轮贴近用户行动',
   'settingPanel.target.turnContext.detail': '每次生成下一回合时注入，强约束本轮裁定、NPC 主动反应、代价、暗线推进和可选择。',

@@ -137,6 +137,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err := migratePresetLayout(dataDir); err != nil {
 		return nil, fmt.Errorf("migrate Denova preset layout: %w", err)
 	}
+	if err := migrateRetiredNarrativeStyle(dataDir); err != nil {
+		return nil, fmt.Errorf("migrate retired narrative style: %w", err)
+	}
 	if err := config.EnsureAgentProfiles(dataDir); err != nil {
 		return nil, fmt.Errorf("initialize Agents Project profiles: %w", err)
 	}

@@ -60,6 +60,13 @@ type CommitReceipt struct{ Revision string }
 type OutputProjection struct {
 	Content  string
 	Thinking string
+	// CanonicalMessages, when non-nil, replaces the retained transcript with
+	// the complete model-visible history reconstructed after the host commit.
+	// Hosts that transform settled messages must return the same projection
+	// used on reload, preserving existing raw message positions for capabilities.
+	// Current-turn output and lifecycle still retain the provider's metadata.
+	// Hosts that persist complete Agent messages can leave this nil.
+	CanonicalMessages []*Message
 }
 
 type OutputCommitReceipt struct {
