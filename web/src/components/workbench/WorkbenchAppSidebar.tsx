@@ -3,7 +3,6 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { EyeOff, PanelLeft, Settings, SlidersHorizontal } from 'lucide-react'
-import { LayoutGroup, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
@@ -19,7 +18,6 @@ import {
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { novaEase } from '@/features/motion/motion-tokens'
 import { verticalAxisModifiers } from '@/lib/dnd'
 import { cn } from '@/lib/utils'
 import { WorkbenchSidebarCustomizationDialog } from './WorkbenchSidebarCustomizationDialog'
@@ -58,8 +56,6 @@ interface WorkbenchAppSidebarProps {
   onResizePointerDown: PointerEventHandler<HTMLDivElement>
   onResizeKeyDown: KeyboardEventHandler<HTMLDivElement>
 }
-
-const PRIMARY_NAVIGATION_TRANSITION = { type: 'tween', duration: 0.12, ease: novaEase } as const
 
 /** Full-height application navigation; project structure remains a separate context pane. */
 export function WorkbenchAppSidebar({
@@ -106,7 +102,7 @@ export function WorkbenchAppSidebar({
   }
 
   return (
-    <LayoutGroup id="workbench-activity-bar">
+    <>
       <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} modifiers={verticalAxisModifiers} onDragEnd={handleDragEnd}>
         <ContextMenu>
           <ContextMenuTrigger asChild>
@@ -127,7 +123,7 @@ export function WorkbenchAppSidebar({
               </SidebarHeader>
               <SidebarContent>
                 <SidebarGroup className="p-2">
-                  <SidebarMenu>
+                  <SidebarMenu className="gap-0.5">
                     <SortableContext key={activityOrderScope} items={sortableIDs} strategy={verticalListSortingStrategy}>
                       {activityItems.map((item) => {
                         const sortableID = sortableActivityID(activityOrderScope, item.id)
@@ -153,7 +149,7 @@ export function WorkbenchAppSidebar({
               </SidebarContent>
               <SidebarFooter className="gap-1 p-2">
                 {notice}
-                <SidebarMenu>
+                <SidebarMenu className="gap-0.5">
                   <SidebarMenuItem>{messageCenter}</SidebarMenuItem>
                   <SidebarMenuItem>
                     <ActivityButton expanded={expanded} label={settingsLabel} onClick={onOpenSettings} active={settingsActive} data-onboarding-anchor="activity-settings">
@@ -206,7 +202,7 @@ export function WorkbenchAppSidebar({
         onReorder={onCustomizationReorder}
         onVisibilityChange={onActivityVisibilityChange}
       />
-    </LayoutGroup>
+    </>
   )
 }
 
@@ -316,7 +312,6 @@ function ActivityButton({
       {...props}
       aria-current={active ? 'page' : undefined}
     >
-      {active ? <motion.span layoutId="workbench-activity-active" className="absolute inset-0 rounded-[var(--nova-radius)] bg-[var(--nova-active)]" transition={PRIMARY_NAVIGATION_TRANSITION} /> : null}
       <span className="relative z-10 flex size-4 shrink-0 items-center justify-center">{children}</span>
       <span className="relative z-10 min-w-0 truncate text-left font-medium">{label}</span>
     </SidebarMenuButton>

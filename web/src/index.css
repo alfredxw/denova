@@ -926,16 +926,10 @@ html[data-nova-motion="off"] .shimmer {
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
-/* Primary navigation should acknowledge the press immediately. The route itself may contain a
-   large editor or Markdown tree, so its button feedback must not inherit the global 220ms pace. */
-.nova-activity-bar .nova-icon-button {
-  transition-duration: var(--nova-motion-fast);
-}
-
-.nova-activity-bar .nova-icon-button:active {
-  background: var(--nova-hover);
-  transform: scale(0.98);
-  transition-duration: 0ms;
+/* Selection and hover must paint immediately when navigating rapidly. Keep this outside
+   Tailwind layers so the global button color transition cannot leave a trailing highlight. */
+.nova-activity-bar [data-sidebar="menu-button"] {
+  transition-property: width, height, padding;
 }
 
 .nova-activity-bar-resize-handle {
