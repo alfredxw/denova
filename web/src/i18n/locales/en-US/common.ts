@@ -12,7 +12,7 @@ const common = {
   'common.delete': 'Delete',
   'common.description': 'Description',
   'common.edit': 'Edit',
-  'common.inherit': 'Inherit ({{value}})',
+  'common.defaultValue': 'Default ({{value}})',
   'common.loading': 'Loading...',
   'common.model': 'Model',
   'common.notSet': 'Not set',

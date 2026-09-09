@@ -269,13 +269,13 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
   const placeholderFor = (k: keyof Settings): string => {
     const v = inherited[k]
     if (v === undefined || v === null || v === '') return t('common.notSet')
-    return t('common.inherit', { value: String(v) })
+    return t('common.defaultValue', { value: String(v) })
   }
 
   const webAccessPlaceholderFor = (key: keyof WebAccessSettings): string => {
     const value = inherited.web_access?.[key]
     if (value === undefined || value === null || value === '') return t('common.notSet')
-    return t('common.inherit', { value: String(value) })
+    return t('common.defaultValue', { value: String(value) })
   }
 
   const sections: SettingsSection[] = [
@@ -1301,7 +1301,7 @@ function BoolTri({ label, value, inherited, onChange }: {
   onChange: (v: boolean | null) => void
 }) {
   const { t } = useTranslation()
-  const inheritedLabel = inherited === null || inherited === undefined ? t('common.notSet') : String(inherited)
+  const inheritedLabel = inherited === null || inherited === undefined ? t('common.notSet') : t(inherited ? 'settings.bool.true' : 'settings.bool.false')
   const selectValue = value === null ? FIELD_INHERIT_VALUE : String(value)
   return (
     <FieldRow label={label}>
@@ -1311,7 +1311,7 @@ function BoolTri({ label, value, inherited, onChange }: {
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
+            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             <SelectItem value="true">{t('settings.bool.true')}</SelectItem>
             <SelectItem value="false">{t('settings.bool.false')}</SelectItem>
           </SelectGroup>
@@ -1362,7 +1362,7 @@ function ShellEnvironmentSelect({ value, inherited, onChange }: {
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: t(`settings.agent.shellEnvironment.${inheritedValue}`) })}</SelectItem>
+          <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: t(`settings.agent.shellEnvironment.${inheritedValue}`) })}</SelectItem>
           <SelectItem value="auto">{t('settings.agent.shellEnvironment.auto')}</SelectItem>
           <SelectItem value="process">{t('settings.agent.shellEnvironment.process')}</SelectItem>
         </SelectContent>
@@ -1388,7 +1388,7 @@ function TraceCaptureSelect({ label, value, inherited, onChange }: {
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
+            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             {TRACE_CAPTURE_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
             ))}
@@ -1418,7 +1418,7 @@ function TraceExporterSelect({ label, value, inherited, onChange }: {
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
+            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             {TRACE_EXPORTER_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
             ))}
@@ -1445,7 +1445,7 @@ function LanguageSelect({ label, value, inherited, onChange }: {
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
+            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             {LOCALE_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
             ))}
@@ -1486,7 +1486,7 @@ function ThemeSelect({ label, value, inherited, onChange }: {
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
+            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             {THEME_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
             ))}
@@ -1514,7 +1514,7 @@ function MotionIntensitySelect({ label, value, inherited, onChange }: {
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
+            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             {MOTION_INTENSITY_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
             ))}
@@ -1543,7 +1543,7 @@ function TellerSelect({ label, value, inherited, tellers, onChange }: {
         </SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedName })}</SelectItem>
+            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedName })}</SelectItem>
             {tellers.map((teller) => (
               <SelectItem key={teller.id} value={teller.id}>{narrativeStyleName(teller, t)}</SelectItem>
             ))}

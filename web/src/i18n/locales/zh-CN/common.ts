@@ -12,7 +12,7 @@ const common = {
   'common.delete': '删除',
   'common.description': '简介',
   'common.edit': '编辑',
-  'common.inherit': '继承（{{value}}）',
+  'common.defaultValue': '默认（{{value}}）',
   'common.loading': '加载中...',
   'common.model': '模型',
   'common.notSet': '未设置',

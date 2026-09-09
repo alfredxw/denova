@@ -20,6 +20,7 @@ web/test-results/
 internal/webfs/dist/
 plan.md
 docs/*
+!docs/ci-reliability-audit.md
 !docs/tests/
 docs/tests/*
 !docs/tests/large-change-regression-checklist.md

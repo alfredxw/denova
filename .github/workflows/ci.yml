@@ -87,10 +87,17 @@ jobs:
         run: pnpm --dir web exec playwright install --with-deps chromium
 
       - name: Check frontend translations
+        id: translations
         run: pnpm --dir web check:i18n
 
-      - name: Run frontend tests
-        run: pnpm --dir web test
+      - name: Run frontend unit tests
+        run: pnpm --dir web test:unit --reporter=default --reporter=junit --outputFile=test-results/unit.xml
+
+      # Keep browser coverage running when a unit suite fails, so one run
+      # reports both failures without weakening the overall CI result.
+      - name: Run frontend browser and end-to-end tests
+        if: ${{ !cancelled() && steps.translations.outcome == 'success' }}
+        run: pnpm --dir web test:playwright
 
       - name: Build distribution
         run: ./scripts/build.sh
@@ -98,13 +105,15 @@ jobs:
       - name: Smoke-test production frontend
         run: pnpm --dir web smoke:production
 
-      - name: Upload Playwright report
-        if: failure()
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: test-reports
           path: |
             web/playwright-report
+            web/test-results/unit.xml
+            web/test-results/playwright.json
             web/test-results/artifacts
             web/test-results/production-artifacts
           if-no-files-found: ignore

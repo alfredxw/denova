@@ -70,7 +70,7 @@ export function LANAccessSettings({ draft, inherited, onChange }: {
           <SelectTrigger id={`${id}-enabled`} className="w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="inherit">{t('common.inherit', { value: t(inherited.allow_lan_access ? 'settings.bool.true' : 'settings.bool.false') })}</SelectItem>
+              <SelectItem value="inherit">{t('common.defaultValue', { value: t(inherited.allow_lan_access ? 'settings.bool.true' : 'settings.bool.false') })}</SelectItem>
               <SelectItem value="true">{t('settings.bool.true')}</SelectItem>
               <SelectItem value="false">{t('settings.bool.false')}</SelectItem>
             </SelectGroup>

@@ -1,4 +1,4 @@
-import { access, mkdir, readFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type Page } from '../support/fixtures'
 import { createAgentChatSession, registerAgentChatProject, setAgentChatApprovalMode } from '../support/api'
@@ -18,9 +18,10 @@ const multiAgentExpectations = [
 ]
 
 test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
-  const alphaPath = path.resolve('test-results', 'runtime', 'general-project-alpha')
-  const betaPath = path.resolve('test-results', 'runtime', 'general-project-beta')
-  await Promise.all([mkdir(alphaPath, { recursive: true }), mkdir(betaPath, { recursive: true })])
+  const [alphaPath, betaPath] = await Promise.all([
+    mkdtemp(path.resolve('test-results', 'runtime', 'general-project-alpha-')),
+    mkdtemp(path.resolve('test-results', 'runtime', 'general-project-beta-')),
+  ])
   const [alpha, beta] = await Promise.all([
     registerAgentChatProject(request, alphaPath),
     registerAgentChatProject(request, betaPath),
@@ -51,8 +52,7 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
   // Multiple session switches and a reload need the slow-test budget on CI.
   // Keep individual assertion timeouts unchanged.
   test.slow()
-  const projectPath = path.resolve('test-results', 'runtime', 'parallel-session-project')
-  await mkdir(projectPath, { recursive: true })
+  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'parallel-session-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const [sessionA, sessionB] = await Promise.all([
     createAgentChatSession(request, project.id, 'Parallel Session A'),
@@ -106,8 +106,7 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
   // Three complete isolation passes and two reloads need the slow-test budget
   // on CI; each individual interaction keeps the normal assertion timeout.
   test.slow()
-  const projectPath = path.resolve('test-results', 'runtime', 'multi-agent-display-project')
-  await mkdir(projectPath, { recursive: true })
+  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'multi-agent-display-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Multi-Agent Display Session')
   await setAgentChatApprovalMode(request, project.id, session.id, 'full_access')
@@ -167,10 +166,10 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
 })
 
 test('restores an accepted Follow Up after reload and delivers it exactly once', async ({ page, request }) => {
-  const projectPath = path.resolve('test-results', 'runtime', 'queue-reload-project')
-  await mkdir(projectPath, { recursive: true })
+  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'queue-reload-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Queue Reload Session')
+  const initialFollowUpCount = (await getModelStatus(request)).request_counts[queueReloadFollowUpMarker] ?? 0
 
   await page.goto('/')
   await openAgentChatWorkbench(page)
@@ -194,7 +193,8 @@ test('restores an accepted Follow Up after reload and delivers it exactly once',
     await releaseDelayedRequest(request, queueReloadDelayMarker)
     await expect(page.getByText('Reloaded queue initial response completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
     await expect(page.getByText('Reloaded queued follow-up completed exactly once.', { exact: true }).filter({ visible: true })).toHaveCount(1)
-    await expect.poll(async () => (await getModelStatus(request)).request_counts[queueReloadFollowUpMarker] ?? 0).toBe(1)
+    await expect.poll(async () => (await getModelStatus(request)).request_counts[queueReloadFollowUpMarker] ?? 0)
+      .toBe(initialFollowUpCount + 1)
   } finally {
     await releaseDelayedRequest(request, queueReloadDelayMarker)
   }
@@ -223,6 +223,11 @@ async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
     await cards.nth(index).click()
     const panel = page.getByRole('region', { name: 'general-purpose 子会话', exact: true }).filter({ visible: true })
     await expect(panel).toBeVisible()
+    // The detail shell can render before its journal has loaded after a reload.
+    await expect.poll(async () => {
+      const text = await panel.innerText()
+      return multiAgentExpectations.filter(item => text.includes(item.output)).length
+    }, { message: `SubAgent detail ${index + 1} should load exactly one child stream` }).toBe(1)
     const panelText = await panel.innerText()
     const matches = multiAgentExpectations.filter(item => panelText.includes(item.output))
     expect(matches, `SubAgent detail ${index + 1} should contain exactly one child stream`).toHaveLength(1)

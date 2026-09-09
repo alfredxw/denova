@@ -8,7 +8,9 @@ export async function openAgentChatSession(page: Page, projectId: string, sessio
   await expect(project).toBeVisible()
   if (await project.getAttribute('aria-expanded') !== 'true') await project.click()
 
-  const session = page.locator('[data-slot="agent-chat-conversation-row"]')
+  // Different projects can legitimately contain conversations with the same title.
+  const projectContainer = project.locator('xpath=ancestor::div[./div[@data-slot="agent-chat-project-content"]][1]')
+  const session = projectContainer.locator('[data-slot="agent-chat-conversation-row"]')
     .filter({ hasText: sessionTitle })
   await expect(session).toBeVisible()
   await session.click()

@@ -58,7 +58,7 @@ export function FontPicker({
   }
   const inheritedName = displayName(inherited)
   const selectedName = allowInherit && !value
-    ? t('common.inherit', { value: inheritedName })
+    ? t('common.defaultValue', { value: inheritedName })
     : displayName(value)
   const currentCustomFamily = customFontFamilyFromValue(value)
   const searchCustomValue = customFontValue(search)
@@ -148,7 +148,7 @@ export function FontPicker({
             {allowInherit ? (
               <CommandGroup>
                 <CommandItem
-                  value={`${t('common.inherit', { value: inheritedName })} inherit`}
+                  value={`${t('common.defaultValue', { value: inheritedName })} inherit`}
                   data-checked={!value || undefined}
                   onSelect={() => selectValue('')}
                 >
@@ -156,7 +156,7 @@ export function FontPicker({
                     className="truncate"
                     style={{ fontFamily: fontStackFor(inherited, fallback) }}
                   >
-                    {t('common.inherit', { value: inheritedName })}
+                    {t('common.defaultValue', { value: inheritedName })}
                   </span>
                 </CommandItem>
               </CommandGroup>
