@@ -82,6 +82,13 @@ var catalogZH = map[string]string{
 	"api.access.pairingInvalid":     "连接链接已失效或已使用，请生成新链接或使用账号密码登录。",
 	"api.access.storeFailed":        "无法保存或读取登录状态，请检查数据目录权限及服务日志。",
 
+	"api.update.uploadRequired": "请选择 GitHub Release 安装包。",
+	"api.update.invalidPackage": "安装包无效或不完整。请上传未经解压、重命名的 Denova 正式发布压缩包。",
+	"api.update.newerRequired":  "只能安装比当前版本更新的正式版本；开发版不支持手动更新。",
+	"api.update.wrongPlatform":  "安装包与当前电脑的操作系统或处理器架构不匹配。",
+	"api.update.tooLarge":       "安装包不能超过 512 MiB。",
+	"api.update.busy":           "另一个更新操作正在进行，请稍后重试。",
+
 	"api.update.checkFailed":                  "检查更新失败，请稍后重试。详细原因请查看服务端日志。",
 	"api.update.installFailed":                "安装更新失败，请重试或从 GitHub Releases 手动下载安装包。详细原因请查看服务端日志。",
 	"api.update.applyFailed":                  "应用更新失败，请查看服务端日志，并尝试手动重启或安装。",
@@ -234,6 +241,13 @@ var catalogEN = map[string]string{
 	"api.access.originRejected":     "This request origin is not allowed. Retry from the Denova page.",
 	"api.access.pairingInvalid":     "This connection link has expired or was already used. Generate another link or sign in with your password.",
 	"api.access.storeFailed":        "Could not read or save the login session. Check data directory permissions and server logs.",
+
+	"api.update.uploadRequired": "Select a GitHub Release archive.",
+	"api.update.invalidPackage": "The package is invalid or incomplete. Upload an unmodified Denova stable release archive without extracting or renaming it.",
+	"api.update.newerRequired":  "Select a stable release newer than the running version. Development builds cannot update manually.",
+	"api.update.wrongPlatform":  "The package does not match this computer’s operating system or processor architecture.",
+	"api.update.tooLarge":       "The release archive must be 512 MiB or smaller.",
+	"api.update.busy":           "Another update operation is in progress. Try again later.",
 
 	"api.update.checkFailed":                  "Could not check for updates. Try again later; see server logs for details.",
 	"api.update.installFailed":                "Could not install the update. Retry or download the archive from GitHub Releases; see server logs for details.",

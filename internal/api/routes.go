@@ -245,6 +245,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/update/check", apiHandlers.HandleUpdateCheck)
 		api.POST("/update/install", apiHandlers.HandleUpdateInstall)
 		api.POST("/update/install/stream", apiHandlers.HandleUpdateInstallStream)
+		api.POST("/update/upload", apiHandlers.HandleUpdateUpload)
 		api.POST("/update/apply", apiHandlers.HandleUpdateApply)
 		api.POST("/host/dialogs/directory", localHostEffectMiddleware, apiHandlers.HandleDirectoryPicker)
 		api.GET("/agent-chat/projects", apiHandlers.HandleAgentChatProjects)

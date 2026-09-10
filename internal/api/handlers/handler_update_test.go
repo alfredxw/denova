@@ -1,15 +1,64 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"testing"
 	"time"
 
+	"denova/internal/buildinfo"
+
 	"github.com/cloudwego/hertz/pkg/app"
 )
+
+func TestLocalUpdateUploadValidationUsesRequestLocale(t *testing.T) {
+	previous := buildinfo.Version
+	buildinfo.Version = "0.4.5"
+	t.Cleanup(func() { buildinfo.Version = previous })
+	for _, tc := range []struct{ locale, missing, invalid string }{
+		{"en-US", "Select a GitHub Release archive.", "The package is invalid or incomplete. Upload an unmodified Denova stable release archive without extracting or renaming it."},
+		{"zh-CN", "请选择 GitHub Release 安装包。", "安装包无效或不完整。请上传未经解压、重命名的 Denova 正式发布压缩包。"},
+	} {
+		t.Run(tc.locale, func(t *testing.T) {
+			c := app.NewContext(0)
+			c.Request.Header.Set("X-Denova-Locale", tc.locale)
+			New(nil).HandleUpdateUpload(context.Background(), c)
+			var body map[string]string
+			if err := json.Unmarshal(c.Response.Body(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if c.Response.StatusCode() != 400 || body["error"] != tc.missing {
+				t.Fatalf("missing file: %d %s", c.Response.StatusCode(), c.Response.Body())
+			}
+			var upload bytes.Buffer
+			writer := multipart.NewWriter(&upload)
+			file, err := writer.CreateFormFile("file", "source.zip")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := file.Write([]byte("invalid")); err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+			c.Request.SetBody(upload.Bytes())
+			c.Response.Reset()
+			New(nil).HandleUpdateUpload(context.Background(), c)
+			if err := json.Unmarshal(c.Response.Body(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if c.Response.StatusCode() != 400 || body["error"] != tc.invalid {
+				t.Fatalf("invalid file: %d %s", c.Response.StatusCode(), c.Response.Body())
+			}
+		})
+	}
+}
 
 type unavailableUpdateTransport struct{}
 

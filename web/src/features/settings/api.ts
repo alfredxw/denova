@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { ComfyUIWorkflowCatalog, ComfyUIWorkflowSnapshot, ImageAPIEndpointSettings, ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelEndpointSettings, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
+import type { ComfyUIWorkflowCatalog, ComfyUIWorkflowSnapshot, ImageAPIEndpointSettings, ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelEndpointSettings, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
 import { queryClient } from '@/lib/query-client'
@@ -203,6 +203,12 @@ export function pingImageProfile(endpoint: ImageAPIEndpointSettings, profile: Im
     body: JSON.stringify({ endpoint, profile }),
     signal,
   })
+}
+
+export async function uploadUpdate(file: File): Promise<UpdateInstallResult> {
+  const body = new FormData()
+  body.append('file', file)
+  return requestJSON('/api/update/upload', { method: 'POST', body })
 }
 
 /** Lists saved ComfyUI workflows without requiring the draft profile to be runnable yet. */

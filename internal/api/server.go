@@ -11,12 +11,12 @@ import (
 
 	"denova/config"
 	"denova/internal/app"
+	"denova/internal/update"
 )
 
-// Chat attachments use base64 JSON at the local API boundary. This leaves
-// headroom for the 50 MiB decoded attachment batch plus request metadata;
-// individual handlers still enforce their own lower content limits.
-const maxRequestBodyBytes = 72 * 1024 * 1024
+// Release uploads need multipart overhead above the archive limit. Hertz spills
+// large multipart files to disk; individual handlers enforce their content limits.
+const maxRequestBodyBytes = int(update.MaxLocalArchiveBytes) + (1 << 20)
 
 // Server 包含 Hertz 引擎和应用运行时。
 type Server struct {

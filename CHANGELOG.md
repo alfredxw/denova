@@ -12,6 +12,11 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Added / 新增
+
+- 支持从设置中的“手动更新”上传 GitHub Release 安装包，离线校验后重启安装。
+- Upload a GitHub Release archive through Manual update in Settings, validate it offline, and restart to install.
+
 ### Fixed / 修复
 
 - 修复游戏已有摘要并保留旧回合时，再次压缩因上下文来源匹配失败而报错的问题。

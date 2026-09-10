@@ -28,7 +28,12 @@ func extractZip(archivePath, targetDir string) error {
 		return fmt.Errorf("open zip update archive: %w", err)
 	}
 	defer reader.Close()
+	var expandedBytes uint64
 	for _, f := range reader.File {
+		if f.UncompressedSize64 > (2<<30)-expandedBytes || len(reader.File) > 30000 || (!f.Mode().IsRegular() && !f.FileInfo().IsDir()) {
+			return errors.New("update archive exceeds extraction limits or contains special files")
+		}
+		expandedBytes += f.UncompressedSize64
 		target, err := safeJoin(targetDir, f.Name)
 		if err != nil {
 			return err
@@ -64,6 +69,8 @@ func extractTarGz(archivePath, targetDir string) error {
 	}
 	defer gz.Close()
 	reader := tar.NewReader(gz)
+	var expandedBytes int64
+	entries := 0
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
@@ -72,6 +79,11 @@ func extractTarGz(archivePath, targetDir string) error {
 		if err != nil {
 			return err
 		}
+		entries++
+		if header.Size < 0 || header.Size > (2<<30)-expandedBytes || entries > 30000 {
+			return errors.New("update archive exceeds extraction limits")
+		}
+		expandedBytes += header.Size
 		target, err := safeJoin(targetDir, header.Name)
 		if err != nil {
 			return err
@@ -85,12 +97,17 @@ func extractTarGz(archivePath, targetDir string) error {
 			if err := writeExtractedFile(target, reader, header.FileInfo().Mode()); err != nil {
 				return err
 			}
+		default:
+			return errors.New("update archive contains special files")
 		}
 	}
 	return nil
 }
 
 func safeJoin(root, name string) (string, error) {
+	if strings.Contains(name, `\`) || strings.Contains(name, ":") || strings.HasPrefix(name, "/") {
+		return "", fmt.Errorf("update archive contains an invalid path: %s", name)
+	}
 	target := filepath.Join(root, filepath.Clean(name))
 	rel, err := filepath.Rel(root, target)
 	if err != nil {

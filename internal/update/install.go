@@ -20,6 +20,10 @@ func (s *Service) Install(ctx context.Context) (InstallResult, error) {
 }
 
 func (s *Service) InstallWithProgress(ctx context.Context, progress func(InstallProgress)) (InstallResult, error) {
+	if !updateOperation.TryLock() {
+		return InstallResult{}, ErrUpdateBusy
+	}
+	defer updateOperation.Unlock()
 	installCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), updateInstallTimeout)
 	defer cancel()
 
@@ -41,12 +45,8 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 	installDir := filepath.Dir(s.executablePath)
 	updateDir := updateDataDir(installDir)
 	downloadDir := filepath.Join(updateDir, "downloads")
-	extractDir := filepath.Join(updateDir, "extract-"+safeUpdateName(check.LatestVersion))
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
 		return InstallResult{}, fmt.Errorf("create update download directory: %w", err)
-	}
-	if err := os.RemoveAll(extractDir); err != nil {
-		return InstallResult{}, fmt.Errorf("clear update extraction directory: %w", err)
 	}
 
 	archivePath := filepath.Join(downloadDir, check.Asset.Name)
@@ -58,19 +58,29 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 		return InstallResult{}, err
 	}
 
-	reportInstallProgress(progress, InstallProgress{Phase: "extracting", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100})
-	if err := extractArchive(archivePath, extractDir); err != nil {
+	return s.stageArchive(installCtx, archivePath, check.LatestVersion, progress)
+}
+
+// stageArchive is shared by downloaded and uploaded packages. The caller holds
+// updateOperation and owns the archive; extraction is always temporary.
+func (s *Service) stageArchive(ctx context.Context, archivePath, version string, progress func(InstallProgress)) (InstallResult, error) {
+	extractDir, err := os.MkdirTemp(filepath.Dir(archivePath), "extract-")
+	if err != nil {
 		return InstallResult{}, err
 	}
-	packageRoot := filepath.Join(extractDir, releasePackageRootName)
-	if fi, err := os.Stat(packageRoot); err != nil || !fi.IsDir() {
-		return InstallResult{}, fmt.Errorf("invalid update package: missing %s directory", releasePackageRootName)
+	defer os.RemoveAll(extractDir)
+	assetName := filepath.Base(archivePath)
+	reportInstallProgress(progress, InstallProgress{Phase: "extracting", AssetName: assetName, ArchivePath: archivePath, Percent: 100})
+	if err := extractArchive(archivePath, extractDir); err != nil {
+		return InstallResult{}, fmt.Errorf("%w: %v", ErrInvalidPackage, err)
 	}
-
-	reportInstallProgress(progress, InstallProgress{Phase: "staging", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100})
-	result, err := s.stageUpdate(packageRoot, check)
+	if err := ctx.Err(); err != nil {
+		return InstallResult{}, err
+	}
+	reportInstallProgress(progress, InstallProgress{Phase: "staging", AssetName: assetName, ArchivePath: archivePath, Percent: 100})
+	result, err := s.stageUpdate(filepath.Join(extractDir, releasePackageRootName), version)
 	if err == nil {
-		reportInstallProgress(progress, InstallProgress{Phase: "staged", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100})
+		reportInstallProgress(progress, InstallProgress{Phase: "staged", AssetName: assetName, ArchivePath: archivePath, Percent: 100})
 	}
 	return result, err
 }
@@ -141,19 +151,24 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 	}
 }
 
-func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallResult, error) {
+func (s *Service) stageUpdate(packageRoot, version string) (InstallResult, error) {
 	installDir := filepath.Dir(s.executablePath)
 	updateDir := updateDataDir(installDir)
-	stagedRoot := filepath.Join(updateDir, "pending-"+safeUpdateName(check.LatestVersion))
+	stagedRoot := filepath.Join(updateDir, "pending-"+safeUpdateName(version))
 	stagedDir := filepath.Join(stagedRoot, releasePackageRootName)
 	backupDir := filepath.Join(updateDir, "backup-"+time.Now().Format("20060102-150405"))
 	if err := validateReleasePackage(packageRoot, filepath.Base(s.executablePath), updaterExecutableName()); err != nil {
-		return InstallResult{}, err
+		return InstallResult{}, fmt.Errorf("%w: %v", ErrInvalidPackage, err)
 	}
 	if err := os.RemoveAll(stagedRoot); err != nil {
 		return InstallResult{}, err
 	}
-	if err := copyDir(packageRoot, stagedDir); err != nil {
+	if err := os.MkdirAll(stagedRoot, 0o755); err != nil {
+		return InstallResult{}, err
+	}
+	// Both directories belong to this installation's update directory. Consume
+	// the temporary extraction directly instead of copying the entire package.
+	if err := os.Rename(packageRoot, stagedDir); err != nil {
 		return InstallResult{}, fmt.Errorf("stage update package: %w", err)
 	}
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
@@ -169,7 +184,7 @@ func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallRes
 		TargetExecutable:  s.executablePath,
 		UpdaterExecutable: filepath.Join(stagedDir, updaterExecutableName()),
 		RelaunchArgs:      relaunchArgs(os.Args, s.executablePath),
-		Version:           check.LatestVersion,
+		Version:           version,
 		LogPath:           filepath.Join(stagedRoot, applyLogFileName),
 	}
 	if err := writeManifest(manifestPath, manifest); err != nil {
@@ -178,10 +193,10 @@ func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallRes
 	if err := writePendingManifestRef(updateDir, manifestPath); err != nil {
 		return InstallResult{}, err
 	}
-	slog.InfoContext(context.Background(), fmt.Sprintf("[update] Update staged old=%s new=%s staged=%s manifest=%s", check.CurrentVersion, check.LatestVersion, stagedDir, manifestPath))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[update] Update staged old=%s new=%s staged=%s manifest=%s", s.currentVersion, version, stagedDir, manifestPath))
 	return InstallResult{
-		PreviousVersion:  check.CurrentVersion,
-		InstalledVersion: check.LatestVersion,
+		PreviousVersion:  s.currentVersion,
+		InstalledVersion: version,
 		Status:           "staged",
 		Staged:           true,
 		ApplyReady:       true,
