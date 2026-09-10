@@ -15,6 +15,7 @@ type LayerValues<T> = Record<SettingsLayer, T>
 type SettingsSnapshotSource =
   | { kind: 'load' }
   | { kind: 'own-save'; layer: SettingsLayer; submitted: Settings }
+  | { kind: 'partial-save'; layer: SettingsLayer; submitted: Settings }
 
 interface UseLayeredSettingsDraftOptions {
   target: SettingsTarget
@@ -65,7 +66,7 @@ export function useLayeredSettingsDraft({
     const capturedDrafts = draftsRef.current
     let nextDrafts = nextBaselines
     if (readyRef.current) {
-      const rebaseLayer = (targetLayer: SettingsLayer) => {
+      const rebaseLayer = async (targetLayer: SettingsLayer) => {
         if (source.kind === 'own-save' && source.layer === targetLayer) {
           return Promise.resolve(rebaseJSONValue(
             source.submitted,
@@ -73,7 +74,8 @@ export function useLayeredSettingsDraft({
             nextBaselines[targetLayer],
           ))
         }
-        return rebaseJSONWithRecovery({
+        const partial = source.kind === 'partial-save' && source.layer === targetLayer
+        const rebased = await rebaseJSONWithRecovery({
           resource: 'settings',
           scope: `${sourcePrefix}:${targetLayer}`,
           id: targetLayer,
@@ -83,19 +85,22 @@ export function useLayeredSettingsDraft({
           },
           local: {
             revision: settingsRevisionForLayer(previousSnapshot, targetLayer),
-            value: capturedDrafts[targetLayer],
+            value: partial ? source.submitted : capturedDrafts[targetLayer],
           },
           external: {
             revision: settingsRevisionForLayer(next, targetLayer),
             value: nextBaselines[targetLayer],
           },
         })
+        // Retain failed edits over the canonical partial result, then replay
+        // edits made during the save (including a return to the old baseline).
+        return partial ? rebaseJSONValue(source.submitted, capturedDrafts[targetLayer], rebased) : rebased
       }
       const [user, workspace] = await Promise.all([rebaseLayer('user'), rebaseLayer('workspace')])
       nextDrafts = { user, workspace }
     }
 
-    if (!mountedRef.current || applySequence !== applySequenceRef.current) return false
+    if (!mountedRef.current || applySequence !== applySequenceRef.current) return null
     // A user edit may land while an overlapping conflict is being archived. Replay
     // that newer edit over the prepared snapshot instead of replacing it.
     if (draftsRef.current !== capturedDrafts) {
@@ -112,9 +117,14 @@ export function useLayeredSettingsDraft({
     setLayered(next)
     setDrafts(nextDrafts)
     setReady(true)
-    setSyncVersions((current) => ({ user: current.user + 1, workspace: current.workspace + 1 }))
+    // The failed lane reconciles its baseline itself and retains its error.
+    // Resetting it here would turn the preserved draft into an automatic retry.
+    setSyncVersions((current) => ({
+      user: current.user + (source.kind === 'partial-save' && source.layer === 'user' ? 0 : 1),
+      workspace: current.workspace + (source.kind === 'partial-save' && source.layer === 'workspace' ? 0 : 1),
+    }))
     setError(null)
-    return true
+    return nextDrafts
   }, [sourcePrefix])
 
   const reload = useCallback(async (fresh = false) => {
@@ -176,47 +186,50 @@ export function useLayeredSettingsDraft({
     let patchBaseline = saveBaseline
     let recoveryBaselineRevision = baseRevision
     let latestRevision: string | undefined
-    return saveWithRevisionRecovery({
-      baseline: saveBaseline,
-      draft: settings,
-      revision: baseRevision,
-      save: (nextDraft, revision) => {
-        suppressQuerySyncRef.current += 1
-        const request = customUpdater
+    // Recovery reads belong to this save too. Publishing them into this draft
+    // mid-save would reset the lane and automatically retry a later partial failure.
+    suppressQuerySyncRef.current += 1
+    try {
+      return await saveWithRevisionRecovery({
+        baseline: saveBaseline,
+        draft: settings,
+        revision: baseRevision,
+        save: (nextDraft, revision) => customUpdater
           ? customUpdater(nextDraft, revision)
           : patchSettingsTarget(
               targetKind === 'project' ? { kind: 'project', projectId } : { kind: 'global' },
               targetLayer,
               createSettingsMergePatch(patchBaseline, nextDraft),
               revision,
-            )
-        return request.finally(() => { suppressQuerySyncRef.current -= 1 })
-      },
-      loadLatest: async () => {
-        const settingsTarget: SettingsTarget = targetKind === 'project'
-          ? { kind: 'project', projectId }
-          : { kind: 'global' }
-        const latest = await (loadSettings ?? (() => refreshSettingsTarget(settingsTarget)))()
-        latestRevision = settingsRevisionForLayer(latest, targetLayer)
-        return {
-          value: settingsForLayer(latest, targetLayer),
-          revision: latestRevision,
-        }
-      },
-      rebase: async (baseline, draft, latest) => {
-        const rebased = await rebaseJSONWithRecovery({
-          resource: 'settings',
-          scope: `${sourcePrefix}:${targetLayer}`,
-          id: targetLayer,
-          baseline: { revision: recoveryBaselineRevision, value: baseline },
-          local: { revision: recoveryBaselineRevision, value: draft },
-          external: { revision: latestRevision, value: latest },
-        })
-        recoveryBaselineRevision = latestRevision
-        patchBaseline = latest
-        return rebased
-      },
-    })
+            ),
+        loadLatest: async () => {
+          const settingsTarget: SettingsTarget = targetKind === 'project'
+            ? { kind: 'project', projectId }
+            : { kind: 'global' }
+          const latest = await (loadSettings ?? (() => refreshSettingsTarget(settingsTarget)))()
+          latestRevision = settingsRevisionForLayer(latest, targetLayer)
+          return {
+            value: settingsForLayer(latest, targetLayer),
+            revision: latestRevision,
+          }
+        },
+        rebase: async (baseline, draft, latest) => {
+          const rebased = await rebaseJSONWithRecovery({
+            resource: 'settings',
+            scope: `${sourcePrefix}:${targetLayer}`,
+            id: targetLayer,
+            baseline: { revision: recoveryBaselineRevision, value: baseline },
+            local: { revision: recoveryBaselineRevision, value: draft },
+            external: { revision: latestRevision, value: latest },
+          })
+          recoveryBaselineRevision = latestRevision
+          patchBaseline = latest
+          return rebased
+        },
+      })
+    } finally {
+      suppressQuerySyncRef.current -= 1
+    }
   }, [loadSettings, projectId, saveUserSettings, saveWorkspaceSettings, sourcePrefix, targetKind])
 
   const saveUser = useCallback((settings: Settings, revision?: string) => saveLayer('user', settings, revision), [saveLayer])
@@ -228,6 +241,10 @@ export function useLayeredSettingsDraft({
   ) => {
     await applySnapshot(next, { kind: 'own-save', layer: targetLayer, submitted })
   }, [applySnapshot])
+  const applyPartialSettings = useCallback(async (targetLayer: SettingsLayer, next: LayeredSettings, submitted: Settings) => {
+    const retained = await applySnapshot(next, { kind: 'partial-save', layer: targetLayer, submitted })
+    return retained?.[targetLayer] ?? draftsRef.current[targetLayer]
+  }, [applySnapshot])
   const updateSavingLayer = useCallback((targetLayer: SettingsLayer, saving: boolean) => {
     if (!mountedRef.current) return
     setSavingLayers((current) => current[targetLayer] === saving ? current : { ...current, [targetLayer]: saving })
@@ -238,6 +255,7 @@ export function useLayeredSettingsDraft({
   }, [sourcePrefix])
 
   const userAutoSave = useAutoSaveSettings({
+    layer: 'user',
     draft: drafts.user,
     saved: layered?.user ?? {},
     baseRevision: layered?.revisions?.user,
@@ -248,10 +266,12 @@ export function useLayeredSettingsDraft({
     save: saveUser,
     onSavingChange: (saving) => updateSavingLayer('user', saving),
     onSaved: (next, submitted) => applySavedSettings('user', next, submitted),
+    onPartialSaved: (next, submitted) => applyPartialSettings('user', next, submitted),
     onStaleSuccess: async () => { await reload() },
     onError: (message) => handleSaveError('user', message),
   })
   const workspaceAutoSave = useAutoSaveSettings({
+    layer: 'workspace',
     draft: drafts.workspace,
     saved: layered?.workspace ?? {},
     baseRevision: layered?.revisions?.workspace,
@@ -262,6 +282,7 @@ export function useLayeredSettingsDraft({
     save: saveWorkspace,
     onSavingChange: (saving) => updateSavingLayer('workspace', saving),
     onSaved: (next, submitted) => applySavedSettings('workspace', next, submitted),
+    onPartialSaved: (next, submitted) => applyPartialSettings('workspace', next, submitted),
     onStaleSuccess: async () => { await reload() },
     onError: (message) => handleSaveError('workspace', message),
   })

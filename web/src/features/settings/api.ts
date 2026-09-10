@@ -1,10 +1,11 @@
-import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
+import { APIError, fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ComfyUIWorkflowCatalog, ComfyUIWorkflowSnapshot, ImageAPIEndpointSettings, ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelEndpointSettings, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
 import { queryClient } from '@/lib/query-client'
 import { GLOBAL_SETTINGS_TARGET, projectSettingsTarget, settingsQueryKeys, settingsQueryOptions } from './query'
 import type { SettingsTarget } from './query'
+import { SettingsSaveError, settingsSaveFiles } from './save-error'
 
 export { GLOBAL_SETTINGS_TARGET, projectSettingsTarget }
 export type { SettingsTarget }
@@ -55,36 +56,45 @@ export function invalidateSettingsCache(projectId?: string) {
   queryClient.removeQueries({ queryKey: settingsQueryKeys.project(projectId), exact: true })
 }
 
-export async function patchSettings(layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
-  const snapshot = await requestJSON<LayeredSettings>('/api/settings', {
-    method: 'PATCH',
-    headers: jsonHeaders,
-    body: JSON.stringify({ layer, changes, ...(baseRevision ? { base_revision: baseRevision } : {}) }),
-  })
-  primeSettingsQuery(settingsQueryKeys.global(), snapshot, layer === 'user')
-  return snapshot
+export function patchSettings(layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
+  return patchSettingsTarget(GLOBAL_SETTINGS_TARGET, layer, changes, baseRevision)
 }
 
-export async function patchProjectSettings(projectId: string, layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
-  const normalized = normalizeProjectID(projectId)
-  const snapshot = await requestJSON<LayeredSettings>(projectAPIPath(normalized, 'settings'), {
-    method: 'PATCH',
-    headers: jsonHeaders,
-    body: JSON.stringify({ layer, changes, ...(baseRevision ? { base_revision: baseRevision } : {}) }),
-  })
-  primeSettingsQuery(settingsQueryKeys.project(normalized), snapshot, layer === 'user')
-  return snapshot
+export function patchProjectSettings(projectId: string, layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
+  return patchSettingsTarget(projectSettingsTarget(projectId), layer, changes, baseRevision)
 }
 
-export function patchSettingsTarget(
+export async function patchSettingsTarget(
   target: SettingsTarget,
   layer: SettingsLayer,
   changes: SettingsPatch,
   baseRevision?: string,
 ): Promise<LayeredSettings> {
-  return target.kind === 'project'
-    ? patchProjectSettings(target.projectId, layer, changes, baseRevision)
-    : patchSettings(layer, changes, baseRevision)
+  const queryKey = target.kind === 'project' ? settingsQueryKeys.project(target.projectId) : settingsQueryKeys.global()
+  const path = target.kind === 'project' ? projectAPIPath(target.projectId, 'settings') : '/api/settings'
+  let snapshot: LayeredSettings
+  try {
+    snapshot = await requestJSON<LayeredSettings>(path, {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({ layer, changes, ...(baseRevision ? { base_revision: baseRevision } : {}) }),
+    })
+  } catch (error) {
+    const files = settingsSaveFiles(error)
+    if (!(error instanceof APIError) || !files) throw error
+    try {
+      // An older in-flight GET may still contain the pre-save state.
+      await queryClient.cancelQueries({ queryKey, exact: true })
+      snapshot = await refreshSettingsTarget(target)
+    } catch (refreshError) {
+      console.error('[settings] failed to refresh settings after a partial save', refreshError)
+      throw error
+    }
+    primeSettingsQuery(queryKey, snapshot, layer === 'user')
+    throw new SettingsSaveError(error, snapshot, files)
+  }
+  primeSettingsQuery(queryKey, snapshot, layer === 'user')
+  return snapshot
 }
 
 /** Revokes one saved rule by stable ID so concurrent rule additions cannot be
@@ -112,13 +122,6 @@ function primeSettingsQuery(queryKey: readonly string[], snapshot: LayeredSettin
 function sameQueryKey(left: readonly unknown[], right: readonly unknown[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
-
-function normalizeProjectID(projectId: string): string {
-  const normalized = projectId.trim()
-  if (!normalized) throw new Error('Project ID is required')
-  return normalized
-}
-
 
 /** Builds the minimal RFC 7386 object needed to transform baseline into draft. */
 export function createSettingsMergePatch(baseline: Settings, draft: Settings): SettingsPatch {

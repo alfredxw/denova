@@ -19,6 +19,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 修复设置部分保存失败后，已保存状态未同步、撤回修改后重试仍提交旧草稿的问题；保留未保存修改并展示逐文件结果。
+- Fixed partial settings saves leaving stale saved state or retrying withdrawn drafts; unsaved edits are preserved and per-file outcomes are shown.
+
 - 修复游戏已有摘要并保留旧回合时，再次压缩因上下文来源匹配失败而报错的问题。
 - Fix repeated game context compaction failing source validation when older turns remain visible beside an existing checkpoint.
 

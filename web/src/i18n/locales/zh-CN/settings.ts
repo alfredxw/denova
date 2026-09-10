@@ -1,4 +1,6 @@
 const settings = {
+  'settings.partialSaveFailed': '已保存：{{saved}}。保存失败：{{failed}}。未保存的修改已保留，可修改后重试。',
+  'settings.filesSaveFailed': '保存失败：{{failed}}。未保存的修改已保留，可修改后重试。',
   'settings.categories': '设置分类',
   'settings.apiKey.show': '显示 API Key',
   'settings.apiKey.hide': '隐藏 API Key',

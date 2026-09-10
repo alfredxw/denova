@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	agentrun "denova/internal/agents/run"
 
@@ -114,24 +113,8 @@ func (catalog Catalog) readRunResource(ctx context.Context, resource string, sou
 		}
 		lines = append(lines, line)
 	}
-	total := recordCount + 1
 	lines = append(lines, selectedRecords...)
-	if len(lines) > 0 && input.ByteOffset > 0 {
-		if input.ByteOffset > len(lines[0]) || !utf8.ValidString(lines[0][input.ByteOffset:]) {
-			return agenttools.ReadResult{}, errors.New("trajectory byte_offset is not a valid UTF-8 boundary in the selected line")
-		}
-		lines[0] = lines[0][input.ByteOffset:]
-	}
-	truncated := offset-1+len(lines) < total
-	nextOffset := 0
-	if truncated {
-		nextOffset = offset + len(lines)
-	}
-	return agenttools.ReadResult{
-		Path: resource, Kind: "trajectory_run", Content: strings.Join(lines, ""),
-		Offset: offset, ByteOffset: input.ByteOffset, Limit: len(lines), Total: total, Unit: "lines",
-		Truncated: truncated, NextOffset: nextOffset,
-	}, nil
+	return trajectoryLineResult(resource, "trajectory_run", input, lines, recordCount+1)
 }
 
 func redactRunTraceRecord(record agentrun.RunTraceRecord, source Source) (agentrun.RunTraceRecord, error) {
@@ -294,24 +277,4 @@ func hashJSON(value any) (string, error) {
 	}
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:]), nil
-}
-
-func marshalJSONLine(value any) (string, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	return string(encoded) + "\n", nil
-}
-
-func marshalRedactedJSONLine(value any, source Source) (string, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	var document any
-	if err := json.Unmarshal(encoded, &document); err != nil {
-		return "", err
-	}
-	return marshalJSONLine(redactTrajectoryValue(document, source))
 }

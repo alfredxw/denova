@@ -1,4 +1,6 @@
 const settings = {
+  'settings.partialSaveFailed': 'Saved: {{saved}}. Failed: {{failed}}. Unsaved edits are preserved; edit or retry when ready.',
+  'settings.filesSaveFailed': 'Failed: {{failed}}. Unsaved edits are preserved; edit or retry when ready.',
   'settings.categories': 'Categories',
   'settings.apiKey.show': 'Show API Key',
   'settings.apiKey.hide': 'Hide API Key',

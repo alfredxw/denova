@@ -63,9 +63,9 @@ type Resource struct {
 
 type readInput struct {
 	Path       string `json:"path" jsonschema_description:"Trajectory resource URI: trajectory://index, trajectory://outcomes, trajectory://projects/{project_id}/sessions/{session_id}, or trajectory://projects/{project_id}/runs/{run_id}."`
-	Offset     int    `json:"offset,omitempty" jsonschema:"minimum=1" jsonschema_description:"One-based first JSONL line for a Run trajectory; defaults to 1. The first line is always the Run summary."`
-	ByteOffset int    `json:"byte_offset,omitempty" jsonschema:"minimum=0" jsonschema_description:"Zero-based UTF-8 byte offset within the selected first Run trajectory line for exact continuation."`
-	Limit      int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum selected Run trajectory lines or index/outcome entries. Defaults to and cannot exceed the configured trajectory cap; the configurable ceiling is 500."`
+	Offset     int    `json:"offset,omitempty" jsonschema:"minimum=1" jsonschema_description:"One-based first JSONL line for a Session or Run trajectory; defaults to 1. Line 1 is the resource manifest; subsequent lines follow chronological history positions."`
+	ByteOffset int    `json:"byte_offset,omitempty" jsonschema:"minimum=0" jsonschema_description:"Zero-based UTF-8 byte offset within the selected first Session or Run trajectory line for exact continuation."`
+	Limit      int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum selected Session/Run trajectory lines or index/outcome entries. Defaults to and cannot exceed the configured trajectory cap; the configurable ceiling is 500."`
 }
 
 type projectIndex struct {
@@ -94,7 +94,7 @@ func NewReadAdapter(catalog Catalog) (agenttools.ReadAdapter, error) {
 		return nil, errors.New("trajectory source provider is required")
 	}
 	return agenttools.NewReadAdapter(agent.CapabilityIdentity{
-		Kind: "denova.read.trajectory", Version: 2,
+		Kind: "denova.read.trajectory", Version: 3,
 		ConfigHash: fmt.Sprintf("limit=%d", effectiveTrajectoryLimit(catalog.Limit)),
 	}, "trajectory", func(_ context.Context, resource string) (bool, error) {
 		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(resource)), Scheme), nil
@@ -102,8 +102,8 @@ func NewReadAdapter(catalog Catalog) (agenttools.ReadAdapter, error) {
 }
 
 // Read returns the redacted resource exposed through the ordinary Agent read
-// tool. Run resources use the default first JSONL window because this compact
-// API does not expose continuation offsets.
+// tool. Session and Run resources use the default first JSONL window because
+// this compact API does not expose continuation offsets.
 func (catalog Catalog) Read(ctx context.Context, resource string, limit int) (Resource, error) {
 	if catalog.Sources == nil {
 		return Resource{}, errors.New("trajectory source provider is required")
@@ -134,13 +134,13 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 	segments := pathSegments(parsed)
 	if parsed.Host == "index" && len(segments) == 0 {
 		if input.Offset > 0 || input.ByteOffset > 0 {
-			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Run resources")
+			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Session and Run resources")
 		}
 		return catalog.readIndex(ctx, resource, limit)
 	}
 	if parsed.Host == "outcomes" && len(segments) == 0 {
 		if input.Offset > 0 || input.ByteOffset > 0 {
-			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Run resources")
+			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Session and Run resources")
 		}
 		return catalog.readOutcomes(resource, limit)
 	}
@@ -153,28 +153,7 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 	}
 	switch segments[1] {
 	case "sessions":
-		if input.Offset > 0 || input.ByteOffset > 0 {
-			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Run resources")
-		}
-		directory := sessionDir(source.StateRoot)
-		if _, err := os.Stat(directory); err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return agenttools.ReadResult{}, fs.ErrNotExist
-			}
-			return agenttools.ReadResult{}, err
-		}
-		store, err := session.NewStore(directory)
-		if err != nil {
-			return agenttools.ReadResult{}, err
-		}
-		defer store.Close()
-		target, err := store.Get(segments[2])
-		if err != nil {
-			return agenttools.ReadResult{}, err
-		}
-		return redactedJSONResult(resource, "trajectory_session", map[string]any{
-			"schema": "denova.trajectory.session.v1", "project": source, "session_id": segments[2], "history": trajectorySessionHistory(target.History()),
-		}, source)
+		return catalog.readSessionResource(ctx, resource, source, segments[2], input, limit)
 	case "runs":
 		return catalog.readRunResource(ctx, resource, source, segments[2], input, limit)
 	default:
@@ -330,18 +309,6 @@ func jsonResult(resource, kind string, value any) (agenttools.ReadResult, error)
 	return agenttools.ReadResult{Path: resource, Kind: kind, Content: string(encoded), Total: len(encoded)}, nil
 }
 
-func redactedJSONResult(resource, kind string, value any, source Source) (agenttools.ReadResult, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return agenttools.ReadResult{}, err
-	}
-	var document any
-	if err := json.Unmarshal(encoded, &document); err != nil {
-		return agenttools.ReadResult{}, err
-	}
-	return jsonResult(resource, kind, redactTrajectoryValue(document, source))
-}
-
 func redactTrajectoryValue(value any, source Source) any {
 	return newTrajectoryRedactor(source).redact(value)
 }
@@ -423,20 +390,6 @@ func replaceAllFold(value, old, replacement string) string {
 		}
 		value = value[:index] + replacement + value[index+len(old):]
 	}
-}
-
-// trajectorySessionHistory exposes observable interaction evidence, not the
-// model's private reasoning stream. Final/progress assistant output and tool
-// outcomes remain available for critique.
-func trajectorySessionHistory(history []session.HistoryEntry) []session.HistoryEntry {
-	result := make([]session.HistoryEntry, 0, len(history))
-	for _, entry := range history {
-		if entry.Role == "thinking" {
-			continue
-		}
-		result = append(result, entry)
-	}
-	return result
 }
 
 func pathSegments(parsed *url.URL) []string {
