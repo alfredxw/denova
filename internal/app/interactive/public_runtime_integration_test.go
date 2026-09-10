@@ -65,6 +65,7 @@ func (model *publicGameSequenceModel) response() (*agent.Message, error) {
 type publicGameHistoryModel struct {
 	mu           sync.Mutex
 	narrative    string
+	checkpoint   string
 	continuation map[string]any
 	inputs       [][]*agent.Message
 }
@@ -85,6 +86,9 @@ func (model *publicGameHistoryModel) response(messages []*agent.Message) *agent.
 		cloned[index] = agent.CloneMessage(message)
 	}
 	model.inputs = append(model.inputs, cloned)
+	if model.checkpoint != "" && len(messages) > 0 && strings.HasPrefix(messages[len(messages)-1].Content, "[Denova runtime context compaction request]") {
+		return agent.AssistantMessage(model.checkpoint, nil)
+	}
 	response := agent.AssistantMessage(model.narrative, nil)
 	response.Extra = providers.ContinuationExtra(model.continuation)
 	return response

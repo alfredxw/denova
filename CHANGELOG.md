@@ -12,6 +12,11 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Fixed / 修复
+
+- 修复游戏已有摘要并保留旧回合时，再次压缩因上下文来源匹配失败而报错的问题。
+- Fix repeated game context compaction failing source validation when older turns remain visible beside an existing checkpoint.
+
 ## [v0.4.5] - 2026-09-09
 
 ### Brief / 简要说明

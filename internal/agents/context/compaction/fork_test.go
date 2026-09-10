@@ -323,6 +323,58 @@ func TestLocateCompactionSourceUsesNewestContiguousRepeatedToolTurn(t *testing.T
 	}
 }
 
+func TestContextCompactionForkMatchesCheckpointAndNewestDeltaSeparately(t *testing.T) {
+	checkpoint := agent.SystemMessage("previous checkpoint")
+	user := agent.UserMessage("repeat the action")
+	assistant := agent.AssistantMessage("repeat the outcome", nil)
+	primary := []*agent.Message{
+		agent.SystemMessage("stable system"), checkpoint,
+		user.Clone(), assistant.Clone(),
+		user.Clone(), assistant.Clone(), agent.UserMessage("current action"),
+	}
+	for _, scenario := range []struct {
+		name   string
+		source []*agent.Message
+		valid  bool
+	}{
+		{"checkpoint_and_delta", []*agent.Message{checkpoint, user, assistant}, true},
+		{"changed_checkpoint", []*agent.Message{agent.SystemMessage("other checkpoint"), user, assistant}, false},
+		{"changed_delta", []*agent.Message{checkpoint, user, agent.AssistantMessage("other outcome", nil)}, false},
+		{"discontinuous_delta", []*agent.Message{checkpoint, user, agent.UserMessage("current action")}, false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			model := &compactionForkCaptureModel{response: agent.AssistantMessage("merged checkpoint", nil)}
+			call := &agent.ModelCall{Model: model, Messages: primary}
+			before := call.Snapshot().Messages()
+			_, _, _, attempted, err := summarizeContextWithPrimaryFork(
+				context.Background(), &config.Config{}, config.AgentKindInteractiveStory, "",
+				scenario.source, scenario.source, "", 100,
+				Policy{AgentKind: config.AgentKindInteractiveStory, ContextWindowTokens: 100_000, RetainedTurns: 1},
+				call.Snapshot(), "", nil,
+			)
+			if !attempted {
+				t.Fatal("source validation unexpectedly selected a cold fallback")
+			}
+			if !scenario.valid {
+				if err == nil || !strings.Contains(err.Error(), "does not match the final primary request") || model.requests != 0 {
+					t.Fatalf("invalid source reached model: requests=%d error=%v", model.requests, err)
+				}
+				return
+			}
+			if err != nil || model.requests != 1 {
+				t.Fatalf("checkpoint and delta fork: requests=%d error=%v", model.requests, err)
+			}
+			fork := model.inputs[0]
+			if len(fork) != len(before)+1 || !reflect.DeepEqual(fork[:len(before)], before) || !reflect.DeepEqual(call.Messages, before) {
+				t.Fatal("compaction changed the exact primary request prefix")
+			}
+			if prompt := fork[len(before)].Content; !strings.Contains(prompt, "provider messages 2 through 2, 5 through 6 (3 messages") {
+				t.Fatalf("compaction did not identify the checkpoint and newest contiguous delta: %s", prompt)
+			}
+		})
+	}
+}
+
 func TestSameProviderVisibleMessageIncludesMultimodalAndToolReceipt(t *testing.T) {
 	left := agent.UserMessage("same text")
 	left.MultiContent = []json.RawMessage{json.RawMessage(`{"type":"text","text":"left"}`)}

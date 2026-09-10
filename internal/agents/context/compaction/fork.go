@@ -295,12 +295,18 @@ func locateCompactionSourceInPrimary(primary, source []*agent.Message) ([]int, [
 		return nil, nil, true
 	}
 
-	// Canonical incremental source is one contiguous provider interval. Match
-	// from the newest possible start so a retained pre-checkpoint turn with
-	// identical content cannot steal the range from a newly appended turn.
-	for start := len(primary) - len(matches); start >= 0; start-- {
+	// Completed turns must form one contiguous provider interval. A leading
+	// system checkpoint is matched separately: Game may retain already
+	// summarized turns between that checkpoint and the new canonical delta.
+	// Match the delta from the newest start so repeated retained turns cannot
+	// steal the range from newly appended turns.
+	deltaFrom := 0
+	if len(matches) > 1 && matches[0].message.Role == agent.System {
+		deltaFrom = 1
+	}
+	for start := len(primary) - (len(matches) - deltaFrom); start >= 0; start-- {
 		matched := true
-		for offset, match := range matches {
+		for offset, match := range matches[deltaFrom:] {
 			if !sameProviderVisibleMessage(primary[start+offset], match.message) {
 				matched = false
 				break
@@ -310,12 +316,26 @@ func locateCompactionSourceInPrimary(primary, source []*agent.Message) ([]int, [
 			continue
 		}
 		positions := make([]int, len(matches))
+		if deltaFrom == 1 {
+			checkpointPosition := -1
+			for index := start - 1; index >= 0; index-- {
+				if sameProviderVisibleMessage(primary[index], matches[0].message) {
+					checkpointPosition = index
+					break
+				}
+			}
+			if checkpointPosition < 0 {
+				return nil, nil, false
+			}
+			positions[0] = checkpointPosition
+		}
+		for offset := range matches[deltaFrom:] {
+			positions[deltaFrom+offset] = start + offset
+		}
 		locators := make([]string, 0, len(matches))
 		for offset, match := range matches {
-			position := start + offset
-			positions[offset] = position
 			if match.locator != "" {
-				locators = append(locators, fmt.Sprintf("provider_message=%d %s", position+1, match.locator))
+				locators = append(locators, fmt.Sprintf("provider_message=%d %s", positions[offset]+1, match.locator))
 			}
 		}
 		return positions, locators, true
@@ -409,10 +429,14 @@ func renderCacheSafeCompactionPrompt(
 	locators []string,
 	checkpointTokenBudget ...int,
 ) string {
-	firstPosition, lastPosition := 0, 0
-	if len(positions) > 0 {
-		firstPosition = positions[0] + 1
-		lastPosition = positions[len(positions)-1] + 1
+	var sourceRanges []string
+	for start := 0; start < len(positions); {
+		end := start
+		for end+1 < len(positions) && positions[end+1] == positions[end]+1 {
+			end++
+		}
+		sourceRanges = append(sourceRanges, fmt.Sprintf("%d through %d", positions[start]+1, positions[end]+1))
+		start = end + 1
 	}
 	minChars, maxChars := compactionTargetCharRange(inputChars, policy)
 	if len(checkpointTokenBudget) > 0 && checkpointTokenBudget[0] > 0 {
@@ -426,7 +450,7 @@ func renderCacheSafeCompactionPrompt(
 	builder.WriteString("[Denova runtime context compaction request]\n")
 	builder.WriteString(compactionForkContract)
 	builder.WriteByte('\n')
-	builder.WriteString(fmt.Sprintf("Source agent kind: %s. Canonical source messages map to provider messages %d through %d (%d messages, approximately %d tokens).\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown"), firstPosition, lastPosition, len(positions), sourceTokens))
+	builder.WriteString(fmt.Sprintf("Source agent kind: %s. Canonical source messages map to provider messages %s (%d messages, approximately %d tokens).\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown"), firstNonEmpty(strings.Join(sourceRanges, ", "), "0 through 0"), len(positions), sourceTokens))
 	builder.WriteString(compactionRetentionRequirements(policy.RetainedTurns))
 	builder.WriteByte('\n')
 	builder.WriteString(fmt.Sprintf("Target checkpoint length: %d-%d characters (%s of the bounded source inputs); preserve facts over hitting a ratio exactly.\n", minChars, maxChars, compactionTargetRange(policy)))
