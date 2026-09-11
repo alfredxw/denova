@@ -9,8 +9,8 @@ import {
 import { openAgentChatSession, openAgentChatWorkbench, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus } from '../support/model'
 
-// Each policy has independent setup and a normal test budget. A failure in one
-// must not prevent the other policies from exercising the real filesystem.
+// Each policy has independent setup. A failure in one must not prevent the
+// other policies from exercising the real filesystem.
 for (const scenario of [
   { mode: 'ask', label: 'Ask', marker: 'ASK', reply: 'External read completed in Ask mode.' },
   { mode: 'write', label: 'Write', marker: 'WRITE', reply: 'External read was denied in Write mode.' },
@@ -44,7 +44,8 @@ for (const scenario of [
               && response.url().includes('/agent-chat/session/asks/') && response.url().endsWith('/answer')),
             pendingApproval.getByRole('button', { name: '仅允许本次' }).click(),
           ])
-          expect(answer.status(), `Approval ${index + 1}: ${await answer.text()}`).toBe(200)
+          const failureDetails = answer.status() === 200 ? '' : await answer.text()
+          expect(answer.status(), `Approval ${index + 1}: ${failureDetails}`).toBe(200)
           expect(answeredApprovals.has(answer.url()), 'Each approval must belong to a new tool call').toBe(false)
           answeredApprovals.add(answer.url())
         }

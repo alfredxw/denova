@@ -36,6 +36,9 @@ export default defineConfig({
     {
       name: 'e2e',
       testMatch: /e2e\/.*\.spec\.ts/,
+      // Real journeys include route hydration, multiple model/tool rounds, and
+      // reloads. Budget the whole journey separately from assertion deadlines.
+      timeout: 120_000,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

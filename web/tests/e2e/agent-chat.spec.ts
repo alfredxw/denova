@@ -18,9 +18,6 @@ const multiAgentExpectations = [
 ]
 
 test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
-  // Two project switches and tool-backed responses exceed the default total
-  // budget on CI; each assertion must still finish within its normal timeout.
-  test.slow()
   const [alphaPath, betaPath] = await Promise.all([
     mkdtemp(path.resolve('test-results', 'runtime', 'general-project-alpha-')),
     mkdtemp(path.resolve('test-results', 'runtime', 'general-project-beta-')),
@@ -52,9 +49,6 @@ test('runs General Agent tools in ordinary directories without crossing Project 
 })
 
 test('keeps concurrent sessions independent and delivers Follow Up to its exact session', async ({ page, request }) => {
-  // Multiple session switches and a reload need the slow-test budget on CI.
-  // Keep individual assertion timeouts unchanged.
-  test.slow()
   const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'parallel-session-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const [sessionA, sessionB] = await Promise.all([
@@ -106,9 +100,6 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
 })
 
 test('keeps three interleaved SubAgent streams responsive, isolated, and restorable', async ({ page, request }) => {
-  // Three complete isolation passes and two reloads need the slow-test budget
-  // on CI; each individual interaction keeps the normal assertion timeout.
-  test.slow()
   const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'multi-agent-display-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Multi-Agent Display Session')
@@ -169,9 +160,6 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
 })
 
 test('restores an accepted Follow Up after reload and delivers it exactly once', async ({ page, request }) => {
-  // Reloading, restoring the session, and finishing both turns form one journey.
-  // Give that journey time on CI without extending any individual assertion.
-  test.slow()
   const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'queue-reload-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Queue Reload Session')
