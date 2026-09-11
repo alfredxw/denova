@@ -20,11 +20,7 @@ var interactiveAgentTestCycle atomic.Uint64
 
 func commitInteractiveAssistantForTest(t testing.TB, store *interactive.Store, storyID, branchID, user string, conversation *interactiveapp.Conversation, content, thinking string) error {
 	t.Helper()
-	cycle := interactiveAgentTestCycle.Add(1)
-	identity := fmt.Sprintf("test-cycle:%d", cycle)
-	conversation.BindAgentCycleIdentity(agentrun.CycleIdentity{
-		CommandID: agentrun.CommandID(identity), OperationID: agentrun.OperationID(identity), Cycle: 1,
-	})
+	bindInteractiveCycleForTest(conversation)
 	materializeInteractiveInputForTest(t, store, storyID, branchID, user, conversation.AgentCycleIdentitySnapshot())
 	if err := conversation.AppendAssistantWithThinking(content, thinking); err != nil {
 		return err
@@ -51,6 +47,7 @@ func materializeInteractiveInputForTest(t testing.TB, store *interactive.Store, 
 
 func submitTestTurnResult(t *testing.T, store *interactive.Store, storyID, branchID string, conversation *interactiveapp.Conversation, intent, goal string) {
 	t.Helper()
+	bindInteractiveCycleForTest(conversation)
 	updates := []interactivestate.Update{}
 	storyContext, err := store.StoryContext(storyID, branchID)
 	if err != nil {
@@ -90,6 +87,16 @@ func submitTestTurnResult(t *testing.T, store *interactive.Store, storyID, branc
 	if err != nil || !receipt.Ready {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}
+}
+
+func bindInteractiveCycleForTest(conversation *interactiveapp.Conversation) {
+	if conversation.AgentCycleIdentitySnapshot().CommandID != "" {
+		return
+	}
+	identity := fmt.Sprintf("test-cycle:%d", interactiveAgentTestCycle.Add(1))
+	conversation.BindAgentCycleIdentity(agentrun.CycleIdentity{
+		CommandID: agentrun.CommandID(identity), OperationID: agentrun.OperationID(identity), Cycle: 1,
+	})
 }
 
 type interactiveReplayConversation struct {

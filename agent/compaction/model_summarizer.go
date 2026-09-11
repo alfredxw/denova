@@ -12,6 +12,9 @@ type ModelSummarizerConfig struct {
 	Model    agent.BaseChatModel
 	Identity agent.CapabilityIdentity
 	Prompt   string
+	// Execution controls this side call's model attempts independently of the
+	// main response. The caller includes its policy in the stable Identity.
+	Execution agent.ExecutionPolicy
 }
 
 type modelSummarizer struct{ config ModelSummarizerConfig }
@@ -36,7 +39,8 @@ func (summarizer *modelSummarizer) Summarize(ctx context.Context, request Summar
 	for _, message := range request.Messages {
 		messages = append(messages, message.Clone())
 	}
-	result, err := summarizer.config.Model.Generate(ctx, messages)
+	call := &agent.ModelCall{Model: summarizer.config.Model, Messages: messages}
+	result, err := call.Snapshot().Complete(ctx, summarizer.config.Execution)
 	if err != nil {
 		return Summary{}, err
 	}

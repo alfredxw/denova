@@ -35,6 +35,9 @@ type TurnSnapshot struct {
 	// InputCommit lets Engine.Run verify that admission used the same canonical
 	// identity and hash.
 	InputCommit *DomainCommitState
+	// OutputCommit prevents a resumed cycle from generating a second final
+	// output when the product transaction already committed before shutdown.
+	OutputCommit *DomainCommitState
 }
 
 type EngineControlKind string
@@ -42,6 +45,7 @@ type EngineControlKind string
 const (
 	EngineControlPreempt             EngineControlKind = "preempt"
 	EngineControlAbort               EngineControlKind = "abort"
+	EngineControlSuspend             EngineControlKind = "suspend"
 	EngineControlInteractionResolved EngineControlKind = "interaction_resolved"
 )
 
@@ -89,17 +93,19 @@ type EventSource struct {
 }
 
 type EngineAssistantDelta struct {
-	Source      EventSource
-	Delta       string
-	DisplayOnly bool
+	ResponseOrdinal int
+	Source          EventSource
+	Delta           string
+	DisplayOnly     bool
 }
 
 func (EngineAssistantDelta) engineEvent() {}
 
 type EngineThinkingDelta struct {
-	Source      EventSource
-	Delta       string
-	DisplayOnly bool
+	ResponseOrdinal int
+	Source          EventSource
+	Delta           string
+	DisplayOnly     bool
 }
 
 func (EngineThinkingDelta) engineEvent() {}
@@ -137,6 +143,18 @@ type EngineModelCompleted struct {
 }
 
 func (EngineModelCompleted) engineEvent() {}
+
+type EngineModelRetry struct {
+	Source          EventSource
+	Attempt         int
+	MaxAttempts     int
+	ResponseOrdinal int
+	OutputState     string
+	Delay           time.Duration
+	Reason          string
+}
+
+func (EngineModelRetry) engineEvent() {}
 
 // EngineTranscriptUpdated replaces the in-process transcript used by later
 // cycles in this Run. TaskCompletionIDs make one safe-boundary checkpoint
@@ -438,6 +456,7 @@ const (
 	EngineCompleted  EngineStatus = "completed"
 	EngineIncomplete EngineStatus = "incomplete"
 	EnginePreempted  EngineStatus = "preempted"
+	EngineSuspended  EngineStatus = "suspended"
 	EngineAborted    EngineStatus = "aborted"
 )
 

@@ -143,11 +143,12 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 		}
 		input := fmt.Sprintf("Continue to bridge %d", turn)
 		conversation := NewConversation(store, "", workspace, story.ID, "main", input, 800, cfg)
-		submitTestTurnResult(t, conversation, input, input)
+		submission := gameSubmissionForTest(t, conversation, input, input)
 		operation, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "automatic-game-checkpoint", Name: "game", Model: model, ModelIdentity: identity,
-				Compaction: manager, Tools: toolset, Permission: agentpermission.FullAccess(),
+				Middlewares: []agent.Middleware{submission},
+				Compaction:  manager, Tools: toolset, Permission: agentpermission.FullAccess(),
 			},
 			Conversation: conversation, Options: options,
 			Request: agentchat.ChatRequest{CommandID: fmt.Sprintf("automatic-game-turn-%d", turn), Message: input},

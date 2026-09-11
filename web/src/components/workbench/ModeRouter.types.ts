@@ -123,6 +123,8 @@ export interface ModeRouterProps {
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
+  onSuspend?: () => void
+  onResumeTask?: () => void
   onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>

@@ -7,12 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 )
 
 var (
@@ -56,6 +59,7 @@ type DomainCommitIntent struct {
 	Metadata       MessageMetadata
 	Hash           string
 	ExpectedCursor *ContextCursor
+	Checkpoint     agent.CanonicalCheckpoint
 }
 
 // DomainCommitReceipt proves the exact canonical message and context revision
@@ -139,7 +143,10 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		if metadata.ContextOnly {
 			kind = historyTypeContextMessage
 		}
-		if err := s.appendDomainMessageLocked(&message, metadata, kind); err != nil {
+		if err := s.appendDomainMessageLocked(&message, metadata, kind, intent.Checkpoint); err != nil {
+			if errors.Is(err, conversationjournal.ErrCommitUnknown) {
+				return err
+			}
 			recoveryErr := s.refreshCanonicalTailLocked()
 			if recoveryErr == nil {
 				reconciled, found, reconcileErr := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash)
@@ -166,7 +173,7 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 // appendDomainMessageLocked publishes the canonical message and its optional
 // interruption resolution as one physical journal transaction. Callers hold
 // s.mu under the canonical journal lease.
-func (s *Session) appendDomainMessageLocked(message *agent.Message, metadata MessageMetadata, kind string) error {
+func (s *Session) appendDomainMessageLocked(message *agent.Message, metadata MessageMetadata, kind string, checkpoint agent.CanonicalCheckpoint) error {
 	if message == nil {
 		return errors.New("domain commit message is nil")
 	}
@@ -186,6 +193,11 @@ func (s *Session) appendDomainMessageLocked(message *agent.Message, metadata Mes
 		interruptionPatch = &patch
 		records = append(records, patch)
 	}
+	agentRecords, err := sessionjournal.CheckpointRecords(&s.projection.AgentSessions, checkpoint, strconv.FormatUint(metadata.ContextRevision, 10))
+	if err != nil {
+		return err
+	}
+	records = append(records, agentRecords...)
 	if _, err := s.appendJournalRecordsLocked(records...); err != nil {
 		return err
 	}

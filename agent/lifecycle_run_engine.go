@@ -13,12 +13,53 @@ import (
 )
 
 func (run *Run) execute() {
+	defer close(run.executionDone)
+	if run.resuming {
+		status, err := run.awaitRecoveryInput()
+		if err != nil {
+			run.finish(Result{Status: ResultFailed, Reason: err.Error()}, err)
+			return
+		}
+		switch status {
+		case runstate.EngineAborted:
+			run.finish(Result{Status: ResultAborted, Reason: run.currentAbortReason()}, nil)
+			return
+		case runstate.EngineSuspended:
+			run.suspendExecution()
+			return
+		case "":
+		default:
+			run.finish(Result{Status: ResultFailed, Reason: "invalid recovery gate status"}, errors.New("invalid recovery gate status"))
+			return
+		}
+	}
 	input := cloneInput(run.input)
 	delivery := run.delivery
 	autonomous := false
+	if run.cycle > 0 {
+		input, _ = decodeInput(run.snapshot.Input)
+		input.IdempotencyKey = string(run.snapshot.CommandID)
+		delivery, autonomous = run.snapshot.Delivery, run.snapshot.Autonomous
+	}
 	for {
+		if err := run.admitWork(run.ctx); err != nil {
+			if run.suspensionRequested() {
+				run.suspendExecution()
+			} else {
+				run.finish(Result{Status: ResultFailed, Reason: err.Error()}, err)
+			}
+			return
+		}
+		if run.suspensionRequested() {
+			run.suspendExecution()
+			return
+		}
 		result, continuation, err := run.executeCycle(input, delivery, autonomous)
 		if err != nil {
+			if run.suspensionRequested() && errors.Is(err, context.Canceled) {
+				run.suspendExecution()
+				return
+			}
 			if errors.Is(err, context.Canceled) && run.ctx.Err() != nil {
 				run.finish(Result{Status: ResultAborted, Reason: "Agent Run cancelled"}, nil)
 			} else {
@@ -27,6 +68,9 @@ func (run *Run) execute() {
 			return
 		}
 		switch result.Status {
+		case runstate.EngineSuspended:
+			run.suspendExecution()
+			return
 		case runstate.EngineAborted:
 			run.finish(Result{Status: ResultAborted, Reason: run.currentAbortReason()}, nil)
 			return
@@ -69,10 +113,16 @@ func (run *Run) execute() {
 }
 
 func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autonomous bool) (runstate.EngineResult, *runstate.EngineContinuation, error) {
+	cycleCtx := context.WithValue(run.ctx, canonicalRunKey{}, run)
 	run.mu.Lock()
-	run.cycle++
+	resume := run.resuming
+	run.resuming = false
+	if !resume {
+		run.cycle++
+	}
 	run.content.Reset()
 	run.thinking.Reset()
+	run.modelResponseOrdinal, run.modelContentStart, run.modelThinkingStart = 0, 0, 0
 	clear(run.openTools)
 	cycle := run.cycle
 	run.mu.Unlock()
@@ -90,6 +140,18 @@ func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autono
 		CommandID: runstate.CommandID(commandID), OperationID: runstate.OperationID(run.id), Cycle: cycle,
 		StartedAt: time.Now().UTC(), Delivery: delivery, Autonomous: autonomous, Input: runInput,
 	}
+	if resume {
+		run.mu.RLock()
+		snapshot = run.snapshot
+		run.mu.RUnlock()
+	}
+	if autonomous && !resume {
+		// Host input materialization must never precede durable acceptance, even
+		// when the next input was produced by the Goal manager.
+		if _, err := run.session.Queue(cycleCtx, input); err != nil {
+			return runstate.EngineResult{}, nil, err
+		}
+	}
 	run.session.mu.Lock()
 	snapshot.ContextCursor = runstate.Cursor(run.session.revision)
 	snapshot.State = append(json.RawMessage(nil), run.session.engineState...)
@@ -97,7 +159,7 @@ func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autono
 	run.session.mu.Unlock()
 
 	if preparer, ok := run.session.engine.(runstate.EngineAdmissionPreparer); ok {
-		updates, prepareErr := preparer.PrepareAdmission(run.ctx, runstate.TurnAdmissionRequest{Snapshot: snapshot})
+		updates, prepareErr := preparer.PrepareAdmission(cycleCtx, runstate.TurnAdmissionRequest{Snapshot: snapshot})
 		if prepareErr != nil {
 			return runstate.EngineResult{}, nil, prepareErr
 		}
@@ -108,14 +170,14 @@ func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autono
 		snapshot.Capabilities = cloneRawStateMap(run.session.capabilities)
 		run.session.mu.RUnlock()
 	}
-	if materializer, ok := run.session.engine.(runstate.EngineInputMaterializer); ok {
+	if materializer, ok := run.session.engine.(runstate.EngineInputMaterializer); ok && snapshot.InputCommit == nil {
 		request := runstate.InputMaterializationRequest{Binding: run.session.binding.Clone(), Snapshot: snapshot}
-		plan, planErr := materializer.PlanInputMaterialization(run.ctx, request)
+		plan, planErr := materializer.PlanInputMaterialization(cycleCtx, request)
 		if planErr != nil {
 			return runstate.EngineResult{}, nil, planErr
 		}
 		if plan.Required {
-			receipt, materializeErr := materializer.MaterializeInput(run.ctx, request, plan)
+			receipt, materializeErr := materializer.MaterializeInput(cycleCtx, request, plan)
 			if materializeErr != nil {
 				return runstate.EngineResult{}, nil, materializeErr
 			}
@@ -125,9 +187,12 @@ func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autono
 			}
 		}
 	}
-	run.mu.Lock()
-	run.snapshot = snapshot
-	run.mu.Unlock()
+	run.session.mu.RLock()
+	snapshot.State = append(json.RawMessage(nil), run.session.engineState...)
+	run.session.mu.RUnlock()
+	if err := run.checkpointCycle(run.ctx, snapshot); err != nil {
+		return runstate.EngineResult{}, nil, err
+	}
 	startedAt := run.startedAtValue()
 	if startedAt.IsZero() {
 		// Defensive fallback for alternate Run constructors: the first cycle is
@@ -137,7 +202,7 @@ func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autono
 	}
 	run.publish(RunStarted{Cycle: cycle, CommandID: commandID, Delivery: string(snapshot.Delivery), StartedAt: startedAt})
 	var continuation *runstate.EngineContinuation
-	engineCtx := contextWithTaskCompletionSession(run.ctx, run.session)
+	engineCtx := contextWithTaskCompletionSession(cycleCtx, run.session)
 	result, err := run.session.engine.Run(engineCtx, runstate.EngineRequest{
 		Binding: run.session.binding.Clone(), Snapshot: snapshot, Controls: run.controls,
 	}, func(event runstate.EngineEvent) error {
@@ -157,17 +222,19 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 	case runstate.EngineAssistantDelta:
 		if !value.DisplayOnly {
 			run.mu.Lock()
+			run.beginModelResponseLocked(value.ResponseOrdinal)
 			run.content.WriteString(value.Delta)
 			run.mu.Unlock()
 		}
-		run.publish(AssistantDelta{Source: publicEventSource(value.Source), Delta: value.Delta, DisplayOnly: value.DisplayOnly})
+		run.publish(AssistantDelta{Source: publicEventSource(value.Source), Delta: value.Delta, DisplayOnly: value.DisplayOnly, ResponseOrdinal: value.ResponseOrdinal})
 	case runstate.EngineThinkingDelta:
 		if !value.DisplayOnly {
 			run.mu.Lock()
+			run.beginModelResponseLocked(value.ResponseOrdinal)
 			run.thinking.WriteString(value.Delta)
 			run.mu.Unlock()
 		}
-		run.publish(ThinkingDelta{Source: publicEventSource(value.Source), Delta: value.Delta, DisplayOnly: value.DisplayOnly})
+		run.publish(ThinkingDelta{Source: publicEventSource(value.Source), Delta: value.Delta, DisplayOnly: value.DisplayOnly, ResponseOrdinal: value.ResponseOrdinal})
 	case runstate.EngineNestedEvent:
 		nested, err := decodeNestedEvent(nestedEventRecord{
 			Source: publicEventSource(value.Source), ParentCallID: value.ParentCallID, SessionID: value.SessionID,
@@ -178,6 +245,20 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 			return err
 		}
 		run.publish(nested)
+	case runstate.EngineModelRetry:
+		if value.OutputState != string(ModelOutputComplete) {
+			run.mu.Lock()
+			if run.modelResponseOrdinal == value.ResponseOrdinal {
+				content, thinking := run.content.String()[:run.modelContentStart], run.thinking.String()[:run.modelThinkingStart]
+				run.content.Reset()
+				run.content.WriteString(content)
+				run.thinking.Reset()
+				run.thinking.WriteString(thinking)
+			}
+			run.mu.Unlock()
+		}
+		run.publish(ModelRetry{Source: publicEventSource(value.Source), Attempt: value.Attempt, MaxAttempts: value.MaxAttempts,
+			ResponseOrdinal: value.ResponseOrdinal, OutputState: ModelOutputState(value.OutputState), Delay: value.Delay, Reason: value.Reason})
 	case runstate.EngineModelCompleted:
 		run.publish(ModelCompleted{Usage: TokenUsage{
 			PromptTokens:       value.Usage.PromptTokens,
@@ -189,7 +270,7 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 		if len(value.TaskCompletionIDs) != 0 {
 			return run.persistTaskCompletionCheckpoint(value.State, value.TaskCompletionIDs)
 		}
-		return run.updateEngineTranscript(value.State, false)
+		return run.updateEngineTranscript(value.State, true)
 	case runstate.EngineCapabilityState:
 		return run.applyCapabilityUpdates([]runstate.EngineCapabilityState{value})
 	case runstate.EngineContextNormalized:
@@ -214,19 +295,10 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 			Code: value.Code, Detail: value.Detail,
 		})
 	case runstate.EngineInteractionRequested:
-		var request InteractionRequest
-		if err := json.Unmarshal(value.Request, &request); err != nil {
+		request, err := run.recordInteraction(value)
+		if err != nil {
 			return err
 		}
-		run.mu.Lock()
-		run.interactions[value.ID] = pendingInteraction{
-			request: request,
-			snapshot: runstate.InteractionSnapshot{
-				ID: value.ID, OperationID: runstate.OperationID(run.id), Cycle: run.cycle,
-				ToolCallID: value.ToolCallID, Request: append(json.RawMessage(nil), value.Request...),
-			},
-		}
-		run.mu.Unlock()
 		run.publish(InteractionRequested{Request: request})
 	case runstate.EngineAssistantFinal:
 		if err := run.updateEngineTranscript(value.State, true); err != nil {
@@ -252,6 +324,9 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 	case runstate.EngineToolInputDelta:
 		run.publish(ToolInputDelta{CallID: value.CallID, ProviderCallID: value.ProviderCallID, Name: value.Name, Delta: value.Delta, Source: publicEventSource(value.Source)})
 	case runstate.EngineToolStarted:
+		if err := run.recordToolStart(value); err != nil {
+			return err
+		}
 		if value.ExecutionAuthorized {
 			run.mu.Lock()
 			run.openTools[value.CallID] = OpenToolSnapshot{
@@ -282,6 +357,9 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 			if json.Unmarshal(value.Projection, &decoded) == nil {
 				projection = &decoded
 			}
+		}
+		if err := run.recordToolResult(value, projection); err != nil {
+			return err
 		}
 		run.publish(ToolFinished{CallID: value.CallID, ProviderCallID: value.ProviderCallID, Name: value.Name, Index: value.Index, IsError: value.IsError, Result: value.Result, Descriptor: decodeToolDescriptorMetadata(value.Metadata), Projection: projection, Source: publicEventSource(value.Source)})
 	default:

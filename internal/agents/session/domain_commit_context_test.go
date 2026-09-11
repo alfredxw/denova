@@ -29,7 +29,7 @@ func TestDomainCommitContextSurvivesMessageWindowTrimming(t *testing.T) {
 			identity := DomainCommitIdentity{CommandID: "history", OperationID: "history-run", Cycle: 1}
 			for sequence := 0; sequence < batches; sequence++ {
 				messages := domainContextToolMessages(sequence, 1)
-				if _, err := sess.CommitContextBatch(t.Context(), sess.ContextCursor(), identity, sequence, messages); err != nil {
+				if _, err := sess.CommitContextBatch(t.Context(), sess.ContextCursor(), identity, sequence, messages, nil); err != nil {
 					t.Fatal(err)
 				}
 			}

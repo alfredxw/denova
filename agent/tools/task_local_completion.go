@@ -58,7 +58,7 @@ func (tasks *LocalTasks) reconcileTaskSession(
 	if err != nil {
 		return err
 	}
-	if snapshot.ActiveRunID != "" {
+	if snapshot.ActiveRunID != "" && snapshot.ActiveStatus != agent.ResultSuspended {
 		ref := TaskRef{Agent: candidate.Name, Session: key.ID, Run: snapshot.ActiveRunID}
 		if err := tasks.trackTaskCompletion(ctx, ref); err != nil {
 			return err
@@ -90,7 +90,7 @@ func (tasks *LocalTasks) reconcileTaskSession(
 			return err
 		}
 	}
-	if snapshot.ActiveRunID == "" {
+	if snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 {
 		return session.Close(context.Background())
 	}
 	return nil
@@ -164,6 +164,10 @@ func (tasks *LocalTasks) watchCompletion(ctx context.Context, run *agent.Run, re
 		}()
 		streamErr := tasks.forwardTaskRun(ctx, run, ref)
 		result, waitErr := run.Wait(context.Background())
+		if result.Status == agent.ResultSuspended {
+			_ = tasks.completionParent.UntrackTaskCompletion(context.Background(), completionID)
+			return
+		}
 		task, snapshotErr := tasks.taskSnapshot(context.Background(), ref)
 		if task.Ref != ref || !isTaskTerminal(task.Status) {
 			status := result.Status
@@ -206,7 +210,7 @@ func (tasks *LocalTasks) forwardTaskRun(ctx context.Context, run *agent.Run, ref
 			if event.RunID != ref.Run {
 				continue
 			}
-			if interaction, ok := event.Payload.(agent.InteractionRequested); ok {
+			if interaction, ok := event.Payload.(agent.InteractionRequested); ok && interaction.Request.Verification == nil {
 				response := agent.InteractionResponse{Cancelled: true}
 				if interaction.Request.Kind == agent.InteractionPermission {
 					response = agent.InteractionResponse{Permission: agent.PermissionDeny}

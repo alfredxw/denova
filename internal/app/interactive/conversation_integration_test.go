@@ -369,6 +369,7 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation := NewConversation(store, novaDir, workspace, story.ID, "main", "我强闯秘境入口", story.ReplyTargetChars, &config.Config{})
+	bindInteractiveCycleForTest(t, conversation)
 	resolution, err := conversation.PrepareInteractiveTurn(
 		context.Background(),
 		interactive.TurnCheckRequest{

@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from 'react'
+import { useRef, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
 import { Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Paperclip, Pencil, RefreshCw, ScrollText, Sparkles, Target, X } from 'lucide-react'
 import { AgentComposerControls } from '@/components/Chat/AgentComposerControls'
@@ -30,6 +30,7 @@ import type { InputAreaSendOptions } from '@/components/Chat/InputArea'
 type StateSetter<T> = Dispatch<SetStateAction<T>>
 
 interface StoryStageComposerProps {
+  taskControls?: ReactNode
   layout: {
     projectId: string
     creatingStory: boolean
@@ -127,7 +128,7 @@ interface StoryStageComposerProps {
   }
 }
 
-export function StoryStageComposer({ layout, editor, story, runtime, goal, dialogs, actions }: StoryStageComposerProps) {
+export function StoryStageComposer({ layout, editor, story, runtime, goal, dialogs, actions, taskControls }: StoryStageComposerProps) {
   const { projectId, creatingStory, isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
   const { storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
@@ -173,6 +174,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
   return (
     <div ref={inputFloatRef} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
       <div className="pointer-events-auto mx-auto max-w-5xl">
+        {taskControls ? <div className="mb-2">{taskControls}</div> : null}
         {editingTurn && !streaming ? (
           <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
             <Pencil className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />

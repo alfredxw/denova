@@ -14,6 +14,16 @@ import (
 // Append durably publishes one transaction. The reducer is updated only after
 // the canonical append succeeds, and index failures never roll back the log.
 func (journal *Journal) Append(ctx context.Context, guard Guard, payloads ...json.RawMessage) (Commit, error) {
+	return journal.append(ctx, guard, "", payloads...)
+}
+
+// AppendWithBackup preserves the original canonical file once, under the
+// append lease, before a domain begins writing a newer persistent format.
+func (journal *Journal) AppendWithBackup(ctx context.Context, guard Guard, upgrade string, payloads ...json.RawMessage) (Commit, error) {
+	return journal.append(ctx, guard, upgrade, payloads...)
+}
+
+func (journal *Journal) append(ctx context.Context, guard Guard, upgrade string, payloads ...json.RawMessage) (Commit, error) {
 	if journal == nil {
 		return Commit{}, fmt.Errorf("conversation journal is nil")
 	}
@@ -47,6 +57,15 @@ func (journal *Journal) Append(ctx context.Context, guard Guard, payloads ...jso
 	if guard.Cursor != journal.head.Cursor || (guard.RecordSHA256 != "" && guard.RecordSHA256 != journal.head.RecordSHA256) {
 		return Commit{}, &ConflictError{Expected: guard, Actual: journal.head}
 	}
+	if upgrade != "" && !journal.backupUpgrades[upgrade] {
+		if err := preserveFormatBackup(journal.path, upgrade); err != nil {
+			return Commit{}, err
+		}
+		if journal.backupUpgrades == nil {
+			journal.backupUpgrades = make(map[string]bool)
+		}
+		journal.backupUpgrades[upgrade] = true
+	}
 	nextCursor := journal.head.Cursor + 1
 	line, err := encodeTransaction(journal.identity, nextCursor, journal.head.RecordSHA256, payloads)
 	if err != nil {
@@ -54,13 +73,14 @@ func (journal *Journal) Append(ctx context.Context, guard Guard, payloads ...jso
 	}
 	location, nextOffset, appendErr := appendAndSync(journal.path, journal.validOffset, journal.needsNewline, line)
 	if appendErr != nil {
-		return Commit{}, fmt.Errorf("append conversation journal: %w", appendErr)
+		journal.projectionInvalid = true
+		return Commit{}, errors.Join(ErrCommitUnknown, fmt.Errorf("append conversation journal: %w", appendErr))
 	}
 	location.Cursor = nextCursor
 	location.PreviousRecordSHA256 = journal.head.RecordSHA256
 	if err := journal.applyLineLocked(line, location.Offset, location.Length, nextOffset, true); err != nil {
 		journal.projectionInvalid = true
-		return Commit{}, fmt.Errorf("conversation transaction committed but projection failed: %w", err)
+		return Commit{}, errors.Join(ErrCommitUnknown, fmt.Errorf("conversation transaction committed but projection failed: %w", err))
 	}
 	journal.journalSize = nextOffset
 	journal.dirtyTransactions++
@@ -172,6 +192,7 @@ func (journal *Journal) Close() (resultErr error) {
 		return nil
 	}
 	if err := journal.refreshLocked(context.Background(), false); err != nil {
+		journal.closed = true
 		return err
 	}
 	journal.closed = true

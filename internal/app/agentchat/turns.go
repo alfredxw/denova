@@ -354,12 +354,26 @@ func (service *Service) SubmitCommand(ctx context.Context, binding Binding, comm
 	}
 	active := service.activeRun(binding)
 	if active == nil || active.task == nil || active.task.Finished() {
-		return agentrun.CommandReceipt{}, appagentruntime.ErrNoActiveOperation
+		_, runtime := service.host.BaseRuntime()
+		options := runtimeOptions(binding, "")
+		status, err := runtime.RuntimeStatusProjection(ctx, options)
+		if err != nil {
+			return agentrun.CommandReceipt{}, err
+		}
+		if status.Phase != agentrun.RunPhaseSuspended {
+			return agentrun.CommandReceipt{}, appagentruntime.ErrNoActiveOperation
+		}
+		return runtime.SubmitCommand(ctx, agentexecution.CommandRequest{
+			Kind: command.Kind, CommandID: command.CommandID,
+			OperationID: command.OperationID, AfterOperationID: command.OperationID,
+			TargetCommandID: command.TargetCommandID, Reason: command.Reason,
+			Request: command.Input, Options: options,
+		})
 	}
 
 	options := runtimeOptions(binding, active.task.ID())
 	switch command.Kind {
-	case agentexecution.CommandAbort, agentexecution.CommandSteerQueued, agentexecution.CommandCancelQueued:
+	case agentexecution.CommandAbort, agentexecution.CommandSuspend, agentexecution.CommandSteerQueued, agentexecution.CommandCancelQueued:
 		return active.runtime.ExecutionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 			Kind: command.Kind, CommandID: command.CommandID,
 			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,

@@ -82,7 +82,7 @@ func TestGameManualCompactionRecoversHistoryAboveProviderTokenLimit(t *testing.T
 	}
 	cycle.Conversation = NewConversation(store, "", workspace, story.ID, "main", "Continue", 800, cfg)
 	cycle.Request = agentchat.ChatRequest{CommandID: "continue-overflowed-game", Message: "Continue"}
-	submitTestTurnResult(t, cycle.Conversation.(*Conversation), "Continue", "Continue")
+	cycle.Definition.Middlewares = append(cycle.Definition.Middlewares, gameSubmissionForTest(t, cycle.Conversation.(*Conversation), "Continue", "Continue"))
 	operation, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: cycle})
 	if err != nil {
 		t.Fatal(err)

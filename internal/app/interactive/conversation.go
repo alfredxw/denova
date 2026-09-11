@@ -44,6 +44,8 @@ type Conversation struct {
 	modelContextMessages        []interactive.ModelContextMessage
 	modelContextBatchSequence   int
 	ruleResolution              *interactive.RuleResolution
+	turnDraft                   interactive.TurnDraft
+	turnDraftLoaded             bool
 	turnProtocol                interactiveTurnProtocol
 	baseParentID                *string
 	replaceTurnID               string
@@ -94,6 +96,10 @@ func (c *Conversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
 	c.agentCycleIdentity = identity
 	if !sameCycle {
 		c.acceptedPlayerInputID = ""
+		c.turnDraftLoaded = false
+		c.turnDraft = interactive.TurnDraft{}
+		c.turnProtocol = interactiveTurnProtocol{}
+		c.ruleResolution = nil
 	}
 	c.modelContextMessages = nil
 	c.modelContextBatchSequence = 0
@@ -674,6 +680,7 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 	ctx context.Context,
 	message string,
 	attachments []agent.Attachment,
+	checkpoint agent.CanonicalCheckpoint,
 ) (interactive.PlayerInputReceipt, error) {
 	if c == nil || c.store == nil {
 		return interactive.PlayerInputReceipt{}, fmt.Errorf("互动故事不存在")
@@ -704,6 +711,7 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 			return interactive.PlayerInputReceipt{}, err
 		}
 	}
+	intent.Checkpoint = checkpoint
 	receipt, err := c.store.CommitPlayerInput(c.storyID, intent)
 	if err != nil {
 		return interactive.PlayerInputReceipt{}, err

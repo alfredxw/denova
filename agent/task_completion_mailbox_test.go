@@ -245,9 +245,13 @@ func TestTaskCompletionCheckpointFailureKeepsPendingAndSkipsProvider(t *testing.
 	if calls := model.calls(); len(calls) != 0 {
 		t.Fatalf("provider was called %d times after checkpoint failure", len(calls))
 	}
-	watch, err := session.WatchTaskCompletions(ctx, []string{"retryable-completion"})
-	if err != nil || len(watch.PendingIDs) != 1 {
-		t.Fatalf("failed checkpoint pending=%#v err=%v", watch.PendingIDs, err)
+	session.mu.RLock()
+	_, pending := session.taskCompletions.pending["retryable-completion"]
+	_, delivered := session.taskCompletions.delivered["retryable-completion"]
+	closed := session.closed
+	session.mu.RUnlock()
+	if !pending || delivered || !closed {
+		t.Fatalf("failed checkpoint pending=%v delivered=%v writer_closed=%v", pending, delivered, closed)
 	}
 }
 

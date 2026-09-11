@@ -1,0 +1,5 @@
+[
+  {"kind":"turn.started","version":1,"data":{"run_id":"released-completed","command_id":"released-input","at":"2026-09-09T00:00:00Z"}},
+  {"kind":"turn.finished","version":1,"data":{"run_id":"released-completed","command_id":"released-input","status":"completed","output":"Released result","at":"2026-09-09T00:00:01Z"}},
+  {"kind":"turn.started","version":1,"data":{"run_id":"released-incomplete","command_id":"released-lost-input","at":"2026-09-09T00:00:02Z"}}
+]

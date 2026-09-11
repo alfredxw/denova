@@ -83,6 +83,8 @@ func interactiveAgentCommandKind(value string) (novaApp.CommandKind, error) {
 		return novaApp.CommandCancelQueued, nil
 	case string(novaApp.CommandAbort):
 		return novaApp.CommandAbort, nil
+	case string(novaApp.CommandSuspend):
+		return novaApp.CommandSuspend, nil
 	default:
 		return "", novaApp.ErrInvalidAgentCommand
 	}

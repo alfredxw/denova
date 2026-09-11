@@ -86,6 +86,25 @@ func (session *Session) TrackTaskCompletion(ctx context.Context, id string) (boo
 	return true, nil
 }
 
+// UntrackTaskCompletion detaches a paused child from a live synchronization
+// wait. It creates no completion or delivery fact; Resume registers it again.
+func (session *Session) UntrackTaskCompletion(ctx context.Context, id string) error {
+	if _, err := commandContext(ctx); err != nil {
+		return err
+	}
+	if session == nil {
+		return ErrSessionClosed
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return ErrSessionClosed
+	}
+	delete(session.taskCompletions.outstanding, id)
+	session.signalTaskCompletionActivityLocked()
+	return nil
+}
+
 // EnqueueTaskCompletion queues a completion without starting or steering a
 // parent Run. It returns false when the same completion is already pending or
 // durably delivered.
@@ -235,10 +254,18 @@ func (session *Session) commitTaskCompletionCheckpoint(
 
 	session.mu.Lock()
 	defer session.mu.Unlock()
+	allDelivered := true
 	for _, id := range unique {
+		if _, delivered := session.taskCompletions.delivered[id]; delivered {
+			continue
+		}
+		allDelivered = false
 		if _, pending := session.taskCompletions.pending[id]; !pending {
 			return fmt.Errorf("task completion %q is no longer pending", id)
 		}
+	}
+	if allDelivered {
+		return nil
 	}
 	if session.canonicalMessages {
 		previous := session.engineState

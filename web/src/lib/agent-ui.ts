@@ -246,7 +246,26 @@ function normalizeReviewFeedbackRefs(
 }
 
 export function normalizeAgentUIMessages(messages: AgentUIMessage[]): AgentUIMessage[] {
-  return normalizeRepeatedAgentUIParts(normalizeRepeatedAgentUIMessageIDs(messages))
+  const normalized = normalizeRepeatedAgentUIParts(normalizeRepeatedAgentUIMessageIDs(messages))
+  const discarded = normalized.flatMap(message => message.parts.flatMap(part => {
+    if (part.type !== 'data-agent-activity' || part.data.event !== 'model_retry') return []
+    return Array.isArray(part.data.discard_ids) ? part.data.discard_ids.filter((id): id is string => typeof id === 'string') : []
+  }))
+  return discardAgentPreviews(normalized, discarded)
+}
+
+/** Retract exact display parts from one failed response, keeping earlier tools. */
+export function discardAgentPreviews(messages: AgentUIMessage[], ids: string[]): AgentUIMessage[] {
+  if (!ids.length) return messages
+  const discarded = new Set(ids)
+  return messages.flatMap(message => {
+    if (discarded.has(message.id) || discarded.has(message.metadata?.display_segment_id || '')) return []
+    const parts = message.parts.filter(part => {
+      const value = part as unknown as { toolCallId?: string; providerMetadata?: { agent?: { display_segment_id?: string } } }
+      return !discarded.has(value.toolCallId || '') && !discarded.has(value.providerMetadata?.agent?.display_segment_id || '')
+    })
+    return parts.length ? [parts.length === message.parts.length ? message : { ...message, parts }] : []
+  })
 }
 
 /**

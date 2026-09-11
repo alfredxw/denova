@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"time"
 )
 
 // ToolCallEndpoint is the single middleware seam for structured tool calls.
@@ -22,7 +21,6 @@ type ToolContext struct {
 // ModelContext contains read-only metadata for a model invocation.
 type ModelContext struct {
 	Tools []*ToolInfo
-	Retry *RetryConfig
 	// Iteration is the zero-based model step within the current Agent run.
 	Iteration int
 	// Attempt is the zero-based provider attempt for this model step. Every
@@ -248,33 +246,6 @@ type RunState struct {
 	Extra     map[string]any
 }
 
-// RetryContext describes the current model attempt and its result.
-type RetryContext struct {
-	Attempt       int
-	Messages      []*Message
-	OutputMessage *Message
-	Err           error
-	Options       []ModelOption
-}
-
-// RetryDecision determines whether and how a model attempt is repeated.
-type RetryDecision struct {
-	Retry        bool
-	Messages     []*Message
-	Options      []ModelOption
-	Backoff      time.Duration
-	RejectReason any
-}
-
-// RetryConfig enables an explicit, bounded number of model retries.
-// No retries or backoff are implicit when this value is nil.
-type RetryConfig struct {
-	MaxRetries  int
-	ShouldRetry func(context.Context, *RetryContext) *RetryDecision
-	IsRetryable func(context.Context, error) bool
-	BackoffFunc func(context.Context, int) time.Duration
-}
-
 // Middleware customizes the native loop without owning it.
 type Middleware interface {
 	BeforeAgent(context.Context, *RunContext) (context.Context, *RunContext, error)
@@ -283,6 +254,9 @@ type Middleware interface {
 	AfterModelRewriteState(context.Context, *RunState, *ModelContext) (context.Context, *RunState, error)
 	WrapModel(context.Context, BaseChatModel, *ModelContext) (BaseChatModel, error)
 	BeforeModelCall(context.Context, *ModelCall, *ModelContext) (context.Context, *ModelCall, error)
+	// ReviewModelOutput runs only after a complete successful response, before
+	// accepting it or executing its tools. Repair feedback is request-local.
+	ReviewModelOutput(context.Context, ModelOutput) (ModelOutputReview, error)
 	WrapToolCall(context.Context, ToolCallEndpoint, *ToolContext) (ToolCallEndpoint, error)
 }
 
@@ -311,6 +285,10 @@ func (*BaseMiddleware) WrapModel(_ context.Context, model BaseChatModel, _ *Mode
 
 func (*BaseMiddleware) BeforeModelCall(ctx context.Context, call *ModelCall, _ *ModelContext) (context.Context, *ModelCall, error) {
 	return ctx, call, nil
+}
+
+func (*BaseMiddleware) ReviewModelOutput(context.Context, ModelOutput) (ModelOutputReview, error) {
+	return ModelOutputReview{Action: ModelOutputAccept}, nil
 }
 
 func (*BaseMiddleware) WrapToolCall(_ context.Context, endpoint ToolCallEndpoint, _ *ToolContext) (ToolCallEndpoint, error) {

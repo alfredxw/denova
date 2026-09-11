@@ -2,8 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -20,14 +18,6 @@ const (
 	runOwnsTemporarySession
 )
 
-type queuedRunInput struct {
-	id        string
-	input     Input
-	delivery  runstate.DeliveryKind
-	cursor    Cursor
-	cancelled bool
-}
-
 type pendingInteraction struct {
 	snapshot runstate.InteractionSnapshot
 	request  InteractionRequest
@@ -37,36 +27,46 @@ type pendingInteraction struct {
 // reattached while this process is alive; after restart the persisted Session
 // transcript remains, while unfinished work is reported as interrupted.
 type Run struct {
-	session    *Session
-	id         string
-	commandID  string
-	receipt    Cursor
-	input      Input
-	events     chan Event
-	done       chan struct{}
-	ctx        context.Context
-	cancel     context.CancelFunc
-	controls   chan runstate.EngineControl
-	ownership  runSessionOwnership
-	eventMu    sync.Mutex
-	eventDrops eventDropState
-	eventsEnd  bool
+	session       *Session
+	id            string
+	commandID     string
+	receipt       Cursor
+	input         Input
+	events        chan Event
+	done          chan struct{}
+	executionDone chan struct{}
+	ctx           context.Context
+	cancel        context.CancelFunc
+	controls      chan runstate.EngineControl
+	ownership     runSessionOwnership
+	eventMu       sync.Mutex
+	eventDrops    eventDropState
+	eventsEnd     bool
+	endOnce       sync.Once
+	finishMu      sync.Mutex
 
-	mu           sync.RWMutex
-	result       Result
-	err          error
-	settled      bool
-	startedAt    time.Time
-	abortReason  string
-	cycle        int
-	snapshot     runstate.TurnSnapshot
-	delivery     runstate.DeliveryKind
-	queue        []*queuedRunInput
-	interactions map[string]pendingInteraction
-	content      strings.Builder
-	thinking     strings.Builder
-	toolSources  map[string]EventSource
-	openTools    map[string]OpenToolSnapshot
+	mu                   sync.RWMutex
+	result               Result
+	err                  error
+	settled              bool
+	resuming             bool
+	treeResumeID         string
+	startedAt            time.Time
+	abortReason          string
+	suspendReason        string
+	cycle                int
+	snapshot             runstate.TurnSnapshot
+	delivery             runstate.DeliveryKind
+	interactions         map[string]pendingInteraction
+	responses            map[string]persistedInteractionResponse
+	tools                map[string]persistedTool
+	content              strings.Builder
+	thinking             strings.Builder
+	modelResponseOrdinal int
+	modelContentStart    int
+	modelThinkingStart   int
+	toolSources          map[string]EventSource
+	openTools            map[string]OpenToolSnapshot
 }
 
 func newPublicRun(session *Session, id, commandID string, input Input, delivery runstate.DeliveryKind, ownership runSessionOwnership) *Run {
@@ -74,8 +74,10 @@ func newPublicRun(session *Session, id, commandID string, input Input, delivery 
 	return &Run{
 		session: session, id: id, commandID: commandID, input: cloneInput(input),
 		events: make(chan Event, publicRunEventBuffer), done: make(chan struct{}),
-		ctx: ctx, cancel: cancel, controls: make(chan runstate.EngineControl, 32), ownership: ownership,
+		executionDone: make(chan struct{}),
+		ctx:           ctx, cancel: cancel, controls: make(chan runstate.EngineControl, 32), ownership: ownership,
 		interactions: make(map[string]pendingInteraction), toolSources: make(map[string]EventSource),
+		responses: make(map[string]persistedInteractionResponse), tools: make(map[string]persistedTool),
 		openTools: make(map[string]OpenToolSnapshot),
 		delivery:  delivery,
 	}
@@ -114,132 +116,12 @@ func (run *Run) Events() <-chan Event {
 }
 
 func (run *Run) Steer(ctx context.Context, input Input) (CommandReceipt, error) {
-	ctx, err := commandContext(ctx)
-	if err != nil {
-		return CommandReceipt{}, err
-	}
 	if err := run.usable(); err != nil {
 		return CommandReceipt{}, err
 	}
-	if _, _, err := encodeInput(input); err != nil {
-		return CommandReceipt{}, err
-	}
-	id := strings.TrimSpace(input.IdempotencyKey)
-	if id == "" {
-		id = newPublicID("command")
-	}
-	input.IdempotencyKey = id
-	run.session.mu.Lock()
-	run.mu.Lock()
-	cursor := run.session.nextCommandCursorLocked()
-	run.queue = append([]*queuedRunInput{{id: id, input: cloneInput(input), delivery: runstate.DeliverySteer, cursor: cursor}}, run.queue...)
-	run.mu.Unlock()
-	run.session.mu.Unlock()
-	select {
-	case run.controls <- runstate.EngineControl{Kind: runstate.EngineControlPreempt}:
-	case <-run.done:
-		return CommandReceipt{}, ErrRunSettled
-	}
-	return CommandReceipt{CommandID: id, RunID: run.id, Cursor: cursor}, nil
+	receipt, _, err := run.session.receiveInput(ctx, input, inputSteer, run.id, runUsesSession)
+	return receipt, err
 }
-
-func (run *Run) Queue(ctx context.Context, input Input) (*QueuedInput, error) {
-	if _, err := commandContext(ctx); err != nil {
-		return nil, err
-	}
-	if err := run.usable(); err != nil {
-		return nil, err
-	}
-	if _, _, err := encodeInput(input); err != nil {
-		return nil, err
-	}
-	id := strings.TrimSpace(input.IdempotencyKey)
-	if id == "" {
-		id = newPublicID("command")
-	}
-	input.IdempotencyKey = id
-	item := &queuedRunInput{id: id, input: cloneInput(input), delivery: runstate.DeliveryFollowUp}
-	run.session.mu.Lock()
-	run.mu.Lock()
-	item.cursor = run.session.nextCommandCursorLocked()
-	run.queue = append(run.queue, item)
-	run.mu.Unlock()
-	run.session.mu.Unlock()
-	return &QueuedInput{run: run, item: item}, nil
-}
-
-func (run *Run) Queued(ctx context.Context, id string) (*QueuedInput, bool, error) {
-	if _, err := commandContext(ctx); err != nil {
-		return nil, false, err
-	}
-	if err := run.usable(); err != nil {
-		return nil, false, err
-	}
-	run.mu.RLock()
-	defer run.mu.RUnlock()
-	for _, item := range run.queue {
-		if item.id == strings.TrimSpace(id) && !item.cancelled {
-			return &QueuedInput{run: run, item: item}, true, nil
-		}
-	}
-	return nil, false, nil
-}
-
-func (run *Run) FollowUp(ctx context.Context, input Input) (*Run, error) {
-	ctx, err := commandContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := run.usable(); err != nil {
-		return nil, err
-	}
-	if _, _, err := encodeInput(input); err != nil {
-		return nil, err
-	}
-	commandID := strings.TrimSpace(input.IdempotencyKey)
-	if commandID == "" {
-		commandID = newPublicID("command")
-	}
-	input.IdempotencyKey = commandID
-	id, err := run.session.agent.nextRunID(run.session.key)
-	if err != nil {
-		return nil, err
-	}
-	next := newPublicRun(run.session, id, commandID, input, runstate.DeliveryNextTurn, runUsesSession)
-	startNow := false
-	run.session.mu.Lock()
-	if run.session.closed {
-		run.session.mu.Unlock()
-		return nil, ErrSessionClosed
-	}
-	run.session.runs[id] = next
-	if run.session.active == nil && !run.session.maintenance {
-		startedAt := time.Now().UTC()
-		next.markStarted(startedAt)
-		run.session.active = next
-		startNow = true
-		if err := run.session.appendRecordLocked(ctx, turnStartedRecord, persistedTurn{
-			RunID: next.id, CommandID: next.commandID, At: startedAt,
-		}); err != nil {
-			delete(run.session.runs, id)
-			run.session.active = nil
-			run.session.mu.Unlock()
-			return nil, err
-		}
-	} else {
-		run.session.pending = append(run.session.pending, next)
-	}
-	next.receipt = run.session.nextCommandCursorLocked()
-	run.session.mu.Unlock()
-	next.publish(RunAccepted{CommandID: commandID})
-	if startNow {
-		safeGo(next.execute, func(nextErr error) {
-			next.finish(Result{Status: ResultFailed, Reason: nextErr.Error()}, nextErr)
-		})
-	}
-	return next, nil
-}
-
 func (run *Run) Abort(ctx context.Context, request AbortRequest) (CommandReceipt, error) {
 	if _, err := commandContext(ctx); err != nil {
 		return CommandReceipt{}, err
@@ -251,16 +133,42 @@ func (run *Run) Abort(ctx context.Context, request AbortRequest) (CommandReceipt
 	if commandID == "" {
 		commandID = newPublicID("command")
 	}
-	if run.isSettled() {
-		return CommandReceipt{}, ErrRunSettled
+	if err := run.session.usable(); err != nil {
+		return CommandReceipt{}, err
 	}
 	reason := strings.TrimSpace(request.Reason)
 	if reason == "" {
 		reason = "Agent Run aborted"
 	}
+	run.session.mu.Lock()
+	if run.session.closing {
+		run.session.mu.Unlock()
+		return CommandReceipt{}, ErrSessionClosed
+	}
+	if run.session.runs[run.id] != run {
+		run.session.mu.Unlock()
+		return CommandReceipt{}, ErrRunSettled
+	}
+	if run.isSettled() {
+		if _, found := run.session.controlReceipts[commandID]; !found {
+			run.session.mu.Unlock()
+			return CommandReceipt{}, ErrRunSettled
+		}
+		receipt, err := run.session.acceptControlLocked(ctx, "abort", run.id, commandID, reason)
+		run.session.mu.Unlock()
+		return receipt, err
+	}
+	receipt, err := run.session.acceptControlLocked(ctx, "abort", run.id, commandID, reason)
+	run.session.mu.Unlock()
+	if err != nil {
+		return CommandReceipt{}, err
+	}
+	if run.isSuspended() {
+		run.finish(Result{Status: ResultAborted, Reason: reason}, nil)
+		return receipt, nil
+	}
 	if run.abortPending(reason) {
-		cursor := run.session.nextCommandCursor()
-		return CommandReceipt{CommandID: commandID, RunID: run.id, Cursor: cursor}, nil
+		return receipt, nil
 	}
 	run.setAbortReason(reason)
 	select {
@@ -268,131 +176,7 @@ func (run *Run) Abort(ctx context.Context, request AbortRequest) (CommandReceipt
 	case <-run.done:
 		return CommandReceipt{}, ErrRunSettled
 	}
-	return CommandReceipt{CommandID: commandID, RunID: run.id, Cursor: run.session.nextCommandCursor()}, nil
-}
-
-type QueuedInput struct {
-	run  *Run
-	item *queuedRunInput
-}
-
-func (queued *QueuedInput) ID() string {
-	if queued == nil || queued.item == nil {
-		return ""
-	}
-	return queued.item.id
-}
-
-func (queued *QueuedInput) Receipt() CommandReceipt {
-	if queued == nil || queued.run == nil || queued.item == nil {
-		return CommandReceipt{}
-	}
-	return CommandReceipt{CommandID: queued.item.id, RunID: queued.run.id, Cursor: queued.item.cursor}
-}
-
-func (queued *QueuedInput) Cancel(ctx context.Context, request QueueControlRequest) (CommandReceipt, error) {
-	if _, err := commandContext(ctx); err != nil {
-		return CommandReceipt{}, err
-	}
-	if queued == nil || queued.run == nil || queued.item == nil {
-		return CommandReceipt{}, ErrRunSettled
-	}
-	if err := queued.run.usable(); err != nil {
-		return CommandReceipt{}, err
-	}
-	queued.run.mu.Lock()
-	queued.item.cancelled = true
-	queued.run.mu.Unlock()
-	id := strings.TrimSpace(request.IdempotencyKey)
-	if id == "" {
-		id = newPublicID("command")
-	}
-	return CommandReceipt{CommandID: id, RunID: queued.run.id, Cursor: queued.run.session.nextCommandCursor()}, nil
-}
-
-func (queued *QueuedInput) Interrupt(ctx context.Context, request QueueControlRequest) (CommandReceipt, error) {
-	if _, err := commandContext(ctx); err != nil {
-		return CommandReceipt{}, err
-	}
-	if queued == nil || queued.run == nil || queued.item == nil {
-		return CommandReceipt{}, ErrRunSettled
-	}
-	if err := queued.run.usable(); err != nil {
-		return CommandReceipt{}, err
-	}
-	queued.run.mu.Lock()
-	for index, item := range queued.run.queue {
-		if item != queued.item {
-			continue
-		}
-		queued.run.queue = append([]*queuedRunInput{item}, append(queued.run.queue[:index], queued.run.queue[index+1:]...)...)
-		item.delivery = runstate.DeliverySteer
-		break
-	}
-	queued.run.mu.Unlock()
-	select {
-	case queued.run.controls <- runstate.EngineControl{Kind: runstate.EngineControlPreempt}:
-	case <-queued.run.done:
-		return CommandReceipt{}, ErrRunSettled
-	}
-	id := strings.TrimSpace(request.IdempotencyKey)
-	if id == "" {
-		id = newPublicID("command")
-	}
-	return CommandReceipt{CommandID: id, RunID: queued.run.id, Cursor: queued.run.session.nextCommandCursor()}, nil
-}
-
-func (run *Run) Respond(ctx context.Context, interactionID string, response InteractionResponse) error {
-	ctx, err := commandContext(ctx)
-	if err != nil {
-		return err
-	}
-	if err := run.usable(); err != nil {
-		return err
-	}
-	interactionID = strings.TrimSpace(interactionID)
-	if interactionID == "" {
-		return ErrInteractionStale
-	}
-	run.mu.RLock()
-	pending, ok := run.interactions[interactionID]
-	run.mu.RUnlock()
-	if !ok {
-		return ErrInteractionStale
-	}
-	encoded, err := json.Marshal(response)
-	if err != nil {
-		return fmt.Errorf("encode Interaction response: %w", err)
-	}
-	resolver, ok := run.session.engine.(runstate.EngineInteractionResolver)
-	if !ok {
-		return ErrCapabilityUnsupported
-	}
-	snapshot, err := run.snapshotForCurrentCycle()
-	if err != nil {
-		return err
-	}
-	resolution, err := resolver.ResolveInteraction(ctx, runstate.InteractionResolveRequest{
-		Snapshot: snapshot, Interaction: pending.snapshot, Response: encoded,
-	})
-	if err != nil {
-		return err
-	}
-	run.mu.Lock()
-	delete(run.interactions, interactionID)
-	run.mu.Unlock()
-	select {
-	case run.controls <- runstate.EngineControl{
-		Kind: runstate.EngineControlInteractionResolved, InteractionID: interactionID, Response: resolution,
-	}:
-		var publicResolution InteractionResolution
-		if json.Unmarshal(resolution, &publicResolution) == nil {
-			run.publish(InteractionResolved{ID: interactionID, Resolution: publicResolution})
-		}
-		return nil
-	case <-run.done:
-		return ErrRunSettled
-	}
+	return receipt, nil
 }
 
 // commandContext makes cancellation an admission decision. Once a control has
@@ -430,6 +214,12 @@ func (run *Run) usable() error {
 		return ErrRunSettled
 	}
 	if run.isSettled() {
+		return ErrRunSettled
+	}
+	run.session.mu.RLock()
+	current := run.session.runs[run.id] == run
+	run.session.mu.RUnlock()
+	if !current {
 		return ErrRunSettled
 	}
 	return run.session.usable()

@@ -599,14 +599,13 @@ func TestNativeLoopImmediateCancelEscalatesPendingSafePoint(t *testing.T) {
 	}
 }
 
-func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
+func TestNativeLoopImmediateCancelSettlesAfterToolReturns(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedModelResponse{
 		{message: AssistantMessage("", []ToolCall{{ID: "blocked", Type: "function", Function: FunctionCall{Name: "blocked", Arguments: `{}`}}})},
 		{message: AssistantMessage("late", nil)},
 	}}
 	started := make(chan struct{})
 	release := make(chan struct{})
-	defer close(release)
 	tool := &functionTool{name: "blocked", run: func(context.Context, string) (string, error) {
 		close(started)
 		<-release
@@ -627,6 +626,7 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
 	if !contributed {
 		t.Fatal("cancel did not contribute")
 	}
+	close(release)
 	var cancelErr *cancelError
 	deadline := time.Now().Add(100 * time.Millisecond)
 	for cancelErr == nil {
@@ -756,7 +756,7 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 	}}
 	agent, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "retry", Model: model, Tools: []ToolDefinition{testToolDefinition(child)},
-		Retry: &RetryConfig{MaxRetries: 1},
+		ModelMaxAttempts: 2, Retry: &RetryConfig{Decide: retryEveryTestError},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -776,6 +776,9 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 		}
 		if event.Output != nil && event.Output.NestedEvent != nil {
 			names = append(names, event.Output.NestedEvent.Source.Name)
+			continue
+		}
+		if event.Output != nil && event.Output.ModelRetry != nil {
 			continue
 		}
 		names = append(names, event.AgentName)

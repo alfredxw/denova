@@ -63,6 +63,7 @@ func (*Adapter) New(_ context.Context, config providers.ModelConfig) (agent.Tool
 
 func anthropicClientOptions(config providers.ModelConfig) []option.RequestOption {
 	result := []option.RequestOption{
+		option.WithMaxRetries(0),
 		option.WithAPIKey(config.APIKey),
 		option.WithBaseURL(config.BaseURL),
 		option.WithHTTPClient(llmhttp.Client(config.HTTPClient)),

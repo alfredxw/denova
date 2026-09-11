@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { AgentTaskControls } from './AgentTaskControls'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
@@ -148,7 +149,7 @@ export interface AgentPanelProps {
   onRefreshHistory: (sessionId?: string) => void | Promise<void>
   /** Scoped AgentChat tabs override interaction endpoints so Writing state is never touched. */
   onAnswerAsk?: (sessionId: string, askId: string, answers: AgentAskAnswer[]) => Promise<AgentAskResolution>
-  onCancelAsk?: (sessionId: string, askId: string) => Promise<AgentAskResolution>
+  onCancelAsk?: (sessionId: string, askId: string, reason?: string) => Promise<AgentAskResolution>
   onRemoveContextCompaction?: () => Promise<boolean>
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (
@@ -161,6 +162,8 @@ export interface AgentPanelProps {
     },
   ) => Promise<ContextAnalysis>
   onStop: () => void
+  onSuspend?: () => void
+  onResumeTask?: () => void
   onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>
@@ -245,6 +248,8 @@ function AgentPanelComponent({
   onSend,
   onAnalyzeContext,
   onStop,
+  onSuspend,
+  onResumeTask,
   onSteerQueuedCommand,
   onDeleteQueuedCommand,
   onEditQueuedCommand,
@@ -291,7 +296,7 @@ function AgentPanelComponent({
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const pendingWritingInitRef = useRef<string | null>(null)
   const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
-  const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && (!runtimeProjection.stream_attached || recoveryPaused))
+  const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && runtimeProjection.phase !== 'suspended' && !runtimeProjection.stream_attached)
   const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
   const activeControlsDisabled =
     isStreaming && (!runtimeProjection?.active_operation_id?.trim() || Boolean(runtimeProjection?.runtime_recoverable && !runtimeProjection.stream_attached))
@@ -586,7 +591,7 @@ function AgentPanelComponent({
         action,
         {
           answer: (answers) => onAnswerAsk(activeSessionId, askID, answers),
-          cancel: () => onCancelAsk(activeSessionId, askID),
+          cancel: (reason) => onCancelAsk(activeSessionId, askID, reason),
         },
         () => onRefreshHistory(activeSessionId),
       )
@@ -620,17 +625,17 @@ function AgentPanelComponent({
     onExitPlanMode,
     onResolveAsk: resolveAsk,
     activeRunId: runtimeProjection?.active_operation_id,
-    afterContent: lastRuntimeFailure ? (
+    afterContent: <>
+      <AgentTaskControls active={isExecutionActive} suspended={runtimeProjection?.phase === 'suspended'} pending={commandSubmitting || abortPending} onSuspend={onSuspend} onResume={onResumeTask} onAbort={onStop} />
+      {lastRuntimeFailure ? (
       <div
         role="alert"
         className="whitespace-pre-wrap break-words rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--nova-danger)]"
       >
         {t('chat.activity.requestFailed', { error: lastRuntimeFailure })}
       </div>
-    ) : undefined,
-    afterContentKey: lastRuntimeFailure
-      ? `runtime-failure:${runtimeProjection?.last_operation?.operation_id || lastRuntimeFailure}`
-      : undefined,
+    ) : null}</>,
+    afterContentKey: `${runtimeProjection?.phase || 'idle'}:${commandSubmitting}:${lastRuntimeFailure || ''}`,
   }
   const inputAreaProps = {
     onSend: sendWithWritingSkill,

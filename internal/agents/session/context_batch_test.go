@@ -30,10 +30,10 @@ func TestContextBatchIsAtomicIdempotentAndRebuildsFromJournal(t *testing.T) {
 	messages := []*agent.Message{assistant, tool}
 	before := sess.ContextCursor()
 
-	if _, err := sess.CommitContextBatch(context.Background(), before, identity, 1, messages); !errors.Is(err, ErrDomainCommitIdentityConflict) {
+	if _, err := sess.CommitContextBatch(context.Background(), before, identity, 1, messages, nil); !errors.Is(err, ErrDomainCommitIdentityConflict) {
 		t.Fatalf("non-contiguous sequence error=%v", err)
 	}
-	first, err := sess.CommitContextBatch(context.Background(), before, identity, 0, messages)
+	first, err := sess.CommitContextBatch(context.Background(), before, identity, 0, messages, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,18 +43,18 @@ func TestContextBatchIsAtomicIdempotentAndRebuildsFromJournal(t *testing.T) {
 	if first.Cursor != sess.ContextCursor() {
 		t.Fatalf("first receipt cursor=%#v current=%#v", first.Cursor, sess.ContextCursor())
 	}
-	retry, err := sess.CommitContextBatch(context.Background(), before, identity, 0, messages)
+	retry, err := sess.CommitContextBatch(context.Background(), before, identity, 0, messages, nil)
 	if err != nil || retry != first || sess.MessageCountTotal() != 2 {
 		t.Fatalf("retry=%#v count=%d err=%v", retry, sess.MessageCountTotal(), err)
 	}
 	conflicting := []*agent.Message{assistant.Clone(), agent.ToolMessage(agent.TextToolResult("different evidence"), "call-1", agent.WithToolName("inspect"))}
-	if _, err := sess.CommitContextBatch(context.Background(), sess.ContextCursor(), identity, 0, conflicting); !errors.Is(err, ErrDomainCommitIdentityConflict) {
+	if _, err := sess.CommitContextBatch(context.Background(), sess.ContextCursor(), identity, 0, conflicting, nil); !errors.Is(err, ErrDomainCommitIdentityConflict) {
 		t.Fatalf("conflicting retry error=%v", err)
 	}
 	if err := sess.Append(agent.UserMessage("external append")); err != nil {
 		t.Fatal(err)
 	}
-	retryAfterAppend, err := sess.CommitContextBatch(context.Background(), sess.ContextCursor(), identity, 0, messages)
+	retryAfterAppend, err := sess.CommitContextBatch(context.Background(), sess.ContextCursor(), identity, 0, messages, nil)
 	if err != nil || retryAfterAppend.Cursor != first.Cursor {
 		t.Fatalf("retry after external append=%#v err=%v", retryAfterAppend, err)
 	}
@@ -65,7 +65,7 @@ func TestContextBatchIsAtomicIdempotentAndRebuildsFromJournal(t *testing.T) {
 		nextAssistant,
 		agent.ToolMessage(agent.TextToolResult("next evidence"), "call-2", agent.WithToolName("inspect")),
 	}
-	if _, err := sess.CommitContextBatch(context.Background(), retryAfterAppend.Cursor, identity, 1, nextMessages); !errors.Is(err, ErrContextRevisionConflict) {
+	if _, err := sess.CommitContextBatch(context.Background(), retryAfterAppend.Cursor, identity, 1, nextMessages, nil); !errors.Is(err, ErrContextRevisionConflict) {
 		t.Fatalf("external append was not detected by the next batch: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func TestContextBatchIsAtomicIdempotentAndRebuildsFromJournal(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("rebuilt messages:\nwant=%#v\ngot=%#v", want, got)
 	}
-	third, err := reopened.CommitContextBatch(context.Background(), before, identity, 0, messages)
+	third, err := reopened.CommitContextBatch(context.Background(), before, identity, 0, messages, nil)
 	if err != nil || third != first || reopened.MessageCountTotal() != 3 {
 		t.Fatalf("reopened retry=%#v count=%d err=%v", third, reopened.MessageCountTotal(), err)
 	}

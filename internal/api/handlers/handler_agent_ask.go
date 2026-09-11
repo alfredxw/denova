@@ -21,6 +21,40 @@ type askCancelRequest struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
+func (h *Handlers) HandleInteractiveAskAnswer(ctx context.Context, c *app.RequestContext) {
+	h.handleInteractiveAsk(ctx, c, "answered")
+}
+
+func (h *Handlers) HandleInteractiveAskCancel(ctx context.Context, c *app.RequestContext) {
+	h.handleInteractiveAsk(ctx, c, "cancelled")
+}
+
+func (h *Handlers) handleInteractiveAsk(ctx context.Context, c *app.RequestContext, status string) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var request struct {
+		StoryID  string                  `json:"story_id"`
+		BranchID string                  `json:"branch_id"`
+		Answers  []appsvc.AgentAskAnswer `json:"answers"`
+		Reason   string                  `json:"reason,omitempty"`
+	}
+	if err := c.BindJSON(&request); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
+		return
+	}
+	if strings.TrimSpace(request.StoryID) == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
+		return
+	}
+	result, err := h.app.ResolveInteractiveAsk(ctx, request.StoryID, request.BranchID, strings.TrimSpace(c.Param("ask_id")), status, request.Answers, request.Reason)
+	if err != nil {
+		writeAskResolutionError(c, err)
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleSessionAskAnswer(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return

@@ -3,6 +3,7 @@ package interactive
 import (
 	"bytes"
 	"crypto/sha256"
+	"denova/internal/agents/sessionjournal"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,11 +21,12 @@ var ErrModelContextBatchIdentityConflict = errors.New("model context batch ident
 // after its player input and before the final narrative exists. Sequence is
 // scoped to the durable Agent cycle and makes retries deterministic.
 type ModelContextBatchIntent struct {
-	Identity      DomainCommitIdentity  `json:"identity"`
-	BranchID      string                `json:"branch_id"`
-	PlayerInputID string                `json:"player_input_id"`
-	Sequence      int                   `json:"sequence"`
-	Messages      []ModelContextMessage `json:"messages"`
+	Identity      DomainCommitIdentity      `json:"identity"`
+	BranchID      string                    `json:"branch_id"`
+	PlayerInputID string                    `json:"player_input_id"`
+	Sequence      int                       `json:"sequence"`
+	Messages      []ModelContextMessage     `json:"messages"`
+	Checkpoint    agent.CanonicalCheckpoint `json:"-"`
 }
 
 // ModelContextBatchEvent is an append-only side event. It deliberately does
@@ -238,6 +240,11 @@ func (s *Store) AppendModelContextBatch(storyID string, intent ModelContextBatch
 	meta.UpdatedAt = now
 	newEvents := []any{event}
 	newEvents = append(newEvents, continuationEvents...)
+	agentRecords, err := sessionjournal.CheckpointRecords(&s.storyJournals[storyID].projection.AgentSessions, intent.Checkpoint, event.ID)
+	if err != nil {
+		return ModelContextBatchReceipt{}, err
+	}
+	newEvents = append(newEvents, agentRecords...)
 	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return ModelContextBatchReceipt{}, err
 	}

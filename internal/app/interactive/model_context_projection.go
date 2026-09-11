@@ -56,6 +56,18 @@ func BuildModelContextProjection(
 	policy toolresult.ContextPolicy,
 	current agentrun.CycleIdentity,
 ) (ModelContextProjection, error) {
+	return buildModelContextProjection(history, compaction, snapshot, policy, current, func(input interactive.PlayerInputAcceptedEvent) *agent.Message {
+		message := agent.UserMessageWithAttachments(interruptedPlayerInputModelMessage(input), input.Attachments)
+		return message
+	})
+}
+
+// Input projection is the only difference between canonical storage and the
+// narrator's view of earlier interrupted turns. Canonical hashes must use the
+// accepted raw input, never a later explanatory wrapper.
+func buildModelContextProjection(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionProjection, snapshot interactive.Snapshot,
+	policy toolresult.ContextPolicy, current agentrun.CycleIdentity, inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
+) (ModelContextProjection, error) {
 	if history.StartTurn < 0 || history.EndTurn < history.StartTurn ||
 		history.EndTurn > history.TotalTurns || len(history.Turns) != history.EndTurn-history.StartTurn {
 		return ModelContextProjection{}, fmt.Errorf(
@@ -78,12 +90,12 @@ func BuildModelContextProjection(
 	}
 
 	turns, resolved, checkpointMessages, err := projectInteractiveCompletedContext(
-		history, compaction, policy, sourceStart,
+		history, compaction, policy, sourceStart, inputMessage,
 	)
 	if err != nil {
 		return ModelContextProjection{}, err
 	}
-	pending, pendingMessages, earliestPending, err := projectInteractivePendingContext(history, snapshot, policy, current)
+	pending, pendingMessages, earliestPending, err := projectInteractivePendingContext(history, snapshot, policy, current, inputMessage)
 	if err != nil {
 		return ModelContextProjection{}, err
 	}
@@ -159,6 +171,7 @@ func projectInteractiveCompletedContext(
 	compaction *interactive.ContextCompactionProjection,
 	policy toolresult.ContextPolicy,
 	sourceStart int,
+	inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
 ) ([]interactiveProjectedTurn, []interactiveResolvedContext, []*agents.Message, error) {
 	raw := make([]*agents.Message, 0, len(history.Turns)*3+1)
 	checkpointCount := 0
@@ -206,7 +219,7 @@ func projectInteractiveCompletedContext(
 			}
 			resolved = append(resolved, interactiveResolvedContext{
 				context: context, acceptedBoundary: acceptedBoundary, activeBoundary: activeBoundary,
-				ownerTurn: ownerTurn, messages: interactivePlayerInputContextMessages(context.Input, context.ModelContextBatches),
+				ownerTurn: ownerTurn, messages: interactivePlayerInputContextMessages(context.Input, context.ModelContextBatches, inputMessage),
 			})
 			resolvedAt[activeBoundary] = append(resolvedAt[activeBoundary], len(resolved)-1)
 		}
@@ -262,6 +275,7 @@ func projectInteractivePendingContext(
 	snapshot interactive.Snapshot,
 	policy toolresult.ContextPolicy,
 	current agentrun.CycleIdentity,
+	inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
 ) ([]interactivePendingContext, []string, int, error) {
 	batches := make(map[string][]interactive.ModelContextBatchEvent, len(snapshot.PendingPlayerInputs))
 	for _, batch := range snapshot.PendingModelContextBatches {
@@ -283,9 +297,9 @@ func projectInteractivePendingContext(
 		if boundary < earliest {
 			earliest = boundary
 		}
-		user := interruptedPlayerInputModelMessage(input)
+		user := inputMessage(input).Content
 		messages := toolresult.ApplyContextPolicy(
-			interactivePlayerInputContextMessages(input, batches[input.ID]), policy,
+			interactivePlayerInputContextMessages(input, batches[input.ID], inputMessage), policy,
 		)
 		pending = append(pending, interactivePendingContext{turnBoundary: boundary, messages: messages})
 		pendingInputMessages = append(pendingInputMessages, user)
@@ -303,8 +317,9 @@ func interactivePendingInputMatchesCycle(input interactive.PlayerInputAcceptedEv
 func interactivePlayerInputContextMessages(
 	input interactive.PlayerInputAcceptedEvent,
 	batches []interactive.ModelContextBatchEvent,
+	inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
 ) []*agents.Message {
-	messages := []*agents.Message{agents.UserMessage(interruptedPlayerInputModelMessage(input))}
+	messages := []*agents.Message{inputMessage(input)}
 	for _, batch := range batches {
 		messages = append(messages, schemaMessagesFromInteractiveContext(batch.Messages)...)
 	}

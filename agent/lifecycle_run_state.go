@@ -59,13 +59,20 @@ func (run *Run) snapshotForCurrentCycle() (runstate.TurnSnapshot, error) {
 	return snapshot, nil
 }
 
+func (run *Run) beginModelResponseLocked(ordinal int) {
+	if ordinal == run.modelResponseOrdinal {
+		return
+	}
+	run.modelResponseOrdinal = ordinal
+	run.modelContentStart = run.content.Len()
+	run.modelThinkingStart = run.thinking.Len()
+}
+
 func (run *Run) nextQueuedInput() (Input, runstate.DeliveryKind, bool) {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	for len(run.queue) > 0 {
-		item := run.queue[0]
-		run.queue = run.queue[1:]
-		if !item.cancelled {
+	run.session.mu.RLock()
+	defer run.session.mu.RUnlock()
+	for _, item := range run.session.inputOrder {
+		if item.targetRunID == run.id && item.status == inputPending && (item.Kind == inputQueue || item.Kind == inputSteer) {
 			return cloneInput(item.input), item.delivery, true
 		}
 	}
@@ -78,44 +85,38 @@ func (run *Run) publish(payload EventPayload) {
 	}
 	run.eventMu.Lock()
 	defer run.eventMu.Unlock()
-	if run.eventsEnd {
-		return
-	}
 	event := Event{RunID: run.id, Payload: payload}
 	run.session.mu.Lock()
 	run.session.publishLocked(event)
 	event.Cursor = run.session.cursor
 	run.session.mu.Unlock()
-	publishLatestEvent(run.events, event, &run.eventDrops)
+	if !run.eventsEnd {
+		publishLatestEvent(run.events, event, &run.eventDrops)
+	}
 }
 
 func (run *Run) finish(result Result, err error) {
 	if run == nil {
 		return
 	}
-	run.mu.Lock()
+	run.finishMu.Lock()
+	defer run.finishMu.Unlock()
+	run.mu.RLock()
 	if run.settled {
-		run.mu.Unlock()
+		run.mu.RUnlock()
 		return
 	}
-	run.settled = true
-	run.result = result
 	if err == nil && (result.Status == ResultFailed || result.Status == ResultIncomplete || result.Status == ResultBlocked) {
 		err = &RunError{Result: result}
 	}
-	run.err = err
 	output := run.content.String()
 	receiptCursor := run.receipt
-	run.mu.Unlock()
-	run.publish(RunSettled{Status: result.Status, Reason: result.Reason})
+	run.mu.RUnlock()
 	run.cancel()
 
 	var next *Run
 	run.session.mu.Lock()
 	finishedActive := run.session.active == run
-	if run.session.active == run {
-		run.session.active = nil
-	}
 	kind := turnFinishedRecord
 	if result.Status != ResultCompleted && result.Status != ResultAborted {
 		kind = turnInterruptedRecord
@@ -124,34 +125,56 @@ func (run *Run) finish(result Result, err error) {
 		RunID: run.id, CommandID: run.commandID, Status: result.Status, Reason: result.Reason, Output: output, At: time.Now().UTC(),
 	}); appendErr != nil {
 		err = errors.Join(err, appendErr)
+		run.session.mu.Unlock()
+		// A missing or uncertain settlement is still an unfinished journal.
+		// Release this failed writer only after executeCycle stopped producers;
+		// reopening must replay the facts before any further action.
+		err = errors.Join(err, run.session.closeWriter())
+		run.mu.Lock()
+		run.result, run.err = Result{Status: ResultSuspended, Reason: "Agent journal requires reopening after a write failure"}, err
+		run.mu.Unlock()
+		run.endHandle()
+		return
 	}
+	if finishedActive {
+		run.session.active = nil
+	}
+	run.session.removePendingLocked(run)
+	run.mu.Lock()
+	run.settled, run.result, run.err = true, result, err
+	run.mu.Unlock()
 	run.session.addRecentLocked(RunSummary{
 		ID: run.id, CommandID: run.commandID, ReceiptCursor: receiptCursor,
 		Status: result.Status, Reason: result.Reason, Output: output,
 	})
-	if finishedActive && len(run.session.pending) > 0 && !run.session.closed {
-		next = run.session.pending[0]
-		run.session.pending = run.session.pending[1:]
+	if finishedActive && len(run.session.pending) > 0 && !run.session.closed && !run.session.closing && !run.session.treeControl.sealed() && err == nil {
+		candidate := run.session.pending[0]
 		startedAt := time.Now().UTC()
-		next.markStarted(startedAt)
-		run.session.active = next
-		_ = run.session.appendRecordLocked(context.Background(), turnStartedRecord, persistedTurn{
-			RunID: next.id, CommandID: next.commandID, At: startedAt,
-		})
+		if startErr := run.session.appendRecordLocked(context.Background(), turnStartedRecord, persistedTurn{
+			RunID: candidate.id, CommandID: candidate.commandID, At: startedAt,
+		}); startErr != nil {
+			err = errors.Join(err, startErr)
+		} else {
+			next = candidate
+			run.session.pending = run.session.pending[1:]
+			next.markStarted(startedAt)
+			run.session.active = next
+		}
 	}
+	storageErr := run.session.storageErr
 	run.session.mu.Unlock()
+	if storageErr != nil {
+		err = errors.Join(err, run.session.closeWriter())
+	}
 
 	run.mu.Lock()
 	run.err = err
 	run.mu.Unlock()
+	run.publish(RunSettled{Status: result.Status, Reason: result.Reason})
 	emitTrace(context.Background(), run.session.agent.trace, TraceEvent{
 		Kind: TraceRunSettled, Session: run.session.key, RunID: run.id, Err: err,
 	})
-	close(run.done)
-	run.eventMu.Lock()
-	run.eventsEnd = true
-	close(run.events)
-	run.eventMu.Unlock()
+	run.endHandle()
 	if next != nil {
 		safeGo(next.execute, func(nextErr error) {
 			next.finish(Result{Status: ResultFailed, Reason: nextErr.Error()}, nextErr)
@@ -270,16 +293,15 @@ func (run *Run) pendingInteractionRequests() []InteractionRequest {
 	return result
 }
 
-func (run *Run) queuedSnapshots() []QueuedRunSnapshot {
-	run.mu.RLock()
-	defer run.mu.RUnlock()
-	result := make([]QueuedRunSnapshot, 0, len(run.queue))
-	for _, item := range run.queue {
-		if item.cancelled {
+// queuedSnapshotsLocked reads the inbox while Session.mu is held.
+func (session *Session) queuedSnapshotsLocked() []QueuedRunSnapshot {
+	var result []QueuedRunSnapshot
+	for _, item := range session.inputOrder {
+		if item.status != inputPending || (item.Kind != inputQueue && item.Kind != inputSteer) {
 			continue
 		}
 		result = append(result, QueuedRunSnapshot{
-			ID: run.id, CommandID: item.id, ReceiptCursor: item.cursor, Delivery: publicInputDelivery(item.delivery),
+			ID: item.targetRunID, CommandID: item.Receipt.CommandID, ReceiptCursor: item.Receipt.Cursor, Delivery: publicInputDelivery(item.delivery),
 			Text: item.input.Text, InterruptRequested: item.delivery == runstate.DeliverySteer,
 		})
 	}

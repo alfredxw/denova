@@ -269,7 +269,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     [t],
   )
 
-  const { abortRecovery, projectStreamCycle, recoveryPending, resumeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
+  const { abortRecovery, resumeTask: continueTask, projectStreamCycle, recoveryPending, resumeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
     activeSessionId,
     displayRehydrateRequest,
     loadHistoryAuthoritative,
@@ -291,7 +291,12 @@ export function useAgentChat(options: ChatOptions = {}) {
   // conversation. Project-level running state must represent real execution,
   // not that startup probe.
   const isExecutionActive = transportStreaming || runtimeProjection?.active === true
-  const activityContent = recoveryPending ? t('chat.activity.recovering') : status === 'submitted' ? t('chat.activity.thinking') : ''
+  const lastPart = messages.at(-1)?.parts.at(-1)
+  const retry = lastPart?.type === 'data-agent-activity' && lastPart.data.event === 'model_retry' ? lastPart.data : undefined
+  const activityContent = recoveryPending ? t('chat.activity.recovering') : retry && transportStreaming
+    ? t(retry.output_state === 'complete' ? 'chat.activity.modelRepair' : 'chat.activity.modelRetry', {
+      attempt: Number(retry.attempt) + 1, total: Number(retry.max_attempts), seconds: Math.ceil(Number(retry.delay_ms) / 1000),
+    }) : status === 'submitted' ? t('chat.activity.thinking') : ''
 
   useEffect(() => {
     if (!runtimeProjection?.pending_ask) return
@@ -460,10 +465,10 @@ export function useAgentChat(options: ChatOptions = {}) {
       const retryBody = { ...body, attachments: attachmentUploadsRetryIdentity(attachmentUploads) }
 
       const userReferences = buildUserMessageReferences(prepared, sendOptions)
-      if (isStreaming) {
+      if (isStreaming || runtimeProjection?.phase === 'suspended') {
         if (abortPending || commandSubmittingRef.current) return false
         const operationID = runtimeProjection?.active_operation_id?.trim()
-        if (!runtimeProjection?.active || !operationID) {
+        if ((!runtimeProjection?.active && runtimeProjection?.phase !== 'suspended') || !operationID) {
           toast.error(t('chat.runtime.operationUnavailable'))
           return false
         }
@@ -489,9 +494,7 @@ export function useAgentChat(options: ChatOptions = {}) {
               ...current,
               cursor: receipt.cursor,
               active_operation_id: receipt.operation_id,
-              recovery_paused: false,
-              runtime_recoverable: false,
-              recovery_actions: [],
+              ...(current.phase !== 'suspended' ? { recovery_paused: false, runtime_recoverable: false, recovery_actions: [] } : {}),
               queue: mergeProjectedAgentQueue(current.queue, {
                 command_id: commandID,
                 operation_id: receipt.operation_id,
@@ -500,6 +503,7 @@ export function useAgentChat(options: ChatOptions = {}) {
               }),
             }
           })
+          if (runtimeProjection?.phase === 'suspended') setRuntimeProjection(await client.getActiveChatTask(targetSessionID))
           setReferences((current) => current.filter((item) => !prepared.composerReferences.includes(item)))
           setLoreReferences((current) => current.filter((item) => !prepared.composerLoreReferences.includes(item)))
           setStyleScenes((current) => current.filter((item) => !prepared.composerStyleScenes.includes(item)))
@@ -592,7 +596,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       if (abortPending || commandSubmittingRef.current) return false
       const operationID = runtimeProjection?.active_operation_id?.trim()
       const targetSessionID = (client.fixedSessionId || activeSessionId).trim()
-      if (!runtimeProjection?.active || !operationID || item.operation_id !== operationID) {
+      if ((!runtimeProjection?.active && runtimeProjection?.phase !== 'suspended') || !operationID || item.operation_id !== operationID) {
         toast.error(t('chat.runtime.operationUnavailable'))
         return false
       }
@@ -623,7 +627,7 @@ export function useAgentChat(options: ChatOptions = {}) {
             ...current,
             cursor: receipt.cursor,
             active_operation_id: receipt.operation_id,
-            ...(action === 'steer_queued' ? {
+            ...(action === 'steer_queued' && current.phase !== 'suspended' ? {
               recovery_paused: false,
               runtime_recoverable: false,
               recovery_actions: [],
@@ -631,6 +635,7 @@ export function useAgentChat(options: ChatOptions = {}) {
             queue,
           }
         })
+        if (runtimeProjection?.phase === 'suspended') setRuntimeProjection(await client.getActiveChatTask(targetSessionID))
         return true
       } catch (error) {
         if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)
@@ -709,6 +714,31 @@ export function useAgentChat(options: ChatOptions = {}) {
   const exitPlanMode = useCallback(() => {
     setActivePlanMode(false)
   }, [setActivePlanMode])
+
+  const suspend = useCallback(async () => {
+    const operationID = runtimeProjection?.active_operation_id?.trim()
+    if (!operationID || commandSubmittingRef.current) return
+    commandSubmittingRef.current = true
+    setCommandSubmitting(true)
+    const key = agentCommandRetryKey(operationID, 'suspend', {})
+    try {
+      const commandID = rememberAgentCommandID(retryCommandIDsRef.current, key, createAgentCommandID)
+      const sessionID = (client.fixedSessionId || activeSessionId).trim()
+      await client.submitChatCommand('suspend', commandID, operationID, sessionID)
+      retryCommandIDsRef.current.delete(key)
+      setRuntimeProjection(await client.getActiveChatTask(sessionID))
+    } catch (error) {
+      if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(key)
+      toast.error(agentCommandErrorMessage(error, t))
+    } finally {
+      commandSubmittingRef.current = false
+      setCommandSubmitting(false)
+    }
+  }, [activeSessionId, client, runtimeProjection, setRuntimeProjection, t])
+
+  const resumeTask = useCallback(async () => {
+    try { await continueTask() } catch (error) { toast.error(agentCommandErrorMessage(error, t)) }
+  }, [continueTask, t])
 
   const stop = useCallback(async () => {
     if (abortPending || commandSubmittingRef.current || sessionTransitionPendingRef.current) return
@@ -803,6 +833,8 @@ export function useAgentChat(options: ChatOptions = {}) {
 
   return {
     messages,
+    suspend,
+    resumeTask,
     sessions,
     activeSessionId,
     sessionTransitionPending,

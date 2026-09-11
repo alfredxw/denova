@@ -10,64 +10,23 @@
 # denova_dir 仅在全局启动配置或 DENOVA_DIR 环境变量中生效；用户级/工作区级会忽略并过滤该字段。
 # nova_dir / NOVA_DIR 为旧字段兼容，新配置请使用 denova_dir / DENOVA_DIR。
 
-# 语言模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
-# provider 必须使用内置服务商预设；自定义端点使用 openai-compatible。
-# protocol 可选：openai-chat-completions / openai-responses / anthropic-messages。
-# 已知 provider 可省略 base_url 并使用预设；自定义端点需显式填写 protocol 和 base_url。
-# 不配置 temperature 时使用平台/模型默认值。
-# thinking_level 可选：default / off / low / medium / high / xhigh / max。
-# 游戏正文 Agent 内置默认 low，快捷选项和版本说明 Agent 默认 off，写作与配置 Agent 默认 medium。各 Agent 均可单独覆盖。
-[[model_profiles]]
-id = "default"
-name = "DeepSeek 写作"
-provider = "deepseek"
-protocol = "openai-chat-completions"
-base_url = "https://api.deepseek.com"
-api_key = ""
-model = "deepseek-v4-pro"
-
-# 可选：配置更多平台并按 Agent 分配。模型名同时可作为配置名，name 可作为显示别名。
-# [[model_profiles]]
-# provider = "openai"
-# protocol = "openai-responses"
-# api_key = ""
-# model = "gpt-5"
-#
-# [agent_models.ide]
-# profile_id = "gpt-5"
-# temperature = 0.7
-# thinking_level = "medium"   # 可选：统一思考级别；default 表示不发送协议思考参数
-#
-# Gemini 使用官方 OpenAI-compatible Chat Completions 路由。
-# [[model_profiles]]
-# id = "gemini"
-# name = "Gemini"
-# provider = "google"
-# protocol = "openai-chat-completions"
-# api_key = ""
-# model = "gemini-3.5-flash"
-#
-# 自定义端点使用兼容服务商，并按需增加 headers / protocol_options。
-# [[model_profiles]]
-# id = "private-model"
+# Language models start unconfigured. Create a connection and add models in Settings.
+# Optional example: one shared connection and a model selected as the default.
+# [[model_endpoints]]
+# id = "my-connection"
 # provider = "openai-compatible"
 # protocol = "openai-chat-completions"
 # base_url = "https://models.example.com/v1"
 # api_key = ""
-# model = "private-model"
-# [model_profiles.headers]
-# X-Tenant = "example"
-# [model_profiles.protocol_options]
-# supports_stream_usage = false
-# 可选：将稳定的 SessionKey 映射到兼容端点的 Header 或 JSON Body 字段。
-# Optional: map the stable SessionKey to a compatible endpoint header or JSON body field.
-# [model_profiles.session_key_mapping]
-# location = "header" # "header" | "body" | "none"
-# name = "X-Session-Id"
 #
-# [agent_models.ide]
-# profile_id = "gemini"
-# thinking_level = "low"
+# [[model_profiles]]
+# id = "my-model"
+# endpoint_id = "my-connection"
+# model = "my-model"
+#
+# [agent_models.default]
+# profile_id = "my-model"
+#
 # 图像模型。内置 OpenAI、xAI/Grok、ComfyUI、火山 Seedream、Google Gemini；
 # 自定义端点可选择任一已支持协议。可配置多个 profile。
 # 生成结果会保存到当前工作区 assets/image/generated/。

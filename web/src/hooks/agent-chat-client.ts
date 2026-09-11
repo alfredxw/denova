@@ -47,7 +47,7 @@ export interface AgentChatClient {
   getActiveChatTask: (sessionId: string) => Promise<ActiveChatTask>
   recoverChatAgentRuntime: (action: AgentRuntimeRecoveryAction, sessionId: string) => Promise<AgentRuntimeRecoveryReceipt>
   submitChatCommand: (
-    type: AgentCommandDelivery | 'abort',
+    type: AgentCommandDelivery | 'abort' | 'suspend',
     commandId: string,
     targetOperationId: string,
     sessionId: string,
@@ -80,7 +80,7 @@ export interface AgentChatClient {
   renameSession: (id: string, title: string) => Promise<void>
   deleteSession: (id: string) => Promise<SessionSummary>
   answerSessionAsk: (sessionId: string, askId: string, answers: AgentAskAnswer[]) => Promise<AgentAskResolution>
-  cancelSessionAsk: (sessionId: string, askId: string) => Promise<AgentAskResolution>
+  cancelSessionAsk: (sessionId: string, askId: string, reason?: string) => Promise<AgentAskResolution>
   removeContextCompaction: () => Promise<boolean>
 }
 
@@ -238,11 +238,11 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, answers }),
       }),
-    cancelSessionAsk: (_requestedSessionId, askId) =>
+    cancelSessionAsk: (_requestedSessionId, askId, reason = 'user_cancelled') =>
       requestJSON(`${basePath}/session/asks/${encodeURIComponent(askId)}/cancel`, {
         method: 'POST',
         headers: jsonHeaders,
-        body: JSON.stringify({ ...scope, reason: 'user_cancelled' }),
+        body: JSON.stringify({ ...scope, reason }),
       }),
     // AgentChat currently exposes automatic compaction only. Returning false keeps the
     // analysis intact without accidentally removing foreground Writing compaction state.

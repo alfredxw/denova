@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -236,15 +237,27 @@ func TestActiveRunDoesNotPersistPartialTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-model.started
-	if count := store.count(sessionTranscriptRecord); count != 0 {
-		t.Fatalf("active Run persisted %d partial transcripts", count)
+	var persisted engineTranscript
+	if _, err := session.log.Replay(context.Background(), func(record agentsession.Record) error {
+		if record.Kind == sessionTranscriptRecord {
+			var transcript persistedSessionTranscript
+			if err := json.Unmarshal(record.Data, &transcript); err != nil {
+				return err
+			}
+			var err error
+			persisted, err = decodeEngineTranscript(transcript.EngineState)
+			return err
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Messages) != 1 || persisted.Messages[0].Role != User {
+		t.Fatalf("checkpoint retained unaccepted model output: %#v", persisted.Messages)
 	}
 	close(model.release)
 	if _, err := run.Wait(context.Background()); err != nil {
 		t.Fatal(err)
-	}
-	if count := store.count(sessionTranscriptRecord); count != 1 {
-		t.Fatalf("completed Run persisted %d transcripts, want 1", count)
 	}
 }
 
@@ -346,11 +359,11 @@ func TestSessionSnapshotProjectsOnlyLiveCoordination(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-model.started
-	queued, err := run.Queue(context.Background(), Text("same run"))
+	queued, err := session.Queue(context.Background(), Text("same run"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	next, err := run.FollowUp(context.Background(), Text("next run"))
+	next, err := testFollowUpRun(session, Text("next run"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +422,7 @@ func TestRunStartedAtBeginsOnlyWhenAQueuedRunActivates(t *testing.T) {
 	if active.startedAtValue().IsZero() {
 		t.Fatal("active Run has no activation timestamp")
 	}
-	queued, err := active.FollowUp(context.Background(), Text("queued"))
+	queued, err := testFollowUpRun(session, Text("queued"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,11 +487,11 @@ func TestAbortingPendingRunDoesNotStartItsSuccessor(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-model.started
-	pending, err := active.FollowUp(context.Background(), Text("pending"))
+	pending, err := testFollowUpRun(session, Text("pending"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	successor, err := active.FollowUp(context.Background(), Text("successor"))
+	successor, err := testFollowUpRun(session, Text("successor"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,13 +604,13 @@ func TestCancelledControlContextDoesNotMutateRun(t *testing.T) {
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := run.Queue(cancelled, Text("queue")); !errors.Is(err, context.Canceled) {
+	if _, err := session.Queue(cancelled, Text("queue")); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Queue error = %v", err)
 	}
 	if _, err := run.Steer(cancelled, Text("steer")); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Steer error = %v", err)
 	}
-	if _, err := run.FollowUp(cancelled, Text("follow up")); !errors.Is(err, context.Canceled) {
+	if _, err := session.FollowUp(cancelled, Text("follow up")); !errors.Is(err, context.Canceled) {
 		t.Fatalf("FollowUp error = %v", err)
 	}
 	if _, err := run.Abort(cancelled, AbortRequest{}); !errors.Is(err, context.Canceled) {
@@ -609,7 +622,7 @@ func TestCancelledControlContextDoesNotMutateRun(t *testing.T) {
 		t.Fatalf("cancelled commands changed queue: %#v", snapshot.QueuedRuns)
 	}
 
-	queued, err := run.Queue(nil, Text("accepted"))
+	queued, err := session.Queue(nil, Text("accepted"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,4 +645,13 @@ func TestCancelledControlContextDoesNotMutateRun(t *testing.T) {
 	if _, err := run.Wait(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func testFollowUpRun(session *Session, input Input) (*Run, error) {
+	receipt, err := session.FollowUp(context.Background(), input)
+	if err != nil {
+		return nil, err
+	}
+	run, _, err := session.AttachRun(context.Background(), receipt.RunID)
+	return run, err
 }

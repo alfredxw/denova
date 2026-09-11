@@ -15,7 +15,8 @@ type Control struct {
 	Reason string
 }
 
-// OutcomeStatus is the closed set of terminal states returned by a run.
+// OutcomeStatus describes why the current execution handle ended. Suspended
+// preserves the logical Run and requires an explicit continuation.
 type OutcomeStatus string
 
 const (
@@ -23,6 +24,7 @@ const (
 	OutcomePreempted OutcomeStatus = "preempted"
 	OutcomeAborted   OutcomeStatus = "aborted"
 	OutcomeFailed    OutcomeStatus = "failed"
+	OutcomeSuspended OutcomeStatus = "suspended"
 )
 
 // Outcome is the transport-independent terminal result of one Agent run.

@@ -17,8 +17,9 @@ type loopConfig struct {
 	ResultProcessor ToolResultProcessor
 	Artifacts       ToolArtifactStorage
 
-	Middlewares []Middleware
-	Retry       *RetryConfig
+	Middlewares      []Middleware
+	Retry            *RetryConfig
+	ModelMaxAttempts int
 
 	// MaxIterations is an explicit caller-owned guard. Zero means unlimited;
 	// the agent runtime never installs an implicit iteration limit.
@@ -56,20 +57,21 @@ const (
 // modelToolLoop owns one provider-neutral model/tool loop. Session and Run
 // lifecycle are intentionally owned by the higher-level Agent module.
 type modelToolLoop struct {
-	name            string
-	description     string
-	instruction     string
-	model           BaseChatModel
-	tools           []ToolDefinition
-	middlewares     []Middleware
-	resultProcessor ToolResultProcessor
-	artifacts       ToolArtifactStorage
-	retry           *RetryConfig
-	maxIterations   int
-	idleTimeout     time.Duration
-	toolParallelism int
-	modelCallGate   modelCallGate
-	permission      *permissionMiddleware
+	name             string
+	description      string
+	instruction      string
+	model            BaseChatModel
+	tools            []ToolDefinition
+	middlewares      []Middleware
+	resultProcessor  ToolResultProcessor
+	artifacts        ToolArtifactStorage
+	retry            *RetryConfig
+	modelMaxAttempts int
+	maxIterations    int
+	idleTimeout      time.Duration
+	toolParallelism  int
+	modelCallGate    modelCallGate
+	permission       *permissionMiddleware
 }
 
 // errMaxIterations is returned only when the caller explicitly configures a limit.
@@ -104,8 +106,8 @@ func newModelToolLoop(ctx context.Context, config loopConfig) (*modelToolLoop, e
 		}
 	}
 	retry := config.Retry
-	if retry != nil && retry.MaxRetries < 0 {
-		return nil, errors.New("new agent: retry MaxRetries cannot be negative")
+	if config.ModelMaxAttempts < 0 {
+		return nil, errors.New("new agent: ModelMaxAttempts cannot be negative")
 	}
 	if config.MaxIterations < 0 {
 		return nil, errors.New("new agent: MaxIterations cannot be negative")
@@ -120,20 +122,21 @@ func newModelToolLoop(ctx context.Context, config loopConfig) (*modelToolLoop, e
 		parallelism = maxToolParallelism
 	}
 	return &modelToolLoop{
-		name:            config.Name,
-		description:     config.Description,
-		instruction:     config.Instruction,
-		model:           config.Model,
-		tools:           tools,
-		middlewares:     middlewares,
-		resultProcessor: config.ResultProcessor,
-		artifacts:       config.Artifacts,
-		retry:           retry,
-		maxIterations:   config.MaxIterations,
-		idleTimeout:     config.IdleTimeout,
-		toolParallelism: parallelism,
-		modelCallGate:   config.modelCallGate,
-		permission:      config.permission,
+		name:             config.Name,
+		description:      config.Description,
+		instruction:      config.Instruction,
+		model:            config.Model,
+		tools:            tools,
+		middlewares:      middlewares,
+		resultProcessor:  config.ResultProcessor,
+		artifacts:        config.Artifacts,
+		retry:            retry,
+		modelMaxAttempts: max(1, config.ModelMaxAttempts),
+		maxIterations:    config.MaxIterations,
+		idleTimeout:      config.IdleTimeout,
+		toolParallelism:  parallelism,
+		modelCallGate:    config.modelCallGate,
+		permission:       config.permission,
 	}, nil
 }
 
@@ -282,7 +285,7 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 		}
 
 		modelContext := &ModelContext{
-			Tools: cloneToolInfos(state.ToolInfos), Retry: agent.retry, Iteration: iteration,
+			Tools: cloneToolInfos(state.ToolInfos), Iteration: iteration,
 			stablePrefixSeed: cloneMessages(stablePrefixSeed),
 		}
 		for _, middleware := range agent.middlewares {

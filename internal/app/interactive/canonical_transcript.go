@@ -2,6 +2,7 @@ package interactiveapp
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
 	"fmt"
 
 	"denova/internal/agents/toolresult"
@@ -39,9 +40,12 @@ func (c *Conversation) canonicalMessagesForSnapshot(snapshot interactive.Snapsho
 	// Product checkpoints and cleanup are Agent capabilities now. Import the
 	// complete unmodified canonical branch so future cleanup/compaction targets
 	// stable raw message indices instead of a second Story-store projection.
-	projection, err := BuildModelContextProjection(
+	projection, err := buildModelContextProjection(
 		history, nil, snapshot,
-		canonicalToolContextPolicy(c.ToolResultContextPolicy()), c.AgentCycleIdentitySnapshot(),
+		canonicalToolContextPolicy(c.ToolResultContextPolicy()), agentrun.CycleIdentity{},
+		func(input interactive.PlayerInputAcceptedEvent) *agent.Message {
+			return agent.UserMessageWithAttachments(input.Text, input.Attachments)
+		},
 	)
 	if err != nil {
 		return nil, err

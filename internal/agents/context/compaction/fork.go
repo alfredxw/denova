@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+
 	"reflect"
 	"strings"
 
@@ -140,7 +140,7 @@ func summarizeContextWithPrimaryFork(
 		return "", inputChars, execution, false, nil
 	}
 
-	message, err := executeCompactionForkOnce(ctx, fork, emitDelta)
+	message, err := fork.Complete(modelio.WithTraceSource(ctx, "context_compaction"), modelio.ModelExecutionPolicy(cfg))
 	if err != nil {
 		return "", inputChars, execution, true, err
 	}
@@ -148,6 +148,9 @@ func summarizeContextWithPrimaryFork(
 		return "", inputChars, execution, true, fmt.Errorf("context compaction fork denied %d requested tool call(s)", len(message.ToolCalls))
 	}
 	summary := strings.TrimSpace(message.Content)
+	if emitDelta != nil && summary != "" {
+		emitDelta(1, summary)
+	}
 	if summary == "" {
 		return "", inputChars, execution, true, errors.New("context compaction fork returned an empty summary")
 	}
@@ -162,48 +165,6 @@ func summarizeContextWithPrimaryFork(
 		execution.CacheMissReason = CacheMissZero
 	}
 	return summary, inputChars, execution, true, nil
-}
-
-func executeCompactionForkOnce(ctx context.Context, snapshot *agent.ModelRequestSnapshot, emitDelta func(int, string)) (*agent.Message, error) {
-	if snapshot == nil {
-		return nil, errors.New("context compaction fork snapshot is unavailable")
-	}
-	if !snapshot.Streaming() {
-		message, err := snapshot.Generate(modelio.WithTraceSource(ctx, "context_compaction"))
-		if err != nil {
-			return nil, err
-		}
-		if message == nil {
-			return nil, errors.New("context compaction fork returned nil message")
-		}
-		if message.Content != "" && emitDelta != nil {
-			emitDelta(1, message.Content)
-		}
-		return message, nil
-	}
-	stream, err := snapshot.Stream(modelio.WithTraceSource(ctx, "context_compaction"))
-	if err != nil {
-		return nil, err
-	}
-	defer stream.Close()
-	var chunks []*agent.Message
-	for {
-		message, recvErr := stream.Recv()
-		if errors.Is(recvErr, io.EOF) {
-			break
-		}
-		if recvErr != nil {
-			return nil, recvErr
-		}
-		if message == nil {
-			continue
-		}
-		chunks = append(chunks, message)
-		if message.Content != "" && emitDelta != nil {
-			emitDelta(1, message.Content)
-		}
-	}
-	return agent.ConcatMessages(chunks)
 }
 
 func compactionForkReserves(_ int, contextWindow int, policy Policy) (output, safety int) {

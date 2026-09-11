@@ -326,7 +326,7 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 	queueControl := kind == appsvc.CommandSteerQueued || kind == appsvc.CommandCancelQueued
 	if err != nil || strings.TrimSpace(body.CommandID) == "" || strings.TrimSpace(body.TargetOperationID) == "" ||
 		(queueControl && strings.TrimSpace(body.TargetCommandID) == "") ||
-		(kind != appsvc.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" && len(body.Input.AttachmentUploads) == 0) {
+		(kind != appsvc.CommandAbort && kind != appsvc.CommandSuspend && !queueControl && strings.TrimSpace(body.Input.Message) == "" && len(body.Input.AttachmentUploads) == 0) {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "AgentChat 命令 identity 或消息不完整 / AgentChat command identity or message is incomplete", nil)
 		return
 	}
@@ -335,7 +335,7 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 	if !ok {
 		return
 	}
-	if kind != appsvc.CommandAbort && !queueControl {
+	if kind != appsvc.CommandAbort && kind != appsvc.CommandSuspend && !queueControl {
 		if err := h.app.AgentChat().MaterializeAttachments(ctx, binding, body.CommandID, &body.Input); err != nil {
 			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 			return

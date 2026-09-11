@@ -13,6 +13,7 @@ const testMocks = vi.hoisted(() => ({
   generateInteractiveImageMock: vi.fn(),
   getActiveInteractiveChatMock: vi.fn(),
   recoverInteractiveAgentRuntimeMock: vi.fn(),
+  resolveInteractiveAskMock: vi.fn(),
   sendInteractiveMessageMock: vi.fn(),
   streamActiveInteractiveChatMock: vi.fn(),
   submitInteractiveAgentCommandMock: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock('../api', () => ({
   getActiveInteractiveChat: testMocks.getActiveInteractiveChatMock,
   removeInteractiveContextCompaction: vi.fn(),
   recoverInteractiveAgentRuntime: testMocks.recoverInteractiveAgentRuntimeMock,
+  resolveInteractiveAsk: testMocks.resolveInteractiveAskMock,
   sendInteractiveMessage: testMocks.sendInteractiveMessageMock,
   streamActiveInteractiveChat: testMocks.streamActiveInteractiveChatMock,
   submitInteractiveAgentCommand: testMocks.submitInteractiveAgentCommandMock,
@@ -72,6 +74,59 @@ beforeEach(() => {
 })
 
 describe('StoryStage runtime recovery', () => {
+  it('shows a cold verification and accepts an uncertain answer without resuming', async () => {
+    const action = { kind: 'resume', action_id: '7', command_id: 'input-1', operation_id: 'run-1' }
+    const pending = { schema: 'ask.pending.v1', id: 'verify-1', tool_call_id: 'execution-1', agent_kind: 'interactive_story', status: 'pending',
+      verification: { execution_id: 'execution-1', tool: 'publish_story', arguments: { story: 'draft' } },
+      questions: [{ id: 'effect', question: 'Diagnostic English copy', options: [{ id: 'executed', label: 'Executed' }, { id: 'not_executed', label: 'Not executed' }, { id: 'unknown', label: 'Unknown' }] }] }
+    getActiveInteractiveChatMock.mockResolvedValue({ active: false, phase: 'suspended', recovery_paused: true, runtime_recoverable: true,
+      active_operation_id: 'run-1', recovery_actions: [action, { ...action, kind: 'abort' }], pending_ask: pending })
+    testMocks.resolveInteractiveAskMock.mockResolvedValue({ schema: 'ask.result.v1', id: 'verify-1', status: 'pending' })
+    render(<StoryStageHarness />)
+    await screen.findByText('这项操作是否已经生效？')
+    await userEvent.click(screen.getByRole('radio', { name: '暂时无法确定' }))
+    await userEvent.click(screen.getByRole('button', { name: '提交' }))
+    await waitFor(() => expect(testMocks.resolveInteractiveAskMock).toHaveBeenCalledExactlyOnceWith('story-1', 'main', 'verify-1', {
+      status: 'answered', answers: [{ question_id: 'effect', selected_option_ids: ['unknown'] }],
+    }))
+    expect(screen.getAllByRole('button', { name: '取消任务' }).every(button => !button.hasAttribute('disabled'))).toBe(true)
+    expect(recoverInteractiveAgentRuntimeMock).not.toHaveBeenCalled()
+    expect(streamActiveInteractiveChatMock).not.toHaveBeenCalled()
+    expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('queues input into a suspended task while keeping its Continue action', async () => {
+    const action = { kind: 'resume', action_id: '7', command_id: 'input-1', operation_id: 'run-1' }
+    getActiveInteractiveChatMock.mockResolvedValue({ active: false, phase: 'suspended', recovery_paused: true, runtime_recoverable: true,
+      active_operation_id: 'run-1', recovery_actions: [action, { ...action, kind: 'abort' }] })
+    submitInteractiveAgentCommandMock.mockResolvedValue({ command_id: 'queued', operation_id: 'run-1', cursor: 8 })
+    render(<StoryStageHarness />)
+    await screen.findByRole('button', { name: '继续任务' })
+    await userEvent.type(getStageInput(), '等待时接收的补充')
+    await userEvent.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'follow_up', targetOperationId: 'run-1' })))
+    expect(screen.getByRole('button', { name: '继续任务' })).toBeEnabled()
+    expect(recoverInteractiveAgentRuntimeMock).not.toHaveBeenCalled()
+    expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+  })
+  it('shows a suspended task and waits for Continue before opening its execution stream', async () => {
+    const stream = controllableInteractiveStream()
+    const action = { kind: 'resume', action_id: 'pause-7', command_id: 'input-1', operation_id: 'run-1' }
+    getActiveInteractiveChatMock.mockResolvedValue({ active: false, phase: 'suspended', recovery_paused: true,
+      runtime_recoverable: true, active_operation_id: 'run-1', recovery_actions: [action, { ...action, kind: 'abort' }] })
+    recoverInteractiveAgentRuntimeMock.mockResolvedValue({ task_id: 'resumed-display', status: 'running', stream_cursor: 0, cursor: 8, recovery_action: action })
+    streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
+    try {
+      render(<StoryStageHarness />)
+      const resume = await screen.findByRole('button', { name: '继续任务' })
+      expect(recoverInteractiveAgentRuntimeMock).not.toHaveBeenCalled()
+      expect(streamActiveInteractiveChatMock).not.toHaveBeenCalled()
+      await userEvent.click(resume)
+      await waitFor(() => expect(recoverInteractiveAgentRuntimeMock).toHaveBeenCalledExactlyOnceWith({ storyId: 'story-1', branchId: 'main', action }))
+      expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+      await waitFor(() => expect(streamActiveInteractiveChatMock).toHaveBeenCalledTimes(1))
+    } finally { stream.close() }
+  })
   it('keeps a canonically persisted turn idle when only a settled display replay remains', async () => {
     const retainedStream = controllableInteractiveStream()
     const persistedTurn = {

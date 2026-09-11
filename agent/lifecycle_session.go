@@ -43,6 +43,10 @@ type persistedSessionTranscript struct {
 type persistedMessageCheckpoint struct {
 	Hash         string `json:"hash"`
 	MessageCount int    `json:"message_count"`
+	// Metadata never duplicates committed product messages. Pending contains
+	// only a tool batch that has not yet reached the product commit boundary.
+	Metadata json.RawMessage `json:"metadata,omitempty"`
+	Pending  []*Message      `json:"pending,omitempty"`
 }
 
 type persistedCapability struct {
@@ -81,6 +85,10 @@ type Session struct {
 
 	mu                  sync.RWMutex
 	closed              bool
+	closing             bool
+	closeDone           chan struct{}
+	closeErr            error
+	storageErr          error
 	revision            agentsession.Revision
 	engineState         json.RawMessage
 	capabilities        map[string]json.RawMessage
@@ -91,6 +99,11 @@ type Session struct {
 	maintenance         bool
 	pending             []*Run
 	runs                map[string]*Run
+	inputs              map[string]*acceptedInput
+	inputOrder          []*acceptedInput
+	controlReceipts     map[string]persistedControlReceipt
+	lastControl         persistedSessionControl
+	treeControl         persistedTreeControl
 	recent              []RunSummary
 	cursor              Cursor
 	history             []Event
@@ -113,6 +126,16 @@ func (session *Session) replay(ctx context.Context) error {
 	stats, err := session.log.Replay(ctx, func(record agentsession.Record) error {
 		session.revision = record.Revision
 		switch record.Kind {
+		case sessionInputRecord, sessionInputUpdateRecord:
+			return session.replayInput(record)
+		case turnCheckpointRecord:
+			return session.replayCycle(record.Data)
+		case sessionControlRecord:
+			return session.replayControl(record.Data)
+		case turnToolRecord:
+			return session.replayTool(record.Data)
+		case turnInteractionRecord, turnInteractionResponseRecord:
+			return session.replayInteraction(record)
 		case sessionTranscriptRecord:
 			var transcript persistedSessionTranscript
 			if err := json.Unmarshal(record.Data, &transcript); err != nil {
@@ -169,13 +192,34 @@ func (session *Session) replay(ctx context.Context) error {
 				return fmt.Errorf("decode Agent turn start at revision %d: %w", record.Revision, err)
 			}
 			unfinished = &turn
+			if run := session.runs[turn.RunID]; run != nil {
+				session.active = run
+				run.markStarted(turn.At)
+				session.removePendingLocked(run)
+			}
 		case turnFinishedRecord, turnInterruptedRecord:
 			var turn persistedTurn
 			if err := json.Unmarshal(record.Data, &turn); err != nil {
 				return fmt.Errorf("decode Agent turn settlement at revision %d: %w", record.Revision, err)
 			}
 			session.addRecentLocked(RunSummary{ID: turn.RunID, CommandID: turn.CommandID, Status: turn.Status, Reason: turn.Reason, Output: turn.Output})
-			unfinished = nil
+			if run := session.runs[turn.RunID]; run != nil {
+				run.settled, run.result = true, Result{Status: turn.Status, Reason: turn.Reason}
+				if turn.Status != ResultCompleted && turn.Status != ResultAborted {
+					run.err = &RunError{Result: run.result}
+				}
+				run.content.WriteString(turn.Output)
+				run.cancel()
+				run.endHandle()
+				close(run.executionDone)
+				session.removePendingLocked(run)
+				if session.active == run {
+					session.active = nil
+				}
+			}
+			if unfinished != nil && unfinished.RunID == turn.RunID {
+				unfinished = nil
+			}
 		default:
 			return fmt.Errorf("unsupported Agent Session record %q", record.Kind)
 		}
@@ -186,13 +230,18 @@ func (session *Session) replay(ctx context.Context) error {
 	}
 	_ = stats
 	if unfinished != nil {
+		if run := session.runs[unfinished.RunID]; run != nil {
+			run.result = Result{Status: ResultSuspended, Reason: "Agent Run requires explicit resume"}
+			run.cancel()
+			run.endHandle()
+			close(run.executionDone)
+			return run.restoreEffectInteractions()
+		}
 		interrupted := *unfinished
 		interrupted.Status = ResultIncomplete
 		interrupted.Reason = "Agent process stopped before the turn finished"
-		interrupted.At = time.Now().UTC()
-		if err := session.appendRecordLocked(ctx, turnInterruptedRecord, interrupted); err != nil {
-			return err
-		}
+		// Released journals have no accepted input to resume. Derive incomplete
+		// without rewriting historical facts merely because a reader opened them.
 		session.addRecentLocked(RunSummary{
 			ID: interrupted.RunID, CommandID: interrupted.CommandID,
 			Status: interrupted.Status, Reason: interrupted.Reason,
@@ -206,66 +255,12 @@ func (session *Session) Run(ctx context.Context, input Input) (*Run, error) {
 }
 
 func (session *Session) start(ctx context.Context, input Input, ownership runSessionOwnership) (*Run, error) {
-	if err := session.usable(); err != nil {
-		return nil, err
+	_, run, err := session.receiveInput(ctx, input, inputRun, "", ownership)
+	if err == nil && run == nil {
+		return nil, ErrRunSettled
 	}
-	if input.Goal != nil {
-		input.Goal = cloneGoalMutation(input.Goal)
-		if input.Goal.MutationID == "" {
-			input.Goal.MutationID = newPublicID("goal-mutation")
-		}
-	}
-	if _, _, err := encodeInput(input); err != nil {
-		return nil, err
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	commandID := strings.TrimSpace(input.IdempotencyKey)
-	if commandID == "" {
-		commandID = newPublicID("command")
-	}
-	runID, err := session.agent.nextRunID(session.key)
-	if err != nil {
-		return nil, err
-	}
-	run := newPublicRun(session, runID, commandID, input, runstate.DeliveryStart, ownership)
-
-	session.mu.Lock()
-	if session.closed {
-		session.mu.Unlock()
-		return nil, ErrSessionClosed
-	}
-	if session.active != nil || session.maintenance {
-		session.mu.Unlock()
-		return nil, ErrSessionBusy
-	}
-	startedAt := time.Now().UTC()
-	run.markStarted(startedAt)
-	if err := session.appendRecordLocked(ctx, turnStartedRecord, persistedTurn{
-		RunID: runID, CommandID: commandID, At: startedAt,
-	}); err != nil {
-		session.mu.Unlock()
-		return nil, err
-	}
-	session.active = run
-	session.runs[runID] = run
-	run.receipt = session.nextCommandCursorLocked()
-	session.mu.Unlock()
-
-	run.publish(RunAccepted{CommandID: commandID})
-	emitTrace(session.agent.ctx, session.agent.trace, TraceEvent{
-		Kind: TraceRunAccepted, Session: session.key, RunID: runID,
-	})
-	safeGo(run.execute, func(err error) {
-		run.finish(Result{Status: ResultFailed, Reason: err.Error()}, err)
-	})
-	return run, nil
+	return run, err
 }
-
 func encodeInput(input Input) (json.RawMessage, runstate.UserInput, error) {
 	if strings.TrimSpace(input.Text) == "" && len(input.Attachments) == 0 {
 		return nil, runstate.UserInput{}, errors.New("Agent Input requires Text or Attachments")
@@ -358,6 +353,13 @@ func (session *Session) RunInput(_ context.Context, runID string) (Input, bool, 
 	if err != nil || !found {
 		return Input{}, false, err
 	}
+	run.mu.RLock()
+	defer run.mu.RUnlock()
+	if run.cycle > 0 && !run.settled {
+		input, err := decodeInput(run.snapshot.Input)
+		input.IdempotencyKey = string(run.snapshot.CommandID)
+		return input, err == nil, err
+	}
 	return cloneInput(run.input), true, nil
 }
 
@@ -410,18 +412,23 @@ func (session *Session) snapshotLocked() SessionSnapshot {
 	snapshot := SessionSnapshot{Key: session.Key(), Cursor: session.cursor, RetentionStart: 1}
 	if len(session.history) > 0 {
 		snapshot.RetentionStart = session.history[0].Cursor
+	} else {
+		snapshot.RetentionStart = session.cursor + 1
 	}
 	if session.active != nil {
 		snapshot.ActiveRunID = session.active.id
 		snapshot.ActiveCommandID = session.active.commandID
 		snapshot.ActiveAbortPending = session.active.abortRequested()
+		if session.active.isSuspended() {
+			snapshot.ActiveStatus = ResultSuspended
+		}
 		snapshot.ActiveReceiptCursor = session.active.Receipt().Cursor
 		snapshot.ActiveCycle = session.active.cycleValue()
 		snapshot.ActiveOutput = session.active.outputSnapshot()
 		snapshot.PendingInteractions = session.active.pendingInteractionRequests()
-		snapshot.QueuedRuns = session.active.queuedSnapshots()
 		snapshot.OpenTools = session.active.openToolSnapshots()
 	}
+	snapshot.QueuedRuns = session.queuedSnapshotsLocked()
 	for _, pending := range session.pending {
 		snapshot.QueuedRuns = append(snapshot.QueuedRuns, QueuedRunSnapshot{
 			ID: pending.id, CommandID: pending.commandID,
@@ -529,37 +536,53 @@ func decodeGoalState(encoded json.RawMessage) (GoalState, error) {
 }
 
 func (session *Session) Close(_ context.Context) error {
+	return session.closeForTree("")
+}
+
+func (session *Session) closeForTree(releaseTreeID string) error {
 	if session == nil {
 		return nil
 	}
 	session.mu.Lock()
 	if session.closed {
+		err := session.closeErr
 		session.mu.Unlock()
-		return nil
+		return err
 	}
-	session.closed = true
-	close(session.taskCompletions.activity)
+	if session.closing {
+		done := session.closeDone
+		session.mu.Unlock()
+		<-done
+		session.mu.RLock()
+		err := session.closeErr
+		session.mu.RUnlock()
+		return err
+	}
+	session.closing, session.closeDone = true, make(chan struct{})
 	active := session.active
 	pending := append([]*Run(nil), session.pending...)
-	session.pending = nil
-	for id, observer := range session.observers {
-		delete(session.observers, id)
-		close(observer.events)
-		close(observer.errors)
-	}
 	session.mu.Unlock()
 	if active != nil {
-		active.abort("Agent Session closed")
-		<-active.done
+		if active.isSuspended() {
+			active.finish(Result{Status: ResultAborted, Reason: "Agent Session closed"}, nil)
+		} else {
+			active.abort("Agent Session closed")
+			<-active.executionDone
+		}
 	}
 	for _, run := range pending {
 		run.finish(Result{Status: ResultAborted, Reason: "Agent Session closed"}, nil)
 	}
-	err := session.log.Close()
-	canonical, _ := agentsession.CanonicalKey(session.key)
-	session.agent.mu.Lock()
-	delete(session.agent.sessions, canonical)
-	session.agent.mu.Unlock()
+	var err error
+	if releaseTreeID != "" {
+		_, err = session.acceptTreeControl(context.Background(), "release_tree", releaseTreeID, releaseTreeID+":release", "")
+	}
+	err = errors.Join(err, session.closeWriter())
+	session.mu.Lock()
+	session.closeErr = errors.Join(session.storageErr, err)
+	close(session.closeDone)
+	err = session.closeErr
+	session.mu.Unlock()
 	return err
 }
 
@@ -588,9 +611,16 @@ func (session *Session) appendRecordLocked(ctx context.Context, kind string, val
 }
 
 func (session *Session) appendRecordsLocked(ctx context.Context, records ...agentsession.Record) error {
+	if session.storageErr != nil {
+		return session.storageErr
+	}
 	next, err := session.log.Append(ctx, session.revision, records...)
 	if err != nil {
-		return fmt.Errorf("append Agent Session records: %w", err)
+		err = fmt.Errorf("append Agent Session records: %w", err)
+		if errors.Is(err, agentsession.ErrCommitUnknown) || (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)) {
+			session.storageErr = err
+		}
+		return err
 	}
 	session.revision = next
 	return nil
@@ -598,16 +628,13 @@ func (session *Session) appendRecordsLocked(ctx context.Context, records ...agen
 
 func (session *Session) persistTranscriptLocked(ctx context.Context) error {
 	if session.canonicalMessages {
-		state, err := decodeEngineTranscript(session.engineState)
+		checkpoint, err := canonicalMessageCheckpoint(session.engineState)
 		if err != nil {
 			return err
 		}
-		hash, err := hashCanonical(state.Messages)
-		if err != nil {
-			return fmt.Errorf("hash canonical Agent messages: %w", err)
-		}
-		checkpoint := persistedMessageCheckpoint{Hash: hash, MessageCount: len(state.Messages)}
-		if checkpoint == session.messageCheckpoint {
+		previous, _ := json.Marshal(session.messageCheckpoint)
+		current, _ := json.Marshal(checkpoint)
+		if bytes.Equal(previous, current) {
 			return nil
 		}
 		if err := session.appendRecordLocked(ctx, sessionMessageCheckpointRecord, checkpoint); err != nil {
@@ -689,7 +716,6 @@ func (session *Session) nextCommandCursorLocked() Cursor {
 func (session *Session) addRecentLocked(summary RunSummary) {
 	session.recent = append(session.recent, summary)
 	if len(session.recent) > 32 {
-		delete(session.runs, session.recent[0].ID)
 		session.recent = append([]RunSummary(nil), session.recent[len(session.recent)-32:]...)
 	}
 }
@@ -709,6 +735,7 @@ func cloneStringMap(input map[string]string) map[string]string {
 
 func cloneInput(input Input) Input {
 	input.Context = append([]ContextFragment(nil), input.Context...)
+	input.Attachments = cloneAttachments(input.Attachments)
 	input.Goal = cloneGoalMutation(input.Goal)
 	input.HostData = cloneHostData(input.HostData)
 	return input

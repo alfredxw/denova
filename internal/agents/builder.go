@@ -102,10 +102,8 @@ func BuildInteractiveStoryDefinitionWithCompositionForHost(
 	toolContexts ...agentinteractive.InteractiveStoryToolContext,
 ) (agent.Definition, prompts.SystemPromptComposition, error) {
 	handlers := []agent.Middleware{agenttoolruntime.NewInteractiveStoryMiddleware()}
-	var outputGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision
 	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
-		handlers = append(handlers, agentinteractive.NewTurnProtocolMiddleware(toolContexts[0].TurnResultReady))
-		outputGuard = agentinteractive.NewCompletionGuard(toolContexts[0].TurnResultReady)
+		handlers = append(handlers, agentinteractive.NewTurnProtocolMiddleware(toolContexts[0]))
 	}
 	composition, err := prompts.ComposeInteractiveStoryInstruction(cfg, state, teller)
 	if err != nil {
@@ -124,7 +122,6 @@ func BuildInteractiveStoryDefinitionWithCompositionForHost(
 		ReadAdapters:      host.ReadAdapters,
 		ExtraMiddlewares:  handlers,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).InteractiveStory(agenttoolruntime.ProjectInteractiveContext(toolContexts...)),
-		ModelOutputGuard:  outputGuard,
 	})
 	return assembly.Definition, assembly.Composition, err
 }
@@ -161,7 +158,6 @@ type agentBuildSpec struct {
 	ReadAdapters        []producttools.ReadAdapterBinding
 	ReadAdaptersFactory producttools.ReadAdapterFactory
 	ExtraToolsFactory   func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
-	ModelOutputGuard    func(context.Context, *agent.RetryContext) *agent.RetryDecision
 }
 
 type agentDefinitionAssembly struct {
@@ -307,7 +303,6 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 
 	middlewares := identifyDenovaMiddlewares(spec.Kind, cfg, assembly.Middlewares)
-	retry := modelRetryConfig(cfg, spec.ModelOutputGuard)
 	compaction, err := agentcompaction.NewAgentManager(cfg, spec.Kind, chatModel, modelIdentity)
 	if err != nil {
 		return agentDefinitionAssembly{}, fmt.Errorf("create Agent Compaction manager kind=%s: %w", spec.Kind, err)
@@ -379,15 +374,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		Compaction: compaction,
 		Goal:       goalManager,
 		Permission: permission,
-		Execution: agent.ExecutionPolicy{
-			Retry: retry,
-			RetryIdentity: denovaCapabilityIdentity("denova.retry", struct {
-				MaxRetries  int
-				OutputGuard bool
-			}{configModelMaxRetries(cfg), spec.ModelOutputGuard != nil}),
-			MaxIterations: configMaxIteration(cfg), ToolParallelism: configToolParallelism(cfg), IdleTimeout: configIdleTimeout(cfg),
-			MaxAutomaticCompactionFailures: config.DefaultContextCompactionMaxConsecutiveFailures,
-		},
+		Execution:  agentExecutionPolicy(cfg),
 	}, Composition: assembly.SystemPrompt}, nil
 }
 
@@ -670,17 +657,7 @@ func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentde
 		// Goals are a root product workflow. Delegated Agents keep isolated
 		// task transcripts and must not create or continue a parent Goal.
 		Compaction: compaction, Permission: permission,
-		Execution: agent.ExecutionPolicy{
-			Retry: modelRetryConfig(cfg, nil),
-			RetryIdentity: denovaCapabilityIdentity("denova.child.retry", struct {
-				Parent, Name string
-				MaxRetries   int
-			}{
-				spec.ParentKind, spec.Name, configModelMaxRetries(cfg),
-			}),
-			MaxIterations: configMaxIteration(cfg), ToolParallelism: configToolParallelism(cfg), IdleTimeout: configIdleTimeout(cfg),
-			MaxAutomaticCompactionFailures: config.DefaultContextCompactionMaxConsecutiveFailures,
-		},
+		Execution: agentExecutionPolicy(cfg),
 	}
 	behavior, err := agent.DefinitionBehaviorIdentity(definition)
 	if err != nil {
@@ -690,24 +667,6 @@ func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentde
 	return agentdelegation.Child{
 		Name: spec.Name, Description: spec.Description, Definition: definition, Identity: identity,
 	}, nil
-}
-
-func modelRetryConfig(cfg *config.Config, outputGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision) *agent.RetryConfig {
-	retryConfig := &agent.RetryConfig{
-		MaxRetries:  configModelMaxRetries(cfg),
-		IsRetryable: modelio.IsRetryable,
-	}
-	if outputGuard == nil {
-		return retryConfig
-	}
-	retryConfig.IsRetryable = nil
-	retryConfig.ShouldRetry = func(ctx context.Context, retryCtx *agent.RetryContext) *agent.RetryDecision {
-		if retryCtx != nil && retryCtx.Err != nil {
-			return &agent.RetryDecision{Retry: modelio.IsRetryable(ctx, retryCtx.Err)}
-		}
-		return outputGuard(ctx, retryCtx)
-	}
-	return retryConfig
 }
 
 func buildSubAgentInstruction(parent agentBuildSpec, sub config.SubAgentConfig) string {
@@ -740,13 +699,14 @@ func configIdleTimeout(cfg *config.Config) time.Duration {
 	return time.Duration(cfg.AgentIdleTimeoutSeconds) * time.Second
 }
 
-func configModelMaxRetries(cfg *config.Config) int {
-	if cfg == nil || cfg.ModelMaxRetries < 0 {
-		return 5
-	}
-	return cfg.ModelMaxRetries
+func agentExecutionPolicy(cfg *config.Config) agent.ExecutionPolicy {
+	policy := modelio.ModelExecutionPolicy(cfg)
+	policy.MaxIterations = configMaxIteration(cfg)
+	policy.ToolParallelism = configToolParallelism(cfg)
+	policy.IdleTimeout = configIdleTimeout(cfg)
+	policy.MaxAutomaticCompactionFailures = config.DefaultContextCompactionMaxConsecutiveFailures
+	return policy
 }
-
 func configToolParallelism(cfg *config.Config) int {
 	if cfg == nil || cfg.AgentToolParallelism <= 0 {
 		return config.DefaultAgentToolParallelism

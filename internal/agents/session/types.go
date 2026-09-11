@@ -302,17 +302,18 @@ type AskInteraction struct {
 	// interaction to the durable coordinator cycle that owned its tool call.
 	// They are optional only for journals written before this correlation was
 	// introduced.
-	AgentCommandID   string                    `json:"agent_command_id,omitempty"`
-	AgentOperationID string                    `json:"agent_operation_id,omitempty"`
-	AgentCycle       int                       `json:"agent_cycle,omitempty"`
-	Status           string                    `json:"status"`
-	Questions        []AskQuestion             `json:"questions,omitempty"`
-	AllowOther       bool                      `json:"allow_other,omitempty"`
-	Approval         *ToolApprovalPresentation `json:"approval,omitempty"`
-	Answers          []AskAnswerResult         `json:"answers,omitempty"`
-	CancelReason     string                    `json:"cancel_reason,omitempty"`
-	CreatedAt        time.Time                 `json:"created_at"`
-	ResolvedAt       *time.Time                `json:"resolved_at,omitempty"`
+	AgentCommandID   string                        `json:"agent_command_id,omitempty"`
+	AgentOperationID string                        `json:"agent_operation_id,omitempty"`
+	AgentCycle       int                           `json:"agent_cycle,omitempty"`
+	Status           string                        `json:"status"`
+	Questions        []AskQuestion                 `json:"questions,omitempty"`
+	AllowOther       bool                          `json:"allow_other,omitempty"`
+	Approval         *ToolApprovalPresentation     `json:"approval,omitempty"`
+	Verification     *agent.ToolEffectVerification `json:"verification,omitempty"`
+	Answers          []AskAnswerResult             `json:"answers,omitempty"`
+	CancelReason     string                        `json:"cancel_reason,omitempty"`
+	CreatedAt        time.Time                     `json:"created_at"`
+	ResolvedAt       *time.Time                    `json:"resolved_at,omitempty"`
 }
 
 // Session 保存单个会话的内存状态。

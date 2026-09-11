@@ -111,6 +111,8 @@ func encodeEventPayload(payload EventPayload) (string, json.RawMessage, error) {
 		kind = "thinking_delta"
 	case ModelCompleted:
 		kind = "model_completed"
+	case ModelRetry:
+		kind = "model_retry"
 	case ContextNormalized:
 		kind = "context_normalized"
 	case AssistantFinal:
@@ -194,6 +196,8 @@ func decodeEventPayload(kind string, data json.RawMessage) (EventPayload, error)
 		target = &ThinkingDelta{}
 	case "model_completed":
 		target = &ModelCompleted{}
+	case "model_retry":
+		target = &ModelRetry{}
 	case "context_normalized":
 		target = &ContextNormalized{}
 	case "assistant_final":
@@ -268,6 +272,8 @@ func dereferenceEventPayload(payload EventPayload) EventPayload {
 	case *ThinkingDelta:
 		return *value
 	case *ModelCompleted:
+		return *value
+	case *ModelRetry:
 		return *value
 	case *ContextNormalized:
 		return *value

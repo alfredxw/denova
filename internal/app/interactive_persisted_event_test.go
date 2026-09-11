@@ -26,6 +26,8 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	bindInteractiveCycleForTest(conversation)
+	materializeInteractiveInputForTest(t, store, story.ID, "main", "继续前进", conversation.AgentCycleIdentitySnapshot())
 	submitTestTurnResult(t, store, story.ID, "main", conversation, "走出门外", "确认雾中环境")
 	if err := commitInteractiveAssistantForTest(t, store, story.ID, "main", "继续前进", conversation, "雾气在门外散开。", "先确认场景。"); err != nil {
 		t.Fatal(err)

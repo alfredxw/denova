@@ -44,7 +44,8 @@ type engineTranscript struct {
 	// ContextSequence is the next idempotency slot for this active cycle. It is
 	// checkpointed with the transcript so a resumed run cannot shift sequence
 	// numbers when an earlier context-state batch is already present.
-	ContextSequence int `json:"context_sequence,omitempty"`
+	ContextSequence     int `json:"context_sequence,omitempty"`
+	LastResponseOrdinal int `json:"last_response_ordinal,omitempty"`
 	// ActiveModelUser is the model-only rendering of the accepted raw user
 	// message while a tool batch or interaction is still active.
 	// Messages remains the canonical raw transcript. Once the cycle settles,
@@ -124,7 +125,11 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	controlTranscript := append(cloneMessages(state.Messages), UserMessageWithAttachments(strings.TrimSpace(input.Text), input.Attachments))
+	continuingInput := state.ownsDefinition(request.Snapshot) && state.ActiveModelUser != nil
+	controlTranscript := cloneMessages(state.Messages)
+	if !continuingInput {
+		controlTranscript = append(controlTranscript, UserMessageWithAttachments(strings.TrimSpace(input.Text), input.Attachments))
+	}
 	var controlPrepared *preparedDefinition
 	preparationCheckpoint = func() error {
 		var encoded json.RawMessage
@@ -183,6 +188,8 @@ func (engine *definitionEngine) Run(
 	}
 	if sameCycle {
 		prepared.contextSequence = state.ContextSequence
+		prepared.lastResponseOrdinal = state.LastResponseOrdinal
+		prepared.activeModelUser, prepared.activeUserIndex = CloneMessage(state.ActiveModelUser), state.ActiveUserIndex
 	}
 	prepared.hostData = cloneHostData(input.HostData)
 	prepared.clearRevision = state.ClearRevision
@@ -201,7 +208,7 @@ func (engine *definitionEngine) Run(
 	// Persist the exact base Definition before materializing dynamic capability
 	// state. The Run has already committed canonical accepted input; the
 	// prepared Definition must prove it resolves the same canonical boundary.
-	preparedCheckpoint, err := encodeEngineTranscript(prepared, state.Messages)
+	preparedCheckpoint, err := encodeEngineTranscriptState(prepared, state.Messages, prepared.activeModelUser, prepared.activeUserIndex)
 	if err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("encode pre-commit Agent transcript: %w", err)
 	}
@@ -210,6 +217,9 @@ func (engine *definitionEngine) Run(
 	}
 	if err := engine.verifyCanonicalInputCommit(request.Snapshot, input, prepared.definition.Canonical); err != nil {
 		return runstate.EngineResult{}, err
+	}
+	if request.Snapshot.OutputCommit != nil {
+		return engine.resumeCommittedOutput(ctx, request, input, prepared, state, emit)
 	}
 	if err := materializeDefinitionCapabilities(ctx, prepareRequest, &prepared); err != nil {
 		return runstate.EngineResult{}, err
@@ -227,12 +237,40 @@ func (engine *definitionEngine) Run(
 	}
 	prepared.materializedFingerprint = materializedFingerprint
 	prepared.preparationStage = enginePreparationMaterialized
-	materializedCheckpoint, err := encodeEngineTranscript(prepared, state.Messages)
+	materializedCheckpoint, err := encodeEngineTranscriptState(prepared, state.Messages, prepared.activeModelUser, prepared.activeUserIndex)
 	if err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("encode materialized Agent transcript: %w", err)
 	}
 	if err := emit(runstate.EngineTranscriptUpdated{State: materializedCheckpoint}); err != nil {
 		return runstate.EngineResult{}, err
+	}
+	if continuingInput {
+		if err := engine.restorePendingToolBatch(ctx, request, &prepared, &state, emit); err != nil {
+			return runstate.EngineResult{}, err
+		}
+		if accepted, ok := prepared.definition.Canonical.(CanonicalPreparedOutput); ok {
+			final, err := accepted.PendingOutput(ctx, canonicalCommitIdentity(engine.key, request.Snapshot, CommitOutput))
+			if err != nil {
+				return runstate.EngineResult{}, err
+			}
+			if final != nil {
+				if final.Role != Assistant || len(final.ToolCalls) != 0 {
+					return runstate.EngineResult{}, errors.New("prepared product output must be a final assistant message")
+				}
+				if err := admitRunWork(ctx); err != nil {
+					return runstate.EngineResult{}, err
+				}
+				committed, err := engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical)
+				if err != nil {
+					return runstate.EngineResult{}, err
+				}
+				state.Messages = append(state.Messages, committed.output)
+				if committed.canonicalMessages != nil {
+					state.Messages = committed.canonicalMessages
+				}
+				return engine.settleCommittedOutput(ctx, request, input, prepared, state, emit)
+			}
+		}
 	}
 	compaction, compactionPresent := currentCompaction, currentCompactionPresent
 	cleanupState, cleanupPresent := currentCleanup, currentCleanupPresent
@@ -242,16 +280,21 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
+	prepared.contextState = nextContextState
+	cycleStateTranscript := append(cloneMessages(state.Messages), cloneMessages(stateMessages)...)
 	if len(stateMessages) > 0 {
+		sequence := prepared.contextSequence
+		prepared.contextSequence++
+		checkpoint, err := encodeEngineTranscriptState(prepared, cycleStateTranscript, prepared.activeModelUser, prepared.activeUserIndex)
+		if err != nil {
+			return runstate.EngineResult{}, err
+		}
 		if err := engine.commitCanonicalContext(
-			ctx, request, prepared.definition.Canonical, prepared.contextSequence, stateMessages,
+			ctx, request, prepared.definition.Canonical, sequence, stateMessages, checkpoint,
 		); err != nil {
 			return runstate.EngineResult{}, err
 		}
-		prepared.contextSequence++
 	}
-	prepared.contextState = nextContextState
-	cycleStateTranscript := append(cloneMessages(state.Messages), cloneMessages(stateMessages)...)
 
 	summaryLimit := 0
 	if prepared.definition.Compaction != nil {
@@ -265,14 +308,35 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
+	activeUserIndex := len(cycleStateTranscript)
+	var resumedTail []*Message
+	if continuingInput {
+		activeUserIndex = state.ActiveUserIndex
+		modelUserIndex := len(effectiveTranscript) - len(cycleStateTranscript) + activeUserIndex
+		if modelUserIndex < 0 || modelUserIndex >= len(effectiveTranscript) {
+			return runstate.EngineResult{}, errors.New("active Agent input was removed from the recoverable context")
+		}
+		resumedTail = cloneMessages(effectiveTranscript[modelUserIndex+1:])
+		effectiveTranscript = effectiveTranscript[:modelUserIndex]
+	}
 	modelMessages, activeModelUser, err := assembleCycleMessages(effectiveTranscript, input.Text, input.Attachments, prepared.fragments, prepared.definition.AttachmentRoot)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	activeUserIndex := len(cycleStateTranscript)
+	modelMessages = append(modelMessages, resumedTail...)
+	prepared.activeModelUser, prepared.activeUserIndex = activeModelUser, activeUserIndex
 	stablePrefixMessages := stableContextPrefixMessages(prepared.fragments, compaction, compactionPresent)
 	baseTranscript := cloneMessages(cycleStateTranscript)
-	baseTranscript = append(baseTranscript, UserMessageWithAttachments(strings.TrimSpace(input.Text), input.Attachments))
+	if !continuingInput {
+		baseTranscript = append(baseTranscript, UserMessageWithAttachments(strings.TrimSpace(input.Text), input.Attachments))
+	}
+	activeCheckpoint, err := encodeActiveEngineTranscript(prepared, baseTranscript, activeModelUser, activeUserIndex)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
+	if err := emit(runstate.EngineTranscriptUpdated{State: activeCheckpoint}); err != nil {
+		return runstate.EngineResult{}, err
+	}
 	controlTranscript = cloneMessages(baseTranscript)
 	initialLoopMessageCount := len(modelMessages)
 	if prepared.definition.Instructions != "" {
@@ -295,10 +359,13 @@ func (engine *definitionEngine) Run(
 	maintenanceSelected := false
 	var pendingCleanup *stagedCleanup
 	transcript := cloneMessages(baseTranscript)
+	pendingToolTranscriptIndex := -1
 	var taskCompletionMessages []*Message
 	controlledTranscript := func() []*Message {
-		messages := cloneMessages(baseTranscript)
-		return append(messages, cloneMessages(taskCompletionMessages)...)
+		if pendingToolTranscriptIndex >= 0 {
+			return cloneMessages(transcript[:pendingToolTranscriptIndex+1])
+		}
+		return cloneMessages(transcript)
 	}
 	maintenanceGate := modelCallGate(nil)
 	if len(prepared.definition.Middlewares) != 0 || prepared.definition.Cleanup != nil || prepared.definition.Compaction != nil {
@@ -651,6 +718,9 @@ func (engine *definitionEngine) Run(
 	if acceptedControl == runstate.EngineControlAbort {
 		return engine.controlledResult(runstate.EngineAborted, prepared, baseTranscript, emit)
 	}
+	if acceptedControl == runstate.EngineControlSuspend {
+		return engine.controlledResult(runstate.EngineSuspended, prepared, baseTranscript, emit)
+	}
 
 	capabilities := newCapabilityStateClient(request.Snapshot.Capabilities, emit)
 	loopCtx := contextWithCapabilityState(ctx, capabilities)
@@ -664,6 +734,7 @@ func (engine *definitionEngine) Run(
 	loopCtx = ContextWithInvocationIdentity(loopCtx, InvocationIdentity{
 		Scope: scope, OperationID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 	})
+	loopCtx = context.WithValue(loopCtx, modelResponseSeedKey{}, prepared.lastResponseOrdinal)
 	loopCtx, err = contextWithProviderCacheKey(loopCtx, engine.key, engine.cacheKeys)
 	if err != nil {
 		return runstate.EngineResult{}, err
@@ -672,9 +743,24 @@ func (engine *definitionEngine) Run(
 		Messages: modelMessages, EnableStreaming: true,
 		stablePrefixMessages: stablePrefixMessages,
 	}, runOption)
+	defer func() {
+		// Even when journal/event delivery fails, all concrete tool producers
+		// must stop before the Session may release its writer lease.
+		controls.cancel()
+		for {
+			event, ok := iterator.Next()
+			if !ok {
+				break
+			}
+			if event != nil && event.Output != nil && event.Output.MessageOutput != nil {
+				if stream := event.Output.MessageOutput.MessageStream; stream != nil {
+					stream.Close()
+				}
+			}
+		}
+	}()
 	startedTools := make(map[string]bool)
 	var final *Message
-	pendingToolTranscriptIndex := -1
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -699,6 +785,19 @@ func (engine *definitionEngine) Run(
 		}
 		source := runtimeEventSource(event)
 		rootEvent := rootAgentEvent(event, prepared.definition.Name)
+		if boundary := event.Output.ModelAttempt; boundary != nil {
+			prepared.lastResponseOrdinal = boundary.Ordinal
+			checkpoint, err := encodeActiveEngineTranscript(prepared, transcript, activeModelUser, activeUserIndex)
+			if err == nil {
+				err = emit(runstate.EngineTranscriptUpdated{State: checkpoint})
+			}
+			boundary.Receipt <- err
+			if err != nil {
+				controls.stop()
+				return runstate.EngineResult{}, err
+			}
+			continue
+		}
 		if boundary := event.Output.TaskCompletions; boundary != nil {
 			if !rootEvent {
 				err := errors.New("nested Agent emitted a task completion boundary into the root transcript")
@@ -707,19 +806,16 @@ func (engine *definitionEngine) Run(
 				return runstate.EngineResult{}, err
 			}
 			ids, messages := boundary.snapshot()
-			if err := engine.commitCanonicalContext(
-				ctx, request, prepared.definition.Canonical, prepared.contextSequence, messages,
-			); err != nil {
-				boundary.acknowledge(err)
-				controls.stop()
-				return runstate.EngineResult{}, err
-			}
+			sequence := prepared.contextSequence
 			prepared.contextSequence++
 			transcript = append(transcript, cloneMessages(messages)...)
 			taskCompletionMessages = append(taskCompletionMessages, cloneMessages(messages)...)
 			checkpoint, checkpointErr := encodeActiveEngineTranscript(
 				prepared, transcript, activeModelUser, activeUserIndex,
 			)
+			if checkpointErr == nil {
+				checkpointErr = engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, messages, checkpoint)
+			}
 			if checkpointErr == nil {
 				checkpointErr = emit(runstate.EngineTranscriptUpdated{
 					State: checkpoint, TaskCompletionIDs: append([]string(nil), ids...),
@@ -760,15 +856,16 @@ func (engine *definitionEngine) Run(
 					var completed []*Message
 					completed, boundaryErr = completedCanonicalToolBatch(transcript[pendingToolTranscriptIndex], messages)
 					if boundaryErr == nil {
-						boundaryErr = engine.commitCanonicalContext(
-							ctx, request, prepared.definition.Canonical, prepared.contextSequence, completed,
-						)
-					}
-					if boundaryErr == nil {
+						sequence := prepared.contextSequence
 						prepared.contextSequence++
 						transcript = append(transcript[:pendingToolTranscriptIndex], completed...)
 						final = completed[0].Clone()
 						pendingToolTranscriptIndex = -1
+						var checkpoint json.RawMessage
+						checkpoint, boundaryErr = encodeActiveEngineTranscript(prepared, transcript, activeModelUser, activeUserIndex)
+						if boundaryErr == nil {
+							boundaryErr = engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, completed, checkpoint)
+						}
 					}
 				default:
 					boundaryErr = fmt.Errorf("unsupported canonical tool batch phase %q", phase)
@@ -810,10 +907,24 @@ func (engine *definitionEngine) Run(
 			}
 			continue
 		}
+		if retry := event.Output.ModelRetry; retry != nil {
+			if err := emit(runstate.EngineModelRetry{
+				Source: source, Attempt: retry.Attempt, MaxAttempts: retry.MaxAttempts,
+				ResponseOrdinal: retry.ResponseOrdinal, OutputState: string(retry.OutputState),
+				Delay: retry.Delay, Reason: retry.Reason,
+			}); err != nil {
+				controls.stop()
+				return runstate.EngineResult{}, err
+			}
+			continue
+		}
 		if execution := event.Output.ToolExecution; execution != nil {
 			emitErr := engine.emitToolExecution(ctx, request, execution, source, prepared.definition.Effects, startedTools, emit)
 			if execution.Phase == toolExecutionStarted {
 				execution.acknowledgeStart(emitErr)
+			}
+			if execution.finishReceipt != nil {
+				execution.finishReceipt <- emitErr
 			}
 			if emitErr != nil {
 				controls.stop()
@@ -908,6 +1019,8 @@ loopControlsStopped:
 		return engine.controlledResult(runstate.EnginePreempted, prepared, controlledTranscript(), emit)
 	case runstate.EngineControlAbort:
 		return engine.controlledResult(runstate.EngineAborted, prepared, controlledTranscript(), emit)
+	case runstate.EngineControlSuspend:
+		return engine.controlledResult(runstate.EngineSuspended, prepared, controlledTranscript(), emit)
 	}
 	if completion.requestedCompletion() && final != nil && len(final.ToolCalls) != 0 {
 		final = completionFinalAssistant(transcript[len(baseTranscript):], final)
@@ -996,6 +1109,9 @@ func (engine *definitionEngine) controlledLoopResult(
 		return result, err, true
 	case runstate.EngineControlAbort:
 		result, err := engine.controlledResult(runstate.EngineAborted, prepared, baseTranscript, emit)
+		return result, err, true
+	case runstate.EngineControlSuspend:
+		result, err := engine.controlledResult(runstate.EngineSuspended, prepared, baseTranscript, emit)
 		return result, err, true
 	default:
 		return runstate.EngineResult{}, nil, false
@@ -1151,7 +1267,7 @@ func (engine *definitionEngine) controlledResult(
 	messages []*Message,
 	emit runstate.EngineEventSink,
 ) (runstate.EngineResult, error) {
-	encoded, err := encodeEngineTranscript(prepared, messages)
+	encoded, err := encodeEngineTranscriptState(prepared, messages, prepared.activeModelUser, prepared.activeUserIndex)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -1195,8 +1311,9 @@ func encodeEngineTranscriptState(
 		DefinitionCommandID:     prepared.definitionCommandID,
 		DefinitionCycle:         prepared.definitionCycle, PreparationStage: prepared.preparationStage,
 		Messages: cloneMessages(messages), ContextState: cloneContextStateSnapshot(prepared.contextState),
-		ContextSequence: prepared.contextSequence,
-		ActiveModelUser: CloneMessage(activeModelUser), ActiveUserIndex: activeUserIndex,
+		ContextSequence:     prepared.contextSequence,
+		LastResponseOrdinal: prepared.lastResponseOrdinal,
+		ActiveModelUser:     CloneMessage(activeModelUser), ActiveUserIndex: activeUserIndex,
 		HostData: cloneHostData(prepared.hostData), ClearRevision: prepared.clearRevision,
 	})
 	if err != nil {

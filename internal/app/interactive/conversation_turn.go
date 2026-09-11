@@ -25,6 +25,9 @@ func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request inter
 	}
 	c.turnCheckMu.Lock()
 	defer c.turnCheckMu.Unlock()
+	if err := c.loadTurnDraft(); err != nil {
+		return interactive.RuleResolution{}, err
+	}
 	c.mu.Lock()
 	if c.ruleResolution != nil {
 		resolution := *c.ruleResolution
@@ -53,16 +56,32 @@ func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request inter
 		return interactive.RuleResolution{}, err
 	}
 	c.mu.Lock()
-	c.ruleResolution = &resolution
+	draft := c.turnDraft
+	c.mu.Unlock()
+	draft.RuleResolution = &resolution
+	result, err := ruleResolutionToolResult(resolution)
+	if err != nil {
+		return interactive.RuleResolution{}, err
+	}
+	if err := c.commitTurnDraft(ctx, draft, result); err != nil {
+		return interactive.RuleResolution{}, err
+	}
+	c.mu.Lock()
+	c.ruleResolution, c.turnDraft = &resolution, draft
 	c.mu.Unlock()
 	return resolution, nil
 }
 
-// SubmitTurnResult stages the Game Agent's structured outcome. Nothing is
-// persisted until the final narrative is accepted and committed atomically.
+// SubmitTurnResult durably accepts valid modules without publishing Actor
+// State or the final story Turn. Failed modules remain available for repair.
 func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 	if c == nil || c.store == nil {
 		return interactive.TurnSubmissionReceipt{}, fmt.Errorf("互动故事不存在")
+	}
+	c.turnCheckMu.Lock()
+	defer c.turnCheckMu.Unlock()
+	if err := c.loadTurnDraft(); err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
 	}
 	select {
 	case <-ctx.Done():
@@ -100,7 +119,19 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 		PlanningMode:                storyCtx.Meta.PlanningMode,
 		CurrentPlan:                 storyCtx.Snapshot.BranchPlan,
 	}, current, input)
+	draft := c.turnDraft
+	c.mu.Unlock()
+	draft.Submission = prepared.Progress()
+	result, err := turnSubmissionToolResult(receipt)
+	if err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
+	}
+	if err := c.commitTurnDraft(ctx, draft, result); err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
+	}
+	c.mu.Lock()
 	staged := c.turnProtocol.update(prepared)
+	c.turnDraft = draft
 	c.mu.Unlock()
 	if !staged {
 		receipt = interactiveTurnResultAlreadyAcceptedReceipt()
@@ -405,6 +436,7 @@ func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request 
 	if err != nil {
 		return "", err
 	}
+	intent.Checkpoint = request.Checkpoint
 	receipt, err := c.store.AppendModelContextBatch(c.storyID, intent)
 	if err != nil {
 		return "", err
@@ -432,6 +464,13 @@ func (c *Conversation) AppendAssistantWithMetadata(content, thinking string, met
 func (c *Conversation) stageAssistantOutput(content, thinking string, metadata session.MessageMetadata) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
+	}
+	retained, err := c.LoadNarrativeCandidate(context.Background())
+	if err != nil {
+		return err
+	}
+	if retained != "" {
+		content = retained
 	}
 	if strings.TrimSpace(metadata.RunID) != "" || len(metadata.ProviderContinuation) != 0 {
 		c.mu.Lock()
@@ -497,6 +536,7 @@ func (c *Conversation) CommitAgentCanonicalOutput(
 	ctx context.Context,
 	message *agents.Message,
 	metadata session.MessageMetadata,
+	checkpoint agent.CanonicalCheckpoint,
 ) (interactive.DomainCommitReceipt, error) {
 	if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 0 {
 		return interactive.DomainCommitReceipt{}, fmt.Errorf("canonical game output requires a final assistant message")
@@ -505,6 +545,11 @@ func (c *Conversation) CommitAgentCanonicalOutput(
 	if err := c.stageAssistantOutput(message.Content, message.ReasoningContent, metadata); err != nil {
 		return interactive.DomainCommitReceipt{}, err
 	}
+	c.mu.Lock()
+	if c.pendingDomainCommit != nil {
+		c.pendingDomainCommit.Request.Checkpoint = checkpoint
+	}
+	c.mu.Unlock()
 	if err := c.CommitAgentCycleStage(ctx, agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {
 		return interactive.DomainCommitReceipt{}, err
 	}

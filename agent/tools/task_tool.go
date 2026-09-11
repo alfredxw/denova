@@ -31,10 +31,11 @@ type TaskRequest struct {
 }
 
 type Task struct {
-	Ref    TaskRef `json:"ref"`
-	Status string  `json:"status"`
-	Reason string  `json:"reason,omitempty"`
-	Output string  `json:"output,omitempty"`
+	Ref     TaskRef               `json:"ref"`
+	Status  string                `json:"status"`
+	Reason  string                `json:"reason,omitempty"`
+	Output  string                `json:"output,omitempty"`
+	Receipt *agent.CommandReceipt `json:"receipt,omitempty"`
 }
 
 type TaskObservation struct {
@@ -76,6 +77,9 @@ type TaskEvent struct {
 type TaskExecutor interface {
 	Identity() agent.CapabilityIdentity
 	Start(context.Context, TaskRequest) (Task, error)
+	FollowUp(context.Context, TaskRef, agent.Input) (Task, error)
+	SendMessage(context.Context, TaskRef, agent.Input) (agent.CommandReceipt, error)
+	Resume(context.Context, TaskRef, agent.ResumeRequest) (Task, error)
 	Observe(context.Context, TaskRef, string) (TaskObservation, error)
 	Wait(context.Context, []TaskRef) ([]TaskWaitOutcome, error)
 	Steer(context.Context, TaskRef, agent.Input) error
@@ -93,11 +97,11 @@ type taskAgentCatalog interface {
 }
 
 type taskToolInput struct {
-	Action  string              `json:"action" jsonschema:"enum=start,enum=observe,enum=steer,enum=abort"`
+	Action  string              `json:"action" jsonschema:"enum=start,enum=follow_up,enum=send_message,enum=resume,enum=observe,enum=steer,enum=abort"`
 	Starts  []TaskRequest       `json:"starts,omitempty" jsonschema:"maxItems=32" jsonschema_description:"Required and non-empty for start only. Independent task requests with per-item outcomes."`
 	Targets []TaskObserveTarget `json:"targets,omitempty" jsonschema:"maxItems=32" jsonschema_description:"Required and non-empty for observe only. Tasks with their independent observation cursors."`
-	Refs    []TaskRef           `json:"refs,omitempty" jsonschema:"maxItems=32" jsonschema_description:"Required and non-empty for steer or abort. Every task returns its own outcome."`
-	Input   *string             `json:"input,omitempty" jsonschema:"minLength=1,maxLength=1048576" jsonschema_description:"Required for steer only. Additional instructions for the referenced tasks."`
+	Refs    []TaskRef           `json:"refs,omitempty" jsonschema:"maxItems=32" jsonschema_description:"Required for follow_up, send_message, resume, steer, or abort. follow_up and send_message require only agent and session; Run controls require run too."`
+	Input   *string             `json:"input,omitempty" jsonschema:"minLength=1,maxLength=1048576" jsonschema_description:"Required for follow_up, send_message, or steer. New task or supplemental instructions."`
 	Reason  *string             `json:"reason,omitempty" jsonschema:"minLength=1,maxLength=65536" jsonschema_description:"Required for abort only. Non-empty reason recorded with the abort request."`
 }
 
@@ -111,13 +115,19 @@ func (input taskToolInput) validate() error {
 		if len(input.Targets) == 0 || input.Starts != nil || input.Refs != nil || input.Input != nil || input.Reason != nil {
 			return errors.New("task observe requires non-empty targets and accepts no other action fields")
 		}
-	case "steer", "abort":
+	case "follow_up", "send_message", "resume", "steer", "abort":
 		if len(input.Refs) == 0 || input.Starts != nil || input.Targets != nil {
-			return errors.New("task steer and abort require non-empty refs and do not accept starts or targets")
+			return errors.New("task control requires non-empty refs and does not accept starts or targets")
 		}
-		if input.Action == "steer" {
+		if input.Action == "resume" {
+			if input.Input != nil || input.Reason != nil {
+				return errors.New("task resume accepts refs only")
+			}
+			return nil
+		}
+		if input.Action != "abort" {
 			if input.Input == nil || input.Reason != nil {
-				return errors.New("task steer requires input and does not accept reason")
+				return errors.New("task input action requires input and does not accept reason")
 			}
 			return validateTaskString("input", *input.Input, 1<<20)
 		}
@@ -132,12 +142,13 @@ func (input taskToolInput) validate() error {
 }
 
 type taskItemResult struct {
-	Index       int              `json:"index"`
-	Task        *Task            `json:"task,omitempty"`
-	Observation *TaskObservation `json:"observation,omitempty"`
-	Ready       bool             `json:"ready,omitempty"`
-	ErrorCode   string           `json:"error_code,omitempty"`
-	Error       string           `json:"error,omitempty"`
+	Index       int                   `json:"index"`
+	Task        *Task                 `json:"task,omitempty"`
+	Observation *TaskObservation      `json:"observation,omitempty"`
+	Ready       bool                  `json:"ready,omitempty"`
+	ErrorCode   string                `json:"error_code,omitempty"`
+	Error       string                `json:"error,omitempty"`
+	Receipt     *agent.CommandReceipt `json:"receipt,omitempty"`
 }
 
 // Tasks connects the common task tool to a local subagent, remote worker, or
@@ -156,7 +167,7 @@ func buildTasks(executor TaskExecutor) (agent.Toolset, error) {
 	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
 		return nil, errors.New("tasks TaskExecutor requires a stable Identity")
 	}
-	description := "Start delegated tasks asynchronously, inspect their current state, add instructions, or abort them. Use this tool only when delegation was explicitly requested. Batch operations return per-item outcomes. task.start defaults to the built-in general-purpose Agent when agent is omitted."
+	description := "Start delegated tasks, continue an existing child Session with follow_up, send_message without activating work, resume a suspended Run, inspect, steer, or abort. Use only when delegation was explicitly requested. Acceptance receipts confirm durable input, not task completion. Follow-up tasks wait behind an active or suspended Run. Batch operations return per-item outcomes. task.start defaults to the built-in general-purpose Agent when agent is omitted."
 	if catalog, ok := executor.(taskAgentCatalog); ok {
 		for _, candidate := range catalog.TaskAgents() {
 			description += fmt.Sprintf("\n- %s: %s", candidate.Name, candidate.Description)
@@ -205,16 +216,41 @@ func buildTasks(executor TaskExecutor) (agent.Toolset, error) {
 				}
 				results = append(results, item)
 			}
-		case "steer", "abort":
+		case "follow_up", "send_message", "resume", "steer", "abort":
 			for index, ref := range input.Refs {
 				item := taskItemResult{Index: index}
-				if itemErr := validateTaskRef(ref); itemErr != nil {
+				validate := validateTaskRef
+				if input.Action == "follow_up" || input.Action == "send_message" {
+					validate = validateTaskSessionRef
+				}
+				if itemErr := validate(ref); itemErr != nil {
 					setTaskItemError(&item, itemErr)
 					results = append(results, item)
 					continue
 				}
 				commandID := taskActionCommandID(ctx, input.Action, index)
 				switch input.Action {
+				case "follow_up":
+					task, err := executor.FollowUp(ctx, ref, agent.Input{Text: *input.Input, IdempotencyKey: commandID})
+					if err != nil {
+						setTaskItemError(&item, err)
+					} else {
+						item.Task = &task
+					}
+				case "send_message":
+					receipt, err := executor.SendMessage(ctx, ref, agent.Input{Text: *input.Input, IdempotencyKey: commandID})
+					if err != nil {
+						setTaskItemError(&item, err)
+					} else {
+						item.Receipt = &receipt
+					}
+				case "resume":
+					task, err := executor.Resume(ctx, ref, agent.ResumeRequest{RunID: ref.Run, IdempotencyKey: commandID})
+					if err != nil {
+						setTaskItemError(&item, err)
+					} else {
+						item.Task = &task
+					}
 				case "steer":
 					steer := agent.Text(*input.Input)
 					steer.IdempotencyKey = commandID

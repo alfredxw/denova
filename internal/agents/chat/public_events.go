@@ -42,6 +42,7 @@ type PublicEventProjector struct {
 	runSummarized           bool
 	interactive             publicInteractiveOutput
 	explicitSkillsProjected bool
+	previews                map[string]*publicResponsePreview
 }
 
 type publicToolInput struct {
@@ -73,6 +74,7 @@ func NewPublicEventProjector(
 		conversation: conversation, request: request, options: options, emit: emit,
 		toolInputs: make(map[string]publicToolInput), interactions: make(map[string]publicInteraction),
 		nestedContent: make(map[string]*strings.Builder), nestedThinking: make(map[string]*strings.Builder),
+		previews: make(map[string]*publicResponsePreview),
 	}
 	projector.compaction, _ = conversation.(publicCompactionBinder)
 	projector.recorder = newDisplayEventRecorder(conversation, displayEventRecorderOptions{
@@ -123,6 +125,8 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		// with the durable cycle plus Denova-only command metadata.
 	case agent.AssistantDelta:
 		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
+		meta.ResponseOrdinal = payload.ResponseOrdinal
+		projector.beginPreview(meta)
 		content := payload.Delta
 		if !meta.SubAgent && !payload.DisplayOnly {
 			projector.generatedBytes += len(payload.Delta)
@@ -144,6 +148,8 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		}
 	case agent.ThinkingDelta:
 		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
+		meta.ResponseOrdinal = payload.ResponseOrdinal
+		projector.beginPreview(meta)
 		if payload.Delta != "" {
 			if !meta.SubAgent && !payload.DisplayOnly {
 				projector.thinking.WriteString(payload.Delta)
@@ -185,6 +191,8 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 	case agent.ModelCompleted:
 		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		projector.finishInteractiveResponseLocked(payload.RequestedTools)
+		projector.recorder.flushSource(meta)
+		delete(projector.previews, meta.SubAgentSessionID)
 		if projector.usage == nil {
 			projector.usage = newRunTokenUsageCollector(event.RunID, projector.options.AgentKind)
 		}
@@ -197,6 +205,9 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			Role: agent.Assistant, ToolCalls: calls,
 			ResponseMeta: &agent.ResponseMeta{FinishReason: payload.FinishReason, Usage: &usage},
 		})
+	case agent.ModelRetry:
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
+		projector.projectRetry(meta, payload)
 	case agent.ContextNormalized:
 		projector.emitEvent(agentrun.Event{Type: "context_normalizer", Data: meta.appendTo(map[string]any{
 			"status": "repaired", "context_normalizer_repair_count": payload.RepairCount,
@@ -204,6 +215,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		})})
 	case agent.ToolInputStarted:
 		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
+		projector.beginPreview(meta)
 		projector.observeInteractiveToolLocked(meta, payload.Name)
 		if agentplan.EmitToolRunning(payload.Name, meta.planMetadata(), planEventEmitter(projector.emitEvent)) {
 			return
@@ -854,6 +866,8 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 		projector.emitEvent(agentrun.Event{Type: "done", Data: map[string]string{}})
 	case agent.ResultAborted:
 		projector.emitEvent(agentrun.NewAbortedEvent(reason))
+	case agent.ResultSuspended:
+		projector.emitEvent(agentrun.Event{Type: "suspended", Data: map[string]string{"reason": reason}})
 	default:
 		data := map[string]string{"message": reason}
 		if agent.IsModelIncompleteTerminalReason(reason) {
@@ -957,6 +971,12 @@ func (projector *PublicEventProjector) ProjectCanonicalOutput(message *agent.Mes
 }
 
 func (projector *PublicEventProjector) emitEvent(event agentrun.Event) {
+	meta := eventMetadataFromData(event.Data)
+	if preview := projector.previews[meta.SubAgentSessionID]; preview != nil && preview.ordinal > 0 {
+		if data, ok := event.Data.(map[string]any); ok {
+			data["response_ordinal"] = preview.ordinal
+		}
+	}
 	if projector.recorder != nil {
 		// One public Run can contain several replies. Carry its durable cycle in
 		// every sourced display event so live and restored views share a boundary.
@@ -964,6 +984,14 @@ func (projector *PublicEventProjector) emitEvent(event agentrun.Event) {
 			data["agent_cycle"] = projector.recorder.cycle
 		}
 		projector.recorder.Record(event)
+	}
+	if preview := projector.previews[meta.SubAgentSessionID]; preview != nil {
+		if id := event.DataString("display_segment_id"); id != "" {
+			preview.segments[id] = false
+		}
+		if event.Type == "tool_call" {
+			preview.segments[event.DataString("id")] = true
+		}
 	}
 	if projector.emit != nil {
 		projector.emit(event)
@@ -1022,6 +1050,9 @@ func projectInteractionRequested(request agent.InteractionRequest, meta agentEve
 		"tool_call_id": toolCallID, "agent_kind": meta.AgentKind, "status": "pending",
 		"questions": questions, "allow_other": request.AllowOther,
 	})
+	if request.Verification != nil {
+		data["verification"] = request.Verification
+	}
 	if request.Kind == agent.InteractionPermission && request.Permission != nil {
 		permission := request.Permission
 		kind = "tool_approval"

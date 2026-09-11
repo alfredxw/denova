@@ -298,6 +298,9 @@ func (definition Definition) CanonicalInput(context.Context, PrepareRequest) (Ca
 
 type ExecutionPolicy struct {
 	Retry *RetryConfig
+	// ModelMaxAttempts includes the first provider call and any failure retries
+	// or business output repairs for one logical response. Zero means one.
+	ModelMaxAttempts int
 	// RetryIdentity gives retry behavior a stable, inspectable identity when
 	// Retry is non-nil. Function and closure addresses are not identities.
 	RetryIdentity   CapabilityIdentity
@@ -320,6 +323,9 @@ func validateDefinition(definition Definition) error {
 	}
 	if definition.Execution.MaxIterations < 0 {
 		return errors.New("agent Definition MaxIterations cannot be negative")
+	}
+	if definition.Execution.ModelMaxAttempts < 0 {
+		return errors.New("agent Definition ModelMaxAttempts cannot be negative")
 	}
 	if definition.Execution.IdleTimeout < 0 {
 		return errors.New("agent Definition IdleTimeout cannot be negative")
@@ -414,6 +420,9 @@ func initializeDefinition(ctx context.Context, definition Definition) (Definitio
 }
 
 type preparedDefinition struct {
+	activeModelUser         *Message
+	activeUserIndex         int
+	lastResponseOrdinal     int
 	definition              Definition
 	tools                   []ToolDefinition
 	toolSnapshots           []ToolDefinitionSnapshot
@@ -628,6 +637,7 @@ type definitionIdentity struct {
 
 type executionPolicyIdentity struct {
 	Retry                          CapabilityIdentity
+	ModelMaxAttempts               int
 	ToolParallelism                int
 	MaxIterations                  int
 	IdleTimeout                    time.Duration
@@ -640,7 +650,8 @@ func identityOfExecution(policy ExecutionPolicy) executionPolicyIdentity {
 		retry = CapabilityIdentity{Kind: "retry.none", Version: 1}
 	}
 	return executionPolicyIdentity{
-		Retry: retry, ToolParallelism: policy.ToolParallelism, MaxIterations: policy.MaxIterations,
+		ModelMaxAttempts: max(1, policy.ModelMaxAttempts),
+		Retry:            retry, ToolParallelism: policy.ToolParallelism, MaxIterations: policy.MaxIterations,
 		IdleTimeout:                    policy.IdleTimeout,
 		MaxAutomaticCompactionFailures: normalizedAutomaticCompactionFailureLimit(policy),
 	}

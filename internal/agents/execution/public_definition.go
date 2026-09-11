@@ -91,11 +91,11 @@ func (backend *publicBackend) bindDefinition(
 		if route == nil {
 			route = request.Input.HostData
 		}
-		attributes := parentAttributes
+		var childHostData *agent.HostData
 		// Structural compaction prepares tool schemas for the exact model request
 		// but cannot execute a tool or start a child. It has no accepted turn route.
 		if request.Reason != agent.TurnReasonStructural {
-			attributes, attributeErr = agentdelegation.WithParentRoute(parentAttributes, route)
+			childHostData, attributeErr = agentdelegation.BindRun(request.Run, route)
 			if attributeErr != nil {
 				return agent.Definition{}, attributeErr
 			}
@@ -106,7 +106,7 @@ func (backend *publicBackend) bindDefinition(
 			candidates[index] = publictools.LocalTaskAgent{
 				Name: child.Name, Description: child.Description,
 				Opener: backend.agent, Identity: child.Identity,
-				Attributes: attributes, LookupAttributes: parentAttributes,
+				Attributes: parentAttributes, LookupAttributes: parentAttributes, HostData: childHostData,
 			}
 		}
 		parentSession, taskErr := backend.agent.Session(ctx, request.Session.Key)

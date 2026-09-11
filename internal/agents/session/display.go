@@ -22,6 +22,29 @@ func (s *Session) AppendDisplayEvent(event DisplayEvent) error {
 	})
 }
 
+// DiscardDisplayEvents retracts unaccepted model previews. The original data
+// stays in the journal for diagnosis; public message projection omits it.
+func (s *Session) DiscardDisplayEvents(ids []string) error {
+	selected := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		selected[id] = true
+	}
+	return s.withCanonicalMutation(context.Background(), "discard model preview", func() error {
+		for index := range s.records {
+			record := &s.records[index]
+			if record.display == nil || !selected[record.display.ID] || record.display.Status == "discarded" {
+				continue
+			}
+			status := "discarded"
+			if err := s.appendJournalRecordLocked(displayPatchRecord{Type: historyTypeDisplayPatch, TargetRecordID: record.journalID, CreatedAt: time.Now().UTC(), Status: &status}); err != nil {
+				return err
+			}
+			record.display.Status = status
+		}
+		return nil
+	})
+}
+
 func (s *Session) appendDisplayEventLocked(event DisplayEvent) error {
 	event.Ask = cloneAskInteraction(event.Ask)
 	recordID := newDisplayRecordID()

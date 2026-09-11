@@ -34,6 +34,9 @@ const (
 	cancelImmediately cancelMode = 0
 	cancelAfterModel  cancelMode = 1 << iota
 	cancelAfterTools
+	// cancelModel interrupts model I/O and backoff while leaving tool contexts
+	// alive until their declared stopping boundary.
+	cancelModel
 )
 
 type agentCancelConfig struct {
@@ -122,8 +125,9 @@ type cancelControl struct {
 	escalated bool
 	timedOut  bool
 
-	cancel context.CancelFunc
-	timer  *time.Timer
+	cancel      context.CancelFunc
+	modelCancel context.CancelFunc
+	timer       *time.Timer
 
 	terminal      bool
 	handled       bool
@@ -172,6 +176,8 @@ func (control *cancelControl) request(opts ...cancelRequestOption) (*cancelHandl
 		control.mode |= config.Mode
 	}
 	cancel := control.cancel
+	modelCancel := control.modelCancel
+	stopModel := control.mode&cancelModel != 0
 	shouldCancel := control.immediate
 	if config.Timeout != nil && !control.immediate {
 		if control.timer != nil {
@@ -187,7 +193,23 @@ func (control *cancelControl) request(opts ...cancelRequestOption) (*cancelHandl
 	if shouldCancel && cancel != nil {
 		cancel()
 	}
+	if stopModel && modelCancel != nil {
+		modelCancel()
+	}
 	return handle, true
+}
+
+func (control *cancelControl) bindModel(cancel context.CancelFunc) {
+	if control == nil {
+		return
+	}
+	control.mu.Lock()
+	control.modelCancel = cancel
+	stop := control.requested && control.mode&cancelModel != 0
+	control.mu.Unlock()
+	if stop && cancel != nil {
+		cancel()
+	}
 }
 
 func (control *cancelControl) pending(point cancelMode) bool {

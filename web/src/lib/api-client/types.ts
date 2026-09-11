@@ -238,6 +238,7 @@ export interface AgentAskInteraction {
   questions: AgentAskQuestion[]
   allow_other?: boolean
   approval?: AgentToolApprovalPresentation
+  verification?: { execution_id: string; tool: string; arguments: unknown }
   answers?: AgentAskAnswerResult[]
   cancel_reason?: string
   created_at?: string
@@ -247,7 +248,7 @@ export interface AgentAskInteraction {
 export interface AgentAskResolution {
   schema: 'ask.result.v1'
   id: string
-  status: 'answered' | 'cancelled'
+  status: 'pending' | 'answered' | 'cancelled'
   answers?: AgentAskAnswerResult[]
   cancel_reason?: string
 }

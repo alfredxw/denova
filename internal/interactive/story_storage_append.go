@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 )
 
 // StoryJournalReplayStats exposes physical replay cost separately from the
@@ -52,12 +53,24 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 	events := make([]map[string]any, 0, len(newEvents))
 	eventRecords := make([]StoryEventRecord, 0, len(newEvents))
 	payloads := make([]json.RawMessage, 0, len(newEvents)+1)
+	upgrade := ""
 	for _, event := range newEvents {
+		if checkpoint, ok := event.(sessionjournal.Envelope); ok {
+			payload, err := json.Marshal(checkpoint)
+			if err != nil {
+				return err
+			}
+			payloads = append(payloads, payload)
+			continue
+		}
 		record, err := storyEventRecordForWrite(event)
 		if err != nil {
 			return err
 		}
 		events = append(events, record.Raw)
+		if record.Envelope.Type == StoryEventTypeTurnDraft {
+			upgrade = "resilience-v1"
+		}
 		eventRecords = append(eventRecords, record)
 		payload, err := json.Marshal(record.Raw)
 		if err != nil {
@@ -78,10 +91,13 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 		return err
 	}
 	head := handle.journal.Head()
-	commit, appendErr := handle.journal.Append(context.Background(), conversationjournal.Guard{Cursor: head.Cursor, RecordSHA256: head.RecordSHA256}, payloads...)
+	commit, appendErr := handle.journal.AppendWithBackup(context.Background(), conversationjournal.Guard{Cursor: head.Cursor, RecordSHA256: head.RecordSHA256}, upgrade, payloads...)
 	if appendErr == nil {
 		advanceStoryRecentCaches(handle, commit.Head.Cursor, meta, eventRecords)
 		return nil
+	}
+	if errors.Is(appendErr, conversationjournal.ErrCommitUnknown) {
+		return appendErr
 	}
 	committed, reconcileErr := s.reconcileStoryAppendLocked(storyID, meta, events)
 	if reconcileErr != nil {

@@ -72,7 +72,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			}
 			initial := newCycle("Continue")
 			initial.Request = agentchat.ChatRequest{CommandID: "game-before-maintenance", Message: "Continue"}
-			submitTestTurnResult(t, initial.Conversation.(*Conversation), "Continue", "Continue")
+			initial.Definition.Middlewares = append(initial.Definition.Middlewares, gameSubmissionForTest(t, initial.Conversation.(*Conversation), "Continue", "Continue"))
 			operation, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: initial})
 			if err != nil {
 				t.Fatal(err)
@@ -159,7 +159,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			compactedContinuation.Definition.Tools = toolset
 			compactedContinuation.Definition.Permission = agentpermission.FullAccess()
 			compactedContinuation.Request = agentchat.ChatRequest{CommandID: "game-with-checkpoint", Message: "Continue with checkpoint"}
-			submitTestTurnResult(t, compactedContinuation.Conversation.(*Conversation), "Continue with checkpoint", "Continue with checkpoint")
+			compactedContinuation.Definition.Middlewares = append(compactedContinuation.Definition.Middlewares, gameSubmissionForTest(t, compactedContinuation.Conversation.(*Conversation), "Continue with checkpoint", "Continue with checkpoint"))
 			operation, err = runtime.Start(ctx, agentexecution.StartRequest{Cycle: compactedContinuation})
 			if err != nil {
 				t.Fatal(err)
@@ -183,7 +183,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			}
 			continuation := newCycle("Continue after maintenance")
 			continuation.Request = agentchat.ChatRequest{CommandID: "game-after-maintenance", Message: "Continue after maintenance"}
-			submitTestTurnResult(t, continuation.Conversation.(*Conversation), "Continue after maintenance", "Continue after maintenance")
+			continuation.Definition.Middlewares = append(continuation.Definition.Middlewares, gameSubmissionForTest(t, continuation.Conversation.(*Conversation), "Continue after maintenance", "Continue after maintenance"))
 			operation, err = runtime.Start(ctx, agentexecution.StartRequest{Cycle: continuation})
 			if err != nil {
 				t.Fatal(err)

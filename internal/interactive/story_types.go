@@ -46,17 +46,18 @@ type AppendTurnRequest struct {
 }
 
 type AppendTurnWithStateRequest struct {
-	BranchID         string  `json:"branch_id"`
-	ExpectedParentID *string `json:"expected_parent_id,omitempty"`
-	ReplaceTurnID    string  `json:"replace_turn_id,omitempty"`
-	User             string  `json:"user"`
-	Narrative        string  `json:"narrative"`
-	Thinking         string  `json:"thinking,omitempty"`
-	RunID            string  `json:"run_id,omitempty"`
-	AgentKind        string  `json:"agent_kind,omitempty"`
-	AgentCommandID   string  `json:"agent_command_id,omitempty"`
-	AgentOperationID string  `json:"agent_operation_id,omitempty"`
-	AgentCycle       int     `json:"agent_cycle,omitempty"`
+	Checkpoint       agent.CanonicalCheckpoint `json:"-"`
+	BranchID         string                    `json:"branch_id"`
+	ExpectedParentID *string                   `json:"expected_parent_id,omitempty"`
+	ReplaceTurnID    string                    `json:"replace_turn_id,omitempty"`
+	User             string                    `json:"user"`
+	Narrative        string                    `json:"narrative"`
+	Thinking         string                    `json:"thinking,omitempty"`
+	RunID            string                    `json:"run_id,omitempty"`
+	AgentKind        string                    `json:"agent_kind,omitempty"`
+	AgentCommandID   string                    `json:"agent_command_id,omitempty"`
+	AgentOperationID string                    `json:"agent_operation_id,omitempty"`
+	AgentCycle       int                       `json:"agent_cycle,omitempty"`
 	// ProviderContinuation is opaque model-visible state from the exact final
 	// assistant output. Story persistence retains it without exposing it in UI
 	// projections or interpreting provider-owned payloads.

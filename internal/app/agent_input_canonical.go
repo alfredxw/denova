@@ -46,6 +46,7 @@ func (a *App) sessionCanonicalInput(
 			if err != nil {
 				return agent.CommitReceipt{}, err
 			}
+			intent.Checkpoint = input.Checkpoint
 			receipt, err := a.commitSessionAcceptedInput(ctx, request.Binding, intent)
 			if err != nil {
 				return agent.CommitReceipt{}, err
@@ -145,6 +146,7 @@ func (a *App) gameCanonicalInput(
 					return agent.CommitReceipt{}, err
 				}
 			}
+			intent.Checkpoint = input.Checkpoint
 			receipt, err := interactive.NewStore(layout.ContentRoot).CommitPlayerInput(request.Binding.StoryID, intent)
 			if err != nil {
 				return agent.CommitReceipt{}, err

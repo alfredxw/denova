@@ -11,6 +11,18 @@ import { APIError } from './api-client'
 import { agentViewToRenderMessage, buildAgentMessageViews } from './agent-message-view'
 
 describe('agent-ui', () => {
+  it('retracts failed streamed parts while retaining confirmed tools across later deltas', () => {
+    const normalizer = new AgentUIMessageNormalizer()
+    const message: AgentUIMessage = { id: 'run', role: 'assistant', parts: [
+      { type: 'dynamic-tool', toolName: 'read', toolCallId: 'confirmed', state: 'output-available', input: {}, output: 'kept' },
+      { type: 'text', text: 'partial', providerMetadata: { agent: { display_segment_id: 'failed-text' } } },
+      { type: 'dynamic-tool', toolName: 'write', toolCallId: 'failed-tool', state: 'input-streaming', input: {} },
+      { type: 'data-agent-activity', id: 'retry', data: { event: 'model_retry', discard_ids: ['failed-text', 'failed-tool'] } },
+    ] }
+    expect(normalizer.normalize([message])[0].parts).toHaveLength(2)
+    const next = { ...message, parts: [...message.parts, { type: 'text' as const, text: 'recovered' }] }
+    expect(normalizer.normalize([next])[0].parts).toEqual([message.parts[0], message.parts[3], next.parts[4]])
+  })
   it('classifies initial start acceptance without treating 5xx as a definite rejection', () => {
     expect(initialSubmissionOutcomeForStatus(200)).toBe('accepted')
     expect(initialSubmissionOutcomeForStatus(409)).toBe('rejected')

@@ -69,7 +69,7 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 			continue
 		}
 		outcomes[index].Task = &task
-		if isTaskTerminal(task.Status) {
+		if isTaskTerminal(task.Status) || task.Status == string(agent.ResultSuspended) {
 			ready[index] = true
 			continue
 		}
@@ -86,7 +86,7 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 			continue
 		}
 		outcomes[index].Task = &task
-		if isTaskTerminal(task.Status) {
+		if isTaskTerminal(task.Status) || task.Status == string(agent.ResultSuspended) {
 			ready[index] = true
 			continue
 		}
@@ -243,6 +243,11 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 }
 
 func (tasks *LocalTasks) rejectChildInteraction(ref TaskRef, request agent.InteractionRequest) error {
+	// An unknown external effect requires evidence even for a non-interactive
+	// child. Its original Session owns the pending request and host response.
+	if request.Verification != nil {
+		return nil
+	}
 	response := agent.InteractionResponse{Cancelled: true}
 	if request.Kind == agent.InteractionPermission {
 		response = agent.InteractionResponse{Permission: agent.PermissionDeny}
@@ -274,7 +279,7 @@ func (tasks *LocalTasks) collectWaitOutcomes(
 		task.Output = ""
 		task.Reason = ""
 		outcomes[index].Task = &task
-		outcomes[index].Ready = ready[index] || isTaskTerminal(task.Status)
+		outcomes[index].Ready = ready[index] || isTaskTerminal(task.Status) || task.Status == string(agent.ResultSuspended)
 	}
 	return outcomes
 }
@@ -303,7 +308,7 @@ func (tasks *LocalTasks) readTaskSnapshot(ctx context.Context, ref TaskRef) (Tas
 		return Task{}, err
 	}
 	task, err := tasks.taskFromSessionSnapshot(ctx, session, ref, snapshot)
-	if err == nil && isTaskTerminal(task.Status) {
+	if err == nil && isTaskTerminal(task.Status) && snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 {
 		err = errors.Join(err, session.Close(context.Background()))
 	}
 	return task, err
@@ -352,6 +357,8 @@ func taskEventSource(payload agent.EventPayload) agent.EventSource {
 	case agent.ToolInputDelta:
 		return value.Source
 	case agent.ModelCompleted:
+		return value.Source
+	case agent.ModelRetry:
 		return value.Source
 	case agent.ArtifactProduced:
 		return value.Source

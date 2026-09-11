@@ -154,6 +154,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/interactive/actor-traits/roll", apiHandlers.HandleInteractiveActorTraitRoll)
 		api.POST("/interactive/chat", apiHandlers.HandleInteractiveChat)
 		api.POST("/interactive/chat/commands", apiHandlers.HandleInteractiveChatCommand)
+		api.POST("/interactive/chat/asks/:ask_id/answer", apiHandlers.HandleInteractiveAskAnswer)
+		api.POST("/interactive/chat/asks/:ask_id/cancel", apiHandlers.HandleInteractiveAskCancel)
 		api.POST("/interactive/chat/recovery", apiHandlers.HandleInteractiveChatRecovery)
 		api.POST("/interactive/chat/context-analysis", apiHandlers.HandleInteractiveChatContextAnalysis)
 		api.GET("/interactive/chat/stream", apiHandlers.HandleInteractiveChatStream)

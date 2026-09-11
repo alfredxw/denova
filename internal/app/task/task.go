@@ -21,10 +21,11 @@ import (
 type Status string
 
 const (
-	Running Status = "running"
-	Done    Status = "done"
-	Aborted Status = "aborted"
-	Failed  Status = "error"
+	Running   Status = "running"
+	Suspended Status = "suspended"
+	Done      Status = "done"
+	Aborted   Status = "aborted"
+	Failed    Status = "error"
 )
 
 var (

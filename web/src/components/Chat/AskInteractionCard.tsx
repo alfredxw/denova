@@ -28,7 +28,20 @@ interface AskDraft {
  * tool frame, so remounting can answer the same call ID. */
 export function AskInteractionCard({ message, onResolve }: AskInteractionCardProps) {
   const { t } = useTranslation()
-  const interaction = message.ask || parseAskToolInput(message)
+  const rawInteraction = message.ask || parseAskToolInput(message)
+  const verification = rawInteraction?.verification
+  const verificationLabels: Record<string, string> = {
+    executed: t('chat.verification.executed'), not_executed: t('chat.verification.notExecuted'), unknown: t('chat.verification.unknown'),
+  }
+  const interaction = verification && rawInteraction ? {
+    ...rawInteraction,
+    allow_other: false,
+    questions: rawInteraction.questions.map(question => ({
+      ...question, question: t('chat.verification.question'), recommended_option_id: undefined,
+      options: question.options?.map(option => ({ ...option, label: verificationLabels[option.id] || option.label, description: '' })),
+    })),
+  } : rawInteraction
+  const title = t(verification ? 'chat.verification.title' : 'chat.ask.title')
   const [questionIndex, setQuestionIndex] = useState(0)
   const [drafts, setDrafts] = useState<Record<string, AskDraft>>(() => askDrafts(interaction?.questions || []))
   const [localResolution, setLocalResolution] = useState<AgentAskResolution | null>(null)
@@ -52,7 +65,12 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
   const question = questions[currentIndex]
   const draft = drafts[question.id] || emptyAskDraft()
   const status = localResolution?.status || interaction.status
-  const resolvedAnswers = localResolution?.answers || interaction.answers || []
+  const rawAnswers = localResolution?.answers || interaction.answers || []
+  const resolvedAnswers = verification ? rawAnswers.map(answer => ({
+    ...answer, question: t('chat.verification.question'), selected_options: answer.selected_options?.map(option => ({
+      ...option, label: verificationLabels[option.id] || option.label,
+    })),
+  })) : rawAnswers
   const pending = status === 'pending'
 
   const updateDraft = (next: AskDraft) => {
@@ -93,7 +111,8 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
         answers: questions.map((item) => askAnswer(item, drafts[item.id])),
       })
       setLocalResolution(resolution)
-      setExpanded(false)
+      setExpanded(resolution.status === 'pending')
+      if (resolution.status === 'pending') setError(t('chat.verification.stillPending'))
     } catch {
       setError(t('chat.ask.submitFailed'))
     } finally {
@@ -106,7 +125,7 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
     setSubmitting(true)
     setError('')
     try {
-      const resolution = await onResolve(message, { status: 'cancelled' })
+      const resolution = await onResolve(message, { status: 'cancelled', ...(verification ? { reason: 'task_aborted' as const } : {}) })
       setLocalResolution(resolution)
       setExpanded(false)
     } catch {
@@ -119,14 +138,14 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
   return (
     <div className="flex justify-start">
       <Collapsible className="w-full" open={pending || expanded} onOpenChange={setExpanded}>
-        <section className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]" aria-label={t('chat.ask.title')}>
+        <section className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]" aria-label={title}>
           <header className="flex min-w-0 items-center transition-colors hover:bg-[var(--nova-hover)]">
             <CollapsibleTrigger asChild disabled={pending}>
               <button type="button" className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left ${pending ? 'cursor-default' : 'cursor-pointer'}`}>
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
                   <MessageCircleQuestion className="h-4 w-4" />
                 </span>
-                <span className="min-w-0 flex-1 font-medium text-[var(--nova-text)]">{t('chat.ask.title')}</span>
+                <span className="min-w-0 flex-1 font-medium text-[var(--nova-text)]">{title}</span>
                 <span className="shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">
                   {pending ? t('chat.ask.waiting') : status === 'answered' ? t('chat.ask.answered') : t('chat.ask.cancelled')}
                 </span>
@@ -139,6 +158,11 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
           <CollapsibleContent>
             {pending ? (
               <div className="border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
+                {verification && <div className="mb-3 grid min-w-0 gap-2">
+                  <p className="m-0 leading-5 text-[var(--nova-text-muted)]">{t('chat.verification.description')}</p>
+                  <code className="break-all text-[var(--nova-text)]">{verification.tool}</code>
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 text-[11px]">{JSON.stringify(verification.arguments, null, 2)}</pre>
+                </div>}
                 {questions.length > 1 && (
                   <div className="mb-2 text-[11px] text-[var(--nova-text-faint)]">
                     {t('chat.ask.progress', { current: currentIndex + 1, total: questions.length })}
@@ -188,7 +212,7 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
                 {error && <p role="alert" className="m-0 mt-2 text-[11px] text-red-400">{error}</p>}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                   <Button type="button" size="sm" variant="ghost" disabled={!onResolve || submitting} onClick={() => void cancel()}>
-                    {t('chat.ask.cancel')}
+                    {t(verification ? 'chat.runtime.abort' : 'chat.ask.cancel')}
                   </Button>
                   <div className="flex items-center gap-2">
                     {currentIndex > 0 && (
@@ -215,8 +239,8 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
               <div className="grid gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
                 {status === 'answered' ? resolvedAnswers.map((answer) => (
                   <div key={answer.question_id} className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
-                    <div className="text-[var(--nova-text-faint)]">{answer.question}</div>
-                    <div className="mt-1 text-[var(--nova-text)]">{askAnswerSummary(answer, t('chat.ask.other'))}</div>
+                    <div className="text-[var(--nova-text-faint)]">{verification ? t('chat.verification.question') : answer.question}</div>
+                    <div className="mt-1 text-[var(--nova-text)]">{verification ? answer.selected_options?.map(option => verificationLabels[option.id] || option.label).join(' · ') : askAnswerSummary(answer, t('chat.ask.other'))}</div>
                   </div>
                 )) : (
                   <div className="text-[var(--nova-text-muted)]">{t('chat.ask.cancelledDescription')}</div>

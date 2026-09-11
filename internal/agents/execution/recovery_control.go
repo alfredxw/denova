@@ -36,7 +36,7 @@ func (r *RecoveryObservation) Resume(
 	r.publicTerminalDelivered = false
 	r.mu.Unlock()
 	routedEmit := func(event agentrun.Event) {
-		if event.Type == "done" || event.Type == "aborted" || event.Type == "error" {
+		if event.Type == "done" || event.Type == "aborted" || event.Type == "error" || event.Type == "suspended" {
 			r.mu.Lock()
 			r.publicTerminalDelivered = true
 			r.mu.Unlock()
@@ -44,6 +44,30 @@ func (r *RecoveryObservation) Resume(
 		if emit != nil {
 			emit(event)
 		}
+	}
+	if action.Kind == RuntimeRecoveryResume {
+		handle, err := r.publicBackend.resume(ctx, r.publicSession, r.publicBinding, action, options, routedEmit)
+		if err != nil {
+			return agentrun.CommandReceipt{}, err
+		}
+		r.mu.Lock()
+		r.publicHandle = handle
+		r.mu.Unlock()
+		return mapPublicReceipt(handle.run), nil
+	}
+	if action.Kind == RuntimeRecoveryAbort {
+		receipt, err := r.publicBackend.agent.AbortTree(ctx, r.publicSession.Key(), agent.AbortRequest{
+			Reason: agentrun.AbortReasonUserRequested, IdempotencyKey: "abort:" + string(action.OperationID) + ":" + action.ActionID,
+		})
+		if err != nil {
+			return agentrun.CommandReceipt{}, err
+		}
+		// Cancellation may close the root writer before display attachment.
+		// The durable operation is already terminal and needs no executor.
+		r.mu.Lock()
+		r.publicAborted = true
+		r.mu.Unlock()
+		return mapPublicCommandReceipt(receipt), nil
 	}
 	registration := r.publicBackend.bindRecoveryRoute(
 		r.publicSession.Key(), string(action.CommandID), options, routedEmit,
@@ -84,9 +108,15 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(agentrun.Event
 	}
 	r.mu.Lock()
 	handle := r.publicHandle
+	aborted := r.publicAborted
 	initialCursor := r.publicInitial.Cursor
 	initial := r.publicInitial
 	r.mu.Unlock()
+	if aborted {
+		outcome := agentrun.NewOutcome(agentrun.OutcomeAborted, nil, agentrun.AbortReasonUserRequested, "", "")
+		emitRecoveryTerminal(emit, outcome)
+		return outcome
+	}
 	if handle != nil {
 		outcome := r.publicBackend.wait(ctx, handle)
 		r.mu.Lock()
@@ -159,6 +189,8 @@ func emitRecoveryTerminal(emit func(agentrun.Event), outcome agentrun.Outcome) {
 		emit(agentrun.Event{Type: "done", Data: map[string]string{}})
 	case agentrun.OutcomeAborted:
 		emit(agentrun.NewAbortedEvent(outcome.Reason))
+	case agentrun.OutcomeSuspended:
+		emit(agentrun.Event{Type: "suspended", Data: map[string]string{"reason": outcome.Reason}})
 	default:
 		message := outcome.Reason
 		if message == "" && outcome.Error != nil {

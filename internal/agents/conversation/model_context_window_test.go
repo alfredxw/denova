@@ -35,7 +35,7 @@ func TestSessionConversationAssemblesAcceptedInputAfterWindowTrimming(t *testing
 			identity := agentrun.CycleIdentity{CommandID: "current-input", OperationID: "current-run", Cycle: 1}
 			conversation.BindAgentCycleIdentity(identity)
 			input := agentcontext.ModelContextInput{UserMessage: "continue the current chapter", Budget: conversation.ModelContextBudget()}
-			receipt, err := conversation.MaterializeAgentCanonicalInput(t.Context(), input.UserMessage, input.Attachments, input.UserReferences)
+			receipt, err := conversation.MaterializeAgentCanonicalInput(t.Context(), input.UserMessage, input.Attachments, input.UserReferences, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -86,7 +86,7 @@ func TestSessionConversationAssemblesAcceptedInputAfterWindowTrimming(t *testing
 					if acceptedInputs != 1 {
 						t.Fatalf("assembled accepted inputs=%d want=1", acceptedInputs)
 					}
-					if retry, err := conversation.MaterializeAgentCanonicalInput(t.Context(), input.UserMessage, input.Attachments, input.UserReferences); err != nil || retry != receipt {
+					if retry, err := conversation.MaterializeAgentCanonicalInput(t.Context(), input.UserMessage, input.Attachments, input.UserReferences, nil); err != nil || retry != receipt {
 						t.Fatalf("accepted input retry=%#v want=%#v err=%v", retry, receipt, err)
 					}
 					if sess.MessageCountTotal() != messageCount {

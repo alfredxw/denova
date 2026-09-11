@@ -80,7 +80,12 @@ func (engine *definitionEngine) MaterializeInput(
 		return runstate.InputMaterializationReceipt{}, fmt.Errorf("%w: canonical Agent input changed after planning", runstate.ErrDomainCommitRejected)
 	}
 	identity := canonicalCommitIdentity(engine.key, request.Snapshot, CommitInput)
-	receipt, err := adapter.MaterializeInput(ctx, InputCommitRequest{Identity: identity, Hash: want, Input: input})
+	var receipt CommitReceipt
+	err = withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitInput, Snapshot: request.Snapshot, Hash: want}, func(checkpoint CanonicalCheckpoint) error {
+		var err error
+		receipt, err = adapter.MaterializeInput(ctx, InputCommitRequest{Identity: identity, Hash: want, Input: input, Checkpoint: checkpoint})
+		return err
+	})
 	if err != nil {
 		return runstate.InputMaterializationReceipt{}, fmt.Errorf("materialize canonical Agent input: %w", err)
 	}
@@ -138,6 +143,47 @@ type committedOutput struct {
 	canonicalMessages []*Message
 }
 
+// resumeCommittedOutput uses the product's authoritative final projection.
+// Only post-output Goal evaluation and normal settlement remain after this
+// boundary; calling the model or CommitOutput again could create a new result.
+func (engine *definitionEngine) resumeCommittedOutput(ctx context.Context, request runstate.EngineRequest, input Input, prepared preparedDefinition, state engineTranscript, emit runstate.EngineEventSink) (runstate.EngineResult, error) {
+	commit := request.Snapshot.OutputCommit
+	if commit.Identity != engineCommitIdentity(canonicalCommitIdentity(engine.key, request.Snapshot, CommitOutput)) || commit.Revision == "" {
+		return runstate.EngineResult{}, errors.New("persisted output commit does not belong to this Agent cycle")
+	}
+	return engine.settleCommittedOutput(ctx, request, input, prepared, state, emit)
+}
+
+func (engine *definitionEngine) settleCommittedOutput(ctx context.Context, request runstate.EngineRequest, input Input, prepared preparedDefinition, state engineTranscript, emit runstate.EngineEventSink) (runstate.EngineResult, error) {
+	if len(state.Messages) == 0 {
+		return runstate.EngineResult{}, errors.New("committed Agent output is missing its canonical messages")
+	}
+	final := state.Messages[len(state.Messages)-1]
+	if final.Role != Assistant || len(final.ToolCalls) != 0 {
+		return runstate.EngineResult{}, errors.New("committed Agent output is missing a final assistant message")
+	}
+	_, finish := classifyResponseFinishReason(final.ResponseMeta)
+	var continuation *runstate.EngineContinuation
+	var err error
+	if !finish.Incomplete() {
+		continuation, err = engine.evaluateGoal(ctx, request, input, prepared, newCapabilityStateClient(request.Snapshot.Capabilities, emit), nil, final, emit)
+		if err != nil {
+			return runstate.EngineResult{}, err
+		}
+	}
+	encoded, err := encodeEngineTranscript(prepared, state.Messages)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
+	if err := emit(runstate.EngineAssistantFinal{Content: final.Content, Thinking: final.ReasoningContent, State: encoded, Continuation: continuation}); err != nil {
+		return runstate.EngineResult{}, err
+	}
+	if finish.Incomplete() {
+		return runstate.EngineResult{Status: runstate.EngineIncomplete, Reason: finish.TerminalReason()}, nil
+	}
+	return runstate.EngineResult{Status: runstate.EngineCompleted}, nil
+}
+
 func (engine *definitionEngine) commitCanonicalOutput(
 	ctx context.Context,
 	request runstate.EngineRequest,
@@ -155,8 +201,11 @@ func (engine *definitionEngine) commitCanonicalOutput(
 	if err != nil {
 		return committedOutput{}, err
 	}
-	receipt, err := adapter.CommitOutput(ctx, OutputCommitRequest{
-		Identity: identity, Hash: hash, Message: *CloneMessage(message),
+	var receipt OutputCommitReceipt
+	err = withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitOutput, Snapshot: request.Snapshot, Hash: hash}, func(checkpoint CanonicalCheckpoint) error {
+		var err error
+		receipt, err = adapter.CommitOutput(ctx, OutputCommitRequest{Identity: identity, Hash: hash, Message: *CloneMessage(message), Checkpoint: checkpoint})
+		return err
 	})
 	if err != nil {
 		return committedOutput{}, fmt.Errorf("commit canonical Agent output: %w", err)
@@ -189,6 +238,7 @@ func (engine *definitionEngine) commitCanonicalContext(
 	adapter CanonicalAdapter,
 	sequence int,
 	messages []*Message,
+	state json.RawMessage,
 ) error {
 	contextAdapter, ok := adapter.(CanonicalContextAdapter)
 	if !ok || len(messages) == 0 {
@@ -204,9 +254,13 @@ func (engine *definitionEngine) commitCanonicalContext(
 		}
 		values[index] = *message.Clone()
 	}
-	receipt, err := contextAdapter.CommitContext(ctx, ContextCommitRequest{
-		Identity: canonicalCommitIdentity(engine.key, request.Snapshot, CommitContext),
-		Sequence: sequence, Messages: values,
+	var receipt CommitReceipt
+	err := withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitContext, Snapshot: request.Snapshot, State: state}, func(checkpoint CanonicalCheckpoint) error {
+		var err error
+		receipt, err = contextAdapter.CommitContext(ctx, ContextCommitRequest{
+			Identity: canonicalCommitIdentity(engine.key, request.Snapshot, CommitContext), Sequence: sequence, Messages: values, Checkpoint: checkpoint,
+		})
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("commit canonical Agent context: %w", err)
@@ -475,7 +529,7 @@ type engineControlState struct {
 
 func (state *engineControlState) set(kind runstate.EngineControlKind) {
 	state.mu.Lock()
-	if kind == runstate.EngineControlAbort || state.control == "" {
+	if kind == runstate.EngineControlAbort || (kind == runstate.EngineControlSuspend && state.control != runstate.EngineControlAbort) || state.control == "" {
 		state.control = kind
 	}
 	state.mu.Unlock()

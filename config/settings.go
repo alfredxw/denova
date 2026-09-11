@@ -168,17 +168,6 @@ const (
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
 	return Settings{
-		OpenAIBaseURL:             "https://api.deepseek.com",
-		OpenAIModel:               "deepseek-v4-pro",
-		OpenAIContextWindowTokens: intPtr(DefaultContextWindowTokens),
-		ModelEndpoints: []ModelEndpointSettings{{
-			ID: DefaultModelEndpointID, Name: "Default endpoint", Provider: string(providers.ProviderDeepSeek),
-			Protocol: string(providers.ProtocolOpenAIChatCompletions), BaseURL: "https://api.deepseek.com",
-		}},
-		ModelProfiles: []ModelProfileSettings{{
-			ID: DefaultModelEndpointID, Name: "Default model", EndpointID: DefaultModelEndpointID,
-			Model: "deepseek-v4-pro", ContextWindowTokens: intPtr(DefaultContextWindowTokens),
-		}},
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
 		DefaultImageAgentID:         stringPtr(""),
 		ImageAPIEndpoints:           []ImageAPIEndpointSettings{DefaultImageAPIEndpoint()},

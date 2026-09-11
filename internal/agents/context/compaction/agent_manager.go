@@ -12,6 +12,7 @@ import (
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/modelio"
 	"denova/internal/agents/toolresult"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -161,7 +162,8 @@ func (summarizer denovaSummarizer) Summarize(
 		_ func(int, string),
 	) (string, error) {
 		messages := cloneMessages(input.Messages)
-		result, err := summarizer.model.Generate(forkCtx, messages, agent.WithToolChoice(agent.ToolChoiceForbidden))
+		call := &agent.ModelCall{Model: summarizer.model, Messages: messages, Options: []agent.ModelOption{agent.WithToolChoice(agent.ToolChoiceForbidden)}}
+		result, err := call.Snapshot().Complete(forkCtx, modelio.ModelExecutionPolicy(summarizer.cfg))
 		if err != nil {
 			return "", err
 		}

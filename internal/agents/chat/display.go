@@ -565,6 +565,9 @@ func (r *displayEventRecorder) nextTextSegmentID(meta agentEventMetadata, role s
 	if runID == "" {
 		runID = "run"
 	}
+	if meta.ResponseOrdinal > 0 {
+		return fmt.Sprintf("%s-cycle-%03d-response-%03d-display-%03d-%s", runID, r.cycle, meta.ResponseOrdinal, r.segmentSeq, role)
+	}
 	return fmt.Sprintf("%s-cycle-%03d-display-%03d-%s", runID, r.cycle, r.segmentSeq, role)
 }
 

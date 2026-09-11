@@ -132,6 +132,7 @@ func (c *SessionConversation) MaterializeAgentCanonicalInput(
 	message string,
 	attachments []agent.Attachment,
 	references []agentcontext.UserReference,
+	checkpoint agent.CanonicalCheckpoint,
 ) (session.DomainCommitReceipt, error) {
 	if c == nil || c.session == nil {
 		return session.DomainCommitReceipt{}, fmt.Errorf("会话不存在")
@@ -143,6 +144,7 @@ func (c *SessionConversation) MaterializeAgentCanonicalInput(
 	if err != nil {
 		return session.DomainCommitReceipt{}, err
 	}
+	intent.Checkpoint = checkpoint
 	receipt, err := c.session.CommitDomainMessageContext(ctx, intent)
 	if err != nil {
 		return session.DomainCommitReceipt{}, err
@@ -199,7 +201,7 @@ func (c *SessionConversation) CommitAgentCanonicalContext(
 		session.DomainCommitIdentity{
 			CommandID: request.Identity.CommandID, OperationID: request.Identity.RunID, Cycle: request.Identity.Cycle,
 		},
-		request.Sequence, messages,
+		request.Sequence, messages, request.Checkpoint,
 	)
 	if err != nil {
 		return session.ContextBatchReceipt{}, err

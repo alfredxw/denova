@@ -27,8 +27,9 @@ func adaptAPIError(err error) error {
 	}
 	return &providers.APIError{
 		StatusCode: sdkError.StatusCode,
-		RequestID:  requestID,
-		Message:    strings.TrimSpace(err.Error()),
-		Cause:      err,
+		Code:       sdkError.Code, Kind: sdkError.Type, RetryAfter: providers.RetryAfterDelay(sdkError.Response),
+		RequestID: requestID,
+		Message:   strings.TrimSpace(err.Error()),
+		Cause:     err,
 	}
 }

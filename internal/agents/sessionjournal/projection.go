@@ -21,8 +21,6 @@ const (
 	turnStartedKind       = "turn.started"
 	turnFinishedKind      = "turn.finished"
 	turnInterruptedKind   = "turn.interrupted"
-
-	recentTurnRecordLimit = 64
 )
 
 // Envelope is one public Agent record carried by a product journal
@@ -44,6 +42,9 @@ type streamProjection struct {
 	MessageCheckpoint *agentsession.Record           `json:"message_checkpoint,omitempty"`
 	Capabilities      map[string]agentsession.Record `json:"capabilities,omitempty"`
 	Turns             []agentsession.Record          `json:"turns,omitempty"`
+	// Facts retain durable command receipts and the latest continuation/tool
+	// facts. They are independent of the UI's recent completed Run window.
+	Facts map[string]agentsession.Record `json:"facts,omitempty"`
 }
 
 // Projection is embedded in each product domain's rebuildable index. Root
@@ -224,9 +225,43 @@ func (stream *streamProjection) apply(record agentsession.Record) error {
 		stream.Capabilities[value.Capability] = cloneRecord(record)
 	case turnStartedKind, turnFinishedKind, turnInterruptedKind:
 		stream.Turns = append(stream.Turns, cloneRecord(record))
-		if overflow := len(stream.Turns) - recentTurnRecordLimit; overflow > 0 {
-			stream.Turns = append([]agentsession.Record(nil), stream.Turns[overflow:]...)
+	case "session.input", "session.input_update", "session.control", "turn.checkpoint",
+		"turn.tool", "turn.interaction", "turn.interaction_response", "session.task_completion_delivery":
+		var value struct {
+			RunID         string `json:"run_id"`
+			CommandID     string `json:"command_id"`
+			CallID        string `json:"call_id"`
+			InteractionID string `json:"interaction_id"`
+			Receipt       struct {
+				CommandID string `json:"command_id"`
+			} `json:"receipt"`
 		}
+		if err := json.Unmarshal(record.Data, &value); err != nil {
+			return err
+		}
+		id := value.CommandID
+		if id == "" {
+			id = value.Receipt.CommandID
+		}
+		if record.Kind == "turn.checkpoint" {
+			id = value.RunID
+		}
+		if value.CallID != "" {
+			id = value.CallID
+		}
+		if value.InteractionID != "" {
+			id = value.InteractionID
+		}
+		if record.Kind == "session.task_completion_delivery" {
+			id = fmt.Sprint(record.Revision)
+		}
+		if id == "" {
+			return fmt.Errorf("Agent continuation record %q has no identity", record.Kind)
+		}
+		if stream.Facts == nil {
+			stream.Facts = make(map[string]agentsession.Record)
+		}
+		stream.Facts[record.Kind+":"+id] = cloneRecord(record)
 	default:
 		return fmt.Errorf("unsupported agent session record %q", record.Kind)
 	}
@@ -245,6 +280,9 @@ func (stream *streamProjection) records() []agentsession.Record {
 		records = append(records, cloneRecord(record))
 	}
 	for _, record := range stream.Turns {
+		records = append(records, cloneRecord(record))
+	}
+	for _, record := range stream.Facts {
 		records = append(records, cloneRecord(record))
 	}
 	sort.SliceStable(records, func(left, right int) bool { return records[left].Revision < records[right].Revision })
@@ -292,6 +330,11 @@ func validateEmbeddedRecord(record agentsession.Record) error {
 		}
 		if strings.TrimSpace(value.RunID) == "" || strings.TrimSpace(value.CommandID) == "" || strings.TrimSpace(value.At) == "" {
 			return fmt.Errorf("Agent turn record is invalid")
+		}
+	case "session.input", "session.input_update", "session.control", "turn.checkpoint",
+		"turn.tool", "turn.interaction", "turn.interaction_response", "session.task_completion_delivery":
+		if !json.Valid(record.Data) {
+			return fmt.Errorf("invalid Agent continuation record %q", record.Kind)
 		}
 	default:
 		return fmt.Errorf("unsupported Agent Session record %q", record.Kind)

@@ -29,18 +29,26 @@ func assembleAndCommitInteractiveContextForTest(conversation *Conversation, orig
 
 func commitInteractiveAssistantForTest(t testing.TB, conversation *Conversation, content, thinking string) error {
 	t.Helper()
-	cycle := testCycleSequence.Add(1)
-	identity := fmt.Sprintf("test-cycle:%d", cycle)
-	conversation.BindAgentCycleIdentity(agentrun.CycleIdentity{
-		CommandID: agentrun.CommandID(identity), OperationID: agentrun.OperationID(identity), Cycle: 1,
-	})
-	materializeInteractiveInputForTest(t, conversation, conversation.AgentCycleIdentitySnapshot())
+	bindInteractiveCycleForTest(t, conversation)
 	if err := conversation.AppendAssistantWithThinking(content, thinking); err != nil {
 		return err
 	}
 	return conversation.CommitAgentCycleStage(
 		context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted},
 	)
+}
+
+func bindInteractiveCycleForTest(t testing.TB, conversation *Conversation) {
+	t.Helper()
+	if conversation.AgentCycleIdentitySnapshot().CommandID != "" && conversation.turnProtocol.phase != interactiveTurnCommitted {
+		return
+	}
+	cycle := testCycleSequence.Add(1)
+	identity := fmt.Sprintf("test-cycle:%d", cycle)
+	conversation.BindAgentCycleIdentity(agentrun.CycleIdentity{
+		CommandID: agentrun.CommandID(identity), OperationID: agentrun.OperationID(identity), Cycle: 1,
+	})
+	materializeInteractiveInputForTest(t, conversation, conversation.AgentCycleIdentitySnapshot())
 }
 
 func materializeInteractiveInputForTest(t testing.TB, conversation *Conversation, identity agentrun.CycleIdentity) {
@@ -62,6 +70,7 @@ func materializeInteractiveInputForTest(t testing.TB, conversation *Conversation
 
 func submitTestTurnResult(t *testing.T, conversation *Conversation, intent, goal string) {
 	t.Helper()
+	bindInteractiveCycleForTest(t, conversation)
 	updates := []interactivestate.Update{}
 	storyContext, err := conversation.store.StoryContext(conversation.storyID, conversation.branchID)
 	if err != nil {

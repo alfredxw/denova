@@ -33,7 +33,7 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	if session.active != nil {
+	if session.active != nil && !session.active.isSuspended() {
 		return ErrSessionBusy
 	}
 	hadCurrentTranscript := len(session.engineState) != 0
@@ -100,13 +100,30 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 			}
 		}
 	}
-	encoded, err := json.Marshal(engineTranscript{
-		Version: engineTranscriptVersion, Messages: cloneMessages(ordered), ContextState: contextState,
-	})
+	next := engineTranscript{Version: engineTranscriptVersion, Messages: cloneMessages(ordered), ContextState: contextState}
+	if session.active != nil && len(session.messageCheckpoint.Metadata) != 0 {
+		if !checkpointCompatible && session.active.snapshot.OutputCommit == nil {
+			return fmt.Errorf("%w: canonical history changed under an unfinished Run (imported=%d checkpoint=%d)", ErrInvalidCanonicalMessages, len(ordered), session.messageCheckpoint.MessageCount)
+		}
+		if err := json.Unmarshal(session.messageCheckpoint.Metadata, &next); err != nil {
+			return err
+		}
+		next.Messages = cloneMessages(ordered)
+		if session.active.snapshot.OutputCommit != nil {
+			next.ActiveModelUser, next.ActiveUserIndex = nil, 0
+			next.ContextState = contextState
+		} else {
+			next.Messages = append(next.Messages, cloneMessages(session.messageCheckpoint.Pending)...)
+		}
+	}
+	encoded, err := json.Marshal(next)
 	if err != nil {
 		return fmt.Errorf("encode canonical Agent messages: %w", err)
 	}
 	session.engineState = encoded
+	if _, err := decodeEngineTranscript(encoded); err != nil {
+		return err
+	}
 	// Structural operations can commit capabilities immediately after this
 	// import, without running a turn. Their recovery checkpoint must describe
 	// this canonical history, not a projection from an earlier model call.

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 const (
@@ -21,6 +22,8 @@ const (
 
 var (
 	ErrConflict = errors.New("conversation journal revision conflict")
+	// ErrCommitUnknown requires closing and reopening before another write.
+	ErrCommitUnknown = agentsession.ErrCommitUnknown
 	// ErrProjectionCheckpointIncompatible marks a derived sidecar that cannot
 	// be restored by the current reducer. The canonical journal remains valid
 	// and must be replayed to replace the stale checkpoint.

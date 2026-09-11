@@ -412,6 +412,9 @@ func TestCanonicalToolBatchBoundariesBracketExecution(t *testing.T) {
 		if event.Output == nil {
 			continue
 		}
+		if attempt := event.Output.ModelAttempt; attempt != nil {
+			attempt.Receipt <- nil
+		}
 		if boundary := event.Output.ToolBatch; boundary != nil {
 			phase, messages := boundary.snapshot()
 			phases = append(phases, phase)
@@ -434,6 +437,9 @@ func TestCanonicalToolBatchBoundariesBracketExecution(t *testing.T) {
 				t.Fatalf("tool ran before its start receipt: calls=%d", calls.Load())
 			}
 			execution.acknowledgeStart(nil)
+		}
+		if execution := event.Output.ToolExecution; execution != nil && execution.finishReceipt != nil {
+			execution.finishReceipt <- nil
 		}
 	}
 	if len(phases) != 2 || phases[0] != toolBatchPrepared || phases[1] != toolBatchCompleted || executed != `{"value":"ready"}` {

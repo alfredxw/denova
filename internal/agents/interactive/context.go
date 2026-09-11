@@ -18,8 +18,10 @@ type InteractiveStoryToolContext struct {
 		context.Context,
 		story.ActorStateSchemaBatch,
 	) (story.ActorStateSchemaBatchResult, error)
-	PrepareTurn       func(context.Context, story.TurnCheckRequest) (story.RuleResolution, error)
-	SelectProtagonist func(context.Context, string) (story.StoryProtagonist, error)
-	SubmitTurnResult  func(context.Context, story.TurnSubmissionInput) (story.TurnSubmissionReceipt, error)
-	TurnResultReady   func() bool
+	PrepareTurn              func(context.Context, story.TurnCheckRequest) (story.RuleResolution, error)
+	SelectProtagonist        func(context.Context, string) (story.StoryProtagonist, error)
+	SubmitTurnResult         func(context.Context, story.TurnSubmissionInput) (story.TurnSubmissionReceipt, error)
+	TurnResultReady          func() bool
+	LoadNarrativeCandidate   func(context.Context) (string, error)
+	AcceptNarrativeCandidate func(context.Context, string) error
 }

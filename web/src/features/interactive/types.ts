@@ -405,7 +405,7 @@ export interface TurnDisplayEvent {
   content?: string
   name?: string
   args?: string
-  status?: 'running' | 'success' | 'error'
+  status?: 'running' | 'success' | 'error' | 'discarded'
   result?: string
   tool_presentation?: import('@/lib/api').ToolPresentation
   created_at?: string

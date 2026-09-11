@@ -80,11 +80,20 @@ func (middleware *retryNormalizationMiddleware) BeforeModelCall(
 		return ctx, call, err
 	}
 	for _, message := range next.Messages {
-		if message != nil && message.Content == "BROKEN_RETRY_FEEDBACK" {
-			message.Content = "NORMALIZED_RETRY_FEEDBACK"
+		if message != nil {
+			message.Content = strings.ReplaceAll(message.Content, "BROKEN_RETRY_FEEDBACK", "NORMALIZED_RETRY_FEEDBACK")
 		}
 	}
 	return ctx, &next, nil
+}
+
+func (*retryNormalizationMiddleware) ReviewModelOutput(_ context.Context, output ModelOutput) (ModelOutputReview, error) {
+	if output.Message.Content != "reject me" {
+		return ModelOutputReview{Action: ModelOutputAccept}, nil
+	}
+	return ModelOutputReview{Action: ModelOutputRepair, Reason: "invalid_output", Feedback: []ContextFragment{{
+		Source: "test_review", Purpose: "repair_invalid_output", Content: "BROKEN_RETRY_FEEDBACK", HardLimit: 128,
+	}}}, nil
 }
 
 func (middleware *retryNormalizationMiddleware) calls() []int {
@@ -104,26 +113,13 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 	middleware := &retryNormalizationMiddleware{}
 	gateCalls := 0
 	restarted := false
-	retrySelected := false
 	echo := testToolDefinition(&functionTool{name: "echo", run: func(context.Context, string) (string, error) {
 		return "echoed", nil
 	}})
 	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "retry-complete-seam", Model: model, Tools: []ToolDefinition{echo},
-		Middlewares: []Middleware{middleware},
-		Retry: &RetryConfig{MaxRetries: 1, ShouldRetry: func(_ context.Context, retry *RetryContext) *RetryDecision {
-			if retrySelected || retry.Attempt != 0 || retry.Err != nil {
-				return nil
-			}
-			retrySelected = true
-			messages := append(cloneMessages(retry.Messages), UserMessage("BROKEN_RETRY_FEEDBACK"))
-			return &RetryDecision{
-				Retry: true, Messages: messages,
-				// A retry may change output/tool choice, but cannot fork cache
-				// routing or discard the stable tool schema.
-				Options: []ModelOption{WithSessionKey("wrong-cache-key")},
-			}
-		}},
+		Middlewares:      []Middleware{middleware},
+		ModelMaxAttempts: 2,
 		modelCallGate: func(_ context.Context, call *ModelCall, modelContext *ModelContext) (*modelCallRestart, error) {
 			gateCalls++
 			if modelContext.Attempt == 1 && !restarted {
@@ -183,7 +179,7 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 
 func messagesContainContent(messages []*Message, content string) bool {
 	for _, message := range messages {
-		if message != nil && message.Content == content {
+		if message != nil && strings.Contains(message.Content, content) {
 			return true
 		}
 	}
@@ -216,7 +212,7 @@ func TestNativeLoopRetriesStreamErrorBeforeFirstChunk(t *testing.T) {
 	model := &retryBeforeFirstChunkModel{err: streamErr}
 	agent, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "stream-retry-before-first-chunk", Model: model,
-		Retry: &RetryConfig{MaxRetries: 1, IsRetryable: func(context.Context, error) bool { return true }},
+		ModelMaxAttempts: 2, Retry: &RetryConfig{Decide: retryEveryTestError},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -227,6 +223,17 @@ func TestNativeLoopRetriesStreamErrorBeforeFirstChunk(t *testing.T) {
 	if !ok || streamEvent == nil || streamEvent.Err != nil || streamEvent.Output == nil ||
 		streamEvent.Output.MessageOutput == nil || !streamEvent.Output.MessageOutput.IsStreaming {
 		t.Fatalf("assistant stream event = %#v", streamEvent)
+	}
+	if _, err := streamEvent.Output.MessageOutput.GetMessage(); err == nil {
+		t.Fatal("failed attempt was accepted")
+	}
+	retryEvent, ok := iterator.Next()
+	if !ok || retryEvent.Output == nil || retryEvent.Output.ModelRetry == nil {
+		t.Fatalf("retry event=%#v", retryEvent)
+	}
+	streamEvent, ok = iterator.Next()
+	if !ok || streamEvent.Output == nil || streamEvent.Output.MessageOutput == nil {
+		t.Fatalf("retry response=%#v", streamEvent)
 	}
 	message, err := streamEvent.Output.MessageOutput.GetMessage()
 	if err != nil {
@@ -250,7 +257,7 @@ func TestNativeLoopRetryBeforeFirstChunkKeepsToolExecutionIdentityAligned(t *tes
 	}})
 	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "stream-retry-tool-identity", Model: model, Tools: []ToolDefinition{echo},
-		Retry: &RetryConfig{MaxRetries: 1, IsRetryable: func(context.Context, error) bool { return true }},
+		ModelMaxAttempts: 2, Retry: &RetryConfig{Decide: retryEveryTestError},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -281,6 +288,10 @@ func TestNativeLoopRetryBeforeFirstChunkKeepsToolExecutionIdentityAligned(t *tes
 		if variant.Role == Assistant {
 			message, messageErr := variant.GetMessage()
 			if messageErr != nil {
+				var rejected *modelResponseRejected
+				if errors.As(messageErr, &rejected) {
+					continue
+				}
 				t.Fatal(messageErr)
 			}
 			if len(message.ToolCalls) > 0 {
@@ -361,33 +372,40 @@ func (model *failingPublicStreamModel) Stream(context.Context, []*Message, ...Mo
 	return reader, nil
 }
 
-func TestNativeLoopDoesNotRetryErrorPublishedOnAssistantStream(t *testing.T) {
+func TestNativeLoopBoundsRetriesAfterPartialPublication(t *testing.T) {
 	streamErr := errors.New("stream failed after publication")
 	model := &failingPublicStreamModel{err: streamErr}
 	agent, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "stream-retry", Model: model,
-		Retry: &RetryConfig{MaxRetries: 2, IsRetryable: func(context.Context, error) bool { return true }},
+		ModelMaxAttempts: 3, Retry: &RetryConfig{Decide: retryEveryTestError},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	iterator := newLoopRunner(loopRunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go")
-	streamEvent, ok := iterator.Next()
-	if !ok || streamEvent == nil || streamEvent.Err != nil || streamEvent.Output == nil ||
-		streamEvent.Output.MessageOutput == nil || !streamEvent.Output.MessageOutput.IsStreaming {
-		t.Fatalf("assistant stream event = %#v", streamEvent)
+	streams, retries := 0, 0
+	var terminal error
+	for {
+		event, ok := iterator.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			terminal = event.Err
+			continue
+		}
+		if event.Output.ModelRetry != nil {
+			retries++
+			continue
+		}
+		if event.Output.MessageOutput != nil {
+			streams++
+			if _, err := event.Output.MessageOutput.GetMessage(); err == nil {
+				t.Fatal("partial response accepted")
+			}
+		}
 	}
-	if _, err := streamEvent.Output.MessageOutput.GetMessage(); !errors.Is(err, streamErr) {
-		t.Fatalf("assistant stream error = %v", err)
-	}
-	errorEvent, ok := iterator.Next()
-	if !ok || errorEvent == nil || !errors.Is(errorEvent.Err, streamErr) {
-		t.Fatalf("terminal stream error event = %#v", errorEvent)
-	}
-	if _, ok := iterator.Next(); ok {
-		t.Fatal("unexpected event after published stream error")
-	}
-	if calls := model.calls.Load(); calls != 1 {
-		t.Fatalf("model stream calls = %d, want 1", calls)
+	if !errors.Is(terminal, streamErr) || streams != 3 || retries != 2 || model.calls.Load() != 3 {
+		t.Fatalf("terminal=%v streams=%d retries=%d calls=%d", terminal, streams, retries, model.calls.Load())
 	}
 }

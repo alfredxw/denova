@@ -41,12 +41,14 @@ const (
 	RunPhaseIdle       RunPhase = "idle"
 	RunPhaseRunning    RunPhase = "running"
 	RunPhaseCompacting RunPhase = "compacting"
+	RunPhaseSuspended  RunPhase = "suspended"
 )
 
 const (
 	PhaseIdle       = RunPhaseIdle
 	PhaseRunning    = RunPhaseRunning
 	PhaseCompacting = RunPhaseCompacting
+	PhaseSuspended  = RunPhaseSuspended
 )
 
 // OperationStatus is the terminal state of one accepted Agent operation.

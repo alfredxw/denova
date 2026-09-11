@@ -192,7 +192,7 @@ func TestPublicAgentRuntimeCommitsCompleteGameTurnAndDisplay(t *testing.T) {
 		store, t.TempDir(), workspace, story.ID, "main", "推开石门", 800,
 		&config.Config{Workspace: workspace},
 	)
-	submitTestTurnResult(t, conversation, "推开石门", "石门已经开启")
+	submission := gameSubmissionForTest(t, conversation, "推开石门", "石门已经开启")
 
 	runtime := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
@@ -207,6 +207,7 @@ func TestPublicAgentRuntimeCommitsCompleteGameTurnAndDisplay(t *testing.T) {
 		Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "denova.test.public-game", Name: "game", Model: publicGameCommitModel{narrative: "石门缓缓开启。"},
+				Middlewares:   []agent.Middleware{submission},
 				ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game", Version: 1},
 			},
 			Conversation: conversation, Request: request, Options: options,
@@ -262,7 +263,7 @@ func TestPublicAgentRuntimeCommitsAccumulatedGameNarrativeWhenFinalModelMessageI
 		store, t.TempDir(), workspace, story.ID, "main", "推开石门", 800,
 		&config.Config{Workspace: workspace},
 	)
-	submitTestTurnResult(t, conversation, "推开石门", "石门已经开启")
+	submission := gameSubmissionForTest(t, conversation, "推开石门", "石门已经开启")
 
 	tool, err := agent.InferTool("submit_interactive_turn", "Submit the completed test turn", func(context.Context, struct{}) (string, error) {
 		return `{"submitted":true}`, nil
@@ -301,6 +302,7 @@ func TestPublicAgentRuntimeCommitsAccumulatedGameNarrativeWhenFinalModelMessageI
 		Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "denova.test.public-game-projected", Name: "game", Model: model,
+				Middlewares:   []agent.Middleware{submission},
 				ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-projected", Version: 1},
 				Permission:    agentpermission.FullAccess(), Tools: toolset,
 			},
@@ -346,7 +348,7 @@ func TestPublicAgentRuntimeRecoversMalformedGameToolArguments(t *testing.T) {
 		store, t.TempDir(), workspace, story.ID, "main", "推开石门", 800,
 		&config.Config{Workspace: workspace},
 	)
-	submitTestTurnResult(t, conversation, "推开石门", "石门已经开启")
+	submission := gameSubmissionForTest(t, conversation, "推开石门", "石门已经开启")
 
 	var executions atomic.Int32
 	tool, err := agent.InferTool("submit_interactive_turn", "Submit the completed test turn", func(context.Context, struct{}) (string, error) {
@@ -392,6 +394,7 @@ func TestPublicAgentRuntimeRecoversMalformedGameToolArguments(t *testing.T) {
 		Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "denova.test.public-game-malformed", Name: "game", Model: model,
+				Middlewares:   []agent.Middleware{submission},
 				ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-malformed", Version: 1},
 				Permission:    agentpermission.FullAccess(), Tools: toolset,
 			},
@@ -795,13 +798,13 @@ func runPublicGameTurn(
 ) {
 	t.Helper()
 	conversation := NewConversation(store, "", workspace, storyID, branchID, input, 800, cfg)
-	submitTestTurnResult(t, conversation, input, input)
+	submission := gameSubmissionForTest(t, conversation, input, input)
 	policy := toolresult.ResolveContextPolicy(cfg, config.AgentKindInteractiveStory)
 	definition := agent.Definition{
 		Key: "denova.test.public-game-history", Name: "game", Model: model,
 		ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
 		Cleanup:       cleanup, Compaction: compaction,
-		Middlewares: []agent.Middleware{agentchat.NewModelHistoryProjectionMiddleware(policy)},
+		Middlewares: []agent.Middleware{agentchat.NewModelHistoryProjectionMiddleware(policy), submission},
 	}
 	request := agentchat.ChatRequest{CommandID: commandID, Message: input, Locale: "zh-CN"}
 	operation, err := runtime.Start(context.Background(), agentexecution.StartRequest{Cycle: agentexecution.Cycle{
@@ -839,11 +842,11 @@ func runPublicGameRegeneration(
 		WithBaseParentID(branch.Head).
 		WithRegenerateTarget(targetTurnID).
 		WithExecutionParentPinning()
-	submitTestTurnResult(t, conversation, input, input)
+	submission := gameSubmissionForTest(t, conversation, input, input)
 	definition := agent.Definition{
 		Key: "denova.test.public-game-history", Name: "game", Model: model,
 		ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
-		Middlewares: []agent.Middleware{agentchat.NewModelHistoryProjectionMiddleware(
+		Middlewares: []agent.Middleware{submission, agentchat.NewModelHistoryProjectionMiddleware(
 			toolresult.ResolveContextPolicy(cfg, config.AgentKindInteractiveStory),
 		)},
 	}

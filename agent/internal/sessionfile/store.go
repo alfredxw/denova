@@ -175,15 +175,17 @@ func (store *Store) baseForKey(key session.Key) (string, [sha256.Size]byte, erro
 }
 
 type logFile struct {
-	path        string
-	release     func() error
-	mu          sync.Mutex
-	initialized bool
-	revision    session.Revision
-	validBytes  int64
-	closed      bool
-	closeOnce   sync.Once
-	closeErr    error
+	path             string
+	release          func() error
+	mu               sync.Mutex
+	initialized      bool
+	revision         session.Revision
+	validBytes       int64
+	closed           bool
+	closeOnce        sync.Once
+	closeErr         error
+	resilienceFormat bool
+	storageErr       error
 }
 
 func (log *logFile) Replay(ctx context.Context, apply func(session.Record) error) (session.ReplayStats, error) {
@@ -215,6 +217,9 @@ func (log *logFile) Append(ctx context.Context, expected session.Revision, recor
 	if log.closed {
 		return 0, session.ErrLogClosed
 	}
+	if log.storageErr != nil {
+		return log.revision, log.storageErr
+	}
 	if !log.initialized {
 		if _, err := log.replayLocked(ctx, func(session.Record) error { return nil }); err != nil {
 			return 0, err
@@ -228,6 +233,15 @@ func (log *logFile) Append(ctx context.Context, expected session.Revision, recor
 	}
 	if err := ctx.Err(); err != nil {
 		return log.revision, err
+	}
+	upgrading := false
+	for _, record := range records {
+		upgrading = upgrading || isResilienceRecord(record.Kind)
+	}
+	if upgrading && !log.resilienceFormat && log.revision > 0 {
+		if err := backupReleasedTranscript(log.path); err != nil {
+			return log.revision, err
+		}
 	}
 	committed := make([]session.Record, len(records))
 	for index, record := range records {
@@ -265,9 +279,11 @@ func (log *logFile) Append(ctx context.Context, expected session.Revision, recor
 	err = errors.Join(err, file.Close())
 	if err != nil {
 		log.initialized = false
-		return log.revision, errors.Join(session.ErrCommitUnknown, err)
+		log.storageErr = errors.Join(session.ErrCommitUnknown, err)
+		return log.revision, log.storageErr
 	}
 	log.revision = body.End
+	log.resilienceFormat = log.resilienceFormat || upgrading
 	log.validBytes += int64(len(encoded))
 	return log.revision, nil
 }
@@ -306,6 +322,7 @@ func (log *logFile) replayLocked(ctx context.Context, apply func(session.Record)
 			return stats, err
 		}
 		for _, record := range records {
+			log.resilienceFormat = log.resilienceFormat || isResilienceRecord(record.Kind)
 			stats.RecordsRead++
 			stats.BytesRead += int64(len(record.Kind) + len(record.Data))
 			if err := apply(record); err != nil {

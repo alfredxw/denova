@@ -71,10 +71,11 @@ func (watcher *definitionEngineControls) handle(control runstate.EngineControl) 
 		return
 	}
 	switch control.Kind {
-	case runstate.EngineControlPreempt, runstate.EngineControlAbort:
+	case runstate.EngineControlPreempt, runstate.EngineControlAbort, runstate.EngineControlSuspend:
 		watcher.state.set(control.Kind)
 		watcher.mu.Lock()
 		cancelLoop := watcher.loop
+		client := watcher.client
 		watcher.mu.Unlock()
 		if cancelLoop == nil {
 			// Preparation observes this derived context. Cancellation abandons only
@@ -83,8 +84,11 @@ func (watcher *definitionEngineControls) handle(control runstate.EngineControl) 
 			return
 		}
 		mode := cancelAfterModel | cancelAfterTools
-		if control.Kind == runstate.EngineControlAbort {
-			mode = cancelImmediately
+		if control.Kind == runstate.EngineControlAbort || control.Kind == runstate.EngineControlSuspend {
+			mode |= cancelModel
+			if client != nil {
+				client.interrupt()
+			}
 		}
 		_, _ = cancelLoop(withCancelMode(mode))
 	case runstate.EngineControlInteractionResolved:
@@ -145,6 +149,8 @@ func (watcher *definitionEngineControls) controlledPreparationResult(err error) 
 		return runstate.EngineResult{Status: runstate.EnginePreempted}, nil, true
 	case runstate.EngineControlAbort:
 		return runstate.EngineResult{Status: runstate.EngineAborted}, nil, true
+	case runstate.EngineControlSuspend:
+		return runstate.EngineResult{Status: runstate.EngineSuspended}, nil, true
 	default:
 		// Parent lifecycle cancellation remains an ordinary cancellation. Only a
 		// control accepted by this Run is translated into a terminal Engine status.

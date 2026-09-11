@@ -56,11 +56,11 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "target_command_id 为必填项 / target_command_id is required", nil)
 		return
 	}
-	if kind != novaApp.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" && len(body.Input.AttachmentUploads) == 0 {
+	if kind != novaApp.CommandAbort && kind != novaApp.CommandSuspend && !queueControl && strings.TrimSpace(body.Input.Message) == "" && len(body.Input.AttachmentUploads) == 0 {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "消息不能为空 / Message is required", nil)
 		return
 	}
-	if kind != novaApp.CommandAbort && !queueControl {
+	if kind != novaApp.CommandAbort && kind != novaApp.CommandSuspend && !queueControl {
 		if err := h.app.MaterializeWritingAttachments(sessionID, body.CommandID, &body.Input); err != nil {
 			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 			return
@@ -92,6 +92,8 @@ func writingAgentCommandKind(value string) (novaApp.CommandKind, error) {
 		return novaApp.CommandNextTurn, nil
 	case string(novaApp.CommandAbort):
 		return novaApp.CommandAbort, nil
+	case string(novaApp.CommandSuspend):
+		return novaApp.CommandSuspend, nil
 	case string(novaApp.CommandSteerQueued):
 		return novaApp.CommandSteerQueued, nil
 	case string(novaApp.CommandCancelQueued):
