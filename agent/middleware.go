@@ -27,6 +27,10 @@ type ModelContext struct {
 	// retry re-enters BeforeModelCall and fixed context maintenance.
 	Attempt int
 
+	// prepareCompaction prepares a replacement in the active loop, including
+	// retry feedback. Lifecycle validates and publishes it before execution.
+	prepareCompaction   func([]*Message, int) (*preparedModelCall, error)
+	instruction         string
 	maintenanceMessages []*Message
 	// stablePrefixSeed is lifecycle-owned provenance. It is deliberately kept
 	// outside Message.Extra so model output and caller middleware cannot label
@@ -124,6 +128,9 @@ type ModelCall struct {
 	Streaming bool
 
 	stablePrefixMessages int
+	// providerMessages freezes runtime artifact paths for a validated replacement
+	// while Messages retains portable loop state.
+	providerMessages []*Message
 }
 
 // ModelRequestSnapshot is an immutable side-fork handle over one final model
@@ -147,8 +154,12 @@ func (call *ModelCall) Snapshot() *ModelRequestSnapshot {
 	if call == nil {
 		return nil
 	}
+	messages := call.Messages
+	if call.providerMessages != nil {
+		messages = call.providerMessages
+	}
 	return &ModelRequestSnapshot{
-		model: call.Model, messages: cloneMessages(call.Messages),
+		model: call.Model, messages: cloneMessages(messages),
 		options: append([]ModelOption(nil), call.Options...), streaming: call.Streaming,
 		stablePrefixMessages: min(max(0, call.stablePrefixMessages), len(call.Messages)),
 	}

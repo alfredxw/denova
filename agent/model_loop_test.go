@@ -120,14 +120,14 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 		Name: "retry-complete-seam", Model: model, Tools: []ToolDefinition{echo},
 		Middlewares:      []Middleware{middleware},
 		ModelMaxAttempts: 2,
-		modelCallGate: func(_ context.Context, call *ModelCall, modelContext *ModelContext) (*modelCallRestart, error) {
+		modelCallGate: func(_ context.Context, call *ModelCall, modelContext *ModelContext) (*preparedModelCall, error) {
 			gateCalls++
 			if modelContext.Attempt == 1 && !restarted {
 				if !messagesContainContent(call.Messages, "NORMALIZED_RETRY_FEEDBACK") {
 					return nil, errors.New("retry maintenance ran before normalization")
 				}
 				restarted = true
-				return &modelCallRestart{Messages: []*Message{UserMessage("COMPACTED_ACCEPTED_BASE")}}, nil
+				return modelContext.prepareCompaction([]*Message{UserMessage("COMPACTED_ACCEPTED_BASE")}, 0)
 			}
 			return nil, nil
 		},
@@ -172,7 +172,7 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 	if got := fmt.Sprint(middleware.calls()); got != fmt.Sprint([]int{0, 1, 1, 0}) {
 		t.Fatalf("BeforeModelCall attempts=%s", got)
 	}
-	if gateCalls != 4 || !restarted {
+	if gateCalls != 3 || !restarted {
 		t.Fatalf("maintenance gate calls=%d restarted=%v", gateCalls, restarted)
 	}
 }

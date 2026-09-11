@@ -32,7 +32,7 @@ type loopConfig struct {
 
 	// modelCallGate is owned by the Agent lifecycle. It runs after all
 	// caller middleware has formed the exact provider-neutral request and may
-	// restart the first model step after publishing a checkpoint.
+	// replace the call with the validated preparation after publishing a checkpoint.
 	modelCallGate modelCallGate
 
 	// permission is the Agent-owned authorization fence. It is intentionally
@@ -42,12 +42,15 @@ type loopConfig struct {
 	permission *permissionMiddleware
 }
 
-type modelCallRestart struct {
-	Messages             []*Message
-	stablePrefixMessages int
+type preparedModelCall struct {
+	ctx             context.Context
+	call            *ModelCall
+	modelContext    *ModelContext
+	state           *RunState
+	feedbackIndexes []int
 }
 
-type modelCallGate func(context.Context, *ModelCall, *ModelContext) (*modelCallRestart, error)
+type modelCallGate func(context.Context, *ModelCall, *ModelContext) (*preparedModelCall, error)
 
 const (
 	defaultToolParallelism = 8
@@ -286,74 +289,25 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 
 		modelContext := &ModelContext{
 			Tools: cloneToolInfos(state.ToolInfos), Iteration: iteration,
-			stablePrefixSeed: cloneMessages(stablePrefixSeed),
+			stablePrefixSeed: cloneMessages(stablePrefixSeed), instruction: runContext.Instruction,
 		}
-		for _, middleware := range agent.middlewares {
-			ctx, state, err = middleware.BeforeModelRewriteState(ctx, state, modelContext)
-			if err != nil {
-				events.Send(agent.errorEvent(fmt.Errorf("before model middleware: %w", err)))
-				return
-			}
-			if ctx == nil {
-				events.Send(agent.errorEvent(errors.New("before model middleware returned nil Go context")))
-				return
-			}
-			if state == nil {
-				events.Send(agent.errorEvent(errors.New("before model middleware returned nil state")))
-				return
-			}
-		}
-		modelContext.Tools = cloneToolInfos(state.ToolInfos)
-
-		modelForCall, err := agent.modelForCall(ctx, modelContext)
+		step, err := agent.prepareModelStep(ctx, state, modelContext, input.EnableStreaming)
 		if err != nil {
 			events.Send(agent.errorEvent(err))
 			return
 		}
-		modelOptions := []ModelOption{WithTools(state.ToolInfos)}
-		if sessionKey, ok := SessionKeyFromContext(ctx); ok {
-			modelOptions = append(modelOptions, WithSessionKey(sessionKey))
-		}
-		modelCall := &ModelCall{
-			Model: modelForCall, Messages: cloneMessages(state.Messages),
-			Options: modelOptions, Streaming: input.EnableStreaming,
-		}
-		modelContext.maintenanceMessages = cloneMessages(modelCall.Messages)
-		for _, middleware := range agent.middlewares {
-			ctx, modelCall, err = middleware.BeforeModelCall(ctx, modelCall, modelContext)
-			if err != nil {
-				events.Send(agent.errorEvent(fmt.Errorf("before model call middleware: %w", err)))
-				return
-			}
-			if ctx == nil {
-				events.Send(agent.errorEvent(errors.New("before model call middleware returned nil Go context")))
-				return
-			}
-			if modelCall == nil || modelCall.Model == nil {
-				events.Send(agent.errorEvent(errors.New("before model call middleware returned nil model call")))
-				return
-			}
-		}
-		modelCall.stablePrefixMessages = authenticatedStablePrefixMessages(modelCall.Messages, stablePrefixSeed)
+		ctx, state, modelContext = step.ctx, step.state, step.modelContext
+		modelCall := step.call
 		if agent.modelCallGate != nil {
-			restart, gateErr := agent.modelCallGate(ctx, modelCall, modelContext)
+			restart, gateErr := agent.applyModelCallGate(ctx, modelCall, modelContext, options.cancel)
 			if gateErr != nil {
 				events.Send(agent.errorEvent(fmt.Errorf("agent model call gate: %w", gateErr)))
 				return
 			}
 			if restart != nil {
-				if len(restart.Messages) == 0 {
-					events.Send(agent.errorEvent(errors.New("agent model call gate returned an empty restart context")))
-					return
-				}
-				state.Messages = cloneMessages(restart.Messages)
-				stablePrefixMessages = min(max(0, restart.stablePrefixMessages), len(state.Messages))
-				stablePrefixSeed = cloneMessages(state.Messages[:stablePrefixMessages])
-				ctx = contextWithMaintenanceCommitted(ctx)
-				// A checkpoint restart has not called the provider and therefore
-				// does not consume a model iteration or the caller's explicit cap.
-				iteration--
-				continue
+				ctx, state, modelContext = restart.ctx, restart.state, restart.modelContext
+				modelCall = restart.call
+				stablePrefixSeed = cloneMessages(modelContext.stablePrefixSeed)
 			}
 		}
 		modelCall.stablePrefixMessages = authenticatedStablePrefixMessages(modelCall.Messages, stablePrefixSeed)
@@ -379,6 +333,7 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			options.cancel,
 		)
 		ctx = nextCtx
+		stablePrefixSeed = cloneMessages(modelContext.stablePrefixSeed)
 		if err != nil {
 			var cancelErr *cancelError
 			if !errors.As(err, &cancelErr) {

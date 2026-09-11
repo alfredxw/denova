@@ -199,17 +199,19 @@ func (control *cancelControl) request(opts ...cancelRequestOption) (*cancelHandl
 	return handle, true
 }
 
-func (control *cancelControl) bindModel(cancel context.CancelFunc) {
+func (control *cancelControl) bindModel(cancel context.CancelFunc) context.CancelFunc {
 	if control == nil {
-		return
+		return nil
 	}
 	control.mu.Lock()
+	previous := control.modelCancel
 	control.modelCancel = cancel
 	stop := control.requested && control.mode&cancelModel != 0
 	control.mu.Unlock()
 	if stop && cancel != nil {
 		cancel()
 	}
+	return previous
 }
 
 func (control *cancelControl) pending(point cancelMode) bool {

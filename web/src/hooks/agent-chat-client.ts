@@ -81,7 +81,7 @@ export interface AgentChatClient {
   deleteSession: (id: string) => Promise<SessionSummary>
   answerSessionAsk: (sessionId: string, askId: string, answers: AgentAskAnswer[]) => Promise<AgentAskResolution>
   cancelSessionAsk: (sessionId: string, askId: string, reason?: string) => Promise<AgentAskResolution>
-  removeContextCompaction: () => Promise<boolean>
+  removeContextCompaction: (() => Promise<boolean>) | null
 }
 
 /** Default foreground Writing client. Kept as one stable object for hook dependencies. */
@@ -244,9 +244,9 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, reason }),
       }),
-    // AgentChat currently exposes automatic compaction only. Returning false keeps the
-    // analysis intact without accidentally removing foreground Writing compaction state.
-    removeContextCompaction: async () => false,
+    // This scoped API exposes automatic compaction only. Do not offer the
+    // foreground Writing endpoint as a fallback for another conversation.
+    removeContextCompaction: null,
   }
 }
 

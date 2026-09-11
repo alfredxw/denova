@@ -150,7 +150,7 @@ export interface AgentPanelProps {
   /** Scoped AgentChat tabs override interaction endpoints so Writing state is never touched. */
   onAnswerAsk?: (sessionId: string, askId: string, answers: AgentAskAnswer[]) => Promise<AgentAskResolution>
   onCancelAsk?: (sessionId: string, askId: string, reason?: string) => Promise<AgentAskResolution>
-  onRemoveContextCompaction?: () => Promise<boolean>
+  onRemoveContextCompaction?: (() => Promise<boolean>) | null
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (
     message: string,
@@ -446,7 +446,7 @@ function AgentPanelComponent({
   }, [onPlanModeChange])
 
   const removeContextCompaction = async () => {
-    await onRemoveContextCompaction()
+    await onRemoveContextCompaction?.()
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
@@ -832,7 +832,7 @@ function AgentPanelComponent({
             error={contextAnalysisError}
             analysis={contextAnalysis}
             onOpenChange={setContextAnalysisOpen}
-            onRemoveCompaction={removeContextCompaction}
+            onRemoveCompaction={onRemoveContextCompaction ? removeContextCompaction : undefined}
           />
         </>
       ) : (

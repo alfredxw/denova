@@ -165,10 +165,16 @@ type CompactionCompactRequest struct {
 	// range hashing and future checkpoint removal.
 	Messages     []*Message
 	ModelRequest []*Message
+	// ContextMessages has the same positions as Messages, after Agent-owned
+	// Cleanup (including a transient overflow projection) and artifact path
+	// resolution, before Compaction and caller middleware. This detached runtime
+	// view is never journal data.
+	// Domain adapters that rebuild SourceMessages must preserve this projection.
+	ContextMessages []*Message
 	// SourceMessages is the incremental semantic source supplied to the
-	// checkpoint generator. Agent defaults it to the selected raw range; after
+	// checkpoint generator. Agent defaults it to the selected ContextMessages; after
 	// an earlier checkpoint it contains that checkpoint plus only the newly
-	// selected raw tail. Caller middleware is intentionally not reverse-mapped
+	// selected tail. Caller middleware is intentionally not reverse-mapped
 	// onto raw coordinates. A host that applies model-only visibility policy or
 	// owns a rendered domain history must wrap the Manager and explicitly
 	// project this field before invoking its Summarizer.

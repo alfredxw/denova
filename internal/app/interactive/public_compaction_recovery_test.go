@@ -22,7 +22,7 @@ import (
 )
 
 func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
-	for _, scenario := range []string{"inspection", "restart"} {
+	for _, scenario := range []string{"inspection", "restart", "cleanup_restart"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx := context.Background()
 			workspace, dataDir := t.TempDir(), t.TempDir()
@@ -41,6 +41,14 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			rich := strings.Repeat("Important historical evidence. ", 1000)
+			if scenario == "cleanup_restart" {
+				if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+					BranchID: "main", User: "Follow the archive clues",
+					Narrative: strings.TrimSpace(strings.Repeat("The archive leads to an old bridge. ", 2000)),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			appendPublicGameToolTurn(t, store, story.ID, rich)
 			newRuntime := func() *agentexecution.Runtime {
 				runtime, err := agentexecution.NewAgentRuntime(ctx, dataDir,
@@ -71,6 +79,11 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 				return cycle
 			}
 			initial := newCycle("Continue")
+			if scenario == "cleanup_restart" {
+				initial.Definition.Cleanup = publicGameCleanupManager{
+					marker: rich, placeholder: "[Older tool result removed; use read on lore/archive.md.]",
+				}
+			}
 			initial.Request = agentchat.ChatRequest{CommandID: "game-before-maintenance", Message: "Continue"}
 			initial.Definition.Middlewares = append(initial.Definition.Middlewares, gameSubmissionForTest(t, initial.Conversation.(*Conversation), "Continue", "Continue"))
 			operation, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: initial})
@@ -84,7 +97,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if scenario == "restart" {
+			if scenario == "restart" || scenario == "cleanup_restart" {
 				if err := runtime.Close(ctx); err != nil {
 					t.Fatal(err)
 				}
@@ -103,6 +116,15 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			})
 			if err != nil || !result.Compaction.Triggered {
 				t.Fatalf("manual compaction after %s: result=%+v error=%v", scenario, result, err)
+			}
+			if scenario == "cleanup_restart" {
+				fork := model.lastInput(t)
+				if containsMessageContent(fork, rich) || !containsMessageContent(fork, "[Older tool result removed; use read on lore/archive.md.]") {
+					t.Fatal("Game compaction did not preserve the restored Cleanup projection")
+				}
+				if !strings.Contains(fork[len(fork)-1].Content, "[source turn_id=") {
+					t.Fatal("Game compaction lost canonical turn locators")
+				}
 			}
 			after, err := store.Snapshot(story.ID, "main")
 			if err != nil {

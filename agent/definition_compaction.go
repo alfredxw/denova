@@ -134,8 +134,16 @@ func (engine *definitionEngine) RunStructural(
 				transcript.Messages, cleanupState, cleanupPresent, next, true,
 			)
 		}
+		contextMessages, contextErr := effectiveCleanupMessages(transcript.Messages, cleanupState, cleanupPresent, current, present)
+		if contextErr != nil {
+			return runstate.EngineResult{}, contextErr
+		}
+		contextMessages, contextErr = projectToolArtifactPaths(forkCtx, prepared.definition.Artifacts, contextMessages)
+		if contextErr != nil {
+			return runstate.EngineResult{}, contextErr
+		}
 		next, changed, _, compactErr := executeCompaction(
-			ctx, prepared, session, run, transcript.Messages, "", current, present, storage.Revision,
+			ctx, prepared, session, run, transcript.Messages, contextMessages, "", current, present, storage.Revision,
 			cleanupRevision(cleanupState, cleanupPresent),
 			*envelope.Compact, compactionID(request.Snapshot.OperationID), modelSnapshot, buildAfter, nil, nil,
 		)
@@ -261,6 +269,7 @@ func executeCompaction(
 	session SessionView,
 	run RunView,
 	messages []*Message,
+	contextMessages []*Message,
 	currentInput string,
 	current CompactionState,
 	present bool,
@@ -331,8 +340,9 @@ func executeCompaction(
 	}
 	checkpoint, err := prepared.definition.Compaction.Compact(ctx, CompactionCompactRequest{
 		Session: session, Run: run, Messages: cloneMessages(messages), ModelRequest: modelRequest,
-		SourceMessages: compactionIncrementalSource(messages, plan, current, present, summaryLimit),
-		ModelSnapshot:  modelSnapshot, Plan: plan, Current: current, Present: present,
+		ContextMessages: cloneMessages(contextMessages),
+		SourceMessages:  compactionIncrementalSource(contextMessages, plan, current, present, summaryLimit),
+		ModelSnapshot:   modelSnapshot, Plan: plan, Current: current, Present: present,
 	})
 	if err != nil {
 		return CompactionState{}, false, plan.Metrics, err
@@ -539,6 +549,7 @@ func (engine *definitionEngine) applyAutomaticCompaction(
 	request runstate.EngineRequest,
 	prepared preparedDefinition,
 	messages []*Message,
+	contextMessages []*Message,
 	modelSnapshot *ModelRequestSnapshot,
 	current CompactionState,
 	present bool,
@@ -556,7 +567,7 @@ func (engine *definitionEngine) applyAutomaticCompaction(
 		ctx, prepared,
 		SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		runViewForTurn(request.Snapshot),
-		messages, request.Snapshot.Input.Text, current, present, storage.Revision, cleanupRevisionAtCompaction,
+		messages, contextMessages, request.Snapshot.Input.Text, current, present, storage.Revision, cleanupRevisionAtCompaction,
 		CompactionRequest{},
 		checkpointID, modelSnapshot, buildAfter, func(reason string, metrics CompactionMetrics) error {
 			if reason != "degraded_no_progress_latch" {

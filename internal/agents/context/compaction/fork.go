@@ -240,6 +240,10 @@ func EstimateForkPromptTokens(messages []*agent.Message, policy Policy) int {
 }
 
 func locateCompactionSourceInPrimary(primary, source []*agent.Message) ([]int, []string, bool) {
+	return locateCompactionSource(primary, source, sameProviderVisibleMessage)
+}
+
+func locateCompactionSource(primary, source []*agent.Message, sameMessage func(*agent.Message, *agent.Message) bool) ([]int, []string, bool) {
 	type sourceMatch struct {
 		message *agent.Message
 		locator string
@@ -268,7 +272,7 @@ func locateCompactionSourceInPrimary(primary, source []*agent.Message) ([]int, [
 	for start := len(primary) - (len(matches) - deltaFrom); start >= 0; start-- {
 		matched := true
 		for offset, match := range matches[deltaFrom:] {
-			if !sameProviderVisibleMessage(primary[start+offset], match.message) {
+			if !sameMessage(primary[start+offset], match.message) {
 				matched = false
 				break
 			}
@@ -280,7 +284,7 @@ func locateCompactionSourceInPrimary(primary, source []*agent.Message) ([]int, [
 		if deltaFrom == 1 {
 			checkpointPosition := -1
 			for index := start - 1; index >= 0; index-- {
-				if sameProviderVisibleMessage(primary[index], matches[0].message) {
+				if sameMessage(primary[index], matches[0].message) {
 					checkpointPosition = index
 					break
 				}

@@ -131,6 +131,11 @@ func (manager *denovaManager) Compact(
 	request.SourceMessages = toolresult.ApplyContextPolicy(
 		request.SourceMessages, manager.toolContextPolicy,
 	)
+	var err error
+	request.SourceMessages, err = projectCompactionSource(request, manager.toolContextPolicy)
+	if err != nil {
+		return agent.CompactionCheckpoint{}, err
+	}
 	return manager.delegate.Compact(ctx, request)
 }
 

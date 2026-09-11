@@ -22,6 +22,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 修复写作与游戏的上下文压缩：清理后的摘要来源保持一致，压缩后保留本轮工具结果，摘要生成期间支持取消与暂停恢复。
+- Fix Writing and Game context compaction to preserve cleaned summary sources and current-turn tool results, with cancellation and pause/resume during summarization.
+
 - 修复生成中途断流不能重试的问题，统一网络重试与输出修复次数，支持可取消退避，避免执行未接纳响应中的工具。
 - Retry interrupted model streams with one shared budget for network retries and output repair, cancellable backoff, and no execution of tools from unaccepted responses.
 

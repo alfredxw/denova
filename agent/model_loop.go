@@ -50,7 +50,7 @@ func (agent *modelToolLoop) callModelWithRetry(
 	currentCall := &ModelCall{
 		Model: initial.Model, Messages: cloneMessages(initial.Messages),
 		Options: append([]ModelOption(nil), initial.Options...), Streaming: initial.Streaming,
-		stablePrefixMessages: initial.stablePrefixMessages,
+		stablePrefixMessages: initial.stablePrefixMessages, providerMessages: cloneMessages(initial.providerMessages),
 	}
 	acceptedMessages := cloneMessages(initial.Messages)
 	stableOptions := initial.Snapshot().ResolvedOptions()
@@ -78,7 +78,7 @@ func (agent *modelToolLoop) callModelWithRetry(
 		func(attempt int) (modelAttemptResult, error) {
 			if attempt > 1 {
 				preparedCtx, preparedCall, preparedBase, prepareErr := agent.prepareRetryModelCall(
-					ctx, currentCall, initialContext, acceptedMessages, retryFeedback, stableOptions, attempt-1,
+					ctx, currentCall, initialContext, acceptedMessages, retryFeedback, stableOptions, attempt-1, cancel,
 				)
 				if prepareErr != nil {
 					return modelAttemptResult{}, prepareErr
@@ -98,9 +98,13 @@ func (agent *modelToolLoop) callModelWithRetry(
 					return modelAttemptResult{}, modelCtx.Err()
 				}
 			}
-			providerMessages, projectionErr := projectToolArtifactPaths(ctx, agent.artifacts, currentCall.Messages)
-			if projectionErr != nil {
-				return modelAttemptResult{}, projectionErr
+			providerMessages := currentCall.providerMessages
+			if providerMessages == nil {
+				var projectionErr error
+				providerMessages, projectionErr = projectToolArtifactPaths(ctx, agent.artifacts, currentCall.Messages)
+				if projectionErr != nil {
+					return modelAttemptResult{}, projectionErr
+				}
 			}
 			callCtx, stopCall := context.WithCancel(ctx)
 			stopPropagation := context.AfterFunc(modelCtx, stopCall)
@@ -172,79 +176,78 @@ func (agent *modelToolLoop) prepareRetryModelCall(
 	accepted, feedback []*Message,
 	stable *Options,
 	attempt int,
+	cancel *cancelControl,
 ) (context.Context, *ModelCall, []*Message, error) {
-	modelContext := &ModelContext{
-		Tools:     cloneToolInfos(initial.Tools),
-		Iteration: initial.Iteration, Attempt: attempt,
-		stablePrefixSeed: cloneMessages(initial.stablePrefixSeed),
+	step, err := agent.prepareRetryCall(ctx, current, initial, accepted, feedback, stable, attempt)
+	if err != nil {
+		return ctx, nil, nil, err
 	}
-	messages := append(cloneMessages(accepted), cloneMessages(feedback)...)
+	if agent.modelCallGate != nil {
+		replacement, gateErr := agent.applyModelCallGate(step.ctx, step.call, step.modelContext, cancel)
+		if gateErr != nil {
+			return ctx, nil, nil, fmt.Errorf("agent model call gate: %w", gateErr)
+		}
+		if replacement != nil {
+			step = replacement
+		}
+	}
+	base, err := removeRetryFeedbackIndexes(step.call.Messages, step.feedbackIndexes)
+	if err != nil {
+		return ctx, nil, nil, err
+	}
+	initial.stablePrefixSeed = cloneMessages(step.modelContext.stablePrefixSeed)
+	return step.ctx, step.call, base, nil
+}
+
+func (agent *modelToolLoop) prepareRetryCall(
+	ctx context.Context, current *ModelCall, initial *ModelContext,
+	accepted, feedback []*Message, stable *Options, attempt int,
+) (*preparedModelCall, error) {
+	entryCtx := ctx
+	modelContext := &ModelContext{
+		Tools: cloneToolInfos(initial.Tools), Iteration: initial.Iteration, Attempt: attempt,
+		stablePrefixSeed: cloneMessages(initial.stablePrefixSeed), instruction: initial.instruction,
+	}
 	options := append([]ModelOption(nil), current.Options...)
 	options = append(options, WithTools(modelContext.Tools))
 	if stable != nil && stable.SessionKey != "" {
 		options = append(options, WithSessionKey(stable.SessionKey))
 	}
-	for restartCount := 0; ; restartCount++ {
-		if restartCount > 1 {
-			return ctx, nil, nil, errors.New("model retry maintenance restarted more than once")
-		}
-		model, err := agent.modelForCall(ctx, modelContext)
-		if err != nil {
-			return ctx, nil, nil, err
-		}
-		call := &ModelCall{
-			Model: model, Messages: markedRetryMessages(accepted, feedback), Options: append([]ModelOption(nil), options...),
-			Streaming: current.Streaming,
-		}
-		modelContext.maintenanceMessages = cloneMessages(messages)
-		for _, middleware := range agent.middlewares {
-			ctx, call, err = middleware.BeforeModelCall(ctx, call, modelContext)
-			if err != nil {
-				return ctx, nil, nil, fmt.Errorf("before model call middleware: %w", err)
-			}
-			if ctx == nil {
-				return nil, nil, nil, errors.New("before model call middleware returned nil Go context")
-			}
-			if call == nil || call.Model == nil {
-				return ctx, nil, nil, errors.New("before model call middleware returned nil model call")
-			}
-		}
-		// Tool schemas and cache routing remain stable across failure retries
-		// and request-local output repair feedback.
-		call.Options = append(call.Options, WithTools(modelContext.Tools))
-		if stable != nil && stable.SessionKey != "" {
-			call.Options = append(call.Options, WithSessionKey(stable.SessionKey))
-		}
-		cleaned, feedbackIndexes, markerErr := stripRetryFeedbackMarkers(call.Messages, len(feedback))
-		if markerErr != nil {
-			return ctx, nil, nil, markerErr
-		}
-		call.Messages = cleaned
-		call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
-		if agent.modelCallGate != nil {
-			restart, gateErr := agent.modelCallGate(ctx, call, modelContext)
-			if gateErr != nil {
-				return ctx, nil, nil, fmt.Errorf("agent model call gate: %w", gateErr)
-			}
-			if restart != nil {
-				if len(restart.Messages) == 0 {
-					return ctx, nil, nil, errors.New("agent model call gate returned an empty restart context")
-				}
-				accepted = cloneMessages(restart.Messages)
-				stablePrefixMessages := min(max(0, restart.stablePrefixMessages), len(accepted))
-				modelContext.stablePrefixSeed = cloneMessages(accepted[:stablePrefixMessages])
-				messages = append(cloneMessages(accepted), cloneMessages(feedback)...)
-				ctx = contextWithMaintenanceCommitted(ctx)
-				continue
-			}
-		}
-		call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
-		projectedBase, splitErr := removeRetryFeedbackIndexes(call.Messages, feedbackIndexes)
-		if splitErr != nil {
-			return ctx, nil, nil, splitErr
-		}
-		return ctx, call, projectedBase, nil
+	model, err := agent.modelForCall(ctx, modelContext)
+	if err != nil {
+		return nil, err
 	}
+	call := &ModelCall{Model: model, Messages: markedRetryMessages(accepted, feedback), Options: options, Streaming: current.Streaming}
+	modelContext.maintenanceMessages = append(cloneMessages(accepted), cloneMessages(feedback)...)
+	ctx, call, err = agent.beforeModelCall(ctx, call, modelContext)
+	if err != nil {
+		return nil, err
+	}
+	// Retry feedback is request-local; schemas and cache routing remain stable.
+	call.Options = append(call.Options, WithTools(modelContext.Tools))
+	if stable != nil && stable.SessionKey != "" {
+		call.Options = append(call.Options, WithSessionKey(stable.SessionKey))
+	}
+	cleaned, feedbackIndexes, err := stripRetryFeedbackMarkers(call.Messages, len(feedback))
+	if err != nil {
+		return nil, err
+	}
+	call.Messages = cleaned
+	call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
+	modelContext.prepareCompaction = func(messages []*Message, prefix int) (*preparedModelCall, error) {
+		if modelContext.instruction != "" {
+			messages = append([]*Message{SystemMessage(modelContext.instruction)}, messages...)
+			prefix++
+		}
+		nextContext := *modelContext
+		nextContext.stablePrefixSeed = cloneMessages(messages[:min(prefix, len(messages))])
+		next, err := agent.prepareRetryCall(contextWithMaintenanceCommitted(entryCtx), call, &nextContext, messages, feedback, stable, attempt)
+		if err != nil {
+			return nil, err
+		}
+		return agent.freezeCompactionCall(next)
+	}
+	return &preparedModelCall{ctx: ctx, call: call, modelContext: modelContext, feedbackIndexes: feedbackIndexes}, nil
 }
 
 func authenticatedStablePrefixMessages(messages, seed []*Message) int {
