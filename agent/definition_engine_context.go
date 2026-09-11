@@ -258,7 +258,7 @@ func prepareDefinitionModelRequest(
 // replacement cannot extend the provider cache prefix across mutable history.
 func stableContextPrefixMessages(
 	fragments []ContextFragment,
-	compaction CompactionState,
+	compaction compactionRecord,
 	compactionPresent bool,
 ) int {
 	count := 0

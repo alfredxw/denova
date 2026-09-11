@@ -1,29 +1,14 @@
 package agent
 
 import (
-	"context"
 	"time"
 )
 
+// These types decode historical events from the latest release. Cleanup no
+// longer participates in Definition, model preparation, or Session recovery.
 const cleanupCapability = "agent.cleanup"
 
-// CleanupAction is the planner's recommendation at one exact model seam.
-// CleanupProject selects a reversible tool-result projection. CleanupCompact
-// asks the fixed Agent lifecycle to try checkpoint compaction instead; an
-// optional projection may still be applied transiently to recover a request
-// that already exceeds the provider window.
-type CleanupAction string
-
-const (
-	CleanupNone    CleanupAction = "none"
-	CleanupProject CleanupAction = "project"
-	CleanupCompact CleanupAction = "compact"
-)
-
-// CleanupReplacement is one deterministic substitution in the exact model
-// request supplied to CleanupManager.Plan. Agent resolves it back to the raw
-// transcript by occurrence, because provider tool-call IDs are only
-// batch-local and may be reused.
+// CleanupReplacement describes a substitution recorded by v0.4.5.
 type CleanupReplacement struct {
 	MessageIndex      int    `json:"message_index"`
 	ToolCallID        string `json:"tool_call_id"`
@@ -68,9 +53,8 @@ type CleanupMetrics struct {
 	RendererVersion            string  `json:"renderer_version,omitempty"`
 }
 
-// CleanupState is the Agent-owned durable projection over an immutable raw
-// transcript prefix. SourceHash authenticates Messages[:SourceEnd]; later
-// messages may be appended without invalidating the projection.
+// CleanupState is retained only to decode and display historical events.
+// New execution ignores this former independent projection.
 type CleanupState struct {
 	ID             string               `json:"id"`
 	Revision       uint64               `json:"revision"`
@@ -84,45 +68,6 @@ type CleanupState struct {
 	CreatedAt      time.Time            `json:"created_at"`
 	UpdatedAt      time.Time            `json:"updated_at"`
 	Removed        bool                 `json:"removed,omitempty"`
-}
-
-type CleanupPlanRequest struct {
-	Session SessionView
-	Run     RunView
-	// Messages is the raw durable transcript at the beginning of this cycle.
-	Messages []*Message
-	// ModelRequest is the exact provider-visible request after caller
-	// middleware and any already-active Cleanup/Compaction projection.
-	ModelRequest []*Message
-	// ModelInspection is the detached, non-executable metadata for that exact
-	// request. Cleanup is a pure planner and must not receive provider authority
-	// merely to inspect tool schemas or the authenticated stable-prefix bound.
-	ModelInspection ModelRequestInspection
-	Current         CleanupState
-	Present         bool
-	// CompactionAvailable lets one coordinated planner select the only durable
-	// maintenance mutation for this run without learning about persistence.
-	CompactionAvailable bool
-}
-
-type CleanupPlan struct {
-	Action       CleanupAction
-	Reason       string
-	Replacements []CleanupReplacement
-	Renderer     string
-	Metrics      CleanupMetrics
-	// FallbackToCompaction preserves the pressure decision even when planning
-	// or projection fails. Agent may then checkpoint at the same model seam;
-	// callers do not need persistence access to coordinate the fallback.
-	FallbackToCompaction bool
-}
-
-// CleanupManager is deliberately a pure planning boundary. Agent owns raw
-// history, target resolution, CAS, atomic final settlement, replay, and event
-// publication; custom managers only choose safe replacements and wording.
-type CleanupManager interface {
-	Identity() CapabilityIdentity
-	Plan(context.Context, CleanupPlanRequest) (CleanupPlan, error)
 }
 
 func cloneCleanupState(state *CleanupState) *CleanupState {

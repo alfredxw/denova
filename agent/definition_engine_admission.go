@@ -302,7 +302,7 @@ func (engine *definitionEngine) ResolveInteraction(
 	if err != nil {
 		return nil, err
 	}
-	currentCompaction, currentCompactionPresent, _, err := compactionStateFrom(request.Snapshot.Capabilities)
+	currentCompaction, currentCompactionPresent, err := compactionStateFrom(request.Snapshot.Capabilities)
 	if err != nil {
 		return nil, err
 	}

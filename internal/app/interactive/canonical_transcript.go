@@ -37,8 +37,7 @@ func (c *Conversation) canonicalMessagesForSnapshot(snapshot interactive.Snapsho
 	if err != nil {
 		return nil, err
 	}
-	// Product checkpoints and cleanup are Agent capabilities now. Import the
-	// complete unmodified canonical branch so future cleanup/compaction targets
+	// Import the complete canonical branch so incremental Compaction targets
 	// stable raw message indices instead of a second Story-store projection.
 	projection, err := buildModelContextProjection(
 		history, nil, snapshot,
@@ -56,7 +55,7 @@ func (c *Conversation) canonicalMessagesForSnapshot(snapshot interactive.Snapsho
 func canonicalToolContextPolicy(policy toolresult.ContextPolicy) toolresult.ContextPolicy {
 	// Product visibility preferences never erase canonical raw history. The
 	// model-call middleware applies Enabled on a per-request projection, while
-	// Cleanup/Compaction and remove/rebuild continue to address the complete
+	// Compaction and remove/rebuild continue to address the complete
 	// validated tool batch stored by public Agent.
 	policy.Enabled = true
 	return policy

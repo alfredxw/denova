@@ -11,8 +11,6 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
-	agentcontext "denova/internal/agents/context"
-	agentcompaction "denova/internal/agents/context/compaction"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolresult"
@@ -152,38 +150,6 @@ func (c *Conversation) InteractiveNarrativeReady() bool {
 	return c.turnProtocol.narrativeReady()
 }
 
-// ValidateCompactionProjection is the final safety boundary after
-// Game-specific stable context has been re-injected. A candidate that no
-// longer shrinks the true provider-visible context must not replace the live
-// model input or become a durable checkpoint.
-func ValidateCompactionProjection(
-	originalMessages []*agents.Message,
-	compactedMessages []*agents.Message,
-	result agentcompaction.Result,
-	tools []*agents.ToolInfo,
-) ([]*agents.Message, agentcompaction.Result, error) {
-	normalized, err := agentcontext.NormalizeModelContextMessages(compactedMessages)
-	if err != nil {
-		result.Triggered = false
-		result.SkippedReason = "protocol_invalid"
-		return originalMessages, result, err
-	}
-	compactedMessages = normalized
-	result.CandidateFingerprint, result.CandidateGeneration = agentcompaction.CandidateIdentity(compactedMessages, 0)
-	result = interactiveCompactionResultForMessages(result, compactedMessages, tools)
-	if result.RecoveryTargetTokens > 0 {
-		result.RecoveryBandMet = result.TokensAfter <= result.RecoveryTargetTokens
-		result.Degraded = !result.RecoveryBandMet && result.ContextWindowTokens > 0 &&
-			result.TokensAfter < agentcompaction.PublishLimit(result.ContextWindowTokens, result.Threshold)
-	}
-	if err := agentcompaction.Validate(result); err != nil {
-		result.Triggered = false
-		result.SkippedReason = "no_progress"
-		return originalMessages, result, err
-	}
-	return compactedMessages, result, nil
-}
-
 func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.ModelContextMessage, bool) {
 	if msg == nil {
 		return interactive.ModelContextMessage{}, false
@@ -285,41 +251,6 @@ func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []
 		})
 	}
 	return result
-}
-
-func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionProjection) ([]*agents.Message, string) {
-	return interactiveCompactionWindowSource(turns, 0, compaction)
-}
-
-func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionProjection) ([]*agents.Message, string) {
-	sourceStart := 0
-	existingCheckpoint := ""
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		existingCheckpoint = compaction.Summary
-		sourceStart = compaction.SourceTurnCount - turnStart
-		if sourceStart < 0 {
-			sourceStart = 0
-		}
-		if sourceStart > len(turns) {
-			sourceStart = len(turns)
-		}
-	}
-	return interactiveCompactionTurnMessages(turns[sourceStart:]), existingCheckpoint
-}
-
-func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agents.Message {
-	messages := make([]*agents.Message, 0, len(turns)*2)
-	for _, turn := range turns {
-		source := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)
-		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, agents.UserMessage(source+"\n"+turn.User))
-		}
-		messages = append(messages, settledTurnToolContextMessages(turn.ModelContextMessages)...)
-		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, agents.AssistantMessage(source+"\n"+turn.Narrative, nil))
-		}
-	}
-	return messages
 }
 
 func (c *Conversation) AppendAssistant(content string) error {

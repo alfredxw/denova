@@ -167,7 +167,6 @@ type PrepareRequest struct {
 	BehaviorKey   string
 	HostData      *HostData
 	Compaction    *CompactionState
-	Cleanup       *CleanupState
 }
 
 // Source prepares a complete immutable Definition for one cycle. CanonicalInput
@@ -231,7 +230,6 @@ type Definition struct {
 	Artifacts   ToolArtifactStorage
 	Context     ContextSource
 	Goal        GoalManager
-	Cleanup     CleanupManager
 	Compaction  CompactionManager
 	Permission  PermissionPolicy
 	Interaction InteractionPolicy
@@ -339,11 +337,6 @@ func validateDefinition(definition Definition) error {
 	if definition.Compaction != nil && definition.Compaction.SummaryLimitBytes() <= 0 {
 		return errors.New("agent Definition Compaction summary limit must be positive")
 	}
-	if definition.Cleanup != nil {
-		if err := definition.Cleanup.Identity().validate("Cleanup"); err != nil {
-			return err
-		}
-	}
 	if definition.ResultProcessor != nil {
 		if err := definition.ResultProcessor.Identity().validate("ToolResultProcessor"); err != nil {
 			return err
@@ -377,7 +370,6 @@ func initializeDefinition(ctx context.Context, definition Definition) (Definitio
 		{name: "ToolArtifactStorage", value: definition.Artifacts},
 		{name: "Context", value: definition.Context},
 		{name: "Goal", value: definition.Goal},
-		{name: "Cleanup", value: definition.Cleanup},
 		{name: "Compaction", value: definition.Compaction},
 		{name: "Permission", value: definition.Permission},
 		{name: "Interaction", value: definition.Interaction},
@@ -508,7 +500,7 @@ func definitionBehaviorIdentity(definition Definition) (string, error) {
 		Instructions: definition.Instructions, Execution: identityOfExecution(definition.Execution),
 		Toolset: identityOfToolset(definition.Tools), ResultProcessor: identityOfToolResultProcessor(definition.ResultProcessor),
 		Artifacts: identityOfToolArtifactStorage(definition.Artifacts), Context: identityOfContext(definition.Context),
-		Goal: identityOfGoal(definition.Goal), Cleanup: identityOfCleanup(definition.Cleanup), Compaction: identityOfCompaction(definition.Compaction),
+		Goal: identityOfGoal(definition.Goal), Compaction: identityOfCompaction(definition.Compaction),
 		Permission: identityOfPermission(definition.Permission), Interaction: identityOfInteraction(definition.Interaction),
 		Canonical:   identityOfCanonical(definition.Canonical),
 		Effects:     identityOfEffects(definition.Effects),
@@ -626,7 +618,6 @@ type definitionIdentity struct {
 	Artifacts       CapabilityIdentity
 	Context         CapabilityIdentity
 	Goal            CapabilityIdentity
-	Cleanup         CapabilityIdentity
 	Compaction      CapabilityIdentity
 	Permission      CapabilityIdentity
 	Interaction     CapabilityIdentity
@@ -731,13 +722,6 @@ func identityOfGoal(manager GoalManager) CapabilityIdentity {
 func identityOfCompaction(manager CompactionManager) CapabilityIdentity {
 	if manager == nil {
 		return CapabilityIdentity{Kind: "compaction.none", Version: 1}
-	}
-	return manager.Identity()
-}
-
-func identityOfCleanup(manager CleanupManager) CapabilityIdentity {
-	if manager == nil {
-		return CapabilityIdentity{Kind: "cleanup.none", Version: 1}
 	}
 	return manager.Identity()
 }

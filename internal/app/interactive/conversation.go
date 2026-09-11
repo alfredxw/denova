@@ -55,7 +55,7 @@ type Conversation struct {
 	acceptedPlayerInputID       string
 	pendingDomainCommit         *interactive.DomainCommitIntent
 	lastDomainReceipt           *interactive.DomainCommitReceipt
-	agentCompaction             *interactive.ContextCompactionProjection
+	agentCompaction             *agent.CompactionState
 	modelHistoryKey             string
 	modelHistory                *interactive.StoryModelHistory
 	openingStateSchemaDraft     *interactive.ActorStateSchemaBatchDraft
@@ -489,7 +489,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	if err != nil {
 		return agentcontext.ModelContextResult{}, err
 	}
-	turnHistory := buildInteractiveModelVisibleHistory(modelHistory, activeCompaction)
+	turnHistory := interactiveTurnHistory{Turns: append([]interactive.StoryModelTurn(nil), modelHistory.Turns...)}
 	checkpointSummary := ""
 	if activeCompaction != nil {
 		checkpointSummary = strings.TrimSpace(activeCompaction.Summary)
@@ -539,7 +539,6 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		StoryRuleCatalog:          ruleSummary,
 		ActorState:                actorStateRuntime,
 		StateSchemaInitialization: stateSchemaInitialization,
-		PreviousTurnsSummary:      turnHistory.PreviousSummary,
 		LoreContext:               loreRuntime,
 	})
 	cycleIdentity := c.AgentCycleIdentitySnapshot()

@@ -28,11 +28,11 @@ func (structuralTestCompaction) Identity() agent.CapabilityIdentity {
 func (structuralTestCompaction) SummaryLimitBytes() int { return 64 << 10 }
 
 func (structuralTestCompaction) Plan(_ context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
-	if !request.Force || len(request.Messages) <= 2 {
+	if !request.Force || len(request.Groups) == 0 {
 		return agent.CompactionPlan{Action: agent.CompactionNone}, nil
 	}
 	return agent.CompactionPlan{
-		Action: agent.CompactionCreate, SourceTo: len(request.Messages) - 2,
+		Action: agent.CompactionCreate, GroupCount: len(request.Groups),
 		Validation: agent.CompactionValidationPolicy{HardLimitBytes: 4 << 20},
 	}, nil
 }
@@ -46,7 +46,7 @@ func (manager structuralTestCompaction) Compact(_ context.Context, request agent
 	if !found {
 		manager.t.Fatal("structural preparation omitted delegated tool schemas")
 	}
-	return agent.CompactionCheckpoint{Summary: "Preserved writing history.", TokenEstimate: 6}, nil
+	return agent.CompactionCheckpoint{Summary: "Preserved writing history."}, nil
 }
 
 func TestWritingStructuralOperationsRebuildCanonicalSession(t *testing.T) {

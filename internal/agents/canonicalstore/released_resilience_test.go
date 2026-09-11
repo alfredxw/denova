@@ -81,7 +81,22 @@ func TestReleasedLifecycleReadOnlyOpenAndBackedUpUpgrade(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := log.Append(ctx, 0, records...); err != nil {
+			fixtureRecords := append([]agentsession.Record(nil), records...)
+			state := struct {
+				ID            string          `json:"id"`
+				Revision      uint64          `json:"revision"`
+				Summary       string          `json:"summary"`
+				ReplacementTo int             `json:"replacement_to"`
+				Version       uint16          `json:"version,omitempty"`
+				ContextData   *agent.HostData `json:"context_data,omitempty"`
+			}{ID: "released-checkpoint", Revision: 1, Summary: "Released summary", ReplacementTo: 2}
+			if kind == agentrun.AgentKindInteractiveStory {
+				state.ContextData = &agent.HostData{Type: "denova.interactive.compaction", Version: 1, Data: json.RawMessage(`{"source_turn_count":7}`)}
+			}
+			stateBytes, _ := json.Marshal(state)
+			capabilityBytes, _ := json.Marshal(map[string]any{"capability": agent.CompactionCapability, "state": json.RawMessage(stateBytes)})
+			fixtureRecords = append(fixtureRecords, agentsession.Record{Kind: "session.capability_set", Version: 1, Data: capabilityBytes})
+			if _, err := log.Append(ctx, 0, fixtureRecords...); err != nil {
 				t.Fatal(err)
 			}
 			if err := log.Close(); err != nil {
@@ -108,6 +123,9 @@ func TestReleasedLifecycleReadOnlyOpenAndBackedUpUpgrade(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if (snapshot.Compaction == nil) != (kind == agentrun.AgentKindInteractiveStory) {
+				t.Fatalf("released compaction projection=%+v kind=%s", snapshot.Compaction, kind)
+			}
 			statuses := map[string]agent.ResultStatus{}
 			for _, run := range snapshot.RecentRuns {
 				statuses[run.ID] = run.Status
@@ -131,6 +149,36 @@ func TestReleasedLifecycleReadOnlyOpenAndBackedUpUpgrade(t *testing.T) {
 			}
 			if err := owner.Close(ctx); err != nil {
 				t.Fatal(err)
+			}
+			upgradedLog, err := store.Open(ctx, key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var revision agentsession.Revision
+			if _, err := upgradedLog.Replay(ctx, func(record agentsession.Record) error { revision = record.Revision; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			beforeCheckpoint, err := os.ReadFile(journalPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			state.Version = 2
+			state.ContextData = nil
+			state.Revision++
+			stateBytes, _ = json.Marshal(state)
+			capabilityBytes, _ = json.Marshal(map[string]any{"capability": agent.CompactionCapability, "state": json.RawMessage(stateBytes)})
+			for range 2 {
+				revision, err = upgradedLog.Append(ctx, revision, agentsession.Record{Kind: "session.capability_set", Version: 1, Data: capabilityBytes})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := upgradedLog.Close(); err != nil {
+				t.Fatal(err)
+			}
+			backup, err = os.ReadFile(journalPath + ".pre-incremental-compaction-v2.bak")
+			if err != nil || !bytes.Equal(backup, beforeCheckpoint) {
+				t.Fatalf("incremental checkpoint backup changed: %v", err)
 			}
 			indexPath := journalPath[:len(journalPath)-len(".jsonl")] + ".idx.json"
 			if err := os.Remove(indexPath); err != nil && !os.IsNotExist(err) {

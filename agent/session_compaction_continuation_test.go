@@ -117,7 +117,7 @@ func testCompactionContinuation(t *testing.T, failure string) {
 	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{
 			Capability: agent.CapabilityIdentity{Kind: "test.continuation-summary", Version: 1},
-			Func: func(ctx context.Context, request compaction.SummaryRequest) (compaction.Summary, error) {
+			Func: func(ctx context.Context, request compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
 				summaryCalls++
 				for _, message := range request.Messages {
 					if strings.Contains(message.Content, continuationEvidence) {
@@ -127,9 +127,9 @@ func testCompactionContinuation(t *testing.T, failure string) {
 				if failure == "abort" || failure == "resume" && summaryCalls == 1 {
 					close(summaryStarted)
 					<-ctx.Done()
-					return compaction.Summary{}, ctx.Err()
+					return agent.CompactionCheckpoint{}, ctx.Err()
 				}
-				return compaction.Summary{Content: "Old history checkpoint", TokenEstimate: 6}, nil
+				return agent.CompactionCheckpoint{Summary: "Old history checkpoint"}, nil
 			},
 		},
 		TriggerBytes: 12_000, KeepRecentBytes: 100, HardLimitBytes: 1 << 20, SummaryLimitBytes: 8192,

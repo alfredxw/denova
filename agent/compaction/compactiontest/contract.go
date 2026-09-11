@@ -33,7 +33,7 @@ func RunManagerContract(t *testing.T, factory Factory) {
 		Messages: modelRequest, Options: []agent.ModelOption{agent.WithSessionKey("contract-session")}, Streaming: true,
 	}).Snapshot()
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Messages: clone(messages), ModelRequest: clone(modelRequest), ModelSnapshot: modelSnapshot, Force: true,
+		Groups: []agent.CompactionGroup{{Messages: clone(messages[:2])}}, ModelSnapshot: modelSnapshot, Force: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -42,26 +42,26 @@ func RunManagerContract(t *testing.T, factory Factory) {
 	case agent.CompactionNone:
 		return
 	case agent.CompactionCreate:
-		if plan.SourceFrom < 0 || plan.SourceTo <= plan.SourceFrom || plan.SourceTo > len(messages) {
+		if plan.GroupCount != 1 {
 			t.Fatalf("plan = %#v", plan)
 		}
 	default:
 		t.Fatalf("unsupported action %q", plan.Action)
 	}
-	sourceMessages := clone(messages[plan.SourceFrom:plan.SourceTo])
+	sourceMessages := clone(messages[:2])
 	probe := &contractManager{CompactionManager: manager}
 	checkpoint, err := probe.Compact(context.Background(), agent.CompactionCompactRequest{
-		Messages: clone(messages), ModelRequest: clone(modelRequest), SourceMessages: sourceMessages,
-		ModelSnapshot: modelSnapshot, Plan: plan,
+		Messages:      sourceMessages,
+		ModelSnapshot: modelSnapshot,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(checkpoint.Summary) == "" || checkpoint.TokenEstimate < 0 || len(checkpoint.Summary) > manager.SummaryLimitBytes() {
+	if strings.TrimSpace(checkpoint.Summary) == "" || len(checkpoint.Summary) > manager.SummaryLimitBytes() {
 		t.Fatalf("checkpoint = %#v", checkpoint)
 	}
 	if probe.request.ModelSnapshot != modelSnapshot ||
-		!reflect.DeepEqual(probe.request.SourceMessages, sourceMessages) {
+		!reflect.DeepEqual(probe.request.Messages, sourceMessages) {
 		t.Fatalf("Compaction contract lost exact ModelSnapshot or SourceMessages: %#v", probe.request)
 	}
 }

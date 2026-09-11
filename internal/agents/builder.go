@@ -17,7 +17,6 @@ import (
 	"denova/internal/agents/agentprofile"
 	agentchat "denova/internal/agents/chat"
 	agentcompaction "denova/internal/agents/context/compaction"
-	agentconversation "denova/internal/agents/conversation"
 	agentdelegation "denova/internal/agents/delegation"
 	agentinteractive "denova/internal/agents/interactive"
 	agentlifecycle "denova/internal/agents/lifecycle"
@@ -303,7 +302,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 
 	middlewares := identifyDenovaMiddlewares(spec.Kind, cfg, assembly.Middlewares)
-	compaction, err := agentcompaction.NewAgentManager(cfg, spec.Kind, chatModel, modelIdentity)
+	compaction, err := agentcompaction.NewAgentManager(cfg, spec.Kind)
 	if err != nil {
 		return agentDefinitionAssembly{}, fmt.Errorf("create Agent Compaction manager kind=%s: %w", spec.Kind, err)
 	}
@@ -367,10 +366,8 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		Middlewares:   middlewares,
 		ResultProcessor: agenttoolresult.Standard(agenttoolresult.Policy{
 			MaxBytes:            toolresult.LimitBytes(cfg),
-			EagerMinTokens:      config.DefaultToolResultEagerMinTokens,
 			ContextWindowTokens: config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,
 		}),
-		Cleanup:    agentconversation.NewAgentCleanupManager(cfg, spec.Kind),
 		Compaction: compaction,
 		Goal:       goalManager,
 		Permission: permission,
@@ -617,9 +614,7 @@ type childDefinitionSpec struct {
 }
 
 func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentdelegation.Child, error) {
-	compaction, err := agentcompaction.NewAgentManagerForModel(
-		cfg, spec.ParentKind, spec.ModelContextWindow, spec.Model, spec.ModelIdentity,
-	)
+	compaction, err := agentcompaction.NewAgentManagerForModel(cfg, spec.ParentKind, spec.ModelContextWindow)
 	if err != nil {
 		return agentdelegation.Child{}, err
 	}
@@ -650,10 +645,9 @@ func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentde
 		Instructions: spec.Composition.Instruction(), Context: spec.Context, Tools: tools,
 		Middlewares: identifyDenovaMiddlewares(spec.ParentKind+".child."+spec.Name, cfg, spec.Middlewares),
 		ResultProcessor: agenttoolresult.Standard(agenttoolresult.Policy{
-			MaxBytes: toolresult.LimitBytes(cfg), EagerMinTokens: config.DefaultToolResultEagerMinTokens,
+			MaxBytes:            toolresult.LimitBytes(cfg),
 			ContextWindowTokens: spec.ModelContextWindow,
 		}),
-		Cleanup: agentconversation.NewAgentCleanupManagerForModel(cfg, spec.ParentKind, spec.ModelContextWindow),
 		// Goals are a root product workflow. Delegated Agents keep isolated
 		// task transcripts and must not create or continue a parent Goal.
 		Compaction: compaction, Permission: permission,

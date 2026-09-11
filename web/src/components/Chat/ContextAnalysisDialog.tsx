@@ -115,7 +115,7 @@ function ContextUsageSummary({ analysis }: { analysis: ContextAnalysis }) {
 		},
     { label: t('chat.contextAnalysis.contextWindow'), value: analysis.context_window_tokens ? formatNumber(analysis.context_window_tokens) : t('common.notSet') },
     { label: t('chat.contextAnalysis.contextUsage'), value: analysis.context_window_tokens ? `${usage}%` : t('common.notSet') },
-    { label: t('chat.contextAnalysis.compaction'), value: analysis.compaction_active ? t('chat.contextAnalysis.compactionActive', { epoch: analysis.compaction_epoch ?? 0 }) : t('chat.contextAnalysis.compactionInactive') },
+    { label: t('chat.contextAnalysis.compaction'), value: analysis.compaction_active ? t('chat.contextAnalysis.compactionActive', { revision: analysis.compaction_revision ?? 0 }) : t('chat.contextAnalysis.compactionInactive') },
     { label: t('chat.contextAnalysis.wouldCompact'), value: analysis.would_compact ? t('common.yes') : t('common.no') },
   ]
   return (
@@ -463,14 +463,10 @@ function isCompactionPart(part: ContextAnalysisPart) {
 }
 
 function buildCompactionMeta(t: ReturnType<typeof useTranslation>['t'], compaction: ContextAnalysisCompaction) {
-  const source = compaction.source_turn_count
-    ? t('chat.contextAnalysis.sourceTurns', { count: compaction.source_turn_count })
-    : t('chat.contextAnalysis.sourceMessages', { count: compaction.source_message_count ?? 0 })
-  const ratio = compaction.target_ratio ? Math.round(compaction.target_ratio * 100) : 0
+  const source = t('chat.contextAnalysis.sourceMessages', { count: compaction.source_message_count ?? 0 })
   return t('chat.contextAnalysis.compactionMeta', {
     source,
     before: formatNumber(compaction.tokens_before ?? 0),
     after: formatNumber(compaction.tokens_after ?? 0),
-    ratio,
   })
 }

@@ -75,11 +75,15 @@ func main() {
 额外导入 `github.com/alfredxw/denova/agent/tools`，以及别名为 `sessionfile` 的 `github.com/alfredxw/denova/agent/session/file`：
 
 ```go
+store, err := sessionfile.New("./data/sessions")
+if err != nil {
+	log.Fatal(err)
+}
 assistant, err := agent.New(ctx, agent.Definition{
 	Model:        model,
 	Instructions: "Help the user write. Ask when required information is missing.",
 	Tools:        tools.Ask(),
-}, agent.WithSessionStore(sessionfile.New("./data/sessions")))
+}, agent.WithSessionStore(store))
 if err != nil {
 	log.Fatal(err)
 }
@@ -193,13 +197,17 @@ fmt.Println(resumed.ID())
 
 下面是**接入示例**，使用应用已有的依赖：
 
-- `projectRoot` 是项目目录，`model` 沿用示例一，`contextTokens` 是模型的实际上下文容量（本例需大于预留的 16,000 tokens）。
+- `projectRoot` 是项目目录，`model` 沿用示例一，`contextTokens` 是模型的实际上下文容量。
 - `projectContext` 提供项目规则和状态；`skillCatalog` 列出可用 Skill，`skillLoader` 加载其内容。
-- `commandRunner` 执行命令；`taskExecutor` 负责子任务；`artifactStorage` 保存完整工具输出；`summarizer` 生成会话摘要。它们的接口与现成实现见代码后的链接。
+- `commandRunner` 执行命令；`taskExecutor` 负责子任务；`artifactStorage` 保存完整工具输出。它们的接口与现成实现见代码后的链接。
 
-额外导入 `agent` 模块下的 `cleanup`、`compaction`、`goal`、`permission`、`toolresult` 包，以及示例二的 `tools` 和 `sessionfile`。
+额外导入 `agent` 模块下的 `compaction`、`goal`、`permission`、`toolresult` 包，以及示例二的 `tools` 和 `sessionfile`。
 
 ```go
+store, err := sessionfile.New("./data/sessions")
+if err != nil {
+	log.Fatal(err)
+}
 assistant, err := agent.New(ctx, agent.Definition{
 	Model: model,
 	Instructions: "Check whether the project documentation matches the code. " +
@@ -223,17 +231,11 @@ assistant, err := agent.New(ctx, agent.Definition{
 	ResultProcessor: toolresult.Standard(toolresult.Policy{
 		MaxBytes: 128 << 10, ContextWindowTokens: contextTokens,
 	}),
-	Cleanup: cleanup.Standard(cleanup.StandardConfig{
-		ContextWindowTokens: contextTokens, ReservedTokens: 16_000,
-		CleanupThreshold: 0.70, CompactionThreshold: 0.85,
-	}),
 	Compaction: compaction.Standard(compaction.StandardConfig{
-		Summarizer:          summarizer,
-		ContextWindowTokens: contextTokens, ReservedTokens: 16_000,
-		HardLimitBytes: 4 << 20, SummaryLimitBytes: 256 << 10,
+		ContextWindowTokens: contextTokens,
 	}),
 	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
-}, agent.WithSessionStore(sessionfile.New("./data/sessions")))
+}, agent.WithSessionStore(store))
 if err != nil {
 	log.Fatal(err)
 }
@@ -262,7 +264,7 @@ fmt.Println(run.ID())
 1. **获取证据**：Context 提供项目背景；Workspace 读取、搜索文件；Skills 加载审阅方法。
 2. **推进任务**：Todo 记录步骤，Tasks 委派审阅，Shell 执行检查，Goal 保存完成目标。
 3. **与用户协作**：Ask 补齐信息；Permission 决定哪些工具操作需要确认，回答仍走 `Session.Respond`。
-4. **处理长任务**：Artifacts 保存完整结果，ResultProcessor 限制单个结果进入上下文的大小，Cleanup 和 Compaction 控制累计上下文。
+4. **处理长任务**：Artifacts 保存完整结果，ResultProcessor 限制单项及整批工具输出，单一 Compaction checkpoint 合并已完成步骤；一个用户请求内可多次压缩，同时保留当前指令和最近原始结果。
 5. **保留进度**：Session Store 保存会话和恢复记录，用户可以稍后继续。
 
 **需要自己接入的部分，从这些接口开始：**
@@ -274,8 +276,35 @@ fmt.Println(run.ID())
 | 命令执行 | [`tools.CommandRunner`](tools/shell_tools.go)；本地可用 [`NewLocalCommandRunner`](tools/shell_local_runner.go) |
 | 子任务 | [`tools.TaskExecutor`](tools/task_tool.go)；本地可用 [`NewLocalTasks`](tools/task_local_executor.go) |
 | 大结果存储 | [`agent.ToolArtifactStorage`](tool_artifact.go) |
-| 摘要 | [`compaction.Summarizer`](compaction/standard.go)；可用 [`ModelSummarizer`](compaction/model_summarizer.go) |
+| 压缩定制（可选） | 默认使用当前模型；可替换 [`compaction.Summarizer`](compaction/standard.go)，或实现 [`agent.CompactionManager`](compaction.go) |
 
 换成写作、研究或客服场景，主要替换 Instructions、Context、Skills 和 Tools；不需要的能力直接移除。需要写文件时，把 Workspace 改为 `WorkspaceReadWrite` 并提供 `MutationAdapter`。工作区只读不限制 Shell，命令权限仍需由执行器和权限策略控制。
 
 简单场景使用上面的静态 Definition 即可。确实需要按会话动态选择模型和能力时，再实现 [`Source`](definition.go)；已有产品会话存储时，再接入 [`CanonicalAdapter`](canonical.go) 和 [`session.Store`](session/store.go)，让产品历史和 Agent 恢复记录共享同一份 journal。
+
+### 压缩的三个接入级别
+
+```go
+// Default planning and summarization use the active Agent model snapshot.
+Compaction: compaction.Standard(compaction.StandardConfig{ContextWindowTokens: 128_000})
+
+// Customize summary generation while retaining the standard policy.
+Compaction: compaction.Standard(compaction.StandardConfig{
+    ContextWindowTokens: 128_000,
+    Summarizer: compaction.SummarizerFunc{
+        Capability: agent.CapabilityIdentity{Kind: "app.summary", Version: 1},
+        Func: func(ctx context.Context, input compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+            return summarizeSelectedSource(ctx, input.Messages, input.Current)
+        },
+    },
+})
+
+// Customize triggering, selection and generation through the same runtime.
+Compaction: myCompactionManager
+```
+
+`Standard` 默认保留最近的完整交互，使用当前模型快照生成摘要；容量不足时按顺序分批处理，模型失败不会偷偷切换执行方式。`Prompt` 可增加领域侧重点；`ModelSummarizer` 可指定替代模型，替代模型需声明稳定的 Identity。
+
+自定义 Manager 的 `Plan` 接收完整交互组和最终模型快照，返回需要覆盖的前缀 `GroupCount`。`Compact` 只接收旧 checkpoint 与新选材料。两级扩展都返回 `CompactionCheckpoint{Summary, ContextData}`；ContextData 为可选的类型化、版本化 JSON（最多 8 MiB），随摘要原子保存，不自动注入模型。
+
+Agent 统一保护当前用户要求、最近完整工具组及未完成步骤，检查最终请求容量和实际压缩进展，并负责 journal、revision、取消和恢复。应用通过 `Session.Snapshot().Compaction` 读取摘要视图，详细数据位于 `Inspect().CompactionMetrics` 和压缩事件。运行时返回的视图可调用 `Project` 检查有效历史；序列化后的展示数据不携带历史覆盖权限。

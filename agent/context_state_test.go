@@ -9,7 +9,7 @@ func TestContextStateEmitsOnlyChangesAndRemoval(t *testing.T) {
 	fragment := testContextStateFragment("revision-1", "workspace v1")
 	raw := []*Message{UserMessage("earlier"), AssistantMessage("answer", nil)}
 
-	first, snapshot, err := advanceContextState(raw, []ContextFragment{fragment}, contextStateSnapshot{}, CompactionState{}, false)
+	first, snapshot, err := advanceContextState(raw, []ContextFragment{fragment}, contextStateSnapshot{}, compactionRecord{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,7 @@ func TestContextStateEmitsOnlyChangesAndRemoval(t *testing.T) {
 	}
 	raw = append(raw, first...)
 
-	unchanged, stable, err := advanceContextState(raw, []ContextFragment{fragment}, snapshot, CompactionState{}, false)
+	unchanged, stable, err := advanceContextState(raw, []ContextFragment{fragment}, snapshot, compactionRecord{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestContextStateEmitsOnlyChangesAndRemoval(t *testing.T) {
 
 	fragment.Revision = "revision-2"
 	fragment.Content = "workspace v2"
-	updated, snapshot, err := advanceContextState(raw, []ContextFragment{fragment}, stable, CompactionState{}, false)
+	updated, snapshot, err := advanceContextState(raw, []ContextFragment{fragment}, stable, compactionRecord{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestContextStateEmitsOnlyChangesAndRemoval(t *testing.T) {
 	}
 	raw = append(raw, updated...)
 
-	removed, snapshot, err := advanceContextState(raw, nil, snapshot, CompactionState{}, false)
+	removed, snapshot, err := advanceContextState(raw, nil, snapshot, compactionRecord{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestContextStateEmitsOnlyChangesAndRemoval(t *testing.T) {
 		t.Fatalf("Context State removal = messages=%#v state=%#v", removed, snapshot)
 	}
 	raw = append(raw, removed...)
-	removalHidden := CompactionState{ReplacementFrom: 0, ReplacementTo: len(raw)}
+	removalHidden := compactionRecord{ReplacementFrom: 0, ReplacementTo: len(raw)}
 	restoredRemoval, restoredSnapshot, err := advanceContextState(raw, nil, snapshot, removalHidden, true)
 	if err != nil {
 		t.Fatal(err)
@@ -61,13 +61,13 @@ func TestContextStateEmitsOnlyChangesAndRemoval(t *testing.T) {
 
 func TestContextStateRehydratesOnlyWhenLatestUpdateIsCompacted(t *testing.T) {
 	fragment := testContextStateFragment("revision-1", "current workspace")
-	initial, snapshot, err := advanceContextState(nil, []ContextFragment{fragment}, contextStateSnapshot{}, CompactionState{}, false)
+	initial, snapshot, err := advanceContextState(nil, []ContextFragment{fragment}, contextStateSnapshot{}, compactionRecord{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw := append(initial, UserMessage("request"), AssistantMessage("answer", nil))
 
-	hidden := CompactionState{ReplacementFrom: 0, ReplacementTo: 2}
+	hidden := compactionRecord{ReplacementFrom: 0, ReplacementTo: 2}
 	rehydrated, next, err := advanceContextState(raw, []ContextFragment{fragment}, snapshot, hidden, true)
 	if err != nil {
 		t.Fatal(err)

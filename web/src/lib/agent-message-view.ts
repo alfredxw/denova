@@ -663,7 +663,7 @@ function contextFields(data: Record<string, unknown>): Partial<ChatMessage> {
     context_window_tokens: readNumber(data.context_window_tokens),
     threshold: readNumber(data.threshold),
     target_ratio: readNumber(data.target_ratio),
-    epoch: readNumber(data.epoch),
+    revision: readNumber(data.revision),
     source_message_count: readNumber(data.source_message_count),
     message_count_before: readNumber(data.message_count_before),
     message_count_after: readNumber(data.message_count_after),

@@ -64,7 +64,7 @@ func TestGameManualCompactionRecoversHistoryAboveProviderTokenLimit(t *testing.T
 	}
 	model := &guardedGameCheckpointModel{}
 	identity := agent.CapabilityIdentity{Kind: "test.guarded-game-checkpoint", Version: 1}
-	manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 400_000, model, identity)
+	manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 400_000)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -239,8 +239,16 @@ func (log *logFile) Append(ctx context.Context, expected session.Revision, recor
 		upgrading = upgrading || isResilienceRecord(record.Kind)
 	}
 	if upgrading && !log.resilienceFormat && log.revision > 0 {
-		if err := backupReleasedTranscript(log.path); err != nil {
+		if err := backupReleasedTranscript(log.path, "resilience-v1"); err != nil {
 			return log.revision, err
+		}
+	}
+	for _, record := range records {
+		if log.revision > 0 && usesIncrementalCompaction(record) {
+			if err := backupReleasedTranscript(log.path, "incremental-compaction-v2"); err != nil {
+				return log.revision, err
+			}
+			break
 		}
 	}
 	committed := make([]session.Record, len(records))

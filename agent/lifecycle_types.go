@@ -307,6 +307,7 @@ type CompactionStarted struct {
 func (CompactionStarted) eventPayload() {}
 
 type CompactionCommitted struct {
+	Metrics   CompactionMetrics
 	State     CompactionState
 	Automatic bool
 }
@@ -454,7 +455,6 @@ type SessionSnapshot struct {
 	RecentRuns          []RunSummary
 	Goal                *GoalState
 	Todo                *TodoState
-	Cleanup             *CleanupState
 	Compaction          *CompactionState
 	ClearRevision       uint64
 	PendingInteractions []InteractionRequest

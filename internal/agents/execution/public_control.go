@@ -129,9 +129,8 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 	if snapshot.Compaction != nil {
 		projected := &agentrun.AgentCompactionState{
 			ID: snapshot.Compaction.ID, Revision: snapshot.Compaction.Revision,
-			Summary: snapshot.Compaction.Summary, TokenEstimate: snapshot.Compaction.TokenEstimate,
-			ReplacementFrom: snapshot.Compaction.ReplacementFrom,
-			ReplacementTo:   snapshot.Compaction.ReplacementTo,
+			Summary: snapshot.Compaction.Summary, TokensBefore: snapshot.Compaction.TokensBefore, TokensAfter: snapshot.Compaction.TokensAfter,
+			SourceMessageCount: snapshot.Compaction.SourceMessageCount,
 		}
 		if snapshot.Compaction.ContextData != nil {
 			projected.ContextData = &agentrun.RestoreData{
@@ -140,11 +139,6 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 			}
 		}
 		status.Compaction = projected
-	}
-	if snapshot.Cleanup != nil {
-		projected := *snapshot.Cleanup
-		projected.Replacements = append([]agent.CleanupReplacement(nil), snapshot.Cleanup.Replacements...)
-		status.Cleanup = &projected
 	}
 	status.PendingInteractions = append([]agent.InteractionRequest(nil), snapshot.PendingInteractions...)
 	return status

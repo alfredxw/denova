@@ -22,7 +22,7 @@ import (
 )
 
 func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
-	for _, scenario := range []string{"inspection", "restart", "cleanup_restart"} {
+	for _, scenario := range []string{"inspection", "restart"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx := context.Background()
 			workspace, dataDir := t.TempDir(), t.TempDir()
@@ -41,14 +41,6 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			rich := strings.Repeat("Important historical evidence. ", 1000)
-			if scenario == "cleanup_restart" {
-				if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
-					BranchID: "main", User: "Follow the archive clues",
-					Narrative: strings.TrimSpace(strings.Repeat("The archive leads to an old bridge. ", 2000)),
-				}); err != nil {
-					t.Fatal(err)
-				}
-			}
 			appendPublicGameToolTurn(t, store, story.ID, rich)
 			newRuntime := func() *agentexecution.Runtime {
 				runtime, err := agentexecution.NewAgentRuntime(ctx, dataDir,
@@ -65,13 +57,12 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			t.Cleanup(func() { _ = runtime.Close(ctx) })
 			cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 128_000}
 			model := &publicGameHistoryModel{narrative: "Continue the story.", checkpoint: "public Game checkpoint"}
-			manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 128_000, model,
-				agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1})
+			manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 128_000)
 			if err != nil {
 				t.Fatal(err)
 			}
 			newCycle := func(message string) agentexecution.Cycle {
-				cycle := publicGameMaintenanceCycle(store, workspace, story.ID, cfg, nil)
+				cycle := publicGameMaintenanceCycle(store, workspace, story.ID, cfg)
 				cycle.Conversation = NewConversation(store, "", workspace, story.ID, "main", message, 800, cfg)
 				cycle.Options.ProjectID = record.ID
 				cycle.Definition.Model = model
@@ -79,11 +70,6 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 				return cycle
 			}
 			initial := newCycle("Continue")
-			if scenario == "cleanup_restart" {
-				initial.Definition.Cleanup = publicGameCleanupManager{
-					marker: rich, placeholder: "[Older tool result removed; use read on lore/archive.md.]",
-				}
-			}
 			initial.Request = agentchat.ChatRequest{CommandID: "game-before-maintenance", Message: "Continue"}
 			initial.Definition.Middlewares = append(initial.Definition.Middlewares, gameSubmissionForTest(t, initial.Conversation.(*Conversation), "Continue", "Continue"))
 			operation, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: initial})
@@ -97,7 +83,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if scenario == "restart" || scenario == "cleanup_restart" {
+			if scenario == "restart" {
 				if err := runtime.Close(ctx); err != nil {
 					t.Fatal(err)
 				}
@@ -116,15 +102,6 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			})
 			if err != nil || !result.Compaction.Triggered {
 				t.Fatalf("manual compaction after %s: result=%+v error=%v", scenario, result, err)
-			}
-			if scenario == "cleanup_restart" {
-				fork := model.lastInput(t)
-				if containsMessageContent(fork, rich) || !containsMessageContent(fork, "[Older tool result removed; use read on lore/archive.md.]") {
-					t.Fatal("Game compaction did not preserve the restored Cleanup projection")
-				}
-				if !strings.Contains(fork[len(fork)-1].Content, "[source turn_id=") {
-					t.Fatal("Game compaction lost canonical turn locators")
-				}
 			}
 			after, err := store.Snapshot(story.ID, "main")
 			if err != nil {
@@ -156,7 +133,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			}
 			runtime = newRuntime()
 			status, err := runtime.RuntimeStatusProjection(ctx, newCycle("").Options)
-			if err != nil || status.Compaction == nil || status.Compaction.Revision != uint64(repeated.Compaction.Epoch) {
+			if err != nil || status.Compaction == nil || status.Compaction.Revision != uint64(repeated.Compaction.Revision) {
 				t.Fatalf("checkpoint was not restored from the Story journal: %+v, %v", status.Compaction, err)
 			}
 			compactedContinuation := newCycle("Continue with checkpoint")
@@ -246,14 +223,14 @@ func (model *checkpointToolModel) Stream(ctx context.Context, messages []*agent.
 	return agent.StreamReaderFromArray([]*agent.Message{response}), nil
 }
 
-func publicGameMaintenanceCycle(store *interactive.Store, workspace, storyID string, cfg *config.Config, cleanup agent.CleanupManager) agentexecution.Cycle {
+func publicGameMaintenanceCycle(store *interactive.Store, workspace, storyID string, cfg *config.Config) agentexecution.Cycle {
 	options := publicGameOptions(workspace, storyID, "main")
 	options.TaskID = ""
 	return agentexecution.Cycle{
 		Definition: agent.Definition{
 			Key: "denova.test.public-game-history", Name: "game", Model: &publicGameHistoryModel{narrative: "Unexpected model call."},
 			ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
-			Cleanup:       cleanup, Compaction: publicGameCompactionManager{},
+			Compaction:    publicGameCompactionManager{},
 		},
 		Conversation: NewConversation(store, "", workspace, storyID, "main", "", 800, cfg),
 		Options:      options,

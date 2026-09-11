@@ -56,13 +56,3 @@ func EstimatedTokens(byteSize int64) int {
 	}
 	return int(estimate)
 }
-
-// EagerMinimumTokens derives the minimum recoverable result size worth
-// transitioning before general context pressure is reached.
-func EagerMinimumTokens(configured, contextWindow int, ratio float64) int {
-	configured = max(0, configured)
-	if ratio <= 0 || ratio >= 1 {
-		ratio = 0.15
-	}
-	return max(configured, int(float64(max(0, contextWindow))*ratio))
-}

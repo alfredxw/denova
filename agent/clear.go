@@ -12,7 +12,6 @@ const clearCapability = "agent.clear"
 type ClearState struct {
 	Revision                  uint64    `json:"revision"`
 	CompactionRevisionAtClear uint64    `json:"compaction_revision_at_clear,omitempty"`
-	CleanupRevisionAtClear    uint64    `json:"cleanup_revision_at_clear,omitempty"`
 	ClearedAt                 time.Time `json:"cleared_at"`
 }
 
@@ -31,7 +30,7 @@ func (session *Session) Clear(ctx context.Context) error {
 			return err
 		}
 	}
-	compaction, compactionPresent, _, err := compactionStateFrom(session.capabilities)
+	compaction, compactionPresent, err := compactionStateFrom(session.capabilities)
 	if err != nil {
 		return err
 	}
@@ -39,13 +38,6 @@ func (session *Session) Clear(ctx context.Context) error {
 	state.ClearedAt = time.Now().UTC()
 	if compactionPresent {
 		state.CompactionRevisionAtClear = compaction.Revision
-	}
-	cleanup, cleanupPresent, _, err := cleanupStateFrom(session.capabilities)
-	if err != nil {
-		return err
-	}
-	if cleanupPresent {
-		state.CleanupRevisionAtClear = cleanup.Revision
 	}
 	encoded, err := json.Marshal(state)
 	if err != nil {
@@ -97,9 +89,9 @@ func applyClearToTranscript(transcript *engineTranscript, capabilities map[strin
 	return clearState, true, nil
 }
 
-func clearCompaction(current CompactionState, present bool, clearState ClearState, clearPresent bool) (CompactionState, bool) {
+func clearCompaction(current compactionRecord, present bool, clearState ClearState, clearPresent bool) (compactionRecord, bool) {
 	if clearPresent && present && current.Revision <= clearState.CompactionRevisionAtClear {
-		return CompactionState{}, false
+		return compactionRecord{}, false
 	}
 	return current, present
 }

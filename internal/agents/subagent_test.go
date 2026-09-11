@@ -89,19 +89,17 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 		if child.Definition.Goal != nil {
 			t.Fatalf("delegated child %q unexpectedly inherited root Goal authority", child.Name)
 		}
-		if child.Definition.Cleanup == nil || child.Definition.Compaction == nil || child.Definition.ResultProcessor == nil || child.Definition.Permission == nil {
+		if child.Definition.Compaction == nil || child.Definition.ResultProcessor == nil || child.Definition.Permission == nil {
 			t.Fatalf("delegated child %q lost public lifecycle capabilities: %#v", child.Name, child.Definition)
 		}
 		if child.Name == "researcher" {
-			messages := []*agent.Message{agent.UserMessage("inspect the child Cleanup budget")}
-			plan, planErr := child.Definition.Cleanup.Plan(context.Background(), agent.CleanupPlanRequest{
-				Messages: messages, ModelRequest: messages, CompactionAvailable: true,
-			})
+			messages := []*agent.Message{agent.UserMessage("inspect the child checkpoint budget")}
+			plan, planErr := child.Definition.Compaction.Plan(context.Background(), agent.CompactionPlanRequest{ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot()})
 			if planErr != nil {
 				t.Fatal(planErr)
 			}
 			if plan.Metrics.ContextWindowTokens != childWindow {
-				t.Fatalf("delegated child Cleanup window = %d, want model profile window %d", plan.Metrics.ContextWindowTokens, childWindow)
+				t.Fatalf("delegated child checkpoint window = %d, want model profile window %d", plan.Metrics.ContextWindowTokens, childWindow)
 			}
 		}
 	}

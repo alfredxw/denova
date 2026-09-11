@@ -41,7 +41,7 @@ func TestLoopRunsFixedResultProcessorBeforeEventsAndNextModelCall(t *testing.T) 
 		{message: AssistantMessage("", []ToolCall{{
 			ID: "provider-call", Type: "function",
 			Function: FunctionCall{Name: "read", Arguments: `{"path":"chapter.md"}`},
-		}})},
+		}, {ID: "provider-call-2", Type: "function", Function: FunctionCall{Name: "read", Arguments: `{"path":"chapter.md"}`}}})},
 		{message: AssistantMessage("done", nil)},
 	}}
 	processor := &resultProcessorProbe{}
@@ -71,8 +71,8 @@ func TestLoopRunsFixedResultProcessorBeforeEventsAndNextModelCall(t *testing.T) 
 		}
 	}
 	requests := processor.snapshot()
-	if len(requests) != 1 || requests[0].ToolName != "read" ||
-		requests[0].Arguments != `{"path":"chapter.md"}` || requests[0].ProviderCallID != "provider-call" {
+	if len(requests) != 2 || requests[0].ToolName != "read" ||
+		requests[0].Arguments != `{"path":"chapter.md"}` || requests[0].BatchSize != 2 || requests[1].BatchSize != 2 {
 		t.Fatalf("processor requests = %#v", requests)
 	}
 	if finished == nil || finished.ModelContent != "processed result" || finished.DisplayContent != "processed display" {

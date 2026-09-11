@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	agentcleanup "github.com/alfredxw/denova/agent/cleanup"
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
@@ -53,16 +52,16 @@ func BuildInspectedContextAnalysis(
 	}
 
 	systemPrompt, systemParts := inspectedSystemPrompt(composition, systemMessages)
-	tokens := agentcleanup.EstimateInspectedTokens(messages, inspection.ModelRequest)
+	tokens := agent.EstimateRequestTokens(messages, inspection.ModelRequest.Options.Tools)
 	completionReserve, toolResultReserve := agentcompaction.EstimateProjectionReserves(cfg, agentKind, 0)
 	window := config.ResolveAgentModel(cfg, agentKind).ContextWindowTokens
 	threshold := config.ResolveAgentContext(cfg, agentKind).CompactionThreshold
 	if inspection.Compaction != nil {
-		if inspection.Compaction.Metrics.ContextWindowTokens > 0 {
-			window = inspection.Compaction.Metrics.ContextWindowTokens
+		if inspection.CompactionMetrics.ContextWindowTokens > 0 {
+			window = inspection.CompactionMetrics.ContextWindowTokens
 		}
-		if inspection.Compaction.Metrics.Threshold > 0 {
-			threshold = inspection.Compaction.Metrics.Threshold
+		if inspection.CompactionMetrics.Threshold > 0 {
+			threshold = inspection.CompactionMetrics.Threshold
 		}
 	}
 	if maxTokens := inspection.ModelRequest.Options.MaxTokens; maxTokens != nil {
@@ -88,10 +87,10 @@ func BuildInspectedContextAnalysis(
 		TokenEstimate: tokens, ProjectedTokenEstimate: projected,
 		ReservedCompletionTokens: completionReserve, ReservedToolResultTokens: toolResultReserve,
 		ContextWindowTokens: window, ContextUsageRatio: ratio,
-		CompactionEpoch:  inspectionCompactionEpoch(inspection.Compaction),
-		CompactionActive: inspection.Compaction != nil,
-		WouldCompact:     window > 0 && threshold > 0 && ratio >= threshold,
-		Compaction:       compaction,
+		CompactionRevision: inspectionCompactionRevision(inspection.Compaction),
+		CompactionActive:   inspection.Compaction != nil,
+		WouldCompact:       window > 0 && threshold > 0 && ratio >= threshold,
+		Compaction:         compaction,
 	}
 }
 
@@ -179,30 +178,21 @@ func inspectedSystemPrompt(
 	return prompt, parts
 }
 
-func inspectionCompactionEpoch(compaction *agent.CompactionState) int {
+func inspectionCompactionRevision(compaction *agent.CompactionState) uint64 {
 	if compaction == nil {
 		return 0
 	}
-	return int(compaction.Revision)
+	return compaction.Revision
 }
 
 func contextAnalysisCompactionFromInspection(compaction *agent.CompactionState) *ContextAnalysisCompaction {
 	if compaction == nil {
 		return nil
 	}
-	metrics := compaction.Metrics
-	tokensAfter := metrics.ProjectedTokensAfter
-	if tokensAfter <= 0 {
-		tokensAfter = compaction.TokenEstimate
-	}
-	sourceCount := metrics.SourceMessageCount
-	if sourceCount <= 0 {
-		sourceCount = max(0, compaction.ReplacementTo-compaction.ReplacementFrom)
-	}
 	return &ContextAnalysisCompaction{
-		ID: compaction.ID, Epoch: int(compaction.Revision), Summary: compaction.Summary,
-		TokensBefore: metrics.ProjectedTokensBefore, TokensAfter: tokensAfter,
-		TargetRatio: metrics.RecoveryBand, SourceMessageCount: sourceCount,
-		Removable: true,
+		ID: compaction.ID, Revision: compaction.Revision, Summary: compaction.Summary,
+		TokensBefore: compaction.TokensBefore, TokensAfter: compaction.TokensAfter,
+		SourceMessageCount: compaction.SourceMessageCount,
+		Removable:          true,
 	}
 }

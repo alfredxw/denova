@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -45,12 +44,8 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	projection, err := conversation.PrepareAgentCompaction(context.Background(), agent.CompactionCompactRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := conversation.BindAgentCompaction(&agent.CompactionState{
-		ID: "agent-checkpoint", Revision: 2, Summary: "bounded current story", ContextData: projection.ContextData,
+		ID: "agent-checkpoint", Revision: 2, Summary: "bounded current story", SourceMessageCount: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}

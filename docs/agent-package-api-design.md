@@ -6,7 +6,7 @@
 owner, err := agent.New(ctx, agent.Definition{
     Model: builtin.Model(modelConfig),
     Tools: tools.Combine(tools.Workspace(workspaceConfig), tools.Todo(), tools.Ask()),
-    Cleanup: cleanup.Standard(cleanupConfig),
+    Compaction: compaction.Standard(compactionConfig),
 },
     agent.WithSessionStore(sessionfile.New(storeRoot)),
     agent.WithTrace(trace),
@@ -17,7 +17,7 @@ run, err := session.Run(ctx, agent.Text("Continue the draft."))
 result, err := run.Wait(ctx)
 ```
 
-`Source` can be a static `Definition` or a host implementation that resolves Definition, context, and canonical adapters for each Turn. Built-in models, Toolsets, Cleanup, and Compaction are declarative Definition components: static compositions are initialized and validated together by `agent.New`; dynamic Definitions use the same boundary immediately after `Source.Prepare`.
+`Source` can be a static `Definition` or a host implementation that resolves Definition, context, and canonical adapters for each Turn. Built-in models, Toolsets and Compaction are declarative Definition components: static compositions are initialized and validated together by `agent.New`; dynamic Definitions use the same boundary immediately after `Source.Prepare`.
 
 ### Agent
 
@@ -31,7 +31,7 @@ result, err := run.Wait(ctx)
 - `Snapshot` returns transcript-independent UI state: active Run, output, queue, open tools, recent settlements, interactions, and capability projections.
 - `Observe` returns a snapshot plus live events after a process-local cursor.
 - `AttachRun` reattaches only to a Run owned by the current process.
-- `Clear`, Cleanup, Compaction, Goal, Todo, State, and canonical-message refresh share the same serial Session lane.
+- `Clear`, Compaction, Goal, Todo, State, and canonical-message refresh share the same serial Session lane.
 
 ### Run
 

@@ -277,15 +277,14 @@ func TestPublicEventProjectorPublishesAndBindsAgentCompaction(t *testing.T) {
 		AgentKind: "interactive_story", TaskID: "task", RootAgentName: "root",
 	}, func(event agentrun.Event) { events = append(events, event) })
 	state := agent.CompactionState{
-		ID: "checkpoint-1", Revision: 3, Summary: "bounded story state", TokenEstimate: 42,
-		ReplacementFrom: 1, ReplacementTo: 5,
-		Metrics: agent.CompactionMetrics{
-			ObservedPromptTokens: 900, ObservedEstimateTokens: 750,
-			ProjectedTokensBefore: 1_000, ProjectedTokensAfter: 420,
-			CacheExpectedPrefixTokens: 800, CacheReadTokens: 600, RecoveryBandMet: true,
-		},
+		ID: "checkpoint-1", Revision: 3, Summary: "bounded story state", TokensAfter: 420, SourceMessageCount: 4,
 	}
-	projector.Project(agent.Event{RunID: "run", Payload: agent.CompactionCommitted{State: state}})
+	metrics := agent.CompactionMetrics{
+		ObservedPromptTokens: 900, ObservedEstimateTokens: 750,
+		ProjectedTokensBefore: 1_000, ProjectedTokensAfter: 420,
+		CacheExpectedPrefixTokens: 800, CacheReadTokens: 600, RecoveryBandMet: true,
+	}
+	projector.Project(agent.Event{RunID: "run", Payload: agent.CompactionCommitted{State: state, Metrics: metrics}})
 	if conversation.state == nil || conversation.state.ID != state.ID || conversation.state.Revision != state.Revision {
 		t.Fatalf("bound Compaction=%#v", conversation.state)
 	}

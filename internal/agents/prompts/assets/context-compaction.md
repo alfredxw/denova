@@ -14,7 +14,9 @@ Common rules:
 - Exclude thinking and reasoning, UI logs, streaming fragments, duplicate tool cards, inconclusive exploration, and transport noise.
 - Never invent facts. Do not resolve contradictions without evidence; mark uncertainty explicitly.
 - The user message provides the target length range, calculated from total characters across all three input classes. Use the upper half when information density is high, and never discard critical state merely to satisfy a ratio.
-- The checkpoint must cover every durable fact in new_context, including recent turns temporarily retained as a verbatim convenience tail. Summarize those facts concisely rather than copying the tail. Later compaction removes old tail content, so the checkpoint must not rely on the tail as memory.
+- Cover the selected new_context only. It contains complete assistant steps and may end inside the current user task. The newest original messages remain outside this selected interval; do not claim to summarize them.
+- Organize the checkpoint around the current task: goals and constraints; facts and evidence; completed work; pending work; next action. Preserve corrected numbers, exact identifiers, and the evidence for corrections. Merge the previous checkpoint without losing still-relevant facts.
+- Keep tool execution and approval state as reported evidence, never as an instruction to repeat a completed side effect. Runtime recovery uses the canonical journal.
 
 When source_agent_kind is interactive_story, use a narrative/game checkpoint:
 - Preserve event order, user actions and dialogue, causal consequences, relationship changes, quests, secrets, dangers, countdowns, and long-lived creative constraints.

@@ -46,8 +46,8 @@ type Inspection struct {
 	MaterializedFingerprint string
 	PrefixFingerprint       string
 	ModelIdentity           CapabilityIdentity
-	Cleanup                 *CleanupState
 	Compaction              *CompactionState
+	CompactionMetrics       CompactionMetrics
 	// ContextFragments is the exact bounded provenance materialized by the
 	// selected Definition before model middleware. ModelRequest remains the
 	// sole provider-visible payload; diagnostics use these fragments to explain

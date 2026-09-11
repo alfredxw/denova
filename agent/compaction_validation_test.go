@@ -36,16 +36,16 @@ func TestCompactionPostValidationDistinguishesRecoveryBandAndHardPublishBand(t *
 		SystemMessage(strings.Repeat("checkpoint ", 210)),
 		UserMessage("continue"),
 	}, 2)
-	afterTokens := estimateCompactionRequestTokens(degradedAfter.Messages(), nil)
+	afterTokens := EstimateRequestTokens(degradedAfter.Messages(), nil)
 	window := max(afterTokens+1, int(float64(afterTokens)/.80))
 	plan := CompactionPlan{
-		SourceFrom: 0, SourceTo: 2,
+		GroupCount: 1,
 		Validation: CompactionValidationPolicy{
 			ContextWindowTokens: window, Threshold: .90, RecoveryBand: .80,
 			HardLimitBytes: 8 << 20,
 		},
 	}
-	metrics, err := validateCompactionProjection(before, degradedAfter, plan)
+	metrics, err := validateCompactionProjection(before, degradedAfter, compactionExecutionPlan{CompactionPlan: plan, SourceTo: 2})
 	if err != nil || !metrics.Degraded || metrics.RecoveryBandMet ||
 		metrics.ProjectedTokensAfter >= int(float64(window)*.90) {
 		t.Fatalf("degraded metrics=%#v err=%v", metrics, err)
@@ -56,14 +56,14 @@ func TestCompactionPostValidationDistinguishesRecoveryBandAndHardPublishBand(t *
 		SystemMessage("short checkpoint"),
 		UserMessage("continue"),
 	}, 2)
-	healthy, err := validateCompactionProjection(before, healthyAfter, plan)
+	healthy, err := validateCompactionProjection(before, healthyAfter, compactionExecutionPlan{CompactionPlan: plan, SourceTo: 2})
 	if err != nil || healthy.Degraded || !healthy.RecoveryBandMet {
 		t.Fatalf("healthy metrics=%#v err=%v", healthy, err)
 	}
 
 	hardPlan := plan
 	hardPlan.Validation.ContextWindowTokens = max(1, afterTokens)
-	if metrics, err := validateCompactionProjection(before, degradedAfter, hardPlan); !errors.Is(err, ErrContextLimit) || metrics.ProjectedTokensAfter < int(float64(afterTokens)*.90) {
+	if metrics, err := validateCompactionProjection(before, degradedAfter, compactionExecutionPlan{CompactionPlan: hardPlan, SourceTo: 2}); !errors.Is(err, ErrContextLimit) || metrics.ProjectedTokensAfter < int(float64(afterTokens)*.90) {
 		t.Fatalf("hard-band metrics=%#v err=%v", metrics, err)
 	}
 }
@@ -71,16 +71,16 @@ func TestCompactionPostValidationDistinguishesRecoveryBandAndHardPublishBand(t *
 func TestCompactionPostValidationRejectsNoProgressAndInsignificantProgress(t *testing.T) {
 	before := compactionValidationSnapshot([]*Message{UserMessage("small history")}, 0)
 	larger := compactionValidationSnapshot([]*Message{SystemMessage(strings.Repeat("larger checkpoint ", 20))}, 1)
-	plan := CompactionPlan{SourceFrom: 0, SourceTo: 1, Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20}}
-	if _, err := validateCompactionProjection(before, larger, plan); err == nil || !strings.Contains(err.Error(), "no progress") {
+	plan := CompactionPlan{GroupCount: 1, Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20}}
+	if _, err := validateCompactionProjection(before, larger, compactionExecutionPlan{CompactionPlan: plan, SourceTo: 1}); err == nil || !strings.Contains(err.Error(), "no progress") {
 		t.Fatalf("no-progress error = %v", err)
 	}
 
 	largeBefore := compactionValidationSnapshot([]*Message{UserMessage(strings.Repeat("history ", 100))}, 0)
 	slightlySmaller := compactionValidationSnapshot([]*Message{SystemMessage(strings.Repeat("checkpoint ", 50))}, 1)
-	progress := estimateCompactionRequestTokens(largeBefore.Messages(), nil) - estimateCompactionRequestTokens(slightlySmaller.Messages(), nil)
+	progress := EstimateRequestTokens(largeBefore.Messages(), nil) - EstimateRequestTokens(slightlySmaller.Messages(), nil)
 	plan.Validation.MinimumChangeTokens = progress + 1
-	if _, err := validateCompactionProjection(largeBefore, slightlySmaller, plan); err == nil || !strings.Contains(err.Error(), "required minimum") {
+	if _, err := validateCompactionProjection(largeBefore, slightlySmaller, compactionExecutionPlan{CompactionPlan: plan, SourceTo: 1}); err == nil || !strings.Contains(err.Error(), "required minimum") {
 		t.Fatalf("minimum-progress error = %v progress=%d", err, progress)
 	}
 }
@@ -96,13 +96,13 @@ func TestInteractiveCompactionCalibratesTruePostContextAfterStableReinjection(t 
 		SystemMessage("bounded checkpoint"),
 		UserMessage("continue"),
 	}, 2)
-	localBefore := estimateCompactionRequestTokens(before.Messages(), nil)
-	localAfter := estimateCompactionRequestTokens(after.Messages(), nil)
+	localBefore := EstimateRequestTokens(before.Messages(), nil)
+	localAfter := EstimateRequestTokens(after.Messages(), nil)
 	const reserve = 78
 	calibratedAfter := localAfter*2 + reserve
 	window := (calibratedAfter*100 + 83) / 84
 	plan := CompactionPlan{
-		SourceFrom: 0, SourceTo: 2,
+		GroupCount: 1,
 		Metrics: CompactionMetrics{
 			ObservedPromptTokens: localBefore * 2, ObservedEstimateTokens: localBefore,
 		},
@@ -111,7 +111,7 @@ func TestInteractiveCompactionCalibratesTruePostContextAfterStableReinjection(t 
 			Threshold: .90, RecoveryBand: .80, HardLimitBytes: 8 << 20,
 		},
 	}
-	metrics, err := validateCompactionProjection(before, after, plan)
+	metrics, err := validateCompactionProjection(before, after, compactionExecutionPlan{CompactionPlan: plan, SourceTo: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,22 +132,22 @@ func (expandingCompactionManager) Identity() CapabilityIdentity {
 func (expandingCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
 
 func (expandingCompactionManager) Plan(_ context.Context, request CompactionPlanRequest) (CompactionPlan, error) {
-	if len(request.Messages) < 2 {
+	if len(request.Groups) == 0 {
 		return CompactionPlan{Action: CompactionNone}, nil
 	}
 	return CompactionPlan{
-		Action: CompactionCreate, SourceFrom: 0, SourceTo: 2,
+		Action: CompactionCreate, GroupCount: 1,
 		Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20},
 	}, nil
 }
 
 func (expandingCompactionManager) Compact(context.Context, CompactionCompactRequest) (CompactionCheckpoint, error) {
-	return CompactionCheckpoint{Summary: strings.Repeat("expanded checkpoint ", 500), TokenEstimate: 2_000}, nil
+	return CompactionCheckpoint{Summary: strings.Repeat("expanded checkpoint ", 500)}, nil
 }
 
 func TestAutomaticAndManualCompactionRejectUnpublishablePostProjection(t *testing.T) {
 	model := &lifecycleModel{responses: []*Message{
-		AssistantMessage("first answer", nil), AssistantMessage("second answer", nil),
+		AssistantMessage("first answer", nil), AssistantMessage("second answer", nil), AssistantMessage("third answer", nil),
 	}}
 	owner, err := New(context.Background(), Definition{Model: model, Compaction: expandingCompactionManager{}})
 	if err != nil {
@@ -172,8 +172,15 @@ func TestAutomaticAndManualCompactionRejectUnpublishablePostProjection(t *testin
 	if result, waitErr := second.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
 		t.Fatalf("second=%#v err=%v", result, waitErr)
 	}
+	third, err := session.Run(context.Background(), Input{Text: "third", IdempotencyKey: "post-validation-third"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := third.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
+		t.Fatalf("third=%#v err=%v", result, waitErr)
+	}
 	foundFailure := false
-	for event := range second.Events() {
+	for event := range third.Events() {
 		if failure, ok := event.Payload.(CompactionFailed); ok {
 			foundFailure = true
 			if failure.Metrics.ProjectedTokensAfter <= failure.Metrics.ProjectedTokensBefore {
@@ -181,7 +188,7 @@ func TestAutomaticAndManualCompactionRejectUnpublishablePostProjection(t *testin
 			}
 		}
 	}
-	if !foundFailure || len(model.calls()) != 2 {
+	if !foundFailure || len(model.calls()) != 3 {
 		t.Fatalf("automatic failure=%v provider calls=%d", foundFailure, len(model.calls()))
 	}
 	if state, present, stateErr := session.compactionState(context.Background()); stateErr != nil || present {

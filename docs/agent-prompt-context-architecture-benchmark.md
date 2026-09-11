@@ -1,5 +1,7 @@
 # Denova 提示词与上下文架构对标审计
 
+> Historical audit: Cleanup references below describe the earlier implementation. Current context lifecycle: [incremental checkpoints](tool-result-context-optimization-plan.md).
+
 > 日期：2026-08-13
 >
 > 状态：P0 / P1 已实现并验证；P2 Tool Schema 延迟发现按测量门槛暂缓
@@ -527,7 +529,7 @@ Denova 当前是 beta，落地时应：
 - [`agent/context_state.go`](../agent/context_state.go)
 - [`internal/agents/lifecycle/project_context.go`](../internal/agents/lifecycle/project_context.go)
 - [`internal/agents/conversation/model_context.go`](../internal/agents/conversation/model_context.go)
-- [`agent/cleanup/standard.go`](../agent/cleanup/standard.go)
+- Historical Cleanup implementation (retired; see the current lifecycle above).
 - [`agent/compaction/standard.go`](../agent/compaction/standard.go)
 - [`internal/agents/run/model_input.go`](../internal/agents/run/model_input.go)
 - [`internal/agents/run/model_input_cache.go`](../internal/agents/run/model_input_cache.go)

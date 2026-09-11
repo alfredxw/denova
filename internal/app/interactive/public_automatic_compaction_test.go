@@ -36,7 +36,7 @@ func (model *automaticGameCheckpointModel) Generate(_ context.Context, messages 
 	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, messages, nil, 4<<20, 128_000); err != nil {
 		return nil, err
 	}
-	if len(messages) > 0 && strings.HasPrefix(messages[len(messages)-1].Content, "[Denova runtime context compaction request]") {
+	if len(messages) > 0 && strings.HasPrefix(messages[len(messages)-1].Content, "[Runtime context compaction request]") {
 		model.summaryCalls++
 		return agent.AssistantMessage(automaticGameCheckpoint, nil), nil
 	}
@@ -110,7 +110,7 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 	cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 128_000}
 	model := &automaticGameCheckpointModel{history: publicGameHistoryModel{narrative: "The traveler reached the next bridge."}}
 	identity := agent.CapabilityIdentity{Kind: "test.automatic-game-checkpoint", Version: 1}
-	manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 128_000, model, identity)
+	manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 128_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,10 +173,10 @@ func TestGameAutomaticCompactionSurvivesConsecutiveTurnsAndRestart(t *testing.T)
 		if checkpointID == "" {
 			checkpointID = status.Compaction.ID
 			recoveryTarget := int(float64(cfg.OpenAIContextWindowTokens) * config.DefaultContextCompactionThreshold * config.DefaultContextCompactionRecoveryBand)
-			if status.Compaction.TokenEstimate <= 0 || status.Compaction.TokenEstimate > recoveryTarget {
-				t.Fatalf("automatic compaction did not restore context headroom: projected=%d target=%d", status.Compaction.TokenEstimate, recoveryTarget)
+			if status.Compaction.TokensAfter <= 0 || status.Compaction.TokensAfter > recoveryTarget {
+				t.Fatalf("automatic compaction did not restore context headroom: projected=%d target=%d", status.Compaction.TokensAfter, recoveryTarget)
 			}
-			t.Logf("Compacted 90-turn history: projected_tokens_after=%d recovery_target=%d", status.Compaction.TokenEstimate, recoveryTarget)
+			t.Logf("Compacted 90-turn history: projected_tokens_after=%d recovery_target=%d", status.Compaction.TokensAfter, recoveryTarget)
 		} else if status.Compaction.ID != checkpointID {
 			t.Fatalf("turn %d replaced checkpoint %s with %s", turn, checkpointID, status.Compaction.ID)
 		}

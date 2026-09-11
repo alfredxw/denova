@@ -14,8 +14,12 @@ type ToolResultProcessRequest struct {
 	Arguments      string
 	ExecutionID    string
 	ProviderCallID string
-	Definition     ToolDefinitionSnapshot
-	Result         ToolResult
+	// BatchSize includes every call in the owning assistant response. A
+	// processor can divide a batch budget deterministically even when calls
+	// finish in parallel. Zero means a direct, single-result invocation.
+	BatchSize  int
+	Definition ToolDefinitionSnapshot
+	Result     ToolResult
 }
 
 // ToolResultProcessor is the fixed post-tool result seam. It runs after the

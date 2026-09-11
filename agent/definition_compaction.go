@@ -44,17 +44,12 @@ func (engine *definitionEngine) RunStructural(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	storage, storagePresent, _, err := compactionStateFrom(request.Capabilities)
+	storage, storagePresent, err := compactionStateFrom(request.Capabilities)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
 	current, present := storage, storagePresent
 	current, present = clearCompaction(current, present, clearState, clearPresent)
-	cleanupState, cleanupPresent, _, err := cleanupStateFrom(request.Capabilities)
-	if err != nil {
-		return runstate.EngineResult{}, err
-	}
-	cleanupState, cleanupPresent = clearCleanup(cleanupState, cleanupPresent, clearState, clearPresent)
 	var envelope compactionCommandEnvelope
 	if err := json.Unmarshal(request.Snapshot.Ref.Envelope, &envelope); err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("decode Compaction command: %w", err)
@@ -69,7 +64,6 @@ func (engine *definitionEngine) RunStructural(
 		Reason:  TurnReasonStructural, DefinitionKey: envelope.DefinitionKey, BehaviorKey: envelope.BehaviorKey,
 		HostData:   cloneHostData(transcript.HostData),
 		Compaction: compactionStatePointer(current, present),
-		Cleanup:    cloneCleanupStateIfPresent(cleanupState, cleanupPresent),
 	})
 	if err != nil {
 		return runstate.EngineResult{}, err
@@ -105,7 +99,7 @@ func (engine *definitionEngine) RunStructural(
 		}
 		modelSnapshot, snapshotErr := prepareStructuralCompactionSnapshot(
 			forkCtx, prepared, session, structuralDefinitionRun(request.Snapshot.CommandID),
-			transcript.Messages, cleanupState, cleanupPresent, current, present,
+			transcript.Messages, current, present,
 		)
 		if snapshotErr != nil {
 			return runstate.EngineResult{}, snapshotErr
@@ -117,34 +111,27 @@ func (engine *definitionEngine) RunStructural(
 		if envelope.ModelRequestFingerprint == "" || fingerprint != envelope.ModelRequestFingerprint {
 			return runstate.EngineResult{}, fmt.Errorf("%w: structural model request changed", ErrDefinitionMismatch)
 		}
-		buildAfter := func(next CompactionState) (*ModelRequestSnapshot, error) {
+		buildAfter := func(next compactionRecord) (*ModelRequestSnapshot, error) {
 			nextPrepared := prepared
-			nextCleanup, nextCleanupPresent := cleanupAfterCompaction(cleanupState, cleanupPresent, next, true)
 			prepare := PrepareRequest{
 				Session: session, Run: structuralDefinitionRun(request.Snapshot.CommandID), Reason: TurnReasonStructural,
 				DefinitionKey: envelope.DefinitionKey, BehaviorKey: envelope.BehaviorKey,
 				HostData: cloneHostData(transcript.HostData), Compaction: compactionStatePointer(next, true),
-				Cleanup: cloneCleanupStateIfPresent(nextCleanup, nextCleanupPresent),
 			}
 			if err := rematerializeDefinitionContext(ctx, prepare, &nextPrepared); err != nil {
 				return nil, err
 			}
 			return prepareStructuralCompactionSnapshot(
 				forkCtx, nextPrepared, session, structuralDefinitionRun(request.Snapshot.CommandID),
-				transcript.Messages, cleanupState, cleanupPresent, next, true,
+				transcript.Messages, next, true,
 			)
 		}
-		contextMessages, contextErr := effectiveCleanupMessages(transcript.Messages, cleanupState, cleanupPresent, current, present)
-		if contextErr != nil {
-			return runstate.EngineResult{}, contextErr
-		}
-		contextMessages, contextErr = projectToolArtifactPaths(forkCtx, prepared.definition.Artifacts, contextMessages)
+		contextMessages, contextErr := projectToolArtifactPaths(forkCtx, prepared.definition.Artifacts, transcript.Messages)
 		if contextErr != nil {
 			return runstate.EngineResult{}, contextErr
 		}
 		next, changed, _, compactErr := executeCompaction(
 			ctx, prepared, session, run, transcript.Messages, contextMessages, "", current, present, storage.Revision,
-			cleanupRevision(cleanupState, cleanupPresent),
 			*envelope.Compact, compactionID(request.Snapshot.OperationID), modelSnapshot, buildAfter, nil, nil,
 		)
 		if compactErr != nil {
@@ -214,9 +201,7 @@ func prepareStructuralCompactionSnapshot(
 	session SessionView,
 	run RunView,
 	raw []*Message,
-	cleanup CleanupState,
-	cleanupPresent bool,
-	compaction CompactionState,
+	compaction compactionRecord,
 	compactionPresent bool,
 ) (*ModelRequestSnapshot, error) {
 	stateMessages, nextContextState, err := advanceContextState(
@@ -227,19 +212,15 @@ func prepareStructuralCompactionSnapshot(
 	}
 	prepared.contextState = nextContextState
 	raw = append(cloneMessages(raw), cloneMessages(stateMessages)...)
-	visible, err := effectiveCleanupMessages(raw, cleanup, cleanupPresent, compaction, compactionPresent)
-	if err != nil {
-		return nil, err
-	}
 	effective, err := effectiveCompactionMessages(
-		visible, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
+		raw, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
 	)
 	checkpointVisible := err == nil
 	if err != nil {
 		if !errors.Is(err, ErrContextLimit) {
 			return nil, err
 		}
-		effective = cloneMessages(visible)
+		effective = cloneMessages(raw)
 	}
 	messages := make([]*Message, 0, len(effective)+len(prepared.fragments))
 	messages = append(messages, leadingContextMessages(prepared.fragments)...)
@@ -271,122 +252,122 @@ func executeCompaction(
 	messages []*Message,
 	contextMessages []*Message,
 	currentInput string,
-	current CompactionState,
+	current compactionRecord,
 	present bool,
 	revisionBase uint64,
-	cleanupRevisionAtCompaction uint64,
 	request CompactionRequest,
 	checkpointID string,
 	modelSnapshot *ModelRequestSnapshot,
-	buildAfter func(CompactionState) (*ModelRequestSnapshot, error),
+	buildAfter func(compactionRecord) (*ModelRequestSnapshot, error),
 	onSkip func(string, CompactionMetrics) error,
 	onCreate func(CompactionMetrics) error,
-) (CompactionState, bool, CompactionMetrics, error) {
+) (compactionRecord, bool, CompactionMetrics, error) {
 	if present && current.ID == checkpointID && !current.Removed {
 		return current, false, current.Metrics, nil
 	}
 	if request.ExpectedID != "" && (!present || current.ID != request.ExpectedID) ||
 		request.ExpectedRevision != 0 && (!present || current.Revision != request.ExpectedRevision) {
-		return CompactionState{}, false, CompactionMetrics{}, ErrDefinitionMismatch
+		return compactionRecord{}, false, CompactionMetrics{}, ErrDefinitionMismatch
 	}
 	summaryLimit := prepared.definition.Compaction.SummaryLimitBytes()
-	var modelRequest []*Message
-	if modelSnapshot != nil {
-		modelRequest = modelSnapshot.Messages()
-	} else {
-		var err error
-		modelRequest, err = compactionModelRequest(prepared, messages, currentInput, current, present)
-		if err != nil {
-			return CompactionState{}, false, CompactionMetrics{}, err
-		}
+	if len(contextMessages) != len(messages) || present && current.ReplacementTo > len(messages) {
+		return compactionRecord{}, false, CompactionMetrics{}, errors.New("Compaction runtime source does not match journal coverage")
 	}
-	plan, err := prepared.definition.Compaction.Plan(ctx, CompactionPlanRequest{
-		Session: session, Run: run, Messages: cloneMessages(messages), ModelRequest: modelRequest,
-		ModelSnapshot:           modelSnapshot,
-		LifecycleReservedTokens: prepared.goalReservedTokens,
-		Force:                   request.Force || present && len(current.Summary) > summaryLimit,
-		Current:                 current, Present: present,
+	groups, ends, retainedBytes := compactionGroups(messages, contextMessages, current, present)
+	proposal, err := prepared.definition.Compaction.Plan(ctx, CompactionPlanRequest{
+		Session: session, Run: run, Groups: groups, RetainedBytes: retainedBytes,
+		ModelSnapshot: modelSnapshot, LifecycleReservedTokens: prepared.goalReservedTokens,
+		Force:   request.Force || present && len(current.Summary) > summaryLimit,
+		Current: compactionStatePointer(current, present),
 	})
+	plan := compactionExecutionPlan{CompactionPlan: proposal}
+	if present && !current.Removed {
+		plan.SourceFrom = current.ReplacementFrom
+	}
+	if proposal.GroupCount > 0 && proposal.GroupCount <= len(ends) {
+		plan.SourceTo = ends[proposal.GroupCount-1]
+	}
 	if err != nil {
-		return CompactionState{}, false, CompactionMetrics{}, err
+		return compactionRecord{}, false, CompactionMetrics{}, err
 	}
 	if plan.Action == CompactionNone {
 		if onSkip != nil && strings.TrimSpace(plan.SkippedReason) != "" {
 			if err := onSkip(plan.SkippedReason, plan.Metrics); err != nil {
-				return CompactionState{}, false, plan.Metrics, err
+				return compactionRecord{}, false, plan.Metrics, err
 			}
 		}
 		return current, false, plan.Metrics, nil
 	}
 	if plan.Action != CompactionCreate || plan.SourceFrom < 0 || plan.SourceTo <= plan.SourceFrom || plan.SourceTo > len(messages) {
-		return CompactionState{}, false, plan.Metrics, errors.New("Compaction Manager returned an invalid source range")
+		return compactionRecord{}, false, plan.Metrics, errors.New("Compaction Manager returned an invalid source range")
 	}
 	wantHash, err := hashCanonical(messages[plan.SourceFrom:plan.SourceTo])
 	if err != nil {
-		return CompactionState{}, false, plan.Metrics, err
-	}
-	if strings.TrimSpace(plan.SourceHash) == "" {
-		plan.SourceHash = wantHash
-	} else if plan.SourceHash != wantHash {
-		return CompactionState{}, false, plan.Metrics, errors.New("Compaction Manager source hash does not match the selected messages")
-	}
-	if strings.TrimSpace(plan.SourceRevision) == "" {
-		plan.SourceRevision = fmt.Sprintf("session:%d", session.Revision)
+		return compactionRecord{}, false, plan.Metrics, err
 	}
 	if onCreate != nil {
 		if err := onCreate(plan.Metrics); err != nil {
-			return CompactionState{}, false, plan.Metrics, err
+			return compactionRecord{}, false, plan.Metrics, err
 		}
 	}
 	checkpoint, err := prepared.definition.Compaction.Compact(ctx, CompactionCompactRequest{
-		Session: session, Run: run, Messages: cloneMessages(messages), ModelRequest: modelRequest,
-		ContextMessages: cloneMessages(contextMessages),
-		SourceMessages:  compactionIncrementalSource(contextMessages, plan, current, present, summaryLimit),
-		ModelSnapshot:   modelSnapshot, Plan: plan, Current: current, Present: present,
+		Session: session, Run: run,
+		Messages:      compactionIncrementalSource(contextMessages, plan, current, present, summaryLimit),
+		ModelSnapshot: modelSnapshot, Current: compactionStatePointer(current, present),
 	})
 	if err != nil {
-		return CompactionState{}, false, plan.Metrics, err
+		return compactionRecord{}, false, plan.Metrics, err
 	}
+	if err := ctx.Err(); err != nil {
+		return compactionRecord{}, false, plan.Metrics, err
+	}
+	checkpoint.Summary = mergeProtectedReceiptContext(checkpoint.Summary, current.Summary, compactionReceiptMessages(contextMessages[plan.SourceFrom:plan.SourceTo], modelSnapshot), summaryLimit)
 	checkpoint.Summary = strings.TrimSpace(checkpoint.Summary)
-	if checkpoint.Summary == "" || checkpoint.TokenEstimate < 0 {
-		return CompactionState{}, false, plan.Metrics, errors.New("Compaction Manager returned an invalid checkpoint")
+	if checkpoint.Summary == "" {
+		return compactionRecord{}, false, plan.Metrics, errors.New("Compaction Manager returned an invalid checkpoint")
 	}
 	if len(checkpoint.Summary) > summaryLimit {
-		return CompactionState{}, false, plan.Metrics, fmt.Errorf("%w: Compaction checkpoint is %d bytes and exceeds the target Agent summary limit %d", ErrContextLimit, len(checkpoint.Summary), summaryLimit)
+		return compactionRecord{}, false, plan.Metrics, fmt.Errorf("%w: Compaction checkpoint is %d bytes and exceeds the target Agent summary limit %d", ErrContextLimit, len(checkpoint.Summary), summaryLimit)
 	}
 	if err := validateCompactionContextData(checkpoint.ContextData); err != nil {
-		return CompactionState{}, false, plan.Metrics, err
+		return compactionRecord{}, false, plan.Metrics, err
 	}
 	revision := max(uint64(1), revisionBase+1)
 	if present && current.Revision >= revisionBase {
 		revision = current.Revision + 1
 	}
-	next := CompactionState{
-		ID: checkpointID, Revision: revision,
-		SourceRevision: plan.SourceRevision, SourceHash: plan.SourceHash,
-		Summary: checkpoint.Summary, SummaryTokenEstimate: checkpoint.TokenEstimate,
-		CleanupRevisionAtCompaction: max(current.CleanupRevisionAtCompaction, cleanupRevisionAtCompaction),
-		ReplacementFrom:             plan.SourceFrom, ReplacementTo: plan.SourceTo,
+	next := compactionRecord{
+		Version: 2, ID: checkpointID, Revision: revision,
+		SourceHash: wantHash,
+		Summary:    checkpoint.Summary, SummaryTokenEstimate: EstimateTextTokens(checkpoint.Summary),
+		ReplacementFrom: plan.SourceFrom, ReplacementTo: plan.SourceTo,
 		CreatedAt:   time.Now().UTC(),
 		ContextData: cloneHostData(checkpoint.ContextData),
 	}
+	if prepared.activeModelUser != nil && prepared.activeUserIndex >= plan.SourceFrom && prepared.activeUserIndex < plan.SourceTo {
+		index := prepared.activeUserIndex
+		next.RetainedUserFrom = &index
+	}
 	if modelSnapshot == nil || buildAfter == nil {
-		return CompactionState{}, false, plan.Metrics, errors.New("Compaction requires exact before and after model request snapshots")
+		return compactionRecord{}, false, plan.Metrics, errors.New("Compaction requires exact before and after model request snapshots")
 	}
 	after, err := buildAfter(next)
 	if err != nil {
-		return CompactionState{}, false, plan.Metrics, fmt.Errorf("rebuild post-Compaction model request: %w", err)
+		return compactionRecord{}, false, plan.Metrics, fmt.Errorf("rebuild post-Compaction model request: %w", err)
 	}
 	metrics, err := validateCompactionProjection(modelSnapshot, after, plan)
 	if err != nil {
-		return CompactionState{}, false, metrics, err
+		return compactionRecord{}, false, metrics, err
+	}
+	if err := ctx.Err(); err != nil {
+		return compactionRecord{}, false, metrics, err
 	}
 	next.Metrics = metrics
 	next.TokenEstimate = metrics.ProjectedTokensAfter
 	return next, true, metrics, nil
 }
 
-func validateCompactionProjection(before, after *ModelRequestSnapshot, plan CompactionPlan) (CompactionMetrics, error) {
+func validateCompactionProjection(before, after *ModelRequestSnapshot, plan compactionExecutionPlan) (CompactionMetrics, error) {
 	metrics := plan.Metrics
 	if before == nil || after == nil {
 		return metrics, errors.New("Compaction validation requires exact before and after model request snapshots")
@@ -396,8 +377,8 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan Comp
 		return metrics, errors.New("Compaction validation policy contains negative limits")
 	}
 	beforeMessages, afterMessages := before.Messages(), after.Messages()
-	beforeTokens := estimateCompactionRequestTokens(beforeMessages, before.ResolvedOptions().Tools)
-	afterTokens := estimateCompactionRequestTokens(afterMessages, after.ResolvedOptions().Tools)
+	beforeTokens := EstimateRequestTokens(beforeMessages, before.ResolvedOptions().Tools)
+	afterTokens := EstimateRequestTokens(afterMessages, after.ResolvedOptions().Tools)
 	metrics.EstimatedTokensBefore = beforeTokens
 	metrics.EstimatedTokensAfter = afterTokens
 	metrics.ReservedTokens = policy.ReservedTokens
@@ -438,21 +419,13 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan Comp
 	return metrics, nil
 }
 
-func estimateCompactionRequestTokens(messages []*Message, tools []*ToolInfo) int {
-	tokens := EstimateMessagesTokens(messages)
-	if encoded, err := json.Marshal(tools); err == nil && string(encoded) != "null" {
-		tokens += EstimateTextTokens(string(encoded))
-	}
-	return max(1, tokens)
-}
-
 func stableSnapshotTokens(snapshot *ModelRequestSnapshot) int {
 	if snapshot == nil {
 		return 0
 	}
 	messages := snapshot.Messages()
 	boundary := min(snapshot.StablePrefixMessages(), len(messages))
-	return estimateCompactionRequestTokens(messages[:boundary], snapshot.ResolvedOptions().Tools)
+	return EstimateRequestTokens(messages[:boundary], snapshot.ResolvedOptions().Tools)
 }
 
 func compactionRequestBytes(snapshot *ModelRequestSnapshot) int {
@@ -522,24 +495,6 @@ func validateCompactionContextData(data *HostData) error {
 	return nil
 }
 
-func compactionStatePointer(state CompactionState, present bool) *CompactionState {
-	if !present || state.Removed {
-		return nil
-	}
-	cloned := state
-	cloned.ContextData = cloneHostData(state.ContextData)
-	return &cloned
-}
-
-func cloneCompactionState(state *CompactionState) *CompactionState {
-	if state == nil {
-		return nil
-	}
-	cloned := *state
-	cloned.ContextData = cloneHostData(state.ContextData)
-	return &cloned
-}
-
 func compactionID(operationID runstate.OperationID) string {
 	return "compaction-" + string(operationID)
 }
@@ -551,23 +506,21 @@ func (engine *definitionEngine) applyAutomaticCompaction(
 	messages []*Message,
 	contextMessages []*Message,
 	modelSnapshot *ModelRequestSnapshot,
-	current CompactionState,
+	current compactionRecord,
 	present bool,
-	storage CompactionState,
-	raw json.RawMessage,
-	cleanupRevisionAtCompaction uint64,
-	buildAfter func(CompactionState) (*ModelRequestSnapshot, error),
+	storage compactionRecord,
+	buildAfter func(compactionRecord) (*ModelRequestSnapshot, error),
 	emit runstate.EngineEventSink,
-) (CompactionState, bool, bool, CompactionMetrics, error) {
+) (compactionRecord, bool, bool, CompactionMetrics, error) {
 	if prepared.definition.Compaction == nil {
 		return current, present, false, CompactionMetrics{}, nil
 	}
-	checkpointID := fmt.Sprintf("compaction-%s-%d", request.Snapshot.OperationID, request.Snapshot.Cycle)
+	checkpointID := fmt.Sprintf("compaction-%s-%d-%d", request.Snapshot.OperationID, request.Snapshot.Cycle, max(current.Revision, storage.Revision)+1)
 	next, changed, metrics, err := executeCompaction(
 		ctx, prepared,
 		SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		runViewForTurn(request.Snapshot),
-		messages, contextMessages, request.Snapshot.Input.Text, current, present, storage.Revision, cleanupRevisionAtCompaction,
+		messages, contextMessages, request.Snapshot.Input.Text, current, present, storage.Revision,
 		CompactionRequest{},
 		checkpointID, modelSnapshot, buildAfter, func(reason string, metrics CompactionMetrics) error {
 			if reason != "degraded_no_progress_latch" {
@@ -583,29 +536,27 @@ func (engine *definitionEngine) applyAutomaticCompaction(
 		},
 	)
 	if err != nil {
-		return CompactionState{}, false, false, metrics, err
+		return compactionRecord{}, false, false, metrics, err
 	}
 	if !changed {
 		return current, present, false, metrics, nil
 	}
 	encoded, err := json.Marshal(next)
 	if err != nil {
-		return CompactionState{}, false, false, metrics, err
+		return compactionRecord{}, false, false, metrics, err
 	}
 	if err := emit(runstate.EngineCapabilityState{
 		Capability: compactionCapability, State: encoded,
 	}); err != nil {
-		return CompactionState{}, false, false, metrics, err
+		return compactionRecord{}, false, false, metrics, err
 	}
 	return next, true, true, metrics, nil
 }
 
 func automaticCompactionFingerprint(
 	prepared preparedDefinition,
-	current CompactionState,
+	current compactionRecord,
 	present bool,
-	cleanup CleanupState,
-	cleanupPresent bool,
 	snapshot *ModelRequestSnapshot,
 ) (string, error) {
 	if snapshot == nil {
@@ -618,32 +569,31 @@ func automaticCompactionFingerprint(
 		PrefixFingerprint    string
 		Options              *Options
 		Compaction           *CompactionState
-		Cleanup              *CleanupState
 		CandidateFingerprint string
 		CandidateGeneration  uint64
 		ClearRevision        uint64
 	}{
 		Model: prepared.definition.ModelIdentity, Manager: prepared.definition.Compaction.Identity(),
 		PrefixFingerprint: prepared.prefixFingerprint, Options: snapshot.ResolvedOptions(),
-		Compaction: compactionStatePointer(current, present), Cleanup: cloneCleanupStateIfPresent(cleanup, cleanupPresent),
+		Compaction:           compactionStatePointer(current, present),
 		CandidateFingerprint: candidateFingerprint, CandidateGeneration: candidateGeneration,
 		ClearRevision: prepared.clearRevision,
 	})
 }
 
-func compactionHealthStateFrom(states map[string]json.RawMessage) (compactionHealthState, bool, json.RawMessage, error) {
+func compactionHealthStateFrom(states map[string]json.RawMessage) (compactionHealthState, bool, error) {
 	raw, present := states[compactionHealthCapability]
 	if !present {
-		return compactionHealthState{}, false, nil, nil
+		return compactionHealthState{}, false, nil
 	}
 	var health compactionHealthState
 	if err := json.Unmarshal(raw, &health); err != nil {
-		return compactionHealthState{}, false, nil, fmt.Errorf("decode Compaction health: %w", err)
+		return compactionHealthState{}, false, fmt.Errorf("decode Compaction health: %w", err)
 	}
 	if strings.TrimSpace(health.Fingerprint) == "" || health.ConsecutiveFailures <= 0 {
-		return compactionHealthState{}, false, nil, errors.New("durable Compaction health state is invalid")
+		return compactionHealthState{}, false, errors.New("durable Compaction health state is invalid")
 	}
-	return health, true, append(json.RawMessage(nil), raw...), nil
+	return health, true, nil
 }
 
 func nextCompactionHealth(previous compactionHealthState, present bool, fingerprint string, failure error) compactionHealthState {
@@ -662,7 +612,6 @@ func nextCompactionHealth(previous compactionHealthState, present bool, fingerpr
 
 func emitCompactionHealth(
 	emit runstate.EngineEventSink,
-	raw json.RawMessage,
 	health compactionHealthState,
 ) error {
 	encoded, err := json.Marshal(health)
@@ -674,7 +623,7 @@ func emitCompactionHealth(
 	})
 }
 
-func clearCompactionHealth(emit runstate.EngineEventSink, raw json.RawMessage, present bool) error {
+func clearCompactionHealth(emit runstate.EngineEventSink, present bool) error {
 	if !present {
 		return nil
 	}
@@ -683,98 +632,36 @@ func clearCompactionHealth(emit runstate.EngineEventSink, raw json.RawMessage, p
 	})
 }
 
-func compactionStateFrom(states map[string]json.RawMessage) (CompactionState, bool, json.RawMessage, error) {
-	raw, present := states[compactionCapability]
-	if !present {
-		return CompactionState{}, false, nil, nil
-	}
-	state, err := decodeCompactionState(raw)
-	return state, true, append(json.RawMessage(nil), raw...), err
-}
-
-func decodeCompactionState(raw json.RawMessage) (CompactionState, error) {
-	var state CompactionState
-	if err := json.Unmarshal(raw, &state); err != nil {
-		return CompactionState{}, fmt.Errorf("decode Compaction state: %w", err)
-	}
-	if strings.TrimSpace(state.ID) == "" || state.Revision == 0 || state.ReplacementFrom < 0 ||
-		state.ReplacementTo <= state.ReplacementFrom || strings.TrimSpace(state.Summary) == "" {
-		return CompactionState{}, errors.New("durable Compaction state is invalid")
-	}
-	return state, nil
-}
-
-func compactionModelRequest(
-	prepared preparedDefinition,
-	messages []*Message,
-	currentInput string,
-	current CompactionState,
-	present bool,
-) ([]*Message, error) {
-	result := make([]*Message, 0, len(messages)+len(prepared.fragments)+2)
-	if prepared.definition.Instructions != "" {
-		result = append(result, SystemMessage(prepared.definition.Instructions))
-	}
-	effective, err := effectiveCompactionMessages(messages, current, present, prepared.definition.Compaction.SummaryLimitBytes())
-	if err != nil {
-		// Raw history is retained specifically so an oversized checkpoint can be
-		// regenerated after the target Agent's configured limits are lowered.
-		if !errors.Is(err, ErrContextLimit) {
-			return nil, err
-		}
-		effective = cloneMessages(messages)
-	}
-	if strings.TrimSpace(currentInput) == "" {
-		result = append(result, leadingContextMessages(prepared.fragments)...)
-		result = append(result, effective...)
-		return result, nil
-	}
-	cycle, _, err := assembleCycleMessages(effective, currentInput, nil, prepared.fragments, prepared.definition.AttachmentRoot)
-	if err != nil {
-		return nil, err
-	}
-	result = append(result, cycle...)
-	return result, nil
-}
-
-func effectiveCompactionMessages(messages []*Message, state CompactionState, present bool, summaryLimit int) ([]*Message, error) {
-	if !present || state.Removed || state.ReplacementFrom < 0 || state.ReplacementTo > len(messages) || state.ReplacementTo <= state.ReplacementFrom {
-		return cloneMessages(messages), nil
-	}
-	if summaryLimit <= 0 {
-		return nil, errors.New("Compaction summary limit must be positive")
-	}
-	if len(state.Summary) > summaryLimit {
-		return nil, fmt.Errorf("%w: durable Compaction checkpoint is %d bytes and exceeds the target Agent summary limit %d", ErrContextLimit, len(state.Summary), summaryLimit)
-	}
-	result := make([]*Message, 0, len(messages)-(state.ReplacementTo-state.ReplacementFrom)+1)
-	result = append(result, cloneMessages(messages[:state.ReplacementFrom])...)
-	result = append(result, compactionCheckpointMessage(state, summaryLimit))
-	result = append(result, cloneMessages(messages[state.ReplacementTo:])...)
-	return result, nil
-}
-
-func compactionIncrementalSource(
-	messages []*Message,
-	plan CompactionPlan,
-	current CompactionState,
-	present bool,
-	summaryLimit int,
-) []*Message {
-	if present && !current.Removed && current.ReplacementFrom == plan.SourceFrom &&
-		current.ReplacementTo >= plan.SourceFrom && current.ReplacementTo <= plan.SourceTo {
-		result := []*Message{compactionCheckpointMessage(current, summaryLimit)}
-		return append(result, cloneMessages(messages[current.ReplacementTo:plan.SourceTo])...)
-	}
-	return cloneMessages(messages[plan.SourceFrom:plan.SourceTo])
-}
-
-func compactionCheckpointMessage(state CompactionState, summaryLimit int) *Message {
-	return SystemMessage(renderContextFragment(ContextFragment{
-		Source: "agent.compaction", Purpose: "replace compacted conversation history",
-		Resource: state.ID, Revision: fmt.Sprintf("%d", state.Revision),
-		Stability: ContextCheckpoint, Placement: ContextCompactionCheckpoint, Content: state.Summary, HardLimit: summaryLimit,
-	}))
-}
-
 var _ runstate.StructuralEngine = (*definitionEngine)(nil)
+
+// compactionExecutionPlan adds authenticated raw coverage to a semantic plan.
+type compactionExecutionPlan struct {
+	CompactionPlan
+	SourceFrom int
+	SourceTo   int
+}
+
+func compactionMessagesBytes(messages []*Message) int {
+	encoded, _ := json.Marshal(messages)
+	return len(encoded)
+}
+
+// Protect only receipts present in the final provider projection. A host may
+// hide tool exchanges through middleware; those must not reappear in a summary.
+func compactionReceiptMessages(source []*Message, snapshot *ModelRequestSnapshot) []*Message {
+	visible := make(map[string]*Message)
+	for _, message := range snapshot.Messages() {
+		if message != nil && message.Role == ToolRole {
+			visible[message.ToolCallID] = message
+		}
+	}
+	var result []*Message
+	for _, message := range source {
+		if message != nil && message.Role == ToolRole {
+			if projected := visible[message.ToolCallID]; projected != nil {
+				result = append(result, projected)
+			}
+		}
+	}
+	return result
+}

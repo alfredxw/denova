@@ -283,7 +283,7 @@ func compactionContextRevision(state *agent.CompactionState) string {
 	if state == nil {
 		return "none"
 	}
-	return fmt.Sprintf("%s:%d:%t", state.ID, state.Revision, state.Removed)
+	return fmt.Sprintf("%s:%d", state.ID, state.Revision)
 }
 
 var _ agent.ContextSource = conversationBoundaryContext{}

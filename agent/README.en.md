@@ -75,11 +75,15 @@ A user requests a paragraph, then asks for a shorter version. Put both tasks in 
 Also import `github.com/alfredxw/denova/agent/tools` and `github.com/alfredxw/denova/agent/session/file` with the alias `sessionfile`:
 
 ```go
+store, err := sessionfile.New("./data/sessions")
+if err != nil {
+	log.Fatal(err)
+}
 assistant, err := agent.New(ctx, agent.Definition{
 	Model:        model,
 	Instructions: "Help the user write. Ask when required information is missing.",
 	Tools:        tools.Ask(),
-}, agent.WithSessionStore(sessionfile.New("./data/sessions")))
+}, agent.WithSessionStore(store))
 if err != nil {
 	log.Fatal(err)
 }
@@ -193,13 +197,17 @@ Most changes stay in `Definition`: compose the capabilities you need.
 
 This **integration example** uses dependencies supplied by your application:
 
-- `projectRoot` is the project directory, `model` comes from example 1, and `contextTokens` is the actual model capacity (greater than the 16,000 reserved tokens in this example).
+- `projectRoot` is the project directory, `model` comes from example 1, and `contextTokens` is the actual model capacity.
 - `projectContext` supplies project rules and state; `skillCatalog` lists available Skills, and `skillLoader` loads their content.
-- `commandRunner` executes commands, `taskExecutor` handles child tasks, `artifactStorage` retains complete tool output, and `summarizer` summarizes conversations. Their interfaces and existing implementations are linked below the code.
+- `commandRunner` executes commands, `taskExecutor` handles child tasks, and `artifactStorage` retains complete tool output. Their interfaces and existing implementations are linked below the code.
 
-Also import the `agent` module's `cleanup`, `compaction`, `goal`, `permission`, and `toolresult` packages, plus `tools` and `sessionfile` from example 2.
+Also import the `agent` module's `compaction`, `goal`, `permission`, and `toolresult` packages, plus `tools` and `sessionfile` from example 2.
 
 ```go
+store, err := sessionfile.New("./data/sessions")
+if err != nil {
+	log.Fatal(err)
+}
 assistant, err := agent.New(ctx, agent.Definition{
 	Model: model,
 	Instructions: "Check whether the project documentation matches the code. " +
@@ -223,17 +231,11 @@ assistant, err := agent.New(ctx, agent.Definition{
 	ResultProcessor: toolresult.Standard(toolresult.Policy{
 		MaxBytes: 128 << 10, ContextWindowTokens: contextTokens,
 	}),
-	Cleanup: cleanup.Standard(cleanup.StandardConfig{
-		ContextWindowTokens: contextTokens, ReservedTokens: 16_000,
-		CleanupThreshold: 0.70, CompactionThreshold: 0.85,
-	}),
 	Compaction: compaction.Standard(compaction.StandardConfig{
-		Summarizer:          summarizer,
-		ContextWindowTokens: contextTokens, ReservedTokens: 16_000,
-		HardLimitBytes: 4 << 20, SummaryLimitBytes: 256 << 10,
+		ContextWindowTokens: contextTokens,
 	}),
 	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
-}, agent.WithSessionStore(sessionfile.New("./data/sessions")))
+}, agent.WithSessionStore(store))
 if err != nil {
 	log.Fatal(err)
 }
@@ -262,7 +264,7 @@ This configuration supports the following workflow:
 1. **Gather evidence**: Context provides project background, Workspace reads and searches files, and Skills loads review instructions.
 2. **Advance the task**: Todo tracks steps, Tasks delegates reviews, Shell runs checks, and Goal retains the objective.
 3. **Collaborate with the user**: Ask requests missing information; Permission decides which tool operations require confirmation. Answers still use `Session.Respond`.
-4. **Handle long tasks**: Artifacts retains full output, ResultProcessor bounds individual model-visible results, and Cleanup / Compaction manage accumulated context.
+4. **Handle long tasks**: Artifacts retains full output, ResultProcessor bounds individual and aggregate tool output, and one incremental Compaction checkpoint folds completed steps. A single user Run can compact repeatedly while keeping its instructions and newest original results.
 5. **Retain progress**: the Session Store persists conversation and recovery records for later continuation.
 
 **Start with these interfaces for application integration:**
@@ -274,8 +276,35 @@ This configuration supports the following workflow:
 | Commands | [`tools.CommandRunner`](tools/shell_tools.go); use [`NewLocalCommandRunner`](tools/shell_local_runner.go) for local execution |
 | Child tasks | [`tools.TaskExecutor`](tools/task_tool.go); use [`NewLocalTasks`](tools/task_local_executor.go) for local execution |
 | Large result storage | [`agent.ToolArtifactStorage`](tool_artifact.go) |
-| Summaries | [`compaction.Summarizer`](compaction/standard.go); reuse [`ModelSummarizer`](compaction/model_summarizer.go) |
+| Compaction customization (optional) | Uses the active model by default; replace [`compaction.Summarizer`](compaction/standard.go) or implement [`agent.CompactionManager`](compaction.go) |
 
 For writing, research, or support, primarily replace Instructions, Context, Skills, and Tools; remove capabilities you do not need. For file editing, select `WorkspaceReadWrite` and supply a `MutationAdapter`. A read-only workspace does not constrain Shell; command permissions still belong to the runner and permission policy.
 
 Use the static Definition above for simple cases. Implement [`Source`](definition.go) when models and capabilities must vary by Session. For existing product conversation storage, integrate [`CanonicalAdapter`](canonical.go) and [`session.Store`](session/store.go) so product history and Agent recovery records share one journal.
+
+### Three levels of compaction integration
+
+```go
+// Default planning and summarization use the active Agent model snapshot.
+Compaction: compaction.Standard(compaction.StandardConfig{ContextWindowTokens: 128_000})
+
+// Customize summary generation while retaining the standard policy.
+Compaction: compaction.Standard(compaction.StandardConfig{
+    ContextWindowTokens: 128_000,
+    Summarizer: compaction.SummarizerFunc{
+        Capability: agent.CapabilityIdentity{Kind: "app.summary", Version: 1},
+        Func: func(ctx context.Context, input compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+            return summarizeSelectedSource(ctx, input.Messages, input.Current)
+        },
+    },
+})
+
+// Customize triggering, selection and generation through the same runtime.
+Compaction: myCompactionManager
+```
+
+`Standard` retains the most recent complete interaction and generates summaries with the active model snapshot. If capacity is insufficient, it processes the source in ordered batches; model failures do not silently switch execution modes. `Prompt` adds domain guidance. `ModelSummarizer` supports a replacement model with a stable Identity.
+
+A custom manager's `Plan` receives complete interaction groups and the final model snapshot, then selects a prefix through `GroupCount`. `Compact` receives only the previous checkpoint and newly selected material. Both extension points return `CompactionCheckpoint{Summary, ContextData}`. Optional ContextData is typed, versioned JSON (at most 8 MiB), persisted atomically with the summary and never injected into the model automatically.
+
+Agent protects current user instructions, the newest complete tool group, and unfinished steps; measures final request capacity and actual progress; and owns journal commits, revision, cancellation, and recovery. Read the checkpoint view through `Session.Snapshot().Compaction`; detailed diagnostics live in `Inspect().CompactionMetrics` and compaction events. Runtime-issued views can `Project` effective history. Serialized display data does not carry history projection authority.

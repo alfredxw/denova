@@ -17,7 +17,7 @@ export function compactionCompletion(body) {
   runs.set(marker, captured)
   const lastUser = [...(body.messages ?? [])].reverse().find(message => message.role === 'user')
   const input = JSON.stringify(lastUser?.content ?? '')
-  if (input.includes('[Denova runtime context compaction request]') || body.stream !== true) {
+  if (input.includes('[Runtime context compaction request]') || body.stream !== true) {
     return { content: `${marker} checkpoint: Preserve the archive facts and continue the current task using live evidence.`, summary: true }
   }
   if (input.includes(`${marker}_SEED`)) {

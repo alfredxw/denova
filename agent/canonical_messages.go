@@ -84,7 +84,7 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 			}
 		}
 		if len(invalidated) > 0 {
-			compaction, _, _, compactionErr := compactionStateFrom(session.capabilities)
+			compaction, _, compactionErr := compactionStateFrom(session.capabilities)
 			slog.InfoContext(ctx, "invalidating Agent history-dependent capabilities after canonical history changed",
 				"session_namespace", session.key.Namespace, "session_id", session.key.ID,
 				"reason", "canonical_history_prefix_mismatch", "capabilities", invalidated,

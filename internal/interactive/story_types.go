@@ -467,7 +467,6 @@ type ContextCompactionProjection struct {
 	ID       string `json:"id"`
 	BranchID string `json:"branch_id"`
 	agentcontext.CompactionCheckpoint
-	SourceTurnCount int `json:"source_turn_count"`
 }
 
 // TurnVersionProjection records one immutable event copied from the previous

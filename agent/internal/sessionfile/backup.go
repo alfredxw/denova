@@ -1,8 +1,10 @@
 package sessionfile
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/alfredxw/denova/agent/session"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,8 +23,8 @@ func isResilienceRecord(kind string) bool {
 
 // The exact allocated Session path stays unchanged. A completed backup is
 // installed before the first record that the latest release cannot understand.
-func backupReleasedTranscript(path string) error {
-	destination := path + ".pre-resilience-v1.bak"
+func backupReleasedTranscript(path, upgrade string) error {
+	destination := path + ".pre-" + upgrade + ".bak"
 	if info, err := os.Lstat(destination); err == nil {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("Agent transcript backup is not a regular file: %s", destination)
@@ -51,4 +53,17 @@ func backupReleasedTranscript(path string) error {
 		return err
 	}
 	return localfs.SyncDirectory(filepath.Dir(path))
+}
+
+func usesIncrementalCompaction(record session.Record) bool {
+	if record.Kind != "session.capability_set" {
+		return false
+	}
+	var payload struct {
+		Capability string `json:"capability"`
+		State      struct {
+			Version uint16 `json:"version"`
+		} `json:"state"`
+	}
+	return json.Unmarshal(record.Data, &payload) == nil && payload.Capability == "agent.compaction" && payload.State.Version == 2
 }

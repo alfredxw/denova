@@ -106,9 +106,9 @@ func (backend *publicBackend) executeStructural(ctx context.Context, cycle Cycle
 
 func projectPublicCompaction(result agent.CompactionResult) agentcompaction.Result {
 	projected := agentcompaction.Result{
-		Triggered: result.Changed, Phase: "manual", Summary: result.State.Summary,
-		Epoch: int(result.State.Revision), TokensAfter: result.State.TokenEstimate,
-		SourceMessageCount: max(0, result.State.ReplacementTo-result.State.ReplacementFrom),
+		Triggered: result.Changed, Summary: result.State.Summary,
+		Revision: result.State.Revision, TokensBefore: result.State.TokensBefore, TokensAfter: result.State.TokensAfter,
+		SourceMessageCount: result.State.SourceMessageCount,
 	}
 	if !result.Changed {
 		projected.SkippedReason = "no_progress"

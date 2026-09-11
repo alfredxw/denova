@@ -69,3 +69,36 @@ func TestReleasedTranscriptUpgradePreservesExactKeyPathAndBackup(t *testing.T) {
 		t.Fatal("released parent route identity was rewritten")
 	}
 }
+
+func TestIncrementalCompactionPreservesPriorJournalOnFirstWrite(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := store.Open(t.Context(), session.Key{Namespace: "test", ID: "incremental-backup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := opened.(*logFile)
+	defer log.Close()
+	legacy := session.Record{Kind: "session.capability_set", Version: 1, Data: json.RawMessage(`{"capability":"agent.compaction","state":{"id":"released","revision":1}}`)}
+	revision, err := log.Append(t.Context(), 0, legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(log.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modern := session.Record{Kind: "session.capability_set", Version: 1, Data: json.RawMessage(`{"capability":"agent.compaction","state":{"version":2,"id":"incremental","revision":2}}`)}
+	for range 2 {
+		revision, err = log.Append(t.Context(), revision, modern)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	backup, err := os.ReadFile(log.path + ".pre-incremental-compaction-v2.bak")
+	if err != nil || !bytes.Equal(backup, original) {
+		t.Fatalf("incremental backup changed: %v", err)
+	}
+}

@@ -65,7 +65,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(
 	}
 	slog.InfoContext(ctx, "[interactive-agent] manual Agent Session compaction completed",
 		"workspace", fence.workspace, "story_id", storyID, "branch_id", branchID,
-		"revision", result.Compaction.Epoch, "source_messages", result.Compaction.SourceMessageCount,
+		"revision", result.Compaction.Revision, "source_messages", result.Compaction.SourceMessageCount,
 	)
 	return result.Compaction, nil
 }

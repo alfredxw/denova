@@ -3,7 +3,6 @@ package interactiveapp
 import (
 	"context"
 	"crypto/sha256"
-	agentcontext "denova/internal/agents/context"
 	"denova/internal/book/lore"
 	"encoding/hex"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
@@ -78,10 +76,7 @@ func (c *Conversation) ResolveInterruption(id string) error {
 }
 
 type interactiveTurnHistory struct {
-	PreviousSummary string
-	Turns           []interactive.StoryModelTurn
-	PreviousCount   int
-	OmittedCount    int
+	Turns []interactive.StoryModelTurn
 }
 
 const (
@@ -92,85 +87,6 @@ const (
 	interactiveResidentLoreMessageMaxBytes = lore.ResidentLoreSafetyMaxBytes + interactive.StoryContextMaxBytes
 )
 
-func buildInteractiveTurnHistory(turns []interactive.TurnEvent) interactiveTurnHistory {
-	return interactiveTurnHistory{Turns: interactiveStoryModelTurns(turns)}
-}
-
-func buildInteractiveModelVisibleTurnHistory(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionProjection) interactiveTurnHistory {
-	return buildInteractiveTurnHistoryWithCompaction(turns, compaction, retainedTurnsForInteractiveCompaction(compaction))
-}
-
-func buildInteractiveModelVisibleHistory(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionProjection) interactiveTurnHistory {
-	result := interactiveTurnHistory{Turns: append([]interactive.StoryModelTurn(nil), history.Turns...)}
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		result.PreviousCount = compaction.SourceTurnCount
-		result.OmittedCount = compaction.SourceTurnCount
-	}
-	return result
-}
-
-func retainedTurnsForInteractiveCompaction(compaction *interactive.ContextCompactionProjection) int {
-	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
-		return 0
-	}
-	if compaction.RetainedTurns > 0 {
-		return compaction.RetainedTurns
-	}
-	return config.DefaultContextCompactionRetainedTurns
-}
-
-func buildInteractiveTurnHistoryWithCompaction(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionProjection, retainedTurns int) interactiveTurnHistory {
-	return buildInteractiveTurnHistoryWindowWithCompaction(turns, 0, compaction, retainedTurns)
-}
-
-func buildInteractiveTurnHistoryWindowWithCompaction(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionProjection, retainedTurns int) interactiveTurnHistory {
-	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
-		return buildInteractiveTurnHistory(turns)
-	}
-	if retainedTurns <= 0 {
-		retainedTurns = config.DefaultContextCompactionRetainedTurns
-	}
-	if retainedTurns > config.MaxContextCompactionRetainedTurns {
-		retainedTurns = config.MaxContextCompactionRetainedTurns
-	}
-	sourceCount := compaction.SourceTurnCount - turnStart
-	if sourceCount < 0 {
-		sourceCount = 0
-	}
-	if sourceCount > len(turns) {
-		sourceCount = len(turns)
-	}
-	sourceTail := append([]interactive.TurnEvent(nil), turns[:sourceCount]...)
-	if len(sourceTail) > retainedTurns {
-		sourceTail = sourceTail[len(sourceTail)-retainedTurns:]
-	}
-	appended := append([]interactive.TurnEvent(nil), turns[sourceCount:]...)
-	retained := make([]interactive.TurnEvent, 0, len(sourceTail)+len(appended))
-	retained = append(retained, sourceTail...)
-	retained = append(retained, appended...)
-	return interactiveTurnHistory{
-		PreviousSummary: "",
-		Turns:           interactiveStoryModelTurns(retained),
-		PreviousCount:   compaction.SourceTurnCount,
-		OmittedCount:    compaction.SourceTurnCount,
-	}
-}
-
-func interactiveStoryModelTurns(turns []interactive.TurnEvent) []interactive.StoryModelTurn {
-	if len(turns) == 0 {
-		return nil
-	}
-	result := make([]interactive.StoryModelTurn, 0, len(turns))
-	for _, turn := range turns {
-		result = append(result, interactive.StoryModelTurn{
-			ID: turn.ID, BranchID: turn.BranchID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
-			Attachments:          append([]agent.Attachment(nil), turn.Attachments...),
-			ModelContextMessages: interactive.CloneModelContextMessages(turn.ModelContextMessages),
-		})
-	}
-	return result
-}
-
 func SnapshotTurnCount(snapshot interactive.Snapshot) int {
 	if snapshot.TurnCount >= len(snapshot.Turns) {
 		return snapshot.TurnCount
@@ -178,38 +94,14 @@ func SnapshotTurnCount(snapshot interactive.Snapshot) int {
 	return len(snapshot.Turns)
 }
 
-func interactiveModelCompaction(snapshot interactive.Snapshot) *interactive.ContextCompactionProjection {
-	compaction := snapshot.ContextCompaction
-	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
-		return nil
-	}
-	turnCount := SnapshotTurnCount(snapshot)
-	if compaction.SourceTurnCount < 0 || compaction.SourceTurnCount > turnCount {
-		return nil
-	}
-	return compaction
-}
-
-func ModelHistoryRange(snapshot interactive.Snapshot) (startTurn, endTurn int, compaction *interactive.ContextCompactionProjection) {
-	endTurn = SnapshotTurnCount(snapshot)
-	compaction = interactiveModelCompaction(snapshot)
-	if compaction != nil {
-		startTurn = max(0, compaction.SourceTurnCount-retainedTurnsForInteractiveCompaction(compaction))
-	}
-	return startTurn, endTurn, compaction
-}
-
-func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *interactive.ContextCompactionProjection, error) {
+func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *agent.CompactionState, error) {
 	if c == nil || c.store == nil {
 		return interactive.StoryModelHistory{}, nil, fmt.Errorf("interactive story does not exist")
 	}
 	branchID := storyCtx.Snapshot.BranchID
 	turnCount := SnapshotTurnCount(storyCtx.Snapshot)
-	compaction := c.boundAgentCompaction(storyCtx.Snapshot)
+	compaction := c.boundAgentCompaction()
 	startTurn := 0
-	if compaction != nil {
-		startTurn = max(0, compaction.SourceTurnCount-retainedTurnsForInteractiveCompaction(compaction))
-	}
 	compactionID := ""
 	if compaction != nil {
 		compactionID = compaction.ID
@@ -245,36 +137,6 @@ func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (
 		c.storyID, branchID, history.StartTurn, history.EndTurn, history.TotalTurns, len(history.Turns), compactionID,
 	))
 	return history, compaction, nil
-}
-
-func formatInteractiveTurnHistory(turns []interactive.StoryModelTurn, emptyMessage string) string {
-	if len(turns) == 0 {
-		return emptyMessage
-	}
-	var sb strings.Builder
-	for i, turn := range turns {
-		idx := i + 1
-		fmt.Fprintf(&sb, "Turn %d user action: %s\n", idx, strings.TrimSpace(turn.User))
-		fmt.Fprintf(&sb, "Turn %d narrative: %s\n\n", idx, strings.TrimSpace(turn.Narrative))
-	}
-	return strings.TrimSpace(sb.String())
-}
-
-func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHistory, compaction *interactive.ContextCompactionProjection, emptyMessage string) string {
-	var sb strings.Builder
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		sb.WriteString("[Historical Context Checkpoint]\n")
-		sb.WriteString(agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary).Content)
-		sb.WriteString("\n\n")
-	}
-	if len(turnHistory.Turns) > 0 {
-		sb.WriteString(formatInteractiveTurnHistory(turnHistory.Turns, emptyMessage))
-	}
-	result := strings.TrimSpace(sb.String())
-	if result == "" {
-		return emptyMessage
-	}
-	return result
 }
 
 func interactiveMessageListSummary(messages []*agents.Message) string {

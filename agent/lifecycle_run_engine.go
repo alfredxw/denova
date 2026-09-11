@@ -275,14 +275,6 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 		return run.applyCapabilityUpdates([]runstate.EngineCapabilityState{value})
 	case runstate.EngineContextNormalized:
 		run.publish(ContextNormalized{RepairCount: value.RepairCount, MessagesBefore: value.MessagesBefore, MessagesAfter: value.MessagesAfter})
-	case runstate.EngineCleanupStarted:
-		run.publish(CleanupStarted{ID: value.ID, Reason: value.Reason, Automatic: value.Automatic, Transient: value.Transient, Metrics: publicCleanupMetrics(value.Metrics)})
-	case runstate.EngineCleanupCompleted:
-		run.publish(CleanupCompleted{ID: value.ID, Reason: value.Reason, Automatic: value.Automatic, Transient: value.Transient, Metrics: publicCleanupMetrics(value.Metrics)})
-	case runstate.EngineCleanupFailed:
-		run.publish(CleanupFailed{ID: value.ID, Reason: value.Reason, Automatic: value.Automatic, Metrics: publicCleanupMetrics(value.Metrics)})
-	case runstate.EngineCleanupSkipped:
-		run.publish(CleanupSkipped{ID: value.ID, Reason: value.Reason, Automatic: value.Automatic, Metrics: publicCleanupMetrics(value.Metrics)})
 	case runstate.EngineCompactionStarted:
 		run.publish(CompactionStarted{ID: value.ID, Automatic: value.Automatic, Metrics: publicCompactionMetrics(value.Metrics)})
 	case runstate.EngineCompactionFailed:
@@ -306,10 +298,6 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 		}
 		if err := run.applyCapabilityUpdates(value.CapabilityUpdates); err != nil {
 			return err
-		}
-		if value.CleanupCompleted != nil {
-			completed := value.CleanupCompleted
-			run.publish(CleanupCompleted{ID: completed.ID, Reason: completed.Reason, Automatic: completed.Automatic, Metrics: publicCleanupMetrics(completed.Metrics)})
 		}
 		run.publish(AssistantFinal{Content: value.Content, Thinking: value.Thinking})
 	case runstate.EngineToolInputStarted:
@@ -442,16 +430,12 @@ func (run *Run) publishCapabilityUpdate(update runstate.EngineCapabilityState) {
 		if !update.Delete && json.Unmarshal(update.State, &state) == nil {
 			run.publish(TodoUpdated{State: state})
 		}
-	case cleanupCapability:
-		if state, err := decodeCleanupState(update.State); !update.Delete && err == nil && !state.Removed {
-			run.publish(CleanupCommitted{State: state, Automatic: run.cycleValue() > 0})
-		}
 	case compactionCapability:
 		if state, err := decodeCompactionState(update.State); !update.Delete && err == nil {
 			if state.Removed {
 				run.publish(CompactionRemoved{ID: state.ID, Revision: state.Revision})
 			} else {
-				run.publish(CompactionCommitted{State: state, Automatic: run.cycleValue() > 0})
+				run.publish(CompactionCommitted{State: *compactionStatePointer(state, true), Metrics: state.Metrics, Automatic: run.cycleValue() > 0})
 			}
 		}
 	}

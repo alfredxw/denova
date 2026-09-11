@@ -147,22 +147,13 @@ func (engine *definitionEngine) Run(
 		}
 		return emit(runstate.EngineTranscriptUpdated{State: encoded})
 	}
-	currentCompactionStorage, currentCompactionStoragePresent, currentCompactionRaw, err := compactionStateFrom(request.Snapshot.Capabilities)
+	currentCompactionStorage, currentCompactionStoragePresent, err := compactionStateFrom(request.Snapshot.Capabilities)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
 	currentCompaction, currentCompactionPresent := currentCompactionStorage, currentCompactionStoragePresent
 	currentCompaction, currentCompactionPresent = clearCompaction(
 		currentCompaction, currentCompactionPresent, clearState, clearPresent,
-	)
-	currentCleanupStorage, currentCleanupStoragePresent, currentCleanupRaw, err := cleanupStateFrom(request.Snapshot.Capabilities)
-	if err != nil {
-		return runstate.EngineResult{}, err
-	}
-	currentCleanup, currentCleanupPresent := currentCleanupStorage, currentCleanupStoragePresent
-	currentCleanup, currentCleanupPresent = clearCleanup(currentCleanup, currentCleanupPresent, clearState, clearPresent)
-	currentCleanup, currentCleanupPresent = cleanupAfterCompaction(
-		currentCleanup, currentCleanupPresent, currentCompaction, currentCompactionPresent,
 	)
 	reason, err := turnReasonForSnapshot(request.Snapshot)
 	if err != nil {
@@ -175,7 +166,6 @@ func (engine *definitionEngine) Run(
 		DefinitionKey: state.DefinitionKey, BehaviorKey: state.BehaviorKey,
 		HostData:   cloneHostData(input.HostData),
 		Compaction: compactionStatePointer(currentCompaction, currentCompactionPresent),
-		Cleanup:    cloneCleanupStateIfPresent(currentCleanup, currentCleanupPresent),
 	}
 	sameCycle := state.ownsDefinition(request.Snapshot)
 	if !sameCycle {
@@ -273,7 +263,6 @@ func (engine *definitionEngine) Run(
 		}
 	}
 	compaction, compactionPresent := currentCompaction, currentCompactionPresent
-	cleanupState, cleanupPresent := currentCleanup, currentCleanupPresent
 	stateMessages, nextContextState, err := advanceContextState(
 		state.Messages, prepared.fragments, prepared.contextState, compaction, compactionPresent,
 	)
@@ -300,11 +289,7 @@ func (engine *definitionEngine) Run(
 	if prepared.definition.Compaction != nil {
 		summaryLimit = prepared.definition.Compaction.SummaryLimitBytes()
 	}
-	cleanupTranscript, err := effectiveCleanupMessages(cycleStateTranscript, cleanupState, cleanupPresent, compaction, compactionPresent)
-	if err != nil {
-		return runstate.EngineResult{}, err
-	}
-	effectiveTranscript, err := effectiveCompactionMessages(cleanupTranscript, compaction, compactionPresent, summaryLimit)
+	effectiveTranscript, err := effectiveCompactionMessages(cycleStateTranscript, compaction, compactionPresent, summaryLimit)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -312,7 +297,7 @@ func (engine *definitionEngine) Run(
 	var resumedTail []*Message
 	if continuingInput {
 		activeUserIndex = state.ActiveUserIndex
-		modelUserIndex := len(effectiveTranscript) - len(cycleStateTranscript) + activeUserIndex
+		modelUserIndex := compactionMessageIndex(cycleStateTranscript, compaction, compactionPresent, activeUserIndex)
 		if modelUserIndex < 0 || modelUserIndex >= len(effectiveTranscript) {
 			return runstate.EngineResult{}, errors.New("active Agent input was removed from the recoverable context")
 		}
@@ -338,10 +323,6 @@ func (engine *definitionEngine) Run(
 		return runstate.EngineResult{}, err
 	}
 	controlTranscript = cloneMessages(baseTranscript)
-	initialLoopMessageCount := len(modelMessages)
-	if prepared.definition.Instructions != "" {
-		initialLoopMessageCount++
-	}
 	emitTrace(ctx, engine.trace, TraceEvent{
 		Kind: TraceCycleStarted, Session: engine.key, RunID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 	})
@@ -356,8 +337,6 @@ func (engine *definitionEngine) Run(
 		run:         runViewForTurn(request.Snapshot),
 		attachments: attachmentsFromMessages(modelMessages),
 	}
-	maintenanceSelected := false
-	var pendingCleanup *stagedCleanup
 	transcript := cloneMessages(baseTranscript)
 	pendingToolTranscriptIndex := -1
 	controlledTranscript := func() []*Message {
@@ -367,7 +346,7 @@ func (engine *definitionEngine) Run(
 		return cloneMessages(transcript)
 	}
 	maintenanceGate := modelCallGate(nil)
-	if len(prepared.definition.Middlewares) != 0 || prepared.definition.Cleanup != nil || prepared.definition.Compaction != nil {
+	if len(prepared.definition.Middlewares) != 0 || prepared.definition.Compaction != nil {
 		maintenanceGate = func(
 			gateCtx context.Context,
 			call *ModelCall,
@@ -380,159 +359,17 @@ func (engine *definitionEngine) Run(
 					return nil, err
 				}
 			}
-			if prepared.definition.Cleanup == nil && prepared.definition.Compaction == nil {
-				return nil, nil
-			}
-			if pendingCleanup != nil {
-				if call == nil {
-					return nil, errors.New("Agent staged-Cleanup gate received a nil model call")
-				}
-				projected, projectErr := applyStagedCleanupProjection(call.Snapshot().Messages(), pendingCleanup.projectionTargets)
-				if projectErr != nil {
-					if err := emit(runstate.EngineCleanupFailed{
-						ID:     fmt.Sprintf("cleanup-%s-%d", request.Snapshot.OperationID, request.Snapshot.Cycle),
-						Reason: projectErr.Error(), Automatic: true, Metrics: runtimeCleanupMetrics(pendingCleanup.plan.Metrics),
-					}); err != nil {
-						return nil, err
-					}
-					return nil, projectErr
-				}
-				call.Messages = projected
-				return nil, nil
-			}
-			if maintenanceSelected {
-				return nil, nil
-			}
-			if call == nil {
-				return nil, errors.New("Agent context-maintenance gate received a nil model call")
-			}
-			compactionContext := cleanupTranscript
-			cleanupID := fmt.Sprintf("cleanup-%s-%d", request.Snapshot.OperationID, request.Snapshot.Cycle)
-			if manager := prepared.definition.Cleanup; manager != nil {
-				modelSnapshot := call.Snapshot()
-				plan, planErr := manager.Plan(gateCtx, CleanupPlanRequest{
-					Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
-					Run:     runViewForTurn(request.Snapshot), Messages: cloneMessages(cycleStateTranscript),
-					ModelRequest: modelSnapshot.Messages(), ModelInspection: modelRequestInspection(modelSnapshot),
-					Current: cleanupState, Present: cleanupPresent,
-					CompactionAvailable: prepared.definition.Compaction != nil,
-				})
-				cleanupPlanFailed := planErr != nil
-				if planErr != nil {
-					if err := emit(runstate.EngineCleanupFailed{
-						ID: cleanupID, Reason: planErr.Error(), Automatic: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-					}); err != nil {
-						return nil, err
-					}
-					slog.WarnContext(gateCtx, "automatic Agent Cleanup planning failed",
-						"session", engine.key, "run_id", request.Snapshot.OperationID, "cycle", request.Snapshot.Cycle, "error", planErr)
-					// An actual failed maintenance attempt is not retried after a tool
-					// call in the same run. At checkpoint pressure the pure planner can
-					// still route this exact seam through Compaction.
-					maintenanceSelected = true
-					if !plan.FallbackToCompaction && plan.Action != CleanupCompact {
-						return nil, nil
-					}
-				}
-				if !cleanupPlanFailed {
-					switch plan.Action {
-					case CleanupProject:
-						if err := emit(runstate.EngineCleanupStarted{
-							ID: cleanupID, Reason: plan.Reason, Automatic: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-						}); err != nil {
-							return nil, err
-						}
-						frozen, freezeErr := freezeCleanupTargets(
-							modelSnapshot.Messages(), modelContext.contextMaintenanceMessages(), controlledTranscript(),
-							initialLoopMessageCount, plan.Replacements,
-						)
-						if freezeErr != nil {
-							if err := emit(runstate.EngineCleanupFailed{
-								ID: cleanupID, Reason: freezeErr.Error(), Automatic: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-							}); err != nil {
-								return nil, err
-							}
-							maintenanceSelected = true
-							if plan.FallbackToCompaction {
-								break
-							}
-							// A target that cannot be frozen to raw history is a Manager
-							// contract violation. Do not let the provider answer from a
-							// projection that can never settle durably.
-							return nil, freezeErr
-						}
-						projected, projectErr := applyCleanupPlan(modelSnapshot.Messages(), plan)
-						if projectErr != nil {
-							if err := emit(runstate.EngineCleanupFailed{
-								ID: cleanupID, Reason: projectErr.Error(), Automatic: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-							}); err != nil {
-								return nil, err
-							}
-							maintenanceSelected = true
-							if plan.FallbackToCompaction {
-								break
-							}
-							return nil, projectErr
-						}
-						call.Messages = projected
-						pendingCleanup = &stagedCleanup{
-							plan: plan, replacements: frozen.raw, projectionTargets: frozen.projection,
-							current: currentCleanupStorage, present: currentCleanupStoragePresent,
-							mergeExisting: cleanupPresent, raw: currentCleanupRaw,
-						}
-						return nil, nil
-					case CleanupCompact:
-						maintenanceSelected = true
-						// If the exact request already overflows, safely recoverable tool
-						// bodies may be shrunk in this side fork before checkpointing. The
-						// cleanup itself is not durable; the checkpoint remains the run's
-						// sole maintenance mutation.
-						if plan.Metrics.PressureBefore >= 1 && len(plan.Replacements) > 0 {
-							if err := emit(runstate.EngineCleanupStarted{
-								ID: cleanupID, Reason: plan.Reason, Automatic: true, Transient: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-							}); err != nil {
-								return nil, err
-							}
-							projected, projectErr := applyCleanupPlan(modelSnapshot.Messages(), plan)
-							var projectedContext []*Message
-							if projectErr == nil {
-								projectedContext, projectErr = projectCompactionCleanup(
-									compactionContext, modelSnapshot.Messages(), modelContext.contextMaintenanceMessages(),
-									controlledTranscript(), initialLoopMessageCount, plan.Replacements,
-								)
-							}
-							if projectErr != nil {
-								if err := emit(runstate.EngineCleanupFailed{
-									ID: cleanupID, Reason: projectErr.Error(), Automatic: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-								}); err != nil {
-									return nil, err
-								}
-							} else {
-								call.Messages = projected
-								compactionContext = projectedContext
-								if err := emit(runstate.EngineCleanupCompleted{
-									ID: cleanupID, Reason: plan.Reason, Automatic: true, Transient: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-								}); err != nil {
-									return nil, err
-								}
-							}
-						}
-					case CleanupNone:
-						if plan.Metrics.CandidateTokens > 0 && plan.Reason != "below_cleanup_threshold" {
-							if err := emit(runstate.EngineCleanupSkipped{
-								ID: cleanupID, Reason: plan.Reason, Automatic: true, Metrics: runtimeCleanupMetrics(plan.Metrics),
-							}); err != nil {
-								return nil, err
-							}
-						}
-					default:
-						return nil, fmt.Errorf("Cleanup Manager returned invalid action %q", plan.Action)
-					}
-				}
-			}
 			if prepared.definition.Compaction == nil {
 				return nil, nil
 			}
+			if call == nil {
+				return nil, errors.New("Agent Compaction gate received a nil model call")
+			}
+			compactionContext := controlledTranscript()
+			// The active raw journal input is rendered once for this invocation.
+			// Summarize exactly the provider-visible instruction, including host
+			// context, if the first covered group begins in this same user Run.
+			compactionContext[activeUserIndex] = activeModelUser.Clone()
 			// Freeze the actual provider projection before taking the side fork.
 			// Portable loop/journal messages remain separate from runtime paths.
 			providerMessages, projectionErr := projectToolArtifactPaths(gateCtx, prepared.definition.Artifacts, call.Messages)
@@ -546,19 +383,18 @@ func (engine *definitionEngine) Run(
 			}
 			modelSnapshot := call.Snapshot()
 			fingerprint, fingerprintErr := automaticCompactionFingerprint(
-				prepared, compaction, compactionPresent, cleanupState, cleanupPresent, modelSnapshot,
+				prepared, compaction, compactionPresent, modelSnapshot,
 			)
 			if fingerprintErr != nil {
 				return nil, fingerprintErr
 			}
-			health, healthPresent, healthRaw, healthErr := compactionHealthStateFrom(request.Snapshot.Capabilities)
+			health, healthPresent, healthErr := compactionHealthStateFrom(request.Snapshot.Capabilities)
 			if healthErr != nil {
 				return nil, healthErr
 			}
 			failureLimit := normalizedAutomaticCompactionFailureLimit(prepared.definition.Execution)
-			checkpointID := fmt.Sprintf("compaction-%s-%d", request.Snapshot.OperationID, request.Snapshot.Cycle)
+			checkpointID := fmt.Sprintf("compaction-%s-%d-%d", request.Snapshot.OperationID, request.Snapshot.Cycle, max(compaction.Revision, currentCompactionStorage.Revision)+1)
 			if healthPresent && health.Fingerprint == fingerprint && health.ConsecutiveFailures >= failureLimit {
-				maintenanceSelected = true
 				if err := emit(runstate.EngineCompactionSkipped{
 					ID: checkpointID, Reason: "consecutive_failure_fuse", Automatic: true,
 					ConsecutiveFailures: health.ConsecutiveFailures, FailureFuseOpen: true,
@@ -572,17 +408,15 @@ func (engine *definitionEngine) Run(
 			var candidatePrepared preparedDefinition
 			var candidateStateMessages []*Message
 			var candidateModelUser *Message
-			buildAfter := func(next CompactionState) (*ModelRequestSnapshot, error) {
+			buildAfter := func(next compactionRecord) (*ModelRequestSnapshot, error) {
 				nextPrepared := prepared
 				nextRequest := prepareRequest
 				nextRequest.Compaction = compactionStatePointer(next, true)
-				nextCleanup, nextCleanupPresent := cleanupAfterCompaction(cleanupState, cleanupPresent, next, true)
-				nextRequest.Cleanup = cloneCleanupStateIfPresent(nextCleanup, nextCleanupPresent)
 				if err := rematerializeDefinitionContext(gateCtx, nextRequest, &nextPrepared); err != nil {
 					return nil, err
 				}
 				stateMessages, contextState, err := advanceContextState(
-					cycleStateTranscript, nextPrepared.fragments, nextPrepared.contextState, next, true,
+					transcript, nextPrepared.fragments, nextPrepared.contextState, next, true,
 				)
 				if err != nil {
 					return nil, err
@@ -591,16 +425,12 @@ func (engine *definitionEngine) Run(
 				// Replace only the selected historical prefix. The active user and
 				// all settled assistant/tool/task messages stay in their raw order,
 				// including a tail restored from an interrupted invocation.
-				candidateRaw := insertMessagesAt(transcript, activeUserIndex, stateMessages)
-				projectedRaw, err := effectiveCleanupMessages(candidateRaw, cleanupState, cleanupPresent, next, true)
+				candidateRaw := append(cloneMessages(transcript), cloneMessages(stateMessages)...)
+				effective, err := effectiveCompactionMessages(candidateRaw, next, true, nextPrepared.definition.Compaction.SummaryLimitBytes())
 				if err != nil {
 					return nil, err
 				}
-				effective, err := effectiveCompactionMessages(projectedRaw, next, true, nextPrepared.definition.Compaction.SummaryLimitBytes())
-				if err != nil {
-					return nil, err
-				}
-				userIndex := len(effective) - len(candidateRaw) + activeUserIndex + len(stateMessages)
+				userIndex := compactionMessageIndex(candidateRaw, next, true, activeUserIndex)
 				if userIndex < 0 || userIndex >= len(effective) {
 					return nil, errors.New("Compaction removed the active Agent input")
 				}
@@ -620,10 +450,9 @@ func (engine *definitionEngine) Run(
 				return candidate.call.Snapshot(), nil
 			}
 			next, nextPresent, changed, compactMetrics, compactErr := engine.applyAutomaticCompaction(
-				gateCtx, request, prepared, cycleStateTranscript[:activeUserIndex], compactionContext[:activeUserIndex], modelSnapshot,
+				gateCtx, request, prepared, controlledTranscript(), compactionContext, modelSnapshot,
 				compaction, compactionPresent,
-				currentCompactionStorage, currentCompactionRaw,
-				cleanupRevision(cleanupState, cleanupPresent),
+				currentCompactionStorage,
 				buildAfter,
 				emit,
 			)
@@ -632,9 +461,13 @@ func (engine *definitionEngine) Run(
 					return nil, gateCtx.Err()
 				}
 				nextHealth := nextCompactionHealth(health, healthPresent, fingerprint, compactErr)
-				if err := emitCompactionHealth(emit, healthRaw, nextHealth); err != nil {
+				if err := emitCompactionHealth(emit, nextHealth); err != nil {
 					return nil, err
 				}
+				if request.Snapshot.Capabilities == nil {
+					request.Snapshot.Capabilities = make(map[string]json.RawMessage)
+				}
+				request.Snapshot.Capabilities[compactionHealthCapability], _ = json.Marshal(nextHealth)
 				if err := emit(runstate.EngineCompactionFailed{
 					ID: checkpointID, Reason: nextHealth.FailureCode, Automatic: true,
 					ConsecutiveFailures: nextHealth.ConsecutiveFailures,
@@ -648,33 +481,40 @@ func (engine *definitionEngine) Run(
 					"consecutive_failures", nextHealth.ConsecutiveFailures, "failure_fuse_open", nextHealth.ConsecutiveFailures >= failureLimit,
 					"error", compactErr,
 				)
-				maintenanceSelected = true
 				// Automatic maintenance is a recoverable side fork. The unchanged
 				// request still passes through the provider input guard, which owns
 				// the non-negotiable hard limit.
 				return nil, nil
 			}
-			if err := clearCompactionHealth(emit, healthRaw, healthPresent); err != nil {
+			if err := clearCompactionHealth(emit, healthPresent); err != nil {
 				return nil, err
 			}
+			delete(request.Snapshot.Capabilities, compactionHealthCapability)
 			next, nextPresent = clearCompaction(next, nextPresent, clearState, clearPresent)
 			if !changed {
 				return nil, nil
 			}
-			maintenanceSelected = true
 			compaction, compactionPresent = next, nextPresent
 			prepareRequest.Compaction = compactionStatePointer(compaction, compactionPresent)
-			nextCleanup, nextCleanupPresent := cleanupAfterCompaction(cleanupState, cleanupPresent, compaction, compactionPresent)
-			prepareRequest.Cleanup = cloneCleanupStateIfPresent(nextCleanup, nextCleanupPresent)
 			prepared = candidatePrepared
-			if len(candidateStateMessages) > 0 {
-				cycleStateTranscript = insertMessagesAt(cycleStateTranscript, activeUserIndex, candidateStateMessages)
-				baseTranscript = insertMessagesAt(baseTranscript, activeUserIndex, candidateStateMessages)
-				transcript = insertMessagesAt(transcript, activeUserIndex, candidateStateMessages)
-				activeUserIndex += len(candidateStateMessages)
-			}
+			transcript = append(transcript, cloneMessages(candidateStateMessages)...)
+			currentCompactionStorage = compaction
 			activeModelUser = candidateModelUser
 			prepared.activeModelUser, prepared.activeUserIndex = activeModelUser, activeUserIndex
+			if len(candidateStateMessages) > 0 {
+				sequence := prepared.contextSequence
+				prepared.contextSequence++
+				checkpoint, err := encodeActiveEngineTranscript(prepared, transcript, activeModelUser, activeUserIndex)
+				if err != nil {
+					return nil, err
+				}
+				if err := engine.commitCanonicalContext(gateCtx, request, prepared.definition.Canonical, sequence, candidateStateMessages, checkpoint); err != nil {
+					return nil, err
+				}
+				if err := emit(runstate.EngineTranscriptUpdated{State: checkpoint}); err != nil {
+					return nil, err
+				}
+			}
 			return candidate, nil
 		}
 	}
@@ -1047,26 +887,6 @@ loopControlsStopped:
 	if committed.canonicalMessages != nil {
 		transcript = committed.canonicalMessages
 	}
-	var finalCapabilityUpdates []runstate.EngineCapabilityState
-	var finalCleanupCompleted *runstate.EngineCleanupCompleted
-	if pendingCleanup != nil {
-		nextCleanup, cleanupErr := pendingCleanup.finalState(transcript, request.Snapshot.OperationID, request.Snapshot.Cycle)
-		if cleanupErr != nil {
-			return runstate.EngineResult{}, fmt.Errorf("settle Agent Cleanup projection: %w", cleanupErr)
-		}
-		encodedCleanup, cleanupErr := json.Marshal(nextCleanup)
-		if cleanupErr != nil {
-			return runstate.EngineResult{}, cleanupErr
-		}
-		finalCapabilityUpdates = append(finalCapabilityUpdates, runstate.EngineCapabilityState{
-			Capability: cleanupCapability, State: encodedCleanup,
-		})
-		finalCleanupCompleted = &runstate.EngineCleanupCompleted{
-			ID: nextCleanup.ID, Reason: pendingCleanup.plan.Reason, Automatic: true,
-			Metrics: runtimeCleanupMetrics(pendingCleanup.plan.Metrics),
-		}
-		cleanupState, cleanupPresent = nextCleanup, true
-	}
 	_, finishClass := classifyResponseFinishReason(final.ResponseMeta)
 	incomplete := finishClass.Incomplete()
 	var continuation *runstate.EngineContinuation
@@ -1084,7 +904,7 @@ loopControlsStopped:
 	}
 	if err := emit(runstate.EngineAssistantFinal{
 		Content: final.Content, Thinking: final.ReasoningContent, State: encoded,
-		CapabilityUpdates: finalCapabilityUpdates, CleanupCompleted: finalCleanupCompleted, Continuation: continuation,
+		Continuation: continuation,
 	}); err != nil {
 		return runstate.EngineResult{}, err
 	}

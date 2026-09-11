@@ -370,9 +370,6 @@ func TestInteractiveReplacementTurnReanchorsResolvedInputToReplacementSlot(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if projection.SourceTurnCount != 2 {
-		t.Fatalf("replacement compactable boundary = %d, want 2", projection.SourceTurnCount)
-	}
 	visibleText := joinedInteractiveMessageContent(projection.Messages)
 	baselineAt := strings.Index(visibleText, "baseline answer")
 	interruptedAt := strings.Index(visibleText, "interrupted replacement input")
@@ -380,7 +377,7 @@ func TestInteractiveReplacementTurnReanchorsResolvedInputToReplacementSlot(t *te
 	if baselineAt < 0 || interruptedAt < baselineAt || replacementAt < interruptedAt {
 		t.Fatalf("replacement projection order changed: %q", visibleText)
 	}
-	if sourceText := joinedInteractiveMessageContent(projection.SourceMessages); !strings.Contains(sourceText, "interrupted replacement input") || !strings.Contains(sourceText, "replacement answer") {
+	if sourceText := joinedInteractiveMessageContent(projection.Messages); !strings.Contains(sourceText, "interrupted replacement input") || !strings.Contains(sourceText, "replacement answer") {
 		t.Fatalf("replacement compaction source lost resolved context: %q", sourceText)
 	}
 }

@@ -83,7 +83,7 @@ func (s *Store) readStoryRecentLocked(storyID, branchID string) (StoryMeta, []St
 	if err != nil {
 		return StoryMeta{}, nil, err
 	}
-	loaded.records = boundStoryRecentCacheRecords(loaded.meta, branchID, loaded.records)
+	loaded.records = completeStoryRecentRecords(handle.projection, loaded.meta, branchID, loaded.records)
 	handle, err = s.openStoryJournalLocked(storyID)
 	if err != nil {
 		return StoryMeta{}, nil, err
@@ -96,6 +96,13 @@ func (s *Store) readStoryRecentLocked(storyID, branchID string) (StoryMeta, []St
 
 func cacheStoryRecentLoaded(handle *storyJournalHandle, branchID string, meta StoryMeta, records []StoryEventRecord) error {
 	if handle == nil || handle.journal == nil {
+		return nil
+	}
+	records = completeStoryRecentRecords(handle.projection, meta, branchID, records)
+	// An active input's complete context is recovery data. If it exceeds the
+	// resident cache, read it from the journal instead of caching a partial view.
+	if branch := handle.projection.Branches[branchID]; branch != nil && len(branch.PendingPlayerInputIDs) > 0 && len(records) > storyRecentCacheRecordLimit {
+		delete(handle.recent, branchID)
 		return nil
 	}
 	records = boundStoryRecentCacheRecords(meta, branchID, records)
@@ -145,9 +152,48 @@ func advanceStoryRecentCaches(handle *storyJournalHandle, cursor conversationjou
 				cached.records = append(cached.records, event)
 			}
 		}
+		cached.records = completeStoryRecentRecords(handle.projection, meta, branchID, cached.records)
+		if branch := handle.projection.Branches[branchID]; branch != nil && len(branch.PendingPlayerInputIDs) > 0 && len(cached.records) > storyRecentCacheRecordLimit {
+			delete(handle.recent, branchID)
+			continue
+		}
 		cached.records = boundStoryRecentCacheRecords(meta, branchID, cached.records)
 		handle.recent[branchID] = cached
 	}
+}
+
+// completeStoryRecentRecords bounds presentation data only when every active
+// input and its tool batches survive. Larger active context is read through the
+// journal and deliberately not installed in the resident cache.
+func completeStoryRecentRecords(projection *storyJournalProjection, meta StoryMeta, branchID string, records []StoryEventRecord) []StoryEventRecord {
+	bounded := boundStoryRecentCacheRecords(meta, branchID, records)
+	branch := projection.Branches[branchID]
+	if len(bounded) == len(records) || branch == nil || len(branch.PendingPlayerInputIDs) == 0 {
+		return bounded
+	}
+	pending := make(map[string]bool, len(branch.PendingPlayerInputIDs))
+	for _, id := range branch.PendingPlayerInputIDs {
+		pending[id] = true
+	}
+	kept := make(map[string]bool, len(bounded))
+	for _, record := range bounded {
+		kept[record.Envelope.ID] = true
+	}
+	for _, record := range records {
+		if kept[record.Envelope.ID] {
+			continue
+		}
+		if record.Envelope.Type == StoryEventTypePlayerInput && pending[record.Envelope.ID] {
+			return records
+		}
+		if record.Envelope.Type == StoryEventTypeModelContextBatch {
+			input, _ := record.Raw["player_input_id"].(string)
+			if pending[input] {
+				return records
+			}
+		}
+	}
+	return bounded
 }
 
 // boundStoryRecentCacheRecords keeps the bounded cache useful as a branch
@@ -170,9 +216,6 @@ func boundStoryRecentCacheRecords(meta StoryMeta, branchID string, records []Sto
 	}
 
 	_, activePath := eventPath(branch.Head, eventsByID(records))
-	if len(activePath) == 0 {
-		return append([]StoryEventRecord(nil), records[len(records)-storyRecentCacheRecordLimit:]...)
-	}
 	keep := make([]bool, len(records))
 	kept := 0
 
@@ -285,8 +328,17 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 	var bytesRead int64
 	physicalSeen := make(map[conversationjournal.Cursor]bool)
 	transactionSeen := make(map[conversationjournal.Cursor]bool)
+	// Pending inputs can predate the display tail even before the first Turn.
+	// Read through their acceptance so all intervening tool batches remain
+	// available to canonical commit and cold recovery.
+	pendingInputs := make(map[string]bool)
+	if beforeCursor == "" {
+		for _, id := range projection.PendingPlayerInputIDs {
+			pendingInputs[id] = true
+		}
+	}
 	firstScan := true
-	for through > 0 && (firstScan || (nextTargetID != "" && turnsFound < limit)) {
+	for through > 0 && (firstScan || len(pendingInputs) > 0 || (nextTargetID != "" && turnsFound < limit)) {
 		firstScan = false
 		after := conversationjournal.Cursor(0)
 		if through > storyHistoryScanTransactions {
@@ -312,6 +364,9 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 		}
 		byID := make(map[string]locatedStoryRecord, len(located))
 		for _, item := range located {
+			if item.record.Envelope.Type == StoryEventTypePlayerInput {
+				delete(pendingInputs, item.record.Envelope.ID)
+			}
 			if item.record.Envelope.ID != "" {
 				byID[item.record.Envelope.ID] = item
 			}
@@ -334,6 +389,9 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 		if after == 0 {
 			break
 		}
+	}
+	if len(pendingInputs) > 0 {
+		return loadedStoryHistoryPage{}, fmt.Errorf("pending player inputs are missing from the canonical journal")
 	}
 	if nextTargetID != "" && through == 0 && turnsFound < limit {
 		return loadedStoryHistoryPage{}, fmt.Errorf("故事分支父链不完整: missing=%s", nextTargetID)

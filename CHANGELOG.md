@@ -22,8 +22,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
-- 修复写作与游戏的上下文压缩：清理后的摘要来源保持一致，压缩后保留本轮工具结果，摘要生成期间支持取消与暂停恢复。
-- Fix Writing and Game context compaction to preserve cleaned summary sources and current-turn tool results, with cancellation and pause/resume during summarization.
+- 写作与游戏的长任务可在同一个请求内反复压缩已完成步骤，保留当前要求与最近工具结果；超大工具输出可回读完整文件，重启后继续使用摘要。
+- Writing and Game long tasks can compact completed steps repeatedly within one request while preserving current instructions and recent tool results; complete oversized output remains readable from artifacts, and checkpoints survive restart.
 
 - 修复生成中途断流不能重试的问题，统一网络重试与输出修复次数，支持可取消退避，避免执行未接纳响应中的工具。
 - Retry interrupted model streams with one shared budget for network retries and output repair, cancellable backoff, and no execution of tools from unaccepted responses.
@@ -35,6 +35,9 @@ Denova records only major user-visible features, important compatibility or data
 - Fix repeated game context compaction failing source validation when older turns remain visible beside an existing checkpoint.
 
 ### Changed / 变更
+
+- 新版压缩首次写入前备份会话 journal 为 `.pre-incremental-compaction-v2.bak`。v0.4.5 的游戏摘要会从原始历史重建；新版回合内压缩边界不能由旧版直接解释。降回 v0.4.5 应恢复最早的升级前备份（已升级任务恢复格式时使用 `.pre-resilience-v1.bak`），并另行保留后续内容。
+- Conversation journals receive a `.pre-incremental-compaction-v2.bak` before their first new checkpoint. Game checkpoints from v0.4.5 are rebuilt from original history; the old release cannot interpret within-turn coverage. To return to v0.4.5, restore the earliest pre-upgrade backup (`.pre-resilience-v1.bak` when task recovery was also upgraded) and separately preserve newer content.
 
 - 新的任务恢复记录无法由 v0.4.5 直接读取；首次升级写入前为既有会话 journal 保留 `.pre-resilience-v1.bak`。降级需退出应用并恢复备份，备份之后的新内容应另行保留。
 - New task recovery records cannot be read directly by v0.4.5. Existing conversation journals receive a `.pre-resilience-v1.bak` before the first upgraded write. Downgrading requires stopping the app and restoring those backups while separately preserving newer content.

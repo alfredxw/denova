@@ -32,7 +32,7 @@ for (const mode of ['Writing', 'Game'] as const) {
     await expect(page.getByText(`${marker} live evidence accepted.`, { exact: true })).toBeVisible({ timeout: 30_000 })
 
     const calls = await captured(request, marker)
-    const forkIndex = calls.findIndex(call => JSON.stringify(call.messages.at(-1)).includes('[Denova runtime context compaction request]'))
+    const forkIndex = calls.findIndex(call => JSON.stringify(call.messages.at(-1)).includes('[Runtime context compaction request]'))
     expect(forkIndex, `No automatic fork among ${calls.length} calls`).toBeGreaterThan(0)
     const fork = calls[forkIndex]!
     const read = calls[forkIndex - 1]!
@@ -72,6 +72,8 @@ for (const mode of ['Writing', 'Game'] as const) {
         for (const width of [390, 1280]) {
           await page.setViewportSize({ width, height: 844 })
           await expect(dialog.getByRole('button', { name: '移除压缩', exact: true })).toBeVisible()
+          await expect(dialog.getByText(/^第 \d+ 版摘要$/)).toBeVisible()
+          await page.screenshot({ path: test.info().outputPath(`game-compaction-${theme}-${width}.png`) })
           expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
         }
         await page.keyboard.press('Escape')
@@ -86,6 +88,8 @@ for (const mode of ['Writing', 'Game'] as const) {
       expect(JSON.stringify(analysis.context_messages)).toContain(evidence)
     } else {
       const dialog = await openAnalysis(page)
+      await expect(dialog.getByText(/^第 \d+ 版摘要$/)).toBeVisible()
+      await page.screenshot({ path: test.info().outputPath('writing-compaction.png') })
       // Scoped AgentChat has no removal endpoint; it must not offer an action
       // that silently returns false or targets the foreground Writing session.
       await expect(dialog.getByRole('button', { name: '移除压缩', exact: true })).toHaveCount(0)

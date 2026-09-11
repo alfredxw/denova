@@ -528,14 +528,12 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		if payload.Automatic {
 			phase = "model_step"
 		}
-		metrics := payload.State.Metrics
-		if metrics.SourceMessageCount == 0 {
-			metrics.SourceMessageCount = payload.State.ReplacementTo - payload.State.ReplacementFrom
-		}
+		metrics := payload.Metrics
+		metrics.SourceMessageCount = payload.State.SourceMessageCount
 		projector.emitEvent(agentrun.Event{Type: "context_compaction", Data: meta.appendTo(compactionMetricsData(map[string]any{
 			"id": payload.State.ID, "phase": phase, "status": "completed",
-			"summary": payload.State.Summary, "tokens_after": payload.State.TokenEstimate,
-			"epoch": int(payload.State.Revision),
+			"summary": payload.State.Summary, "tokens_after": payload.State.TokensAfter,
+			"revision": int(payload.State.Revision),
 		}, metrics))})
 	case agent.CompactionRemoved:
 		if projector.compaction != nil {
@@ -544,7 +542,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			}
 		}
 		projector.emitEvent(agentrun.Event{Type: "context_compaction", Data: meta.appendTo(map[string]any{
-			"id": payload.ID, "phase": "agent", "status": "removed", "epoch": payload.Revision,
+			"id": payload.ID, "phase": "agent", "status": "removed", "revision": payload.Revision,
 		})})
 	case agent.CompactionFailed:
 		projector.emitEvent(agentrun.Event{Type: "context_compaction", Data: meta.appendTo(compactionMetricsData(map[string]any{

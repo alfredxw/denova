@@ -1,24 +1,22 @@
-package compaction
+package agent
 
 import (
 	"fmt"
 	"strings"
 	"testing"
-
-	agent "github.com/alfredxw/denova/agent"
 )
 
-func protectedToolMessage(callID, path string, status agent.ToolResultStatus) *agent.Message {
-	return &agent.Message{
-		Role: agent.ToolRole, Content: "FULL RAW TOOL BODY MUST NOT ENTER SUMMARY", ToolCallID: callID, ToolName: "write",
-		ToolResult: &agent.ToolResultSummary{
-			Status: status, ResultRetention: agent.ToolResultProtected,
-			ProtectedReceipt: &agent.ToolResultProtectedReceipt{
+func protectedToolMessage(callID, path string, status ToolResultStatus) *Message {
+	return &Message{
+		Role: ToolRole, Content: "FULL RAW TOOL BODY MUST NOT ENTER SUMMARY", ToolCallID: callID, ToolName: "write",
+		ToolResult: &ToolResultSummary{
+			Status: status, ResultRetention: ToolResultProtected,
+			ProtectedReceipt: &ToolResultProtectedReceipt{
 				SanitizedArguments: fmt.Sprintf(`{"path":%q}`, path),
 				Outcome:            `{"changed":true}`,
 			},
-			Artifacts: []agent.ToolArtifactRef{{
-				ID: "private-artifact-id", Purpose: agent.ToolArtifactPurposeCompleteToolOutput,
+			Artifacts: []ToolArtifactRef{{
+				ID: "private-artifact-id", Purpose: ToolArtifactPurposeCompleteToolOutput,
 				ReadablePath: path, ContentType: "text/plain", SHA256: strings.Repeat("a", 64),
 				EstimatedBytes: 1024, EstimatedTokens: 256, Complete: true,
 			}},
@@ -27,8 +25,8 @@ func protectedToolMessage(callID, path string, status agent.ToolResultStatus) *a
 }
 
 func TestCompactionPreservesBoundedProtectedReceiptsWithoutRawArtifactSecrets(t *testing.T) {
-	message := protectedToolMessage("call-one", ".agent/artifacts/call-one.txt", agent.ToolResultSuccess)
-	summary := mergeProtectedReceiptContext("narrative summary", "", []*agent.Message{message}, 64<<10)
+	message := protectedToolMessage("call-one", ".agent/artifacts/call-one.txt", ToolResultSuccess)
+	summary := mergeProtectedReceiptContext("narrative summary", "", []*Message{message}, 64<<10)
 	for _, want := range []string{
 		"narrative summary", protectedReceiptTitle, "call-one", ".agent/artifacts/call-one.txt", `\"changed\":true`,
 	} {
@@ -47,10 +45,10 @@ func TestCompactionPreservesBoundedProtectedReceiptsWithoutRawArtifactSecrets(t 
 }
 
 func TestRepeatedCompactionMergesProtectedReceiptsWithoutDuplication(t *testing.T) {
-	first := protectedToolMessage("call-one", ".agent/artifacts/one.txt", agent.ToolResultSuccess)
-	previous := mergeProtectedReceiptContext("first summary", "", []*agent.Message{first}, 64<<10)
-	second := protectedToolMessage("call-two", ".agent/artifacts/two.txt", agent.ToolResultError)
-	current := mergeProtectedReceiptContext("second summary", previous, []*agent.Message{first, second}, 64<<10)
+	first := protectedToolMessage("call-one", ".agent/artifacts/one.txt", ToolResultSuccess)
+	previous := mergeProtectedReceiptContext("first summary", "", []*Message{first}, 64<<10)
+	second := protectedToolMessage("call-two", ".agent/artifacts/two.txt", ToolResultError)
+	current := mergeProtectedReceiptContext("second summary", previous, []*Message{first, second}, 64<<10)
 	if strings.Count(current, `"call_id":"call-one"`) != 1 || strings.Count(current, `"call_id":"call-two"`) != 1 {
 		t.Fatalf("repeated protected receipts were duplicated or lost: %s", current)
 	}
@@ -62,11 +60,11 @@ func TestRepeatedCompactionMergesProtectedReceiptsWithoutDuplication(t *testing.
 }
 
 func TestProtectedReceiptSelectionIsBoundedAndReportsOmissions(t *testing.T) {
-	messages := make([]*agent.Message, 0, protectedReceiptLimit+12)
+	messages := make([]*Message, 0, protectedReceiptLimit+12)
 	for index := 0; index < protectedReceiptLimit+12; index++ {
-		status := agent.ToolResultSuccess
+		status := ToolResultSuccess
 		if index == 0 {
-			status = agent.ToolResultError
+			status = ToolResultError
 		}
 		messages = append(messages, protectedToolMessage(
 			fmt.Sprintf("call-%02d", index), fmt.Sprintf(".agent/artifacts/%02d.txt", index), status,
@@ -79,5 +77,14 @@ func TestProtectedReceiptSelectionIsBoundedAndReportsOmissions(t *testing.T) {
 	}
 	if !strings.Contains(lines[0], `"call_id":"call-00"`) || !strings.Contains(block, `"omitted_receipts"`) {
 		t.Fatalf("bounded receipt selection=%s", block)
+	}
+}
+
+func TestReceiptOverflowNeverTruncatesCheckpointFacts(t *testing.T) {
+	body := strings.Repeat("Preserve corrected budget 72519 and source file proof.md. ", 12)
+	messages := []*Message{protectedToolMessage("latest", ".agent/artifacts/result.txt", ToolResultSuccess)}
+	result := mergeProtectedReceiptContext(body, "", messages, len(body)+300)
+	if !strings.HasPrefix(result, strings.TrimSpace(body)) || strings.Contains(result, "...[truncated]") || !strings.Contains(result, "session journal") || len(result) > len(body)+300 {
+		t.Fatalf("checkpoint facts were truncated or receipt capacity exceeded: %s", result)
 	}
 }

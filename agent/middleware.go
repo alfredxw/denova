@@ -209,6 +209,16 @@ func (snapshot *ModelRequestSnapshot) Append(messages ...*Message) *ModelRequest
 	}
 }
 
+// WithMessages replaces a side call's input while preserving the captured model
+// and options. Replacing the prefix explicitly resets cache-prefix accounting.
+func (snapshot *ModelRequestSnapshot) WithMessages(messages []*Message) *ModelRequestSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &ModelRequestSnapshot{model: snapshot.model, messages: cloneMessages(messages),
+		options: append([]ModelOption(nil), snapshot.options...), streaming: snapshot.streaming}
+}
+
 // WithOptions returns a detached side fork that preserves the exact model,
 // message prefix, cache boundary, and existing options before applying the
 // supplied bounded overrides.

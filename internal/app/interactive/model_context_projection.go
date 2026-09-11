@@ -1,259 +1,95 @@
 package interactiveapp
 
 import (
-	agentcontext "denova/internal/agents/context"
-	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/toolresult"
 	"fmt"
-	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
 	"strings"
 
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/toolresult"
 	"denova/internal/interactive"
+	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
-// ModelContextProjection is the single Game model-history view
-// shared by normal assembly and checkpoint maintenance. SourceMessages is a
-// contiguous completed-turn interval; everything after SourceTurnCount is a
-// non-compactable tail and must survive a checkpoint verbatim.
+// ModelContextProjection renders the canonical branch in message order.
+// Agent owns checkpoint eligibility and coverage, including unfinished Turns.
+// This adapter only restores interrupted inputs at their accepted branch slot.
 type ModelContextProjection struct {
-	Messages             []*agents.Message
-	SourceMessages       []*agents.Message
-	ExistingCheckpoint   string
-	SourceTurnCount      int
+	Messages             []*agent.Message
 	PendingInputMessages []string
-}
-
-type interactiveProjectedTurn struct {
-	turn     interactive.StoryModelTurn
-	messages []*agents.Message
-}
-
-// interactiveResolvedContext is an interrupted input made durable by the Turn
-// that eventually closed it. acceptedBoundary preserves the durable audit
-// position. activeBoundary restores the input on the current branch path; an
-// exact latest-Turn replacement anchors inputs accepted after the old version
-// to the replacement slot. A valid checkpoint never bisects that active
-// interval and its owner Turn.
-type interactiveResolvedContext struct {
-	context          interactive.ResolvedPlayerInputContext
-	acceptedBoundary int
-	activeBoundary   int
-	ownerTurn        int
-	messages         []*agents.Message
 }
 
 type interactivePendingContext struct {
 	turnBoundary int
-	messages     []*agents.Message
+	messages     []*agent.Message
 }
 
-func BuildModelContextProjection(
-	history interactive.StoryModelHistory,
-	compaction *interactive.ContextCompactionProjection,
-	snapshot interactive.Snapshot,
-	policy toolresult.ContextPolicy,
-	current agentrun.CycleIdentity,
+func BuildModelContextProjection(history interactive.StoryModelHistory, compaction *agent.CompactionState, snapshot interactive.Snapshot,
+	policy toolresult.ContextPolicy, current agentrun.CycleIdentity,
 ) (ModelContextProjection, error) {
 	return buildModelContextProjection(history, compaction, snapshot, policy, current, func(input interactive.PlayerInputAcceptedEvent) *agent.Message {
-		message := agent.UserMessageWithAttachments(interruptedPlayerInputModelMessage(input), input.Attachments)
-		return message
+		return agent.UserMessageWithAttachments(interruptedPlayerInputModelMessage(input), input.Attachments)
 	})
 }
 
-// Input projection is the only difference between canonical storage and the
-// narrator's view of earlier interrupted turns. Canonical hashes must use the
-// accepted raw input, never a later explanatory wrapper.
-func buildModelContextProjection(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionProjection, snapshot interactive.Snapshot,
+// Canonical storage supplies raw input text; product inspection may explain
+// that an older accepted input produced no narrative. Neither edits the journal.
+func buildModelContextProjection(history interactive.StoryModelHistory, compaction *agent.CompactionState, snapshot interactive.Snapshot,
 	policy toolresult.ContextPolicy, current agentrun.CycleIdentity, inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
 ) (ModelContextProjection, error) {
-	if history.StartTurn < 0 || history.EndTurn < history.StartTurn ||
-		history.EndTurn > history.TotalTurns || len(history.Turns) != history.EndTurn-history.StartTurn {
-		return ModelContextProjection{}, fmt.Errorf(
-			"invalid Game model-history range: start=%d end=%d total=%d turns=%d",
-			history.StartTurn, history.EndTurn, history.TotalTurns, len(history.Turns),
-		)
+	if history.StartTurn != 0 || history.EndTurn < 0 || history.EndTurn > history.TotalTurns || len(history.Turns) != history.EndTurn {
+		return ModelContextProjection{}, fmt.Errorf("invalid canonical Game history: start=%d end=%d total=%d turns=%d", history.StartTurn, history.EndTurn, history.TotalTurns, len(history.Turns))
 	}
-
-	projection := ModelContextProjection{SourceTurnCount: history.EndTurn}
-	sourceStart := 0
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		sourceStart = compaction.SourceTurnCount
-		projection.ExistingCheckpoint = strings.TrimSpace(compaction.Summary)
-	}
-	if sourceStart < history.StartTurn || sourceStart > history.EndTurn {
-		return ModelContextProjection{}, fmt.Errorf(
-			"Game checkpoint boundary is outside loaded model history: source=%d history=[%d,%d)",
-			sourceStart, history.StartTurn, history.EndTurn,
-		)
-	}
-
-	turns, resolved, checkpointMessages, err := projectInteractiveCompletedContext(
-		history, compaction, policy, sourceStart, inputMessage,
-	)
-	if err != nil {
-		return ModelContextProjection{}, err
-	}
-	pending, pendingMessages, earliestPending, err := projectInteractivePendingContext(history, snapshot, policy, current, inputMessage)
-	if err != nil {
-		return ModelContextProjection{}, err
-	}
-	projection.PendingInputMessages = pendingMessages
-	if earliestPending < projection.SourceTurnCount {
-		projection.SourceTurnCount = earliestPending
-	}
-	if projection.SourceTurnCount < sourceStart {
-		return ModelContextProjection{}, fmt.Errorf(
-			"Game checkpoint bisects a pending player input: checkpoint=%d input=%d",
-			sourceStart, projection.SourceTurnCount,
-		)
-	}
-	projection.SourceTurnCount = interactiveAtomicSourceTurnCount(
-		projection.SourceTurnCount, resolved,
-	)
-
-	projection.Messages = append(projection.Messages, checkpointMessages...)
-	resolvedAt := make(map[int][]*agents.Message, len(resolved))
-	for _, entry := range resolved {
-		resolvedAt[entry.activeBoundary] = append(resolvedAt[entry.activeBoundary], entry.messages...)
-	}
-	pendingAt := make(map[int][]*agents.Message, len(pending))
-	for _, entry := range pending {
-		boundary := entry.turnBoundary
-		if boundary < history.StartTurn {
-			boundary = history.StartTurn
+	resolvedAt := make(map[int][]*agent.Message)
+	for owner, turn := range history.Turns {
+		for _, resolved := range turn.ResolvedPlayerInputContexts {
+			boundary, err := interactivePlayerInputTurnBoundary(history, resolved.Input)
+			if err != nil {
+				return ModelContextProjection{}, err
+			}
+			if boundary == owner+1 {
+				// Regeneration replaces the latest visible Turn in the same branch slot.
+				boundary = owner
+			} else if boundary > owner {
+				return ModelContextProjection{}, fmt.Errorf("resolved player input %s was accepted after its owner Turn: accepted=%d owner=%d", resolved.Input.ID, boundary, owner)
+			}
+			messages := interactivePlayerInputContextMessages(resolved.Input, resolved.ModelContextBatches, inputMessage)
+			resolvedAt[boundary] = append(resolvedAt[boundary], toolresult.ApplyContextPolicy(messages, policy)...)
 		}
-		pendingAt[boundary] = append(pendingAt[boundary], entry.messages...)
 	}
-	for boundary := history.StartTurn; boundary <= history.EndTurn; boundary++ {
-		// A canonical owner Turn consumes every pending input that existed at its
-		// commit, so a surviving pending input must have been accepted at a later
-		// boundary than every context resolved by that owner. Resolved-first is
-		// therefore the stable order.
+	pending, pendingInputs, err := projectInteractivePendingContext(history, snapshot, policy, current, inputMessage)
+	if err != nil {
+		return ModelContextProjection{}, err
+	}
+	pendingAt := make(map[int][]*agent.Message)
+	for _, entry := range pending {
+		pendingAt[entry.turnBoundary] = append(pendingAt[entry.turnBoundary], entry.messages...)
+	}
+	projection := ModelContextProjection{PendingInputMessages: pendingInputs}
+	for boundary := 0; boundary <= history.EndTurn; boundary++ {
 		projection.Messages = append(projection.Messages, resolvedAt[boundary]...)
 		projection.Messages = append(projection.Messages, pendingAt[boundary]...)
 		if boundary == history.EndTurn {
 			break
 		}
-		turn := turns[boundary-history.StartTurn]
-		projection.Messages = append(projection.Messages, turn.messages...)
+		turn := history.Turns[boundary]
+		messages := []*agent.Message{agent.UserMessageWithAttachments(turn.User, turn.Attachments)}
+		messages = append(messages, settledTurnToolContextMessages(turn.ModelContextMessages)...)
+		assistant := agent.AssistantMessage(turn.Narrative, nil)
+		assistant.Extra = providers.ContinuationExtra(turn.ProviderContinuation)
+		messages = append(messages, assistant)
+		projection.Messages = append(projection.Messages, toolresult.ApplyContextPolicy(messages, policy)...)
 	}
-
-	// Build checkpoint source independently from the display projection. This
-	// keeps resolved inputs at their active-branch position while enforcing that
-	// a source either includes the entire input -> owner interval or none of it.
-	// Pending inputs have already shortened SourceTurnCount above.
-	resolvedSourceAt := make(map[int][]interactiveResolvedContext, len(resolved))
-	for _, entry := range resolved {
-		if entry.activeBoundary < projection.SourceTurnCount && entry.ownerTurn < projection.SourceTurnCount {
-			resolvedSourceAt[entry.activeBoundary] = append(resolvedSourceAt[entry.activeBoundary], entry)
+	if compaction != nil {
+		// The live suffix is owned by Agent and may extend beyond this Story view.
+		// Idle inspection applies the identical raw-message coverage through Agent.
+		projection.Messages, err = compaction.Project(projection.Messages, max(1, len(compaction.Summary)))
+		if err != nil {
+			return ModelContextProjection{}, err
 		}
-	}
-	for boundary := sourceStart; boundary < projection.SourceTurnCount; boundary++ {
-		for _, entry := range resolvedSourceAt[boundary] {
-			projection.SourceMessages = append(
-				projection.SourceMessages,
-				interactiveLocatedResolvedContextMessages(entry)...,
-			)
-		}
-		turn := turns[boundary-history.StartTurn]
-		projection.SourceMessages = append(
-			projection.SourceMessages,
-			interactiveLocatedTurnMessages(turn.turn, turn.messages)...,
-		)
 	}
 	return projection, nil
-}
-
-func projectInteractiveCompletedContext(
-	history interactive.StoryModelHistory,
-	compaction *interactive.ContextCompactionProjection,
-	policy toolresult.ContextPolicy,
-	sourceStart int,
-	inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
-) ([]interactiveProjectedTurn, []interactiveResolvedContext, []*agents.Message, error) {
-	raw := make([]*agents.Message, 0, len(history.Turns)*3+1)
-	checkpointCount := 0
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		raw = append(raw, agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
-		checkpointCount = 1
-	}
-	type messageSpan struct{ start, end int }
-	turns := make([]interactiveProjectedTurn, len(history.Turns))
-	turnSpans := make([]messageSpan, len(history.Turns))
-	resolved := make([]interactiveResolvedContext, 0)
-	resolvedAt := make(map[int][]int)
-	for index, turn := range history.Turns {
-		ownerTurn := history.StartTurn + index
-		turns[index].turn = turn
-		for _, context := range turn.ResolvedPlayerInputContexts {
-			// The active checkpoint already owns every context whose closing Turn
-			// is before its source boundary. Retained raw Turns intentionally remain
-			// visible, but replaying their historical tool suffix would duplicate
-			// evidence already represented by the checkpoint.
-			if ownerTurn < sourceStart {
-				continue
-			}
-			acceptedBoundary, err := interactivePlayerInputTurnBoundary(history, context.Input)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			activeBoundary := acceptedBoundary
-			if acceptedBoundary == ownerTurn+1 {
-				// Regenerating the latest Turn removes the version that was visible
-				// when interrupted inputs were accepted. The replacement occupies
-				// that same logical slot.
-				activeBoundary = ownerTurn
-			} else if acceptedBoundary > ownerTurn {
-				return nil, nil, nil, fmt.Errorf(
-					"resolved player input %s was accepted after its owner Turn: accepted=%d owner=%d",
-					context.Input.ID, acceptedBoundary, ownerTurn,
-				)
-			}
-			if activeBoundary < sourceStart {
-				return nil, nil, nil, fmt.Errorf(
-					"Game checkpoint bisects resolved player input %s: accepted=%d checkpoint=%d owner=%d",
-					context.Input.ID, acceptedBoundary, sourceStart, ownerTurn,
-				)
-			}
-			resolved = append(resolved, interactiveResolvedContext{
-				context: context, acceptedBoundary: acceptedBoundary, activeBoundary: activeBoundary,
-				ownerTurn: ownerTurn, messages: interactivePlayerInputContextMessages(context.Input, context.ModelContextBatches, inputMessage),
-			})
-			resolvedAt[activeBoundary] = append(resolvedAt[activeBoundary], len(resolved)-1)
-		}
-	}
-	resolvedSpans := make([]messageSpan, len(resolved))
-	for boundary := history.StartTurn; boundary <= history.EndTurn; boundary++ {
-		for _, index := range resolvedAt[boundary] {
-			start := len(raw)
-			raw = append(raw, resolved[index].messages...)
-			resolvedSpans[index] = messageSpan{start: start, end: len(raw)}
-		}
-		if boundary == history.EndTurn {
-			break
-		}
-		index := boundary - history.StartTurn
-		turn := history.Turns[index]
-		start := len(raw)
-		raw = append(raw, agent.UserMessageWithAttachments(turn.User, turn.Attachments))
-		raw = append(raw, settledTurnToolContextMessages(turn.ModelContextMessages)...)
-		assistant := agents.AssistantMessage(turn.Narrative, nil)
-		assistant.Extra = providers.ContinuationExtra(turn.ProviderContinuation)
-		raw = append(raw, assistant)
-		turnSpans[index] = messageSpan{start: start, end: len(raw)}
-	}
-	checkpoint := append([]*agents.Message(nil), raw[:checkpointCount]...)
-	for index := range turns {
-		span := turnSpans[index]
-		turns[index].messages = toolresult.ApplyContextPolicy(raw[span.start:span.end], policy)
-	}
-	for index := range resolved {
-		span := resolvedSpans[index]
-		resolved[index].messages = toolresult.ApplyContextPolicy(raw[span.start:span.end], policy)
-	}
-	return turns, resolved, checkpoint, nil
 }
 
 // settledTurnToolContextMessages keeps historical tool calls and results while
@@ -276,14 +112,13 @@ func projectInteractivePendingContext(
 	policy toolresult.ContextPolicy,
 	current agentrun.CycleIdentity,
 	inputMessage func(interactive.PlayerInputAcceptedEvent) *agent.Message,
-) ([]interactivePendingContext, []string, int, error) {
+) ([]interactivePendingContext, []string, error) {
 	batches := make(map[string][]interactive.ModelContextBatchEvent, len(snapshot.PendingPlayerInputs))
 	for _, batch := range snapshot.PendingModelContextBatches {
 		batches[batch.PlayerInputID] = append(batches[batch.PlayerInputID], batch)
 	}
 	pending := make([]interactivePendingContext, 0, len(snapshot.PendingPlayerInputs))
 	pendingInputMessages := make([]string, 0, len(snapshot.PendingPlayerInputs))
-	earliest := history.EndTurn
 	for _, input := range snapshot.PendingPlayerInputs {
 		if interactivePendingInputMatchesCycle(input, current) {
 			// The live cycle is already represented by the final user instruction
@@ -292,10 +127,7 @@ func projectInteractivePendingContext(
 		}
 		boundary, err := interactivePlayerInputTurnBoundary(history, input)
 		if err != nil {
-			return nil, nil, 0, err
-		}
-		if boundary < earliest {
-			earliest = boundary
+			return nil, nil, err
 		}
 		user := inputMessage(input).Content
 		messages := toolresult.ApplyContextPolicy(
@@ -304,7 +136,7 @@ func projectInteractivePendingContext(
 		pending = append(pending, interactivePendingContext{turnBoundary: boundary, messages: messages})
 		pendingInputMessages = append(pendingInputMessages, user)
 	}
-	return pending, pendingInputMessages, earliest, nil
+	return pending, pendingInputMessages, nil
 }
 
 func interactivePendingInputMatchesCycle(input interactive.PlayerInputAcceptedEvent, current agentrun.CycleIdentity) bool {
@@ -326,31 +158,6 @@ func interactivePlayerInputContextMessages(
 	return messages
 }
 
-func interactiveAtomicSourceTurnCount(
-	sourceEnd int,
-	resolved []interactiveResolvedContext,
-) int {
-	// A pending boundary may bisect one or more resolved acceptance intervals.
-	// Repeatedly retreat to the oldest intersected acceptance boundary until
-	// every included interval also contains its owner Turn.
-	for {
-		next := sourceEnd
-		for _, entry := range resolved {
-			boundary := entry.activeBoundary
-			if sourceEnd <= boundary || sourceEnd > entry.ownerTurn {
-				continue
-			}
-			if boundary < next {
-				next = boundary
-			}
-		}
-		if next == sourceEnd {
-			return sourceEnd
-		}
-		sourceEnd = next
-	}
-}
-
 func interactivePlayerInputTurnBoundary(history interactive.StoryModelHistory, input interactive.PlayerInputAcceptedEvent) (int, error) {
 	boundary := input.AcceptedTurnCount
 	if boundary < 0 || boundary > history.TotalTurns {
@@ -360,40 +167,4 @@ func interactivePlayerInputTurnBoundary(history interactive.StoryModelHistory, i
 		)
 	}
 	return boundary, nil
-}
-
-func interactiveLocatedResolvedContextMessages(entry interactiveResolvedContext) []*agents.Message {
-	result := make([]*agents.Message, 0, len(entry.messages))
-	locator := fmt.Sprintf(
-		"[source accepted_input_id=%s accepted_turn=%d owner_turn=%d]",
-		entry.context.Input.ID, entry.acceptedBoundary, entry.ownerTurn,
-	)
-	for index, message := range entry.messages {
-		if message == nil {
-			continue
-		}
-		cloned := message.Clone()
-		if index == 0 && cloned.Role == agents.RoleUser {
-			cloned.Content = locator + "\n" + cloned.Content
-		}
-		result = append(result, cloned)
-	}
-	return result
-}
-
-func interactiveLocatedTurnMessages(turn interactive.StoryModelTurn, messages []*agents.Message) []*agents.Message {
-	result := make([]*agents.Message, 0, len(messages))
-	locator := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)
-	for index, message := range messages {
-		if message == nil {
-			continue
-		}
-		cloned := message.Clone()
-		if index == 0 && cloned.Role == agents.RoleUser ||
-			index == len(messages)-1 && cloned.Role == agents.RoleAssistant && len(cloned.ToolCalls) == 0 {
-			cloned.Content = locator + "\n" + cloned.Content
-		}
-		result = append(result, cloned)
-	}
-	return result
 }

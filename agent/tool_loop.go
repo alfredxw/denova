@@ -33,6 +33,7 @@ type toolExecutionResult struct {
 
 type preparedToolCall struct {
 	index        int
+	batchSize    int
 	call         ToolCall
 	executionID  string
 	parentCallID string
@@ -70,6 +71,9 @@ func (agent *modelToolLoop) executePreparedToolBatch(
 		ctx = context.Background()
 	}
 	results := make([]toolExecutionResult, len(prepared))
+	for index := range prepared {
+		prepared[index].batchSize = len(prepared)
+	}
 
 	for index := 0; index < len(prepared); {
 		if err := ctx.Err(); err != nil {
@@ -495,6 +499,7 @@ func (agent *modelToolLoop) executePreparedTool(
 		processed, processErr := agent.resultProcessor.Process(callCtx, ToolResultProcessRequest{
 			ToolName: prepared.call.Function.Name, Arguments: prepared.call.Function.Arguments,
 			ExecutionID: prepared.executionID, ProviderCallID: prepared.call.ID,
+			BatchSize:  prepared.batchSize,
 			Definition: prepared.snapshot, Result: result,
 		})
 		result = processed
@@ -545,8 +550,10 @@ func (agent *modelToolLoop) confirmToolFinished(ctx context.Context, events *asy
 // or display output merely to change the outcome status.
 func retainToolResultProcessorFailure(call ToolCall, result ToolResult, err error) ToolResult {
 	diagnostic := toolErrorContent(call, err)
-	result.Status = ToolResultError
-	result.SyntheticReason = ""
+	if !IsToolControlError(err) {
+		result.Status = ToolResultError
+		result.SyntheticReason = ""
+	}
 	if strings.TrimSpace(result.ModelContent) == "" {
 		result.ModelContent = diagnostic
 	} else {

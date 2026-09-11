@@ -425,7 +425,13 @@ func TestStoreMigratesReleasedProductCompactionIntoEmbeddedCapability(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	var migrated agent.CompactionState
+	var migrated struct {
+		ID              string `json:"id"`
+		Summary         string `json:"summary"`
+		ReplacementFrom int    `json:"replacement_from"`
+		ReplacementTo   int    `json:"replacement_to"`
+		Revision        uint64 `json:"revision"`
+	}
 	capabilityRecords := 0
 	if _, err := log.Replay(ctx, func(record agentsession.Record) error {
 		if record.Kind != "session.capability_set" {

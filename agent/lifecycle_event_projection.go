@@ -6,27 +6,6 @@ import (
 	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
 
-func publicCleanupMetrics(metrics runstate.CleanupMetrics) CleanupMetrics {
-	return CleanupMetrics{
-		EstimatedTokensBefore: metrics.EstimatedTokensBefore, LocalProjectedTokens: metrics.LocalProjectedTokens,
-		ObservedPromptTokens: metrics.ObservedPromptTokens, EffectiveTokens: metrics.EffectiveTokens,
-		EstimatedTokensAfter: metrics.EstimatedTokensAfter, ReclaimedTokens: metrics.ReclaimedTokens,
-		ContextWindowTokens: metrics.ContextWindowTokens, PressureBefore: metrics.PressureBefore,
-		PressureAfter: metrics.PressureAfter, BodyPressureBefore: metrics.BodyPressureBefore,
-		BodyPressureAfter: metrics.BodyPressureAfter, StablePrefixTokens: metrics.StablePrefixTokens,
-		CandidateTokens: metrics.CandidateTokens, CacheViableCandidateTokens: metrics.CacheViableCandidateTokens,
-		SkippedBelowMinimumCount: metrics.SkippedBelowMinimumCount, SkippedWarmSuffixCount: metrics.SkippedWarmSuffixCount,
-		EagerCandidateCount: metrics.EagerCandidateCount, EagerSelectedCount: metrics.EagerSelectedCount,
-		SupersededCandidateCount: metrics.SupersededCandidateCount, DiscardableCandidateCount: metrics.DiscardableCandidateCount,
-		MinimumCleanupTokens: metrics.MinimumCleanupTokens, ProtectedResults: metrics.ProtectedResults,
-		EarliestChanged: metrics.EarliestChanged, WarmSuffixTokens: metrics.WarmSuffixTokens,
-		PlaceholderTokens: metrics.PlaceholderTokens, ReplacementCount: metrics.ReplacementCount,
-		EagerOnly: metrics.EagerOnly, PressureScope: metrics.PressureScope,
-		ProviderCacheState: metrics.ProviderCacheState, ExecutionMode: metrics.ExecutionMode,
-		RendererVersion: metrics.RendererVersion,
-	}
-}
-
 func publicCompactionMetrics(metrics runstate.CompactionMetrics) CompactionMetrics {
 	return CompactionMetrics{
 		EstimatedTokensBefore: metrics.EstimatedTokensBefore, ObservedPromptTokens: metrics.ObservedPromptTokens,

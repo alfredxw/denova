@@ -11,7 +11,6 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
-	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
 	"denova/internal/book/lore"
 	"denova/internal/interactive"
@@ -628,7 +627,7 @@ func TestInteractiveConversationKeepsFullHistoryWithoutSlidingWindow(t *testing.
 	}
 }
 
-func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T) {
+func TestInteractiveConversationUsesAgentMessageCoverage(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
 	store := interactive.NewStore(workspace)
@@ -651,16 +650,36 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 	}
 	cfg := &config.Config{}
 	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
-	projection, err := conversation.PrepareAgentCompaction(context.Background(), agent.CompactionCompactRequest{})
+	model := &publicGameSequenceModel{}
+	for i := 1; i <= 10; i++ {
+		model.responses = append(model.responses, agent.AssistantMessage(fmt.Sprintf("第%d段剧情", i), nil))
+	}
+	owner, err := agent.New(context.Background(), agent.Definition{Model: model, Compaction: publicGameCompactionManager{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.BindAgentCompaction(&agent.CompactionState{
-		ID: "agent-compaction-default-tail", Revision: 1,
-		Summary: "压缩摘要：主角已进入旧城。", ContextData: projection.ContextData,
-	}); err != nil {
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	sdkSession, err := owner.Session(context.Background(), agent.NamedSession("projection"))
+	if err != nil {
 		t.Fatal(err)
 	}
+	for i := 1; i <= 10; i++ {
+		run, err := sdkSession.Run(context.Background(), agent.Text(fmt.Sprintf("第%d次行动", i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := run.Wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkpoint, err := sdkSession.Compact(context.Background(), agent.CompactionRequest{Force: true})
+	if err != nil || !checkpoint.Changed {
+		t.Fatalf("checkpoint=%#v err=%v", checkpoint, err)
+	}
+	if err := conversation.BindAgentCompaction(&checkpoint.State); err != nil {
+		t.Fatal(err)
+	}
+
 	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我继续探索", "我继续探索")
 	if err != nil {
 		t.Fatal(err)
@@ -670,100 +689,6 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 	}
 	if history[1].Content != "第10次行动" || history[2].Content != "第10段剧情" {
 		t.Fatalf("history should use default retained tail after compaction: %#v", history)
-	}
-}
-
-func TestInteractiveTurnMemoryKeepsFullTurnChain(t *testing.T) {
-	turns := []interactive.TurnEvent{
-		{User: "第1次行动", Narrative: "第1段剧情"},
-		{User: "第2次行动", Narrative: "第2段剧情"},
-		{User: "第3次行动", Narrative: "第3段剧情"},
-		{User: "第4次行动", Narrative: "第4段剧情"},
-		{User: "第5次行动", Narrative: "第5段剧情"},
-	}
-	memory := buildInteractiveTurnHistory(turns)
-	if len(memory.Turns) != len(turns) {
-		t.Fatalf("turns = %d, want full chain %d", len(memory.Turns), len(turns))
-	}
-	if memory.Turns[0].User != "第1次行动" || memory.Turns[4].User != "第5次行动" {
-		t.Fatalf("unexpected full turn chain: %#v", memory.Turns)
-	}
-	if memory.PreviousSummary != "" || memory.PreviousCount != 0 || memory.OmittedCount != 0 {
-		t.Fatalf("sliding-window summary should be disabled: %#v", memory)
-	}
-}
-
-func TestInteractiveTurnHistoryWithCompactionUsesSingleCheckpointAndRetainedTail(t *testing.T) {
-	turns := []interactive.TurnEvent{
-		{User: "第1次行动", Narrative: "第1段剧情"},
-		{User: "第2次行动", Narrative: "第2段剧情"},
-		{User: "第3次行动", Narrative: "第3段剧情"},
-		{User: "第4次行动", Narrative: "第4段剧情"},
-		{User: "第5次行动", Narrative: "第5段剧情"},
-	}
-	compaction := &interactive.ContextCompactionProjection{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{Summary: "压缩摘要：主角已进入旧城。"}),
-		SourceTurnCount:      3,
-	}
-	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 1)
-	if history.PreviousSummary != "" {
-		t.Fatalf("previous summary should stay empty when the history checkpoint is a model message, got %q", history.PreviousSummary)
-	}
-	if len(history.Turns) != 3 ||
-		history.Turns[0].User != "第3次行动" ||
-		history.Turns[1].User != "第4次行动" ||
-		history.Turns[2].User != "第5次行动" {
-		t.Fatalf("retained tail should keep retained source turns plus post-compaction turns: %#v", history.Turns)
-	}
-	if history.PreviousCount != 3 || history.OmittedCount != 3 {
-		t.Fatalf("unexpected compaction counts: %#v", history)
-	}
-}
-
-func TestInteractiveTurnHistoryWithCompactionRetainsSourceTailImmediatelyAfterCompaction(t *testing.T) {
-	turns := []interactive.TurnEvent{
-		{User: "第1次行动", Narrative: "第1段剧情"},
-		{User: "第2次行动", Narrative: "第2段剧情"},
-		{User: "第3次行动", Narrative: "第3段剧情"},
-	}
-	compaction := &interactive.ContextCompactionProjection{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{Summary: "压缩摘要：主角已进入旧城。"}),
-		SourceTurnCount:      len(turns),
-	}
-	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 2)
-	if history.PreviousSummary != "" {
-		t.Fatalf("history checkpoint should not be duplicated in previous summary: %q", history.PreviousSummary)
-	}
-	if len(history.Turns) != 2 || history.Turns[0].User != "第2次行动" || history.Turns[1].User != "第3次行动" {
-		t.Fatalf("retained tail should remain available immediately after compaction: %#v", history.Turns)
-	}
-}
-
-func TestInteractiveCompactionSourceUsesOnlyTurnsAfterPreviousCompaction(t *testing.T) {
-	turns := []interactive.TurnEvent{
-		{ID: "turn-1", BranchID: "main", User: "已压缩行动1", Narrative: "已压缩剧情1"},
-		{ID: "turn-2", BranchID: "main", User: "已压缩行动2", Narrative: "已压缩剧情2"},
-		{ID: "turn-3", BranchID: "main", User: "新增行动3", Narrative: "新增剧情3"},
-	}
-	compaction := &interactive.ContextCompactionProjection{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{Summary: "旧压缩摘要：前两回合已整理。"}),
-		SourceTurnCount:      2,
-	}
-	source, checkpoint := interactiveCompactionSource(turns, compaction)
-	if checkpoint != compaction.Summary {
-		t.Fatalf("existing checkpoint = %q", checkpoint)
-	}
-	if len(source) != 2 {
-		t.Fatalf("source len = %d, want user+narrative for one new turn: %#v", len(source), source)
-	}
-	if !strings.Contains(source[0].Content, "[source turn_id=turn-3 branch_id=main]") || !strings.HasSuffix(source[0].Content, "新增行动3") ||
-		!strings.Contains(source[1].Content, "[source turn_id=turn-3 branch_id=main]") || !strings.HasSuffix(source[1].Content, "新增剧情3") {
-		t.Fatalf("source should contain only new turn messages: %#v", source)
-	}
-	for _, msg := range source {
-		if strings.Contains(msg.Content, "已压缩") {
-			t.Fatalf("source should not repeat previously compacted turns: %#v", source)
-		}
 	}
 }
 

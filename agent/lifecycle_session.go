@@ -448,16 +448,10 @@ func (session *Session) snapshotLocked() SessionSnapshot {
 		}
 	}
 	clear, clearPresent, _ := clearStateFrom(session.capabilities)
-	compaction, compactionPresent, _, _ := compactionStateFrom(session.capabilities)
+	compaction, compactionPresent, _ := compactionStateFrom(session.capabilities)
 	compaction, compactionPresent = clearCompaction(compaction, compactionPresent, clear, clearPresent)
-	cleanup, cleanupPresent, _, _ := cleanupStateFrom(session.capabilities)
-	cleanup, cleanupPresent = clearCleanup(cleanup, cleanupPresent, clear, clearPresent)
-	cleanup, cleanupPresent = cleanupAfterCompaction(cleanup, cleanupPresent, compaction, compactionPresent)
-	if cleanupPresent && !cleanup.Removed {
-		snapshot.Cleanup = &cleanup
-	}
 	if compactionPresent && !compaction.Removed {
-		snapshot.Compaction = &compaction
+		snapshot.Compaction = compactionStatePointer(compaction, true)
 	}
 	if clearPresent {
 		snapshot.ClearRevision = clear.Revision

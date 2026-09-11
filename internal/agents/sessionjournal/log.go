@@ -74,6 +74,10 @@ func (log *Log) Replay(ctx context.Context, apply func(agentsession.Record) erro
 			return stats, err
 		}
 		stats.BytesRead += int64(len(record.Kind) + len(record.Data))
+		record, err = projectReleasedGameCompaction(record)
+		if err != nil {
+			return stats, err
+		}
 		if err := apply(record); err != nil {
 			return stats, err
 		}
@@ -142,6 +146,14 @@ func (log *Log) appendLocked(ctx context.Context, expected agentsession.Revision
 			if requiresResilienceFormat(record.Kind) {
 				appendRecords = func(ctx context.Context, guard conversationjournal.Guard, payloads ...json.RawMessage) (conversationjournal.Commit, error) {
 					return log.journal.AppendWithBackup(ctx, guard, "resilience-v1", payloads...)
+				}
+				break
+			}
+		}
+		for _, record := range records {
+			if usesIncrementalCompaction(record) {
+				appendRecords = func(ctx context.Context, guard conversationjournal.Guard, payloads ...json.RawMessage) (conversationjournal.Commit, error) {
+					return log.journal.AppendWithBackup(ctx, guard, "incremental-compaction-v2", payloads...)
 				}
 				break
 			}

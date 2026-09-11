@@ -193,80 +193,6 @@ type EngineContextNormalized struct {
 
 func (EngineContextNormalized) engineEvent() {}
 
-type EngineCleanupStarted struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Transient bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupStarted) engineEvent() {}
-
-type EngineCleanupCompleted struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Transient bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupCompleted) engineEvent() {}
-
-type EngineCleanupFailed struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupFailed) engineEvent() {}
-
-type EngineCleanupSkipped struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupSkipped) engineEvent() {}
-
-// CleanupMetrics is the Agent-owned, provider-neutral event vocabulary.
-// Agent maps its public cleanup measurements without importing product types.
-type CleanupMetrics struct {
-	EstimatedTokensBefore      int
-	LocalProjectedTokens       int
-	ObservedPromptTokens       int
-	EffectiveTokens            int
-	EstimatedTokensAfter       int
-	ReclaimedTokens            int
-	ContextWindowTokens        int
-	PressureBefore             float64
-	PressureAfter              float64
-	BodyPressureBefore         float64
-	BodyPressureAfter          float64
-	StablePrefixTokens         int
-	CandidateTokens            int
-	CacheViableCandidateTokens int
-	SkippedBelowMinimumCount   int
-	SkippedWarmSuffixCount     int
-	EagerCandidateCount        int
-	EagerSelectedCount         int
-	SupersededCandidateCount   int
-	DiscardableCandidateCount  int
-	MinimumCleanupTokens       int
-	ProtectedResults           int
-	EarliestChanged            int
-	WarmSuffixTokens           int
-	PlaceholderTokens          int
-	ReplacementCount           int
-	EagerOnly                  bool
-	PressureScope              string
-	ProviderCacheState         string
-	ExecutionMode              string
-	RendererVersion            string
-}
-
 // EngineCompactionStarted is the live edge for automatic compaction.
 type EngineCompactionStarted struct {
 	ID        string
@@ -356,9 +282,6 @@ type EngineAssistantFinal struct {
 	State json.RawMessage
 	// CapabilityUpdates become visible before the final assistant event.
 	CapabilityUpdates []EngineCapabilityState
-	// CleanupCompleted describes the cleanup capability update associated with
-	// the final assistant output.
-	CleanupCompleted *EngineCleanupCompleted
 	// Continuation is an Engine-authorized next cycle in the same Run.
 	Continuation *EngineContinuation
 }

@@ -1,5 +1,7 @@
 # Agent Runtime Simplification Audit
 
+> Historical audit: Cleanup references below describe the earlier implementation. Current context lifecycle: [incremental checkpoints](tool-result-context-optimization-plan.md).
+
 > This is an explicit design audit. Competitor/product names in this document are research references only and never enter Denova model-visible prompts, tool descriptions, or runtime feedback.
 
 ## Scope

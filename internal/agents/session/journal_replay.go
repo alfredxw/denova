@@ -97,11 +97,15 @@ func loadSession(filePath string) (*Session, error) {
 		if readErr != nil {
 			return nil, fmt.Errorf("read session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, readErr)
 		}
-		if len(messageRecords) != 1 || messageRecords[0].Location.Cursor != locator.Cursor {
+		if len(messageRecords) == 0 || messageRecords[0].Location.Cursor != locator.Cursor {
 			return nil, fmt.Errorf("session canonical message transaction missing %s cursor %d", filePath, locator.Cursor)
 		}
-		if err := appendConversationRecord(sess, messageRecords[0]); err != nil {
-			return nil, fmt.Errorf("restore session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, err)
+		// Canonical input/context and its Agent receipt share one transaction.
+		// Restore every payload, just as the normal recent-window path does.
+		for _, record := range messageRecords {
+			if err := appendConversationRecord(sess, record); err != nil {
+				return nil, fmt.Errorf("restore session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, err)
+			}
 		}
 	}
 	records, err := journal.ReadRange(context.Background(), conversationjournal.Range{After: startCursor - 1})

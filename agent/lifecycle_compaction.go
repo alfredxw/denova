@@ -35,7 +35,7 @@ func (session *Session) Compact(ctx context.Context, request CompactionRequest) 
 		forkCtx, preparation.prepared,
 		SessionView{Key: session.key, Revision: uint64(preparation.cursor)},
 		structuralDefinitionRun(runstate.CommandID(commandID)),
-		preparation.transcript.Messages, preparation.cleanup, preparation.cleanupPresent,
+		preparation.transcript.Messages,
 		current, present,
 	)
 	if err != nil {
@@ -72,7 +72,11 @@ func (session *Session) Compact(ctx context.Context, request CompactionRequest) 
 	if err != nil {
 		return CompactionResult{}, err
 	}
-	return CompactionResult{Changed: exists && (!present || updated.Revision != current.Revision), State: updated}, nil
+	result := CompactionResult{Changed: exists && (!present || updated.Revision != current.Revision)}
+	if view := compactionStatePointer(updated, exists); view != nil {
+		result.State = *view
+	}
+	return result, nil
 }
 
 func (session *Session) RemoveCompaction(ctx context.Context, request CompactionRemoveRequest) (bool, error) {
@@ -130,10 +134,8 @@ type structuralDefinitionPreparation struct {
 	cursor            uint64
 	state             json.RawMessage
 	capabilities      map[string]json.RawMessage
-	compaction        CompactionState
+	compaction        compactionRecord
 	compactionPresent bool
-	cleanup           CleanupState
-	cleanupPresent    bool
 }
 
 func (session *Session) prepareStructuralDefinition(ctx context.Context, commandID runstate.CommandID) (structuralDefinitionPreparation, func(), error) {
@@ -167,21 +169,15 @@ func (session *Session) prepareStructuralDefinition(ctx context.Context, command
 	if err != nil {
 		return failed(err)
 	}
-	current, present, _, err := compactionStateFrom(capabilities)
+	current, present, err := compactionStateFrom(capabilities)
 	if err != nil {
 		return failed(err)
 	}
 	current, present = clearCompaction(current, present, clearState, clearPresent)
-	cleanup, cleanupPresent, _, err := cleanupStateFrom(capabilities)
-	if err != nil {
-		return failed(err)
-	}
-	cleanup, cleanupPresent = clearCleanup(cleanup, cleanupPresent, clearState, clearPresent)
-	cleanup, cleanupPresent = cleanupAfterCompaction(cleanup, cleanupPresent, current, present)
 	prepared, err := prepareDefinition(ctx, session.agent.source, PrepareRequest{
 		Session: SessionView{Key: session.key, Revision: cursor}, Run: structuralDefinitionRun(commandID),
 		Reason: TurnReasonStructural, HostData: cloneHostData(transcript.HostData),
-		Compaction: compactionStatePointer(current, present), Cleanup: cloneCleanupStateIfPresent(cleanup, cleanupPresent),
+		Compaction: compactionStatePointer(current, present),
 	})
 	if err != nil {
 		return failed(err)
@@ -194,7 +190,7 @@ func (session *Session) prepareStructuralDefinition(ctx context.Context, command
 	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
 	return structuralDefinitionPreparation{
 		prepared: prepared, transcript: transcript, cursor: cursor, state: state, capabilities: capabilities,
-		compaction: current, compactionPresent: present, cleanup: cleanup, cleanupPresent: cleanupPresent,
+		compaction: current, compactionPresent: present,
 	}, release, nil
 }
 
@@ -230,7 +226,7 @@ func (session *Session) executeStructural(ctx context.Context, preparation struc
 			if state.Removed {
 				session.publishSessionEvent(CompactionRemoved{ID: state.ID, Revision: state.Revision})
 			} else {
-				session.publishSessionEvent(CompactionCommitted{State: state})
+				session.publishSessionEvent(CompactionCommitted{State: *compactionStatePointer(state, true), Metrics: state.Metrics})
 			}
 		}
 		return nil
@@ -264,19 +260,19 @@ func (session *Session) compactionRef(cursor runstate.Cursor, descriptor json.Ra
 	}, nil
 }
 
-func (session *Session) compactionState(_ context.Context) (CompactionState, bool, error) {
+func (session *Session) compactionState(_ context.Context) (compactionRecord, bool, error) {
 	if err := session.usable(); err != nil {
-		return CompactionState{}, false, err
+		return compactionRecord{}, false, err
 	}
 	session.mu.RLock()
-	state, present, _, err := compactionStateFrom(session.capabilities)
+	state, present, err := compactionStateFrom(session.capabilities)
 	clear, clearPresent, clearErr := clearStateFrom(session.capabilities)
 	session.mu.RUnlock()
 	if err != nil {
-		return CompactionState{}, false, err
+		return compactionRecord{}, false, err
 	}
 	if clearErr != nil {
-		return CompactionState{}, false, clearErr
+		return compactionRecord{}, false, clearErr
 	}
 	state, present = clearCompaction(state, present, clear, clearPresent)
 	return state, present, nil

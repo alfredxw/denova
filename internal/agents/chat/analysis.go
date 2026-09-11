@@ -31,22 +31,20 @@ type ContextAnalysis struct {
 	ReservedToolResultTokens int                        `json:"reserved_tool_result_tokens"`
 	ContextWindowTokens      int                        `json:"context_window_tokens"`
 	ContextUsageRatio        float64                    `json:"context_usage_ratio"`
-	CompactionEpoch          int                        `json:"compaction_epoch,omitempty"`
+	CompactionRevision       uint64                     `json:"compaction_revision,omitempty"`
 	CompactionActive         bool                       `json:"compaction_active,omitempty"`
 	WouldCompact             bool                       `json:"would_compact,omitempty"`
 	Compaction               *ContextAnalysisCompaction `json:"compaction,omitempty"`
 }
 
 type ContextAnalysisCompaction struct {
-	ID                 string  `json:"id,omitempty"`
-	Epoch              int     `json:"epoch"`
-	Summary            string  `json:"summary"`
-	TokensBefore       int     `json:"tokens_before"`
-	TokensAfter        int     `json:"tokens_after"`
-	TargetRatio        float64 `json:"target_ratio,omitempty"`
-	SourceMessageCount int     `json:"source_message_count,omitempty"`
-	SourceTurnCount    int     `json:"source_turn_count,omitempty"`
-	Removable          bool    `json:"removable"`
+	ID                 string `json:"id,omitempty"`
+	Revision           uint64 `json:"revision"`
+	Summary            string `json:"summary"`
+	TokensBefore       int    `json:"tokens_before"`
+	TokensAfter        int    `json:"tokens_after"`
+	SourceMessageCount int    `json:"source_message_count,omitempty"`
+	Removable          bool   `json:"removable"`
 }
 
 type ContextAnalysisPart struct {
@@ -221,7 +219,7 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 	}
 	messages := turn.ModelContext.Messages
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
-	compactionEpoch := 0
+	compactionRevision := uint64(0)
 	for i, msg := range messages {
 		if msg == nil {
 			continue
@@ -232,7 +230,7 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		case agentcontext.IsCompactionSummaryMessage(msg):
 			source = "上下文压缩"
 			title = "模型可见历史检查点"
-			compactionEpoch = parseCompactionEpoch(msg.Content)
+			compactionRevision = parseCompactionRevision(msg.Content)
 		case i == len(messages)-1:
 			source = "本轮互动指令"
 			title = "本轮互动指令与动态上下文"
@@ -258,18 +256,18 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		ReservedToolResultTokens: usage.toolResultReserve,
 		ContextWindowTokens:      usage.window,
 		ContextUsageRatio:        usage.ratio,
-		CompactionEpoch:          interactiveCompactionEpoch(compaction, compactionEpoch),
+		CompactionRevision:       interactiveCompactionRevision(compaction, compactionRevision),
 		CompactionActive:         compaction != nil && strings.TrimSpace(compaction.Summary) != "",
 		WouldCompact:             usage.wouldCompact,
 		Compaction:               contextAnalysisCompactionFromInteractive(compaction),
 	}, nil
 }
 
-func interactiveCompactionEpoch(compaction *interactive.ContextCompactionProjection, fallback int) int {
+func interactiveCompactionRevision(compaction *interactive.ContextCompactionProjection, fallback uint64) uint64 {
 	if compaction == nil {
 		return fallback
 	}
-	return compaction.Epoch
+	return compaction.Revision
 }
 
 func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCompactionProjection) *ContextAnalysisCompaction {
@@ -277,14 +275,13 @@ func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCom
 		return nil
 	}
 	return &ContextAnalysisCompaction{
-		ID:              compaction.ID,
-		Epoch:           compaction.Epoch,
-		Summary:         compaction.Summary,
-		TokensBefore:    compaction.TokensBefore,
-		TokensAfter:     compaction.TokensAfter,
-		TargetRatio:     compaction.TargetRatio,
-		SourceTurnCount: compaction.SourceTurnCount,
-		Removable:       true,
+		ID:                 compaction.ID,
+		Revision:           compaction.Revision,
+		Summary:            compaction.Summary,
+		TokensBefore:       compaction.TokensBefore,
+		TokensAfter:        compaction.TokensAfter,
+		SourceMessageCount: compaction.SourceMessageCount,
+		Removable:          true,
 	}
 }
 
@@ -329,12 +326,12 @@ func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, mes
 	return usage
 }
 
-func parseCompactionEpoch(content string) int {
+func parseCompactionRevision(content string) uint64 {
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, agentcontext.CompactionSummaryPrefix) {
 		return 0
 	}
-	var epoch int
+	var epoch uint64
 	if _, err := fmt.Sscanf(content, agentcontext.CompactionSummaryPrefix+" epoch=%d", &epoch); err != nil {
 		return 0
 	}
