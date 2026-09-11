@@ -18,6 +18,9 @@ const multiAgentExpectations = [
 ]
 
 test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
+  // Two project switches and tool-backed responses exceed the default total
+  // budget on CI; each assertion must still finish within its normal timeout.
+  test.slow()
   const [alphaPath, betaPath] = await Promise.all([
     mkdtemp(path.resolve('test-results', 'runtime', 'general-project-alpha-')),
     mkdtemp(path.resolve('test-results', 'runtime', 'general-project-beta-')),
@@ -166,6 +169,9 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
 })
 
 test('restores an accepted Follow Up after reload and delivers it exactly once', async ({ page, request }) => {
+  // Reloading, restoring the session, and finishing both turns form one journey.
+  // Give that journey time on CI without extending any individual assertion.
+  test.slow()
   const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'queue-reload-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Queue Reload Session')
