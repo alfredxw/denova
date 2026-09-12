@@ -1,4 +1,8 @@
-import { BookMarked, Bot, Pin, PinOff, X } from 'lucide-react'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { Button } from '@/components/ui/button'
+import { TabsTrigger } from '@/components/ui/tabs'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ArrowLeft, ArrowRight, BookMarked, Bot, Ellipsis, Pin, PinOff, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
@@ -196,9 +200,40 @@ export function TabController({
   onMoveTab,
 }: TabControllerProps) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const activateTabKey = (key: string) => {
     const tab = tabs.find((candidate) => tabKey(candidate) === key)
     if (tab && key !== activeTabKey) onActivateTab(tab)
+  }
+
+  if (isMobile) {
+    if (!tabs.length) return null
+    const activeIndex = tabs.findIndex((tab) => tabKey(tab) === activeTabKey)
+    const activeTab = tabs[activeIndex]
+    return (
+      <WorkbenchTabStrip value={activeTabKey ?? ''} onValueChange={activateTabKey} tabVariant="line" endActionsVariant="inline" endActions={activeTab && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={t('tab.actions')}><Ellipsis /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <div className="break-words px-2 py-3 text-sm font-medium">{formatChapterTabLabel(activeTab, summary, t('tab.lore'))}</div>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              {activeTab.kind !== 'subagent' && <DropdownMenuItem onSelect={() => onTogglePin(activeTab)}>{activeTab.pinned ? <PinOff /> : <Pin />}{t(activeTab.pinned ? 'tab.unpin' : 'tab.pin')}</DropdownMenuItem>}
+              <DropdownMenuItem disabled={activeIndex === 0 || !!tabs[activeIndex - 1]?.pinned !== !!activeTab.pinned} onSelect={() => onMoveTab(activeTabKey!, tabKey(tabs[activeIndex - 1]))}><ArrowLeft />{t('tab.moveLeft')}</DropdownMenuItem>
+              <DropdownMenuItem disabled={activeIndex === tabs.length - 1 || !!tabs[activeIndex + 1]?.pinned !== !!activeTab.pinned} onSelect={() => onMoveTab(activeTabKey!, tabKey(tabs[activeIndex + 1]))}><ArrowRight />{t('tab.moveRight')}</DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup><DropdownMenuItem onSelect={() => onCloseTab(activeTab)}><X />{t('tab.closeCurrent')}</DropdownMenuItem></DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}>
+        {tabs.map((tab) => <TabsTrigger key={tabKey(tab)} value={tabKey(tab)} className="h-full min-w-28 max-w-52 flex-none gap-2 rounded-none px-3 after:!bottom-0">
+          {tab.kind === 'lore' ? <BookMarked /> : tab.kind === 'subagent' ? <Bot /> : null}
+          <span className="truncate">{formatChapterTabLabel(tab, summary, t('tab.lore'))}</span>
+          {tab.pinned && <Pin className="size-3" />}
+        </TabsTrigger>)}
+      </WorkbenchTabStrip>
+    )
   }
 
   return (

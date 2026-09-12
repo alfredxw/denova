@@ -77,6 +77,18 @@ func stringify(v any) string {
 }
 
 var catalogZH = map[string]string{
+	"api.access.invalidCredentials": "用户名或密码错误。",
+	"api.access.originRejected":     "此请求的来源不受信任，请从 Denova 页面重试。",
+	"api.access.pairingInvalid":     "连接链接已失效或已使用，请生成新链接或使用账号密码登录。",
+	"api.access.storeFailed":        "无法保存或读取登录状态，请检查数据目录权限及服务日志。",
+
+	"api.update.uploadRequired": "请选择 GitHub Release 安装包。",
+	"api.update.invalidPackage": "安装包无效或不完整。请上传未经解压、重命名的 Denova 正式发布压缩包。",
+	"api.update.newerRequired":  "只能安装比当前版本更新的正式版本；开发版不支持手动更新。",
+	"api.update.wrongPlatform":  "安装包与当前电脑的操作系统或处理器架构不匹配。",
+	"api.update.tooLarge":       "安装包不能超过 512 MiB。",
+	"api.update.busy":           "另一个更新操作正在进行，请稍后重试。",
+
 	"api.update.checkFailed":                  "检查更新失败，请稍后重试。详细原因请查看服务端日志。",
 	"api.update.installFailed":                "安装更新失败，请重试或从 GitHub Releases 手动下载安装包。详细原因请查看服务端日志。",
 	"api.update.applyFailed":                  "应用更新失败，请查看服务端日志，并尝试手动重启或安装。",
@@ -110,6 +122,7 @@ var catalogZH = map[string]string{
 	"api.books.exportFormatUnsupported":       "暂不支持导出格式: {{format}}",
 	"api.books.exportNoChapters":              "没有可导出的非空章节",
 	"api.chat.noActiveTask":                   "没有活跃任务",
+	"api.chat.invalidHistory":                    "当前会话或故事分支的历史记录异常，暂时无法继续。原始记录已保留，你仍可使用其他会话或分支。",
 	"api.command.empty":                       "命令不能为空",
 	"api.command.clearFailed":                 "清空失败: {{detail}}",
 	"api.command.cleared":                     "上下文已清理，历史消息已保留",
@@ -145,6 +158,7 @@ var catalogZH = map[string]string{
 	"api.interactive.storyStructureBusy":      "故事正在生成，请在本轮结束后再修改主角或状态结构",
 	"api.interactive.tellerInstructionEmpty":  "叙事风格编辑指令不能为空",
 	"api.lore.instructionEmpty":               "资料库编辑指令不能为空",
+	"api.settings.fileSaveFailed":                "以下配置文件保存失败：{{paths}}。其余成功项已保存，请重新加载后处理失败项。",
 	"api.settings.revisionConflict":           "配置已被 Agent 或其他操作更新，请重新加载后再保存",
 	"api.conversationConfig.revisionConflict": "会话配置已在其他窗口中更新，请重新加载后再修改",
 	"api.conversationConfig.rememberModelFailed": "未能记住模型选择用于新会话，请重新选择并重试。",
@@ -223,6 +237,18 @@ var catalogZH = map[string]string{
 }
 
 var catalogEN = map[string]string{
+	"api.access.invalidCredentials": "Incorrect username or password.",
+	"api.access.originRejected":     "This request origin is not allowed. Retry from the Denova page.",
+	"api.access.pairingInvalid":     "This connection link has expired or was already used. Generate another link or sign in with your password.",
+	"api.access.storeFailed":        "Could not read or save the login session. Check data directory permissions and server logs.",
+
+	"api.update.uploadRequired": "Select a GitHub Release archive.",
+	"api.update.invalidPackage": "The package is invalid or incomplete. Upload an unmodified Denova stable release archive without extracting or renaming it.",
+	"api.update.newerRequired":  "Select a stable release newer than the running version. Development builds cannot update manually.",
+	"api.update.wrongPlatform":  "The package does not match this computer’s operating system or processor architecture.",
+	"api.update.tooLarge":       "The release archive must be 512 MiB or smaller.",
+	"api.update.busy":           "Another update operation is in progress. Try again later.",
+
 	"api.update.checkFailed":                  "Could not check for updates. Try again later; see server logs for details.",
 	"api.update.installFailed":                "Could not install the update. Retry or download the archive from GitHub Releases; see server logs for details.",
 	"api.update.applyFailed":                  "Could not apply the update. See server logs and try restarting or installing manually.",
@@ -256,6 +282,7 @@ var catalogEN = map[string]string{
 	"api.books.exportFormatUnsupported":       "Export format is not supported yet: {{format}}",
 	"api.books.exportNoChapters":              "There are no non-empty chapters to export.",
 	"api.chat.noActiveTask":                   "No active task.",
+	"api.chat.invalidHistory":                    "This conversation or story branch cannot continue because its history is invalid. The original records are preserved. Other conversations and branches remain available.",
 	"api.command.empty":                       "Command is required.",
 	"api.command.clearFailed":                 "Clear failed: {{detail}}",
 	"api.command.cleared":                     "Context cleared. History messages are preserved.",
@@ -291,6 +318,7 @@ var catalogEN = map[string]string{
 	"api.interactive.storyStructureBusy":      "The story is generating. Change the protagonist or state structure after this turn finishes.",
 	"api.interactive.tellerInstructionEmpty":  "Narrative direction edit instruction is required.",
 	"api.lore.instructionEmpty":               "Lore edit instruction is required.",
+	"api.settings.fileSaveFailed":                "These settings files could not be saved: {{paths}}. Successful changes were saved. Reload before retrying the failed files.",
 	"api.settings.revisionConflict":           "Settings were updated by the Agent or another operation. Reload before saving.",
 	"api.conversationConfig.revisionConflict": "This conversation configuration changed in another view. Reload it before saving.",
 	"api.conversationConfig.rememberModelFailed": "Could not remember the model selection for new conversations. Select it again to retry.",

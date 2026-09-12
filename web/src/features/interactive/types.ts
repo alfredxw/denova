@@ -405,7 +405,7 @@ export interface TurnDisplayEvent {
   content?: string
   name?: string
   args?: string
-  status?: 'running' | 'success' | 'error'
+  status?: 'running' | 'success' | 'error' | 'discarded'
   result?: string
   tool_presentation?: import('@/lib/api').ToolPresentation
   created_at?: string
@@ -927,25 +927,11 @@ export interface StateSchemaInitializationStatus {
 export interface ContextCompactionProjection {
   id: string
   branch_id: string
-  agent_kind?: string
-  epoch: number
+  revision: number
   summary: string
-  retained_turns: number
-  estimated_tokens_before?: number
-  observed_prompt_tokens?: number
-  observed_estimate_tokens?: number
   tokens_before: number
   tokens_after: number
-  target_ratio?: number
-  context_window_tokens: number
-  strategy?: string
-  threshold: number
-  reason?: string
-  phase?: string
-  recovery_band?: number
-  candidate_fingerprint?: string
-  candidate_generation?: number
-  source_turn_count: number
+  source_message_count: number
 }
 
 export interface BranchSummary {

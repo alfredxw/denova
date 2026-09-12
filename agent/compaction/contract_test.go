@@ -15,8 +15,8 @@ func TestStandardManagerContract(t *testing.T) {
 		manager := compaction.Standard(compaction.StandardConfig{
 			Summarizer: compaction.SummarizerFunc{
 				Capability: agent.CapabilityIdentity{Kind: "compaction.contract-summary", Version: 1},
-				Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
-					return compaction.Summary{Content: "contract summary", TokenEstimate: 4}, nil
+				Func: func(context.Context, compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+					return agent.CompactionCheckpoint{Summary: "contract summary"}, nil
 				},
 			},
 			HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
@@ -32,8 +32,8 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{
 			Capability: agent.CapabilityIdentity{Kind: "compaction.calibration-summary", Version: 1},
-			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
-				return compaction.Summary{Content: "summary", TokenEstimate: 2}, nil
+			Func: func(context.Context, compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+				return agent.CompactionCheckpoint{Summary: "summary"}, nil
 			},
 		},
 		TriggerBytes: 1024, KeepRecentBytes: 128, HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
@@ -45,7 +45,7 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 	messages := append(previousPrompt, answer, agent.UserMessage(strings.Repeat("new input ", 30)))
 	snapshot := (&agent.ModelCall{Messages: messages}).Snapshot()
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Messages: messages, ModelRequest: messages, ModelSnapshot: snapshot,
+		Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: snapshot,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -61,8 +61,8 @@ func TestStandardIncludesLifecycleSideForkReserveInTriggerAndValidation(t *testi
 	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{
 			Capability: agent.CapabilityIdentity{Kind: "compaction.lifecycle-reserve-summary", Version: 1},
-			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
-				return compaction.Summary{Content: "summary", TokenEstimate: 2}, nil
+			Func: func(context.Context, compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+				return agent.CompactionCheckpoint{Summary: "summary"}, nil
 			},
 		},
 		TriggerBytes: 1024, KeepRecentBytes: 128, HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
@@ -75,7 +75,7 @@ func TestStandardIncludesLifecycleSideForkReserveInTriggerAndValidation(t *testi
 		agent.AssistantMessage("current answer", nil),
 	}
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Messages: messages, ModelRequest: messages,
+		Groups:        []agent.CompactionGroup{{Messages: messages[:2]}},
 		ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), LifecycleReservedTokens: 1_600,
 	})
 	if err != nil {
@@ -91,8 +91,8 @@ func TestStandardUsesCapacityAwareModelOutputReserve(t *testing.T) {
 	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{
 			Capability: agent.CapabilityIdentity{Kind: "compaction.output-cap-summary", Version: 1},
-			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
-				return compaction.Summary{Content: "summary", TokenEstimate: 2}, nil
+			Func: func(context.Context, compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+				return agent.CompactionCheckpoint{Summary: "summary"}, nil
 			},
 		},
 		TriggerBytes: 1024, KeepRecentBytes: 128, HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
@@ -105,7 +105,7 @@ func TestStandardUsesCapacityAwareModelOutputReserve(t *testing.T) {
 	}
 	call := &agent.ModelCall{Messages: messages, Options: []agent.ModelOption{agent.WithMaxTokens(4000)}}
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Messages: messages, ModelRequest: messages, ModelSnapshot: call.Snapshot(), Force: true,
+		Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: call.Snapshot(), Force: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -116,15 +116,15 @@ func TestStandardUsesCapacityAwareModelOutputReserve(t *testing.T) {
 	}
 }
 
-func TestStandardPlansOnlyCompleteTurnAndToolBatchBoundaries(t *testing.T) {
+func TestStandardPlansOnlyCompleteToolBatchBoundaries(t *testing.T) {
 	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{
 			Capability: agent.CapabilityIdentity{Kind: "compaction.atomic-boundary-summary", Version: 1},
-			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
-				return compaction.Summary{Content: "summary", TokenEstimate: 2}, nil
+			Func: func(context.Context, compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+				return agent.CompactionCheckpoint{Summary: "summary"}, nil
 			},
 		},
-		TriggerBytes: 1024, KeepRecentBytes: 128, KeepRecentTurns: 1,
+		TriggerBytes: 1024, KeepRecentBytes: 128, KeepRecentGroups: 1,
 		HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
 	})
 	messages := []*agent.Message{
@@ -139,16 +139,44 @@ func TestStandardPlansOnlyCompleteTurnAndToolBatchBoundaries(t *testing.T) {
 		agent.AssistantMessage("current answer", nil),
 	}
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Messages: messages, ModelRequest: messages,
+		Groups:        []agent.CompactionGroup{{Messages: messages[:2]}},
 		ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), Force: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Action != agent.CompactionCreate || plan.SourceFrom != 0 || plan.SourceTo != 4 {
-		t.Fatalf("atomic Compaction range = [%d,%d) action=%q", plan.SourceFrom, plan.SourceTo, plan.Action)
+	if plan.Action != agent.CompactionCreate || plan.GroupCount != 1 {
+		t.Fatalf("atomic Compaction plan = %#v", plan)
 	}
-	if messages[plan.SourceTo].Role != agent.User {
-		t.Fatalf("Compaction split a turn/tool batch before %#v", messages[plan.SourceTo])
+	if messages[4].Role != agent.User {
+		t.Fatalf("Compaction split a turn/tool batch before %#v", messages[4])
+	}
+}
+
+func TestStandardSummarizesOversizedOldMessageButKeepsNewestToolGroup(t *testing.T) {
+	manager := compaction.Standard(compaction.StandardConfig{
+		Summarizer: compaction.SummarizerFunc{Capability: agent.CapabilityIdentity{Kind: "test.oversized-old-source", Version: 1}, Func: func(context.Context, compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+			return agent.CompactionCheckpoint{Summary: "summary"}, nil
+		}},
+		TriggerBytes: 4096, KeepRecentBytes: 1024, HardLimitBytes: 1 << 20, SummaryLimitBytes: 1024,
+	})
+	messages := []*agent.Message{
+		agent.UserMessage("Historical task"), agent.AssistantMessage(strings.Repeat("old evidence ", 1000), nil),
+		agent.UserMessage("Continue verification"), agent.AssistantMessage("", []agent.ToolCall{{ID: "latest", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}}),
+		{Role: agent.ToolRole, ToolCallID: "latest", Content: "Latest original evidence"},
+	}
+	plan, err := manager.Plan(t.Context(), agent.CompactionPlanRequest{Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), Force: true})
+	if err != nil || plan.GroupCount != 1 {
+		t.Fatalf("old evidence pinned in retained tail: %+v %v", plan, err)
+	}
+	messages[4].Content = strings.Repeat("large latest evidence ", 1000)
+	plan, err = manager.Plan(t.Context(), agent.CompactionPlanRequest{Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), Force: true})
+	if err != nil || plan.GroupCount != 1 {
+		t.Fatalf("newest complete tool group split: %+v %v", plan, err)
+	}
+	messages = append(messages, agent.UserMessage("Unconsumed steering: keep the new evidence."))
+	plan, err = manager.Plan(t.Context(), agent.CompactionPlanRequest{Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), Force: true})
+	if err != nil || plan.GroupCount != 1 {
+		t.Fatalf("unconsumed steering displaced the newest tool group: %+v %v", plan, err)
 	}
 }

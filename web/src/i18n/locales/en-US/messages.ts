@@ -1,4 +1,7 @@
 const messages = {
+  'messages.back': 'Back to messages',
+  'messages.filters': 'Message categories',
+  'messages.unread': 'Unread',
   'messages.title': 'Message Center',
   'messages.description': 'See automation progress, pending actions, and product notices in one place.',
   'messages.label': 'Messages',

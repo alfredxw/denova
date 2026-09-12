@@ -5,8 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 )
+
+// ErrInvalidCanonicalMessages identifies invalid history in one Session. Hosts
+// should reject that conversation's admission without disabling the Agent or
+// retrying the request as an uncertain provider failure. Import never repairs
+// raw messages implicitly: cleanup and compaction refer to their stable indices.
+var ErrInvalidCanonicalMessages = errors.New("agent canonical history is invalid")
 
 // LoadCanonicalMessages refreshes an idle host-backed Session from the
 // canonical conversation lane. Host-canonical logs keep only a compact
@@ -18,18 +25,19 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 	}
 	ordered := canonicalContextStateOrder(messages)
 	if err := validateImportedTranscript(ordered); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrInvalidCanonicalMessages, err)
 	}
 	contextState, err := rebuildContextStateSnapshot(ordered)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrInvalidCanonicalMessages, err)
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	if session.active != nil {
+	if session.active != nil && !session.active.isSuspended() {
 		return ErrSessionBusy
 	}
 	hadCurrentTranscript := len(session.engineState) != 0
+	currentMessageCount := 0
 	currentMatches := false
 	currentCompatible := false
 	if hadCurrentTranscript {
@@ -37,6 +45,7 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 		if decodeErr != nil {
 			return decodeErr
 		}
+		currentMessageCount = len(current.Messages)
 		if len(current.Messages) <= len(ordered) {
 			currentHash, hashErr := hashCanonical(current.Messages)
 			if hashErr != nil {
@@ -66,23 +75,59 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 	// removed underneath those projections. Ordinary append-only progress is
 	// compatible even when a crash occurred before the next checkpoint.
 	if (hadCurrentTranscript || hadCheckpoint) && !currentCompatible && !checkpointCompatible {
+		var invalidated []string
 		for _, capability := range []string{
 			clearCapability, cleanupCapability, compactionCapability, compactionHealthCapability,
 		} {
-			delete(session.capabilities, capability)
+			if _, present := session.capabilities[capability]; present {
+				invalidated = append(invalidated, capability)
+			}
 		}
-		if err := session.persistCapabilitiesLocked(ctx); err != nil {
-			return err
+		if len(invalidated) > 0 {
+			compaction, _, compactionErr := compactionStateFrom(session.capabilities)
+			slog.InfoContext(ctx, "invalidating Agent history-dependent capabilities after canonical history changed",
+				"session_namespace", session.key.Namespace, "session_id", session.key.ID,
+				"reason", "canonical_history_prefix_mismatch", "capabilities", invalidated,
+				"compaction_id", compaction.ID, "compaction_decode_error", compactionErr,
+				"message_count", len(ordered), "previous_message_count", currentMessageCount,
+				"had_current_transcript", hadCurrentTranscript,
+				"checkpoint_message_count", session.messageCheckpoint.MessageCount, "had_checkpoint", hadCheckpoint)
+			for _, capability := range invalidated {
+				delete(session.capabilities, capability)
+			}
+			if err := session.persistCapabilitiesLocked(ctx); err != nil {
+				return err
+			}
 		}
 	}
-	encoded, err := json.Marshal(engineTranscript{
-		Version: engineTranscriptVersion, Messages: cloneMessages(ordered), ContextState: contextState,
-	})
+	next := engineTranscript{Version: engineTranscriptVersion, Messages: cloneMessages(ordered), ContextState: contextState}
+	if session.active != nil && len(session.messageCheckpoint.Metadata) != 0 {
+		if !checkpointCompatible && session.active.snapshot.OutputCommit == nil {
+			return fmt.Errorf("%w: canonical history changed under an unfinished Run (imported=%d checkpoint=%d)", ErrInvalidCanonicalMessages, len(ordered), session.messageCheckpoint.MessageCount)
+		}
+		if err := json.Unmarshal(session.messageCheckpoint.Metadata, &next); err != nil {
+			return err
+		}
+		next.Messages = cloneMessages(ordered)
+		if session.active.snapshot.OutputCommit != nil {
+			next.ActiveModelUser, next.ActiveUserIndex = nil, 0
+			next.ContextState = contextState
+		} else {
+			next.Messages = append(next.Messages, cloneMessages(session.messageCheckpoint.Pending)...)
+		}
+	}
+	encoded, err := json.Marshal(next)
 	if err != nil {
 		return fmt.Errorf("encode canonical Agent messages: %w", err)
 	}
 	session.engineState = encoded
-	if !session.canonicalMessages && !currentMatches {
+	if _, err := decodeEngineTranscript(encoded); err != nil {
+		return err
+	}
+	// Structural operations can commit capabilities immediately after this
+	// import, without running a turn. Their recovery checkpoint must describe
+	// this canonical history, not a projection from an earlier model call.
+	if session.canonicalMessages || !currentMatches {
 		if err := session.persistTranscriptLocked(ctx); err != nil {
 			return err
 		}

@@ -27,6 +27,8 @@ func (t *Task) Emit(ev agentrun.Event) {
 			t.status = Failed
 		case "aborted":
 			t.status = Aborted
+		case "suspended":
+			t.status = Suspended
 		}
 		if t.status != Running {
 			t.terminalReason, t.terminalReasonTruncated = taskTerminalReason(ev)

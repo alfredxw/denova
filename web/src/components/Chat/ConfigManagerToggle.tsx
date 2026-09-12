@@ -20,7 +20,7 @@ export function ConfigManagerToggle({ open, label, onToggle, className }: Config
       aria-pressed={open}
       title={label}
       onClick={onToggle}
-      className={cn('nova-nav-item', className)}
+      className={cn('nova-nav-item hidden lg:inline-flex', className)}
     >
       <Bot data-icon="inline-start" />
       <span className="hidden sm:inline">{label}</span>

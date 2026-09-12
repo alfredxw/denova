@@ -65,6 +65,7 @@ func (model *publicGameSequenceModel) response() (*agent.Message, error) {
 type publicGameHistoryModel struct {
 	mu           sync.Mutex
 	narrative    string
+	checkpoint   string
 	continuation map[string]any
 	inputs       [][]*agent.Message
 }
@@ -85,6 +86,9 @@ func (model *publicGameHistoryModel) response(messages []*agent.Message) *agent.
 		cloned[index] = agent.CloneMessage(message)
 	}
 	model.inputs = append(model.inputs, cloned)
+	if model.checkpoint != "" && len(messages) > 0 && strings.HasPrefix(messages[len(messages)-1].Content, "[Runtime context compaction request]") {
+		return agent.AssistantMessage(model.checkpoint, nil)
+	}
 	response := agent.AssistantMessage(model.narrative, nil)
 	response.Extra = providers.ContinuationExtra(model.continuation)
 	return response
@@ -125,30 +129,6 @@ func (profile publicGameTestProfile) CanonicalInput(ctx context.Context, request
 	return profile.canonical(ctx, request)
 }
 
-type publicGameCleanupManager struct {
-	marker      string
-	placeholder string
-}
-
-func (manager publicGameCleanupManager) Identity() agent.CapabilityIdentity {
-	return agent.CapabilityIdentity{Kind: "cleanup.test.game-public-history", Version: 1}
-}
-
-func (manager publicGameCleanupManager) Plan(_ context.Context, request agent.CleanupPlanRequest) (agent.CleanupPlan, error) {
-	for index, message := range request.ModelRequest {
-		if message == nil || message.Role != agent.ToolRole || !strings.Contains(message.Content, manager.marker) {
-			continue
-		}
-		return agent.CleanupPlan{
-			Action: agent.CleanupProject, Reason: "test rich Game tool history", Renderer: "test.game.cleanup.v1",
-			Replacements: []agent.CleanupReplacement{{
-				MessageIndex: index, ToolCallID: message.ToolCallID, Placeholder: manager.placeholder,
-			}},
-		}, nil
-	}
-	return agent.CleanupPlan{Action: agent.CleanupNone, Reason: "no matching Game tool history", Renderer: "test.game.cleanup.v1"}, nil
-}
-
 type publicGameCompactionManager struct{}
 
 func (publicGameCompactionManager) Identity() agent.CapabilityIdentity {
@@ -158,20 +138,20 @@ func (publicGameCompactionManager) Identity() agent.CapabilityIdentity {
 func (publicGameCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
 
 func (publicGameCompactionManager) Plan(_ context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
-	if !request.Force || len(request.Messages) < 2 {
+	if !request.Force || len(request.Groups) == 0 {
 		return agent.CompactionPlan{Action: agent.CompactionNone}, nil
 	}
 	return agent.CompactionPlan{
-		Action: agent.CompactionCreate, SourceFrom: 0, SourceTo: len(request.Messages) - 2,
+		Action: agent.CompactionCreate, GroupCount: len(request.Groups),
 		Validation: agent.CompactionValidationPolicy{HardLimitBytes: 8 << 20},
 	}, nil
 }
 
 func (publicGameCompactionManager) Compact(_ context.Context, request agent.CompactionCompactRequest) (agent.CompactionCheckpoint, error) {
-	if len(request.SourceMessages) == 0 {
+	if len(request.Messages) == 0 {
 		return agent.CompactionCheckpoint{}, fmt.Errorf("Game compaction received no canonical source")
 	}
-	return agent.CompactionCheckpoint{Summary: "public Game checkpoint", TokenEstimate: 5}, nil
+	return agent.CompactionCheckpoint{Summary: "public Game checkpoint"}, nil
 }
 
 func TestPublicAgentRuntimeCommitsCompleteGameTurnAndDisplay(t *testing.T) {
@@ -188,7 +168,7 @@ func TestPublicAgentRuntimeCommitsCompleteGameTurnAndDisplay(t *testing.T) {
 		store, t.TempDir(), workspace, story.ID, "main", "推开石门", 800,
 		&config.Config{Workspace: workspace},
 	)
-	submitTestTurnResult(t, conversation, "推开石门", "石门已经开启")
+	submission := gameSubmissionForTest(t, conversation, "推开石门", "石门已经开启")
 
 	runtime := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
@@ -203,6 +183,7 @@ func TestPublicAgentRuntimeCommitsCompleteGameTurnAndDisplay(t *testing.T) {
 		Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "denova.test.public-game", Name: "game", Model: publicGameCommitModel{narrative: "石门缓缓开启。"},
+				Middlewares:   []agent.Middleware{submission},
 				ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game", Version: 1},
 			},
 			Conversation: conversation, Request: request, Options: options,
@@ -258,7 +239,7 @@ func TestPublicAgentRuntimeCommitsAccumulatedGameNarrativeWhenFinalModelMessageI
 		store, t.TempDir(), workspace, story.ID, "main", "推开石门", 800,
 		&config.Config{Workspace: workspace},
 	)
-	submitTestTurnResult(t, conversation, "推开石门", "石门已经开启")
+	submission := gameSubmissionForTest(t, conversation, "推开石门", "石门已经开启")
 
 	tool, err := agent.InferTool("submit_interactive_turn", "Submit the completed test turn", func(context.Context, struct{}) (string, error) {
 		return `{"submitted":true}`, nil
@@ -297,6 +278,7 @@ func TestPublicAgentRuntimeCommitsAccumulatedGameNarrativeWhenFinalModelMessageI
 		Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "denova.test.public-game-projected", Name: "game", Model: model,
+				Middlewares:   []agent.Middleware{submission},
 				ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-projected", Version: 1},
 				Permission:    agentpermission.FullAccess(), Tools: toolset,
 			},
@@ -342,7 +324,7 @@ func TestPublicAgentRuntimeRecoversMalformedGameToolArguments(t *testing.T) {
 		store, t.TempDir(), workspace, story.ID, "main", "推开石门", 800,
 		&config.Config{Workspace: workspace},
 	)
-	submitTestTurnResult(t, conversation, "推开石门", "石门已经开启")
+	submission := gameSubmissionForTest(t, conversation, "推开石门", "石门已经开启")
 
 	var executions atomic.Int32
 	tool, err := agent.InferTool("submit_interactive_turn", "Submit the completed test turn", func(context.Context, struct{}) (string, error) {
@@ -388,6 +370,7 @@ func TestPublicAgentRuntimeRecoversMalformedGameToolArguments(t *testing.T) {
 		Cycle: agentexecution.Cycle{
 			Definition: agent.Definition{
 				Key: "denova.test.public-game-malformed", Name: "game", Model: model,
+				Middlewares:   []agent.Middleware{submission},
 				ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-malformed", Version: 1},
 				Permission:    agentpermission.FullAccess(), Tools: toolset,
 			},
@@ -474,7 +457,7 @@ func TestGameCanonicalTranscriptRetainsRichToolHistoryOutsideModelVisibilityPoli
 		t.Fatal("canonical Game journal omitted rich tool history")
 	}
 	hiddenModel := &publicGameHistoryModel{narrative: "第一轮继续。"}
-	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, disabledConfig, hiddenModel, nil, nil, "game-hidden-tool-history", "继续但不展示旧工具")
+	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, disabledConfig, hiddenModel, nil, "game-hidden-tool-history", "继续但不展示旧工具")
 	if containsMessageContent(hiddenModel.lastInput(t), rich) {
 		t.Fatal("disabled Game tool-context policy leaked rich historical tool output to the provider")
 	}
@@ -483,7 +466,7 @@ func TestGameCanonicalTranscriptRetainsRichToolHistoryOutsideModelVisibilityPoli
 		InteractiveStory: config.AgentContextOverride{ToolResultContextEnabled: &enabled},
 	}}
 	visibleModel := &publicGameHistoryModel{narrative: "第二轮继续。"}
-	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, enabledConfig, visibleModel, nil, nil, "game-visible-tool-history", "重新展示旧工具证据")
+	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, enabledConfig, visibleModel, nil, "game-visible-tool-history", "重新展示旧工具证据")
 	if !containsMessageContent(visibleModel.lastInput(t), rich) {
 		t.Fatal("re-enabled Game tool-context policy could not recover rich history from public Agent raw transcript")
 	}
@@ -523,7 +506,7 @@ func TestGameCanonicalTranscriptRestoresProviderContinuationAfterColdRestart(t *
 	firstModel := &publicGameHistoryModel{
 		narrative: "第一轮。", continuation: map[string]any{providers.ExtraKeyContinuation: continuation},
 	}
-	runPublicGameTurn(t, firstRuntime, store, story.ID, "main", workspace, nil, firstModel, nil, nil, "game-provider-first", "开始")
+	runPublicGameTurn(t, firstRuntime, store, story.ID, "main", workspace, nil, firstModel, nil, "game-provider-first", "开始")
 	if err := firstRuntime.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +514,7 @@ func TestGameCanonicalTranscriptRestoresProviderContinuationAfterColdRestart(t *
 	secondRuntime := newRuntime(t.TempDir())
 	t.Cleanup(func() { _ = secondRuntime.Close(context.Background()) })
 	secondModel := &publicGameHistoryModel{narrative: "第二轮。"}
-	runPublicGameTurn(t, secondRuntime, store, story.ID, "main", workspace, nil, secondModel, nil, nil, "game-provider-second", "继续")
+	runPublicGameTurn(t, secondRuntime, store, story.ID, "main", workspace, nil, secondModel, nil, "game-provider-second", "继续")
 	for _, message := range secondModel.lastInput(t) {
 		if message == nil || message.Role != agent.Assistant || message.Content != firstModel.narrative {
 			continue
@@ -546,7 +529,7 @@ func TestGameCanonicalTranscriptRestoresProviderContinuationAfterColdRestart(t *
 	t.Fatal("cold Game model input omitted the prior assistant continuation")
 }
 
-func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *testing.T) {
+func TestGamePublicCompactionRemovalAndColdReopenRestoreRichHistory(t *testing.T) {
 	ctx := context.Background()
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
@@ -561,7 +544,6 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 	cfg := &config.Config{Workspace: workspace, AgentContexts: config.AgentContextSettings{
 		InteractiveStory: config.AgentContextOverride{ToolResultContextEnabled: &enabled},
 	}}
-	cleanup := publicGameCleanupManager{marker: rich, placeholder: placeholder}
 	compaction := publicGameCompactionManager{}
 	dataDir := t.TempDir()
 	profile := publicGameNoopProfile(workspace, story.ID)
@@ -576,29 +558,26 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 		return runtime
 	}
 	runtime := newRuntime()
-	cleanupModel := &publicGameHistoryModel{narrative: "清理后继续。"}
-	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, cleanupModel, cleanup, compaction, "game-cleanup", "整理旧证据")
-	cleanupInput := cleanupModel.lastInput(t)
-	if !containsMessageContent(cleanupInput, placeholder) || containsMessageContent(cleanupInput, rich) {
-		t.Fatalf("public Game Cleanup projection is not exact: %#v", cleanupInput)
+	historyModel := &publicGameHistoryModel{narrative: "清理后继续。"}
+	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, historyModel, compaction, "game-cleanup", "整理旧证据")
+	historyInput := historyModel.lastInput(t)
+	if !containsMessageContent(historyInput, rich) {
+		t.Fatalf("public Game history lost original evidence: %#v", historyInput)
 	}
 	status, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
 	if err != nil {
 		t.Fatal(err)
-	}
-	if status.Cleanup == nil || len(status.Cleanup.Replacements) != 1 {
-		t.Fatalf("public Game Cleanup was not durable: %#v", status.Cleanup)
 	}
 	storySnapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !containsInteractiveToolResult(storySnapshot, rich) {
-		t.Fatal("Story Store lost canonical rich tool history while Agent Cleanup was active")
+		t.Fatal("Story Store lost canonical rich tool history before checkpoint creation")
 	}
 
-	compacted, err := runtime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
-		Action: agentstructural.Compact, CommandID: "game-public-compact", Options: publicGameOptions(workspace, story.ID, "main"),
+	compacted, err := runtime.ExecuteStructuralOperation(ctx, publicGameMaintenanceCycle(store, workspace, story.ID, cfg), agentstructural.Spec{
+		Action: agentstructural.Compact, CommandID: "game-public-compact",
 		Ref: agentrun.ContextCompactionRef{Force: true},
 	})
 	if err != nil || !compacted.Compaction.Triggered {
@@ -608,8 +587,8 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 	if err != nil || status.Compaction == nil {
 		t.Fatalf("public Game Compaction status=%#v err=%v", status.Compaction, err)
 	}
-	removed, err := runtime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
-		Action: agentstructural.Remove, CommandID: "game-public-remove", Options: publicGameOptions(workspace, story.ID, "main"),
+	removed, err := runtime.ExecuteStructuralOperation(ctx, publicGameMaintenanceCycle(store, workspace, story.ID, cfg), agentstructural.Spec{
+		Action: agentstructural.Remove, CommandID: "game-public-remove",
 		Ref: agentrun.ContextCompactionRef{CompactionID: status.Compaction.ID},
 	})
 	if err != nil || !removed.Removed {
@@ -622,7 +601,7 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 	runtime = newRuntime()
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	reopenedModel := &publicGameHistoryModel{narrative: "重开后继续。"}
-	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, reopenedModel, nil, compaction, "game-cold-reopen", "冷重开验证证据")
+	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, reopenedModel, compaction, "game-cold-reopen", "冷重开验证证据")
 	reopenedInput := reopenedModel.lastInput(t)
 	if !containsMessageContent(reopenedInput, rich) || containsMessageContent(reopenedInput, placeholder) || containsMessageContent(reopenedInput, "public Game checkpoint") {
 		t.Fatalf("public Game raw history did not restore after remove/cold reopen: %#v", reopenedInput)
@@ -631,8 +610,8 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Cleanup != nil || status.Compaction != nil {
-		t.Fatalf("maintenance cutoff/cold projection is wrong: cleanup=%#v compaction=%#v", status.Cleanup, status.Compaction)
+	if status.Compaction != nil {
+		t.Fatalf("checkpoint removal was not preserved after reopen: compaction=%#v", status.Compaction)
 	}
 }
 
@@ -661,7 +640,6 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 	cfg := &config.Config{Workspace: workspace, AgentContexts: config.AgentContextSettings{
 		InteractiveStory: config.AgentContextOverride{ToolResultContextEnabled: &enabled},
 	}}
-	cleanup := publicGameCleanupManager{marker: rich, placeholder: "[fork test cleanup]"}
 	compaction := publicGameCompactionManager{}
 	dataDir := t.TempDir()
 	profile := publicGameNoopProfile(workspace, story.ID)
@@ -678,16 +656,16 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 	runtime := newRuntime()
 
 	mainModel := &publicGameHistoryModel{narrative: "主线同步后的新回合。"}
-	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, mainModel, cleanup, compaction, "game-main-bootstrap", "推进主线")
+	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, mainModel, compaction, "game-main-bootstrap", "推进主线")
 	if !containsMessageContent(mainModel.lastInput(t), second.Narrative) {
 		t.Fatal("main branch bootstrap omitted its canonical second turn")
 	}
 	mainBeforeEdit, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
-	if err != nil || mainBeforeEdit.Cleanup == nil {
+	if err != nil {
 		t.Fatalf("main bootstrap status=%#v err=%v", mainBeforeEdit, err)
 	}
-	compacted, err := runtime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
-		Action: agentstructural.Compact, CommandID: "game-edit-compact", Options: publicGameOptions(workspace, story.ID, "main"),
+	compacted, err := runtime.ExecuteStructuralOperation(ctx, publicGameMaintenanceCycle(store, workspace, story.ID, cfg), agentstructural.Spec{
+		Action: agentstructural.Compact, CommandID: "game-edit-compact",
 		Ref: agentrun.ContextCompactionRef{Force: true},
 	})
 	if err != nil || !compacted.Compaction.Triggered {
@@ -695,7 +673,7 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 	}
 
 	forkModel := &publicGameHistoryModel{narrative: "分支独有的营地回合。"}
-	runPublicGameTurn(t, runtime, store, story.ID, fork.ID, workspace, cfg, forkModel, nil, nil, "game-fork-bootstrap", "折返回营地")
+	runPublicGameTurn(t, runtime, store, story.ID, fork.ID, workspace, cfg, forkModel, nil, "game-fork-bootstrap", "折返回营地")
 	forkInput := forkModel.lastInput(t)
 	if !containsMessageContent(forkInput, rich) || containsMessageContent(forkInput, second.Narrative) || containsMessageContent(forkInput, mainModel.narrative) {
 		t.Fatalf("fork imported a sibling suffix or lost its inherited prefix: %#v", forkInput)
@@ -713,7 +691,7 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 		t.Fatal(err)
 	}
 	editedModel := &publicGameHistoryModel{narrative: "编辑后的主线继续。"}
-	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, editedModel, nil, nil, "game-main-after-edit", "检查编辑后的历史")
+	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, editedModel, nil, "game-main-after-edit", "检查编辑后的历史")
 	if !containsMessageContent(editedModel.lastInput(t), editedNarrative) {
 		t.Fatal("edited canonical narrative did not rebuild the public raw transcript")
 	}
@@ -721,7 +699,7 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 	if err != nil {
 		t.Fatalf("post-edit status=%#v err=%v", mainAfterEdit, err)
 	}
-	if mainAfterEdit.Cleanup != nil || mainAfterEdit.Compaction != nil {
+	if mainAfterEdit.Compaction != nil {
 		t.Fatalf("edit did not atomically rebuild maintenance generation: before=%#v after=%#v", mainBeforeEdit, mainAfterEdit)
 	}
 
@@ -737,7 +715,7 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 		t.Fatalf("regeneration did not import exactly the target parent: %#v", regenerationInput)
 	}
 	mainAfterRegenerate, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
-	if err != nil || mainAfterRegenerate.Cleanup != nil || mainAfterRegenerate.Compaction != nil {
+	if err != nil || mainAfterRegenerate.Compaction != nil {
 		t.Fatalf("regenerate did not invalidate historical maintenance: edit=%#v regenerate=%#v err=%v", mainAfterEdit, mainAfterRegenerate, err)
 	}
 
@@ -747,13 +725,13 @@ func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingF
 	runtime = newRuntime()
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	coldMainModel := &publicGameHistoryModel{narrative: "冷重开后的主线。"}
-	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, coldMainModel, nil, nil, "game-main-cold-after-regenerate", "冷重开主线")
+	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, cfg, coldMainModel, nil, "game-main-cold-after-regenerate", "冷重开主线")
 	coldMainInput := coldMainModel.lastInput(t)
 	if !containsMessageContent(coldMainInput, regeneratedModel.narrative) || containsMessageContent(coldMainInput, regenerateTarget.Narrative) {
 		t.Fatalf("cold main transcript resurrected the replaced version: %#v", coldMainInput)
 	}
 	coldForkModel := &publicGameHistoryModel{narrative: "冷重开后的分支。"}
-	runPublicGameTurn(t, runtime, store, story.ID, fork.ID, workspace, cfg, coldForkModel, nil, nil, "game-fork-cold", "继续分支")
+	runPublicGameTurn(t, runtime, store, story.ID, fork.ID, workspace, cfg, coldForkModel, nil, "game-fork-cold", "继续分支")
 	coldForkInput := coldForkModel.lastInput(t)
 	if !containsMessageContent(coldForkInput, forkModel.narrative) || containsMessageContent(coldForkInput, editedNarrative) || containsMessageContent(coldForkInput, regeneratedModel.narrative) {
 		t.Fatalf("cold fork was polluted by main branch rebuild: %#v", coldForkInput)
@@ -785,19 +763,18 @@ func runPublicGameTurn(
 	storyID, branchID, workspace string,
 	cfg *config.Config,
 	model *publicGameHistoryModel,
-	cleanup agent.CleanupManager,
 	compaction agent.CompactionManager,
 	commandID, input string,
 ) {
 	t.Helper()
 	conversation := NewConversation(store, "", workspace, storyID, branchID, input, 800, cfg)
-	submitTestTurnResult(t, conversation, input, input)
+	submission := gameSubmissionForTest(t, conversation, input, input)
 	policy := toolresult.ResolveContextPolicy(cfg, config.AgentKindInteractiveStory)
 	definition := agent.Definition{
 		Key: "denova.test.public-game-history", Name: "game", Model: model,
 		ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
-		Cleanup:       cleanup, Compaction: compaction,
-		Middlewares: []agent.Middleware{agentchat.NewModelHistoryProjectionMiddleware(policy)},
+		Compaction:    compaction,
+		Middlewares:   []agent.Middleware{agentchat.NewModelHistoryProjectionMiddleware(policy), submission},
 	}
 	request := agentchat.ChatRequest{CommandID: commandID, Message: input, Locale: "zh-CN"}
 	operation, err := runtime.Start(context.Background(), agentexecution.StartRequest{Cycle: agentexecution.Cycle{
@@ -835,11 +812,11 @@ func runPublicGameRegeneration(
 		WithBaseParentID(branch.Head).
 		WithRegenerateTarget(targetTurnID).
 		WithExecutionParentPinning()
-	submitTestTurnResult(t, conversation, input, input)
+	submission := gameSubmissionForTest(t, conversation, input, input)
 	definition := agent.Definition{
 		Key: "denova.test.public-game-history", Name: "game", Model: model,
 		ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
-		Middlewares: []agent.Middleware{agentchat.NewModelHistoryProjectionMiddleware(
+		Middlewares: []agent.Middleware{submission, agentchat.NewModelHistoryProjectionMiddleware(
 			toolresult.ResolveContextPolicy(cfg, config.AgentKindInteractiveStory),
 		)},
 	}

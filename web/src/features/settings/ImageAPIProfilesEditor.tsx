@@ -114,7 +114,7 @@ export function ImageAPIProfilesEditor({
             <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
               <SelectGroup>
-                <SelectItem value={INHERIT_VALUE}>{t('common.inherit', { value: effectiveDefaultLabel })}</SelectItem>
+                <SelectItem value={INHERIT_VALUE}>{t('common.defaultValue', { value: effectiveDefaultLabel })}</SelectItem>
                 {profileOptions.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}
               </SelectGroup>
             </SelectContent>

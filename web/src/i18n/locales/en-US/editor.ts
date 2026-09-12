@@ -1,4 +1,5 @@
 const editor = {
+  'editor.tools': 'Editor tools',
   'editor.placeholder': 'Choose a file to start editing...',
   'editor.noFile': 'Choose a Markdown file from the left to start editing',
   'editor.save': 'Save',

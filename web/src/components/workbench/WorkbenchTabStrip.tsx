@@ -50,6 +50,7 @@ interface WorkbenchTabStripProps extends Omit<ComponentProps<'div'>, 'children'>
   /** Persistent controls that remain outside the scrollable document tabs. */
   endActions?: ReactNode
   /** Whether trailing controls form a separate action cluster or continue the tab-strip flow. */
+  tabVariant?: 'default' | 'line'
   endActionsVariant?: 'separated' | 'inline'
 }
 
@@ -66,6 +67,7 @@ export function WorkbenchTabStrip({
   flowAction,
   endActions,
   endActionsVariant = 'separated',
+  tabVariant = 'default',
   className,
   ...props
 }: WorkbenchTabStripProps) {
@@ -97,6 +99,7 @@ export function WorkbenchTabStrip({
 
   return (
     <div
+      data-slot="workbench-tab-strip"
       className={cn(
         'nova-sidebar flex h-9 shrink-0 items-stretch border-b border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs',
         className,
@@ -106,6 +109,7 @@ export function WorkbenchTabStrip({
       <Tabs value={value} onValueChange={onValueChange} className="h-full min-w-0 flex-1 gap-0">
         <TabsList
           ref={stripRef}
+          variant={tabVariant}
           className="!h-full w-full justify-start gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-none bg-transparent px-1 py-0 [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none' }}
         >

@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Bell, CheckCheck, Loader2, Star } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Bell, CheckCheck, CircleAlert, Clock3, Loader2, Sparkles, Star, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetClose, SheetTrigger, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { formatDateTime } from '@/i18n'
 import { DENOVA_GITHUB_URL } from '@/lib/product-links'
 import { cn } from '@/lib/utils'
@@ -21,6 +26,9 @@ interface MessageCenterButtonProps {
 
 export function MessageCenterButton({ className = '', showLabel = false, unreadCount: reportedUnreadCount = 0, onUnreadCountChange, onOpenAutomation }: MessageCenterButtonProps) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
+  const listRef = useRef<HTMLDivElement>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<ProductMessage[]>([])
   const [unreadCount, setUnreadCount] = useState(reportedUnreadCount)
@@ -53,7 +61,8 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
       updateUnreadCount(result.unread_count ?? countUnread(nextItems))
       setActiveId((current) => current && nextItems.some((item) => item.id === current) ? current : null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('messages.loadFailed'))
+      console.warn('[features/messages/MessageCenter.tsx] loading messages failed', { error: e })
+      setError(t('messages.loadFailed'))
       setItems([])
     } finally {
       setLoading(false)
@@ -80,7 +89,7 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
       setItems((current) => current.map((item) => item.id === id ? { ...item, ...updated } : item))
     } catch (e) {
       console.warn('[features/messages/MessageCenter.tsx] marking message as read failed', { id, error: e })
-      setError(e instanceof Error ? e.message : t('messages.readFailed'))
+      setError(t('messages.readFailed'))
       void load()
     } finally {
       pendingReadRef.current.delete(id)
@@ -102,7 +111,7 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
       setActiveId((current) => current && nextItems.some((item) => item.id === current) ? current : null)
     } catch (e) {
       console.warn('[features/messages/MessageCenter.tsx] marking all messages as read failed', { error: e })
-      setError(e instanceof Error ? e.message : t('messages.readFailed'))
+      setError(t('messages.readFailed'))
       void load()
     } finally {
       setMarkingAllRead(false)
@@ -110,20 +119,27 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
   }, [load, markingAllRead, t, unreadCount, updateUnreadCount])
 
   useEffect(() => {
-    if (!open || visibleItems.length === 0) return
+    if (isMobile || !open || visibleItems.length === 0) return
     if (activeId && visibleItems.some((item) => item.id === activeId)) return
     const firstUnread = visibleItems.find((item) => !item.read_at)
     setActiveId((firstUnread || visibleItems[0]).id)
-  }, [activeId, open, visibleItems])
+  }, [activeId, isMobile, open, visibleItems])
 
   useEffect(() => {
     if (!open || !activeItem || activeItem.read_at) return
     void markRead(activeItem.id)
   }, [activeItem, markRead, open])
 
+  useEffect(() => {
+    detailRef.current?.scrollTo({ top: 0 })
+    if (isMobile && activeId) detailRef.current?.focus()
+  }, [activeId, isMobile])
+
+  const showDetail = isMobile && !!activeItem
+
   return (
-    <>
-      <button
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild><button
         type="button"
         className={cn(
           'nova-icon-button relative flex items-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
@@ -133,7 +149,10 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
           className,
         )}
         aria-label={t('messages.open')}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // Opening the inbox must not read a message the phone has not displayed.
+          if (isMobile) setActiveId(null)
+        }}
       >
         <span className="relative flex size-4 shrink-0 items-center justify-center">
           <Bell className="size-4" />
@@ -144,117 +163,92 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
           )}
         </span>
         {showLabel ? <span className="truncate">{t('messages.label')}</span> : null}
-      </button>
-      <Sheet open={open} onOpenChange={setOpen}>
+      </button></SheetTrigger>
         <SheetContent
           side="right"
-          style={{ width: 'min(920px, calc(100vw - 1rem))', maxWidth: 'none' }}
-          className="gap-0 border-[var(--nova-border)] bg-[var(--nova-surface)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]"
+          showCloseButton={false}
+          style={{ width: isMobile ? '100%' : 'min(920px, calc(100vw - 1rem))', maxWidth: 'none' }}
+          className="nova-message-center gap-0 bg-background p-0 text-foreground"
         >
-          <SheetHeader className="shrink-0 gap-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-4 py-3">
-            <div className="flex items-start justify-between gap-3 pr-9">
-              <div className="min-w-0">
-                <SheetTitle className="text-sm font-semibold text-[var(--nova-text)]">{t('messages.title')}</SheetTitle>
-                <SheetDescription className="mt-1 text-xs text-[var(--nova-text-faint)]">
-                  {t('messages.description')}
-                </SheetDescription>
+          <SheetHeader className="shrink-0 gap-0 border-b px-4 py-3 max-lg:px-2 max-lg:py-0.5">
+            <div className="flex min-h-11 items-center gap-2">
+              {showDetail && <Button variant="ghost" size="icon" aria-label={t('messages.back')} onClick={() => {
+                setActiveId(null)
+                requestAnimationFrame(() => Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-message-id]') ?? []).find((node) => node.dataset.messageId === activeId)?.focus())
+              }}><ArrowLeft /></Button>}
+              <div className="min-w-0 flex-1">
+                <SheetTitle className="text-base">{t('messages.title')}</SheetTitle>
+                <SheetDescription className="mt-1 text-xs max-lg:sr-only">{t('messages.description')}</SheetDescription>
               </div>
-              <button
-                type="button"
-                className="nova-ui-compact inline-flex shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-xs text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label={t('messages.markAllRead')}
-                disabled={unreadCount <= 0 || markingAllRead}
-                onClick={markAllRead}
-              >
-                {markingAllRead ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCheck className="h-3.5 w-3.5" />}
-                <span>{t('messages.markAllRead')}</span>
-              </button>
+              {!showDetail && <Button variant="ghost" size={isMobile ? 'icon' : 'sm'} aria-label={t('messages.markAllRead')} disabled={unreadCount <= 0 || markingAllRead} onClick={markAllRead}>
+                {markingAllRead ? <Loader2 className="animate-spin" /> : <CheckCheck />}
+                {!isMobile && t('messages.markAllRead')}
+              </Button>}
+              <SheetClose asChild><Button variant="ghost" size="icon" aria-label={t('common.close')}><X /></Button></SheetClose>
             </div>
           </SheetHeader>
-          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-            <div className="max-h-56 shrink-0 overflow-y-auto border-b border-[var(--nova-border)] md:max-h-none md:w-72 md:border-b-0 md:border-r">
-              <div className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
-                {(['all', 'action', 'automation', 'product'] as const).map((itemFilter) => (
-                  <button
-                    key={itemFilter}
-                    type="button"
-                    aria-pressed={filter === itemFilter}
-                    className={`shrink-0 rounded-[var(--nova-radius)] px-2 py-1 text-[10px] ${filter === itemFilter ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-                    onClick={() => setFilter(itemFilter)}
-                  >
-                    {t(`messages.filter.${itemFilter}`)}
-                  </button>
-                ))}
-              </div>
-              {loading && items.length === 0 ? (
-                <div className="flex h-32 items-center justify-center gap-2 text-xs text-[var(--nova-text-faint)]">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t('messages.loading')}
-                </div>
-              ) : visibleItems.length === 0 ? (
-                <div className="flex h-32 items-center justify-center px-4 text-center text-xs text-[var(--nova-text-faint)]">
-                  {error || t('messages.empty')}
-                </div>
-              ) : (
-                <div className="p-2">
-                  {visibleItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`mb-1 flex w-full items-start gap-2 rounded-[var(--nova-radius)] px-2 py-2 text-left text-xs transition-colors hover:bg-[var(--nova-hover)] ${activeId === item.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`}
-                      onClick={() => selectMessage(item.id)}
-                    >
-                      <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${item.read_at ? 'bg-transparent' : 'bg-[var(--nova-danger-border)]'}`} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium text-[var(--nova-text)]">{messageTitle(item, t)}</span>
-                        <span className="mt-1 line-clamp-2 block leading-4 text-[var(--nova-text-faint)]">{item.summary || t('messages.noSummary')}</span>
-                        <span className="mt-1 block truncate text-[10px] text-[var(--nova-text-faint)]">{messageMeta(item, t)}</span>
-                      </span>
-                    </button>
+          {error && <div role="alert" className="flex items-center justify-between gap-2 border-b px-4 py-2 text-sm text-destructive">
+            <span>{error}</span><Button variant="ghost" size="sm" onClick={() => void load()}>{t('common.retry')}</Button>
+          </div>}
+          <div className="flex min-h-0 flex-1">
+            <div ref={listRef} hidden={showDetail} className={cn('min-h-0 flex-1 lg:w-72 lg:flex-none lg:border-r', showDetail && 'hidden')}>
+              <Tabs value={filter} onValueChange={(value) => setFilter(value as MessageFilter)} className="h-full min-h-0 gap-0">
+                <TabsList variant="line" aria-label={t('messages.filters')} className="!h-12 w-full shrink-0 justify-start rounded-none border-b px-2 py-1">
+                  {(['all', 'action', 'automation', 'product'] as const).map((itemFilter) => (
+                    <TabsTrigger key={itemFilter} value={itemFilter} className="h-11 px-2 text-xs after:!bottom-0">
+                      {t(`messages.filter.${itemFilter}`)}
+                    </TabsTrigger>
                   ))}
-                </div>
-              )}
+                </TabsList>
+                <TabsContent value={filter} className="min-h-0 overflow-y-auto overscroll-contain">
+                  {loading && items.length === 0 ? (
+                    <div role="status" className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t('messages.loading')}</div>
+                  ) : visibleItems.length === 0 ? (
+                    <Empty className="h-full"><EmptyHeader><EmptyMedia variant="icon"><Bell /></EmptyMedia><EmptyTitle>{t('messages.empty')}</EmptyTitle></EmptyHeader></Empty>
+                  ) : <div className="divide-y px-3">
+                    {visibleItems.map((item) => {
+                      const Icon = item.action_required ? CircleAlert : item.type === 'automation' ? Clock3 : Sparkles
+                      return <button
+                        key={item.id}
+                        data-message-id={item.id}
+                        type="button"
+                        aria-current={activeId === item.id ? 'true' : undefined}
+                        className={cn('flex w-full items-start gap-3 rounded-md px-2 py-4 text-left transition-colors hover:bg-accent focus-visible:outline-ring', activeId === item.id && 'bg-accent')}
+                        onClick={() => selectMessage(item.id)}
+                      >
+                        <span className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground', item.action_required && 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]')}><Icon className="size-4" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2"><span className="line-clamp-2 flex-1 text-sm font-semibold leading-5">{messageTitle(item, t)}</span>{!item.read_at && <span className="size-2 shrink-0 rounded-full bg-primary"><span className="sr-only">{t('messages.unread')}</span></span>}</span>
+                          {item.summary && <span className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{item.summary}</span>}
+                          <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"><Badge variant="secondary" className="text-[11px]">{messageTypeLabel(item, t)}</Badge><span>{formatMessagePublishedAt(item.published_at)}</span></span>
+                        </span>
+                      </button>
+                    })}
+                  </div>}
+                </TabsContent>
+              </Tabs>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <div ref={detailRef} tabIndex={-1} hidden={isMobile && !showDetail} className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 outline-none', isMobile && !showDetail && 'hidden')}>
               {activeItem ? (
-                <article className="chat-agent-message min-w-0 text-[var(--nova-text-muted)]">
-                  <div className="mb-4 border-b border-[var(--nova-border)] pb-3">
-                    <h2 className="m-0 text-base font-semibold text-[var(--nova-text)]">{messageTitle(activeItem, t)}</h2>
-                    <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{messageMeta(activeItem, t)}</div>
+                <article className="chat-agent-message min-w-0 text-muted-foreground">
+                  <div className="mb-5 border-b pb-4">
+                    <h2 className="m-0 break-words text-lg font-semibold leading-7 text-foreground">{messageTitle(activeItem, t)}</h2>
+                    <div className="mt-2 text-xs text-muted-foreground">{messageMeta(activeItem, t)}</div>
                   </div>
-                  {activeItem.type === 'changelog' && <DonationPrompt />}
-                  {activeItem.type === 'changelog' && <GitHubStarPrompt />}
                   {onOpenAutomation && activeItem.task_id && (
-                    <button
-                      type="button"
-                      className="mb-4 inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1.5 text-xs font-medium text-[var(--nova-text)] hover:bg-[var(--nova-hover)]"
-                      onClick={() => {
-                        onOpenAutomation({
-                          taskId: activeItem.task_id || '',
-                          runId: activeItem.run_id,
-                          inboxId: activeItem.inbox_id,
-                          projectId: activeItem.project_id,
-                          workspace: activeItem.workspace,
-                        })
-                        setOpen(false)
-                      }}
-                    >
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                      {t(activeItem.action_required ? 'messages.openAutomationAction' : 'messages.openAutomation')}
-                    </button>
+                    <Button variant="secondary" className="mb-4" onClick={() => {
+                      onOpenAutomation({ taskId: activeItem.task_id || '', runId: activeItem.run_id, inboxId: activeItem.inbox_id, projectId: activeItem.project_id, workspace: activeItem.workspace })
+                      setOpen(false)
+                    }}><ArrowUpRight />{t(activeItem.action_required ? 'messages.openAutomationAction' : 'messages.openAutomation')}</Button>
                   )}
                   <MarkdownRenderer content={activeItem.body} />
+                  {activeItem.type === 'changelog' && <div className="mt-8 border-t pt-5"><GitHubStarPrompt /><DonationPrompt /></div>}
                 </article>
-              ) : (
-                <div className="flex h-full min-h-48 items-center justify-center text-xs text-[var(--nova-text-faint)]">
-                  {error || t('messages.selectEmpty')}
-                </div>
-              )}
+              ) : <Empty className="h-full"><EmptyHeader><EmptyMedia variant="icon"><Bell /></EmptyMedia><EmptyTitle>{t('messages.selectEmpty')}</EmptyTitle></EmptyHeader></Empty>}
             </div>
           </div>
         </SheetContent>
-      </Sheet>
-    </>
+    </Sheet>
   )
 }
 

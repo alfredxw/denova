@@ -79,8 +79,7 @@ export function modelEndpointsWithDefault(settings?: {
     .map((endpoint) => ({ ...endpoint, id: modelEndpointID(endpoint) }))
     .filter((endpoint) => endpoint.id)
   if (endpoints.some((endpoint) => endpoint.id === DEFAULT_MODEL_ENDPOINT_ID)) return endpoints
-  const selectedDefaultID = settings?.agent_models?.default?.profile_id?.trim() || DEFAULT_MODEL_PROFILE_ID
-  if (endpoints.length === 0 || selectedDefaultID === DEFAULT_MODEL_PROFILE_ID) {
+  if (settings?.openai_api_key?.trim() || settings?.openai_base_url?.trim()) {
     return [defaultModelEndpointFromSettings(settings), ...endpoints]
   }
   return endpoints
@@ -96,8 +95,7 @@ export function modelProfilesWithDefault(settings?: {
     .map((profile) => ({ ...profile, id: modelProfileID(profile) }))
     .filter((profile) => profile.id)
   if (profiles.some((profile) => profile.id === DEFAULT_MODEL_PROFILE_ID)) return profiles
-  const selectedDefaultID = settings?.agent_models?.default?.profile_id?.trim() || DEFAULT_MODEL_PROFILE_ID
-  if (profiles.length === 0 || selectedDefaultID === DEFAULT_MODEL_PROFILE_ID) {
+  if (settings?.openai_model?.trim()) {
     return [defaultModelProfileFromSettings(settings), ...profiles]
   }
   return profiles

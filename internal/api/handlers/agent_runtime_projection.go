@@ -78,7 +78,7 @@ func addAgentRuntimeProjection(
 	}
 	dto := newAgentRuntimeProjectionDTO(snapshot)
 	dto.StreamAttached = options.StreamAttached
-	if dto.StreamAttached {
+	if dto.StreamAttached && dto.Phase != "suspended" {
 		dto.RecoveryPaused = false
 		dto.RuntimeRecoverable = false
 		dto.RecoveryActions = nil
@@ -163,7 +163,7 @@ func newAgentRuntimeProjectionDTO(snapshot appsvc.AgentRuntimeStatus) agentRunti
 	return agentRuntimeProjectionDTO{
 		Cursor:            uint64(snapshot.Cursor),
 		Phase:             string(snapshot.Phase),
-		RecoveryPaused:    len(recoveryActions) > 0,
+		RecoveryPaused:    string(snapshot.Phase) == "suspended",
 		ActiveOperationID: string(snapshot.ActiveOperation),
 		ActiveCycle:       snapshot.ActiveCycle,
 		ActiveOutput: agentRuntimeActiveOutputDTO{

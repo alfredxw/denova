@@ -1,22 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
+import { queryClient } from '@/lib/query-client'
 import { setConfiguredLocale } from '@/i18n'
-import { APIError, clearRemoteAccessCredentials, fetchAPI, parseSSEStream, requestJSON, responseAPIError, setRemoteAccessCredentials, withErrorLogID } from './client'
+import { APIError, fetchAPI, parseSSEStream, requestJSON, responseAPIError, withErrorLogID } from './client'
 
 vi.mock('sonner', () => ({
   toast: {
     error: vi.fn(),
+    dismiss: vi.fn(),
   },
 }))
 
 describe('api client backend availability toast', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     setConfiguredLocale('zh-CN')
     vi.mocked(toast.error).mockClear()
     window.sessionStorage.clear()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')))
+    await fetchAPI('/api/auth/status')
+    vi.clearAllTimers()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -24,10 +32,12 @@ describe('api client backend availability toast', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('bad gateway', { status: 502 })))
 
     await expect(requestJSON('/api/workspace/current')).rejects.toThrow('bad gateway')
+    expect(toast.error).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1500)
 
-    expect(toast.error).toHaveBeenCalledWith('后端未启动', {
+    expect(toast.error).toHaveBeenCalledWith('无法连接 Denova', {
       id: 'nova-backend-unavailable',
-      description: '请先启动或重启 Denova 后端服务，然后再继续操作。',
+      description: '请检查此设备的网络及 Denova 服务所在设备的连接，然后重试。',
     })
   })
 
@@ -37,11 +47,108 @@ describe('api client backend availability toast', () => {
     }))
 
     await expect(fetchAPI('/api/books')).rejects.toThrow('Failed to fetch')
+    expect(toast.error).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1500)
 
-    expect(toast.error).toHaveBeenCalledWith('后端未启动', {
+    expect(toast.error).toHaveBeenCalledWith('无法连接 Denova', {
       id: 'nova-backend-unavailable',
-      description: '请先启动或重启 Denova 后端服务，然后再继续操作。',
+      description: '请检查此设备的网络及 Denova 服务所在设备的连接，然后重试。',
     })
+  })
+
+  it('does not report a backend outage when a PWA wakeup failure is followed by a reachable service', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockResolvedValue(new Response('{}'))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchAPI('/api/books')).rejects.toThrow('Load failed')
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/auth/status', expect.objectContaining({ cache: 'no-store' }))
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('coalesces concurrent failures and cancels verification when another API request recovers', async () => {
+    const fetchMock = vi.fn(async () => new Response('', { status: 503 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await Promise.all([fetchAPI('/api/books'), fetchAPI('/api/settings')])
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(toast.error).toHaveBeenCalledTimes(1)
+    fetchMock.mockImplementation(async () => new Response('{}'))
+    await fetchAPI('/api/settings')
+    expect(toast.dismiss).toHaveBeenCalledWith('nova-backend-unavailable')
+
+    fetchMock.mockImplementationOnce(async () => new Response('', { status: 502 }))
+    await fetchAPI('/api/books')
+    await fetchAPI('/api/settings')
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(fetchMock).toHaveBeenCalledTimes(6)
+    expect(toast.error).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores late verification failures after a newer successful request', async () => {
+    let rejectProbe!: (error: Error) => void
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectProbe = reject }))
+      .mockResolvedValue(new Response('{}'))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchAPI('/api/books')).rejects.toThrow('Load failed')
+    await vi.advanceTimersByTimeAsync(1500)
+    await fetchAPI('/api/settings')
+    rejectProbe(new TypeError('Load failed'))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('does not queue stale outage notifications while the app is hidden', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    const fetchMock = vi.fn(async () => { throw new TypeError('Load failed') })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchAPI('/api/books')).rejects.toThrow('Load failed')
+    visibility.mockReturnValue('visible')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('treats an authentication challenge as a reachable server and never retries a mutation', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockResolvedValue(new Response('', { status: 401 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchAPI('/api/chat', { method: 'POST', body: 'message' })).rejects.toThrow('Load failed')
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/auth/status')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('reports a connection failure if the verification request times out', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockImplementationOnce((_url, init) => new Promise<Response>((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchAPI('/api/books')).rejects.toThrow('Load failed')
+    await vi.advanceTimersByTimeAsync(6499)
+    expect(toast.error).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(toast.error).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels a pending notification when the PWA is backgrounded', async () => {
+    const fetchMock = vi.fn(async () => { throw new TypeError('Load failed') })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchAPI('/api/books')).rejects.toThrow('Load failed')
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    document.dispatchEvent(new Event('visibilitychange'))
+    visibility.mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(6500)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it('does not show backend-unavailable toast for cancelled or non-api requests', async () => {
@@ -66,31 +173,23 @@ describe('api client backend availability toast', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it('adds remote access credentials to local API requests', async () => {
-    setRemoteAccessCredentials('reader', 'secret')
+  it('uses browser cookies without storing or sending a Basic password', async () => {
+    window.sessionStorage.setItem('nova.remoteAccess.credentials', JSON.stringify({ username: 'old', password: 'secret' }))
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
-
     await fetchAPI('/api/settings')
-
     const [, init] = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>)[0]
-    expect(new Headers(init.headers).get('Authorization')).toBe('Basic cmVhZGVyOnNlY3JldA==')
+    expect(new Headers(init.headers).has('Authorization')).toBe(false)
   })
 
-  it('clears stale credentials and requests login on remote access rejection', async () => {
-    setRemoteAccessCredentials('reader', 'wrong')
-    const listener = vi.fn()
-    window.addEventListener('nova:remote-access-required', listener)
+  it('revalidates authentication for a server cookie challenge', async () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
     vi.stubGlobal('fetch', vi.fn(async () => new Response('auth required', {
-      status: 401,
-      headers: { 'WWW-Authenticate': 'Basic realm="Nova"' },
+      status: 401, headers: { 'X-Denova-Auth': 'required' },
     })))
-
     await expect(requestJSON('/api/settings')).rejects.toThrow('auth required')
-
-    expect(listener).toHaveBeenCalledTimes(1)
-    clearRemoteAccessCredentials()
-    window.removeEventListener('nova:remote-access-required', listener)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['remote-access'] })
+    invalidate.mockRestore()
   })
 
   it('preserves status, domain code and details for structured conflicts', async () => {

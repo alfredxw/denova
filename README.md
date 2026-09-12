@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.4.2</strong>（2026-09-06） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
+  当前版本：<strong>v0.4.5</strong>（2026-09-09） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -46,6 +46,10 @@
 ### 工作台
 
 ![Denova 工作台](./img/workspace.png)
+
+支持局域网连接、手机自适应布局和 PWA 应用。
+
+<img src="./img/mobile.png" alt="Denova 手机布局" width="360">
 
 </details>
 
@@ -116,7 +120,9 @@ corepack enable
 
 ## 远程访问与手机使用
 
-在 **设置 → 远程访问** 中开启局域网访问并设置用户名和密码后，其他设备可以使用页面显示的地址访问 Denova。手机浏览器可以将页面添加到主屏幕。
+在 **设置 → 访问** 中开启局域网访问、设置用户名和密码并重启后，其他设备可以使用页面显示的地址登录 Denova。本机还可生成 5 分钟有效的一次性登录二维码及链接，同一局域网内的手机扫码即可登录，也可复制链接到其他设备打开。浏览器会保持登录 30 天，刷新或服务重启无需重新输入密码；可在设置中退出登录。手机浏览器可以将页面添加到主屏幕。
+
+从源码运行时，二维码和连接链接使用后端端口提供的 `web/dist` 构建产物。首次使用或更新前端后，执行 `pnpm --dir web build` 并重启后端；本机 Vite 热更新入口可继续用于开发。
 
 通过公网或域名部署时，请使用 Caddy、Nginx 等反向代理提供 HTTPS，避免明文传输登录凭据。
 

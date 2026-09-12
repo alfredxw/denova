@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"denova/config"
+	"denova/internal/agentprofiles"
 	contextcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/prompts"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -119,18 +120,29 @@ func (service *Service) patchUser(target Target, changes json.RawMessage, baseRe
 	if err != nil {
 		return config.LayeredSettings{}, err
 	}
-	path := config.UserConfigPath(runtime.Config.DataDir())
-	if _, err := config.MutateUserSettings(runtime.Config.DataDir(), baseRevision, func(existing config.Settings) (config.Settings, error) {
-		merged, err := config.ApplySettingsMergePatch(existing, changes)
-		if err != nil {
-			return config.Settings{}, err
-		}
-		return config.PrepareUserSettingsForWrite(existing, merged)
-	}); err != nil {
+	paths, err := config.AgentProfilePatchPaths(changes)
+	if err != nil {
 		return config.LayeredSettings{}, err
 	}
-	slog.InfoContext(context.Background(), fmt.Sprintf("[app/settings] applied partial user settings mutation path=%s", path))
-	return service.refresh(target, config.SettingsLayerUser)
+	_, mutationErr := agentprofiles.Mutate(context.Background(), runtime.Config.DataDir(), config.UserSettingsMutationRequest{
+		ExpectedRevision: baseRevision, ProfilePaths: paths,
+		Mutate: func(existing config.Settings) (config.Settings, error) {
+			merged, err := config.ApplySettingsMergePatch(existing, changes)
+			if err != nil {
+				return config.Settings{}, err
+			}
+			return config.PrepareUserSettingsForWrite(existing, merged)
+		},
+	})
+	if mutationErr != nil {
+		var partial *agentprofiles.MutationError
+		if !errors.As(mutationErr, &partial) {
+			return config.LayeredSettings{}, mutationErr
+		}
+	}
+	// Successful files are already durable even if another target failed.
+	layered, refreshErr := service.refresh(target, config.SettingsLayerUser)
+	return layered, errors.Join(mutationErr, refreshErr)
 }
 
 func (service *Service) patchProject(target Target, changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {

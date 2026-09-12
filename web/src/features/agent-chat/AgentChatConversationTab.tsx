@@ -254,7 +254,7 @@ function AgentChatConversationTabComponent({
       action,
       {
         answer: (answers) => client.answerSessionAsk(sessionId, askID, answers),
-        cancel: () => client.cancelSessionAsk(sessionId, askID),
+        cancel: (reason) => client.cancelSessionAsk(sessionId, askID, reason),
       },
       () => chat.loadHistory(sessionId),
     )
@@ -388,6 +388,8 @@ function AgentChatConversationTabComponent({
       onAnalyzeContext={(message, options) => chat.analyzeContext(messageTransform?.(message) ?? message, options)}
       ideContext={host?.ideContext}
       onStop={chat.stop}
+      onSuspend={chat.suspend}
+      onResumeTask={chat.resumeTask}
       onSteerQueuedCommand={chat.steerQueuedCommand}
       onDeleteQueuedCommand={chat.deleteQueuedCommand}
       onEditQueuedCommand={chat.editQueuedCommand}

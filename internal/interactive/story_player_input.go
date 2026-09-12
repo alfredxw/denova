@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"crypto/sha256"
+	"denova/internal/agents/sessionjournal"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,12 +17,13 @@ var ErrPlayerInputIdentityConflict = errors.New("player input identity conflict"
 // PlayerInputIntent is the append-only canonical form of one accepted game
 // cycle before any model, tool, or narrative effect starts.
 type PlayerInputIntent struct {
-	Identity    DomainCommitIdentity `json:"identity"`
-	BranchID    string               `json:"branch_id"`
-	Text        string               `json:"text"`
-	Attachments []agent.Attachment   `json:"attachments,omitempty"`
-	ContextOnly bool                 `json:"context_only,omitempty"`
-	Hash        string               `json:"hash"`
+	Identity    DomainCommitIdentity      `json:"identity"`
+	BranchID    string                    `json:"branch_id"`
+	Text        string                    `json:"text"`
+	Attachments []agent.Attachment        `json:"attachments,omitempty"`
+	ContextOnly bool                      `json:"context_only,omitempty"`
+	Hash        string                    `json:"hash"`
+	Checkpoint  agent.CanonicalCheckpoint `json:"-"`
 }
 
 type PlayerInputAcceptedEvent struct {
@@ -148,7 +150,12 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 		AgentCycle: canonical.Identity.Cycle, AgentCommitHash: canonical.Hash,
 	}
 	meta.UpdatedAt = now
-	if appendErr := s.appendStoryTransactionLocked(storyID, meta, event); appendErr != nil {
+	agentRecords, err := sessionjournal.CheckpointRecords(&s.storyJournals[storyID].projection.AgentSessions, intent.Checkpoint, event.ID)
+	if err != nil {
+		return PlayerInputReceipt{}, err
+	}
+	newEvents := append([]any{event}, agentRecords...)
+	if appendErr := s.appendStoryTransactionLocked(storyID, meta, newEvents...); appendErr != nil {
 		return PlayerInputReceipt{}, appendErr
 	}
 	s.syncStoryIndexProjectionLocked(storyID)

@@ -7,12 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 )
 
 var (
@@ -56,6 +59,7 @@ type DomainCommitIntent struct {
 	Metadata       MessageMetadata
 	Hash           string
 	ExpectedCursor *ContextCursor
+	Checkpoint     agent.CanonicalCheckpoint
 }
 
 // DomainCommitReceipt proves the exact canonical message and context revision
@@ -139,7 +143,10 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		if metadata.ContextOnly {
 			kind = historyTypeContextMessage
 		}
-		if err := s.appendDomainMessageLocked(&message, metadata, kind); err != nil {
+		if err := s.appendDomainMessageLocked(&message, metadata, kind, intent.Checkpoint); err != nil {
+			if errors.Is(err, conversationjournal.ErrCommitUnknown) {
+				return err
+			}
 			recoveryErr := s.refreshCanonicalTailLocked()
 			if recoveryErr == nil {
 				reconciled, found, reconcileErr := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash)
@@ -166,7 +173,7 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 // appendDomainMessageLocked publishes the canonical message and its optional
 // interruption resolution as one physical journal transaction. Callers hold
 // s.mu under the canonical journal lease.
-func (s *Session) appendDomainMessageLocked(message *agent.Message, metadata MessageMetadata, kind string) error {
+func (s *Session) appendDomainMessageLocked(message *agent.Message, metadata MessageMetadata, kind string, checkpoint agent.CanonicalCheckpoint) error {
 	if message == nil {
 		return errors.New("domain commit message is nil")
 	}
@@ -186,6 +193,11 @@ func (s *Session) appendDomainMessageLocked(message *agent.Message, metadata Mes
 		interruptionPatch = &patch
 		records = append(records, patch)
 	}
+	agentRecords, err := sessionjournal.CheckpointRecords(&s.projection.AgentSessions, checkpoint, strconv.FormatUint(metadata.ContextRevision, 10))
+	if err != nil {
+		return err
+	}
+	records = append(records, agentRecords...)
 	if _, err := s.appendJournalRecordsLocked(records...); err != nil {
 		return err
 	}
@@ -312,9 +324,9 @@ func (s *Session) SnapshotContext() (ContextSnapshot, error) {
 }
 
 // SnapshotContextForDomainCommit atomically returns model-visible context and
-// the effective message index of one exact canonical commit. A commit hidden
-// behind /clear remains durable but returns found=false so the current turn can
-// still project its accepted input once.
+// the effective message index of one exact canonical commit. A commit before
+// /clear or the resident message window remains durable but returns found=false
+// so the current turn can still project its accepted input once.
 func (s *Session) SnapshotContextForDomainCommit(
 	identity DomainCommitIdentity,
 	role agent.RoleType,
@@ -337,12 +349,12 @@ func (s *Session) SnapshotContextForDomainCommit(
 	if err != nil || !found {
 		return snapshot, 0, false, err
 	}
-	if receipt.Hash != strings.TrimSpace(hash) || messageIndex < s.clearAfterIndex {
+	effectiveStart := max(s.clearAfterIndex, s.messageBaseIndex)
+	if receipt.Hash != strings.TrimSpace(hash) || messageIndex < effectiveStart {
 		return snapshot, 0, false, nil
 	}
-	effectiveStart := max(s.clearAfterIndex, s.messageBaseIndex)
 	effectiveIndex := messageIndex - effectiveStart
-	if effectiveIndex < 0 || effectiveIndex >= len(snapshot.EffectiveMessages) {
+	if effectiveIndex >= len(snapshot.EffectiveMessages) {
 		return ContextSnapshot{}, 0, false, fmt.Errorf("domain commit context index is inconsistent with session history")
 	}
 	return snapshot, effectiveIndex, true, nil
@@ -463,21 +475,23 @@ func (s *Session) findDomainCommitMessageIndexLocked(
 	hash string,
 ) (int, DomainCommitReceipt, bool, error) {
 	wantedMessageID := deterministicDomainMessageID(identity, role)
-	messageIndex := s.messageBaseIndex
-	for _, record := range s.records {
+	// Records and messages retain different prefixes but share the canonical
+	// tail. Count backwards from the durable total to keep absolute indices.
+	messageIndex := s.messageCount
+	for index := len(s.records) - 1; index >= 0; index-- {
+		record := s.records[index]
 		if record.message == nil {
 			continue
 		}
+		messageIndex--
 		metadata := record.messageMetadata
 		if metadata.AgentCommandID != identity.CommandID {
-			messageIndex++
 			continue
 		}
 		if metadata.AgentOperationID != identity.OperationID || metadata.AgentCycle != identity.Cycle {
 			return 0, DomainCommitReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
 		}
 		if metadata.MessageID != wantedMessageID {
-			messageIndex++
 			continue
 		}
 		existingHash, err := domainMessageHash(*record.message, metadata)
@@ -490,7 +504,6 @@ func (s *Session) findDomainCommitMessageIndexLocked(
 		return messageIndex, domainCommitReceipt(identity, metadata, existingHash), true, nil
 	}
 	if s.projection != nil {
-		wantedMessageID := deterministicDomainMessageID(identity, role)
 		for index := len(s.projection.RecentCommits) - 1; index >= 0; index-- {
 			commit := s.projection.RecentCommits[index]
 			metadata := commit.Metadata

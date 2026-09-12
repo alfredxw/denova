@@ -154,6 +154,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/interactive/actor-traits/roll", apiHandlers.HandleInteractiveActorTraitRoll)
 		api.POST("/interactive/chat", apiHandlers.HandleInteractiveChat)
 		api.POST("/interactive/chat/commands", apiHandlers.HandleInteractiveChatCommand)
+		api.POST("/interactive/chat/asks/:ask_id/answer", apiHandlers.HandleInteractiveAskAnswer)
+		api.POST("/interactive/chat/asks/:ask_id/cancel", apiHandlers.HandleInteractiveAskCancel)
 		api.POST("/interactive/chat/recovery", apiHandlers.HandleInteractiveChatRecovery)
 		api.POST("/interactive/chat/context-analysis", apiHandlers.HandleInteractiveChatContextAnalysis)
 		api.GET("/interactive/chat/stream", apiHandlers.HandleInteractiveChatStream)
@@ -245,6 +247,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/update/check", apiHandlers.HandleUpdateCheck)
 		api.POST("/update/install", apiHandlers.HandleUpdateInstall)
 		api.POST("/update/install/stream", apiHandlers.HandleUpdateInstallStream)
+		api.POST("/update/upload", apiHandlers.HandleUpdateUpload)
 		api.POST("/update/apply", apiHandlers.HandleUpdateApply)
 		api.POST("/host/dialogs/directory", localHostEffectMiddleware, apiHandlers.HandleDirectoryPicker)
 		api.GET("/agent-chat/projects", apiHandlers.HandleAgentChatProjects)
@@ -321,6 +324,16 @@ func resolveWebRoot() string {
 		root := normalizeStaticRoot(candidate)
 		if root == "" {
 			continue
+		}
+		// A checkout's web/index.html loads TypeScript that only Vite can serve.
+		// LAN links use this server, so serve the checkout's build just like a
+		// release bundle. Never fall back to exposing the uncompiled source tree.
+		if _, err := os.Stat(filepath.Join(root, "src", "main.tsx")); err == nil {
+			root = filepath.Join(root, "dist")
+			if _, err := os.Stat(filepath.Join(root, "index.html")); err != nil {
+				slog.WarnContext(context.Background(), "[startup] Compiled frontend missing; run pnpm --dir web build to enable browser access", "path", root)
+				continue
+			}
 		}
 		if fi, err := os.Stat(root); err == nil && fi.IsDir() {
 			if _, err := os.Stat(filepath.Join(root, "index.html")); err == nil {

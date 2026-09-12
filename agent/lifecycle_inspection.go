@@ -57,18 +57,11 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	if err != nil {
 		return Inspection{}, err
 	}
-	compaction, compactionPresent, _, err := compactionStateFrom(capabilities)
+	compaction, compactionPresent, err := compactionStateFrom(capabilities)
 	if err != nil {
 		return Inspection{}, err
 	}
 	compaction, compactionPresent = clearCompaction(compaction, compactionPresent, clearState, clearPresent)
-	cleanup, cleanupPresent, _, err := cleanupStateFrom(capabilities)
-	if err != nil {
-		return Inspection{}, err
-	}
-	cleanup, cleanupPresent = clearCleanup(cleanup, cleanupPresent, clearState, clearPresent)
-	cleanup, cleanupPresent = cleanupAfterCompaction(cleanup, cleanupPresent, compaction, compactionPresent)
-
 	sessionView := SessionView{Key: session.key, Revision: uint64(revision)}
 	// The synthetic Run identity lets dynamic capabilities assemble the same
 	// bounded provenance they use for a real start, but it is never admitted and
@@ -84,7 +77,6 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 		Reason:     TurnReasonStart,
 		HostData:   cloneHostData(input.HostData),
 		Compaction: compactionStatePointer(compaction, compactionPresent),
-		Cleanup:    cloneCleanupStateIfPresent(cleanup, cleanupPresent),
 	}
 	prepared, err := prepareDefinition(ctx, session.agent.source, prepareRequest)
 	if err != nil {
@@ -117,23 +109,13 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	prepared.contextState = inspectedContextState
 	inspectionTranscript := append(cloneMessages(transcript.Messages), cloneMessages(stateMessages)...)
 
-	visible, err := effectiveCleanupMessages(
-		inspectionTranscript,
-		cleanup,
-		cleanupPresent,
-		compaction,
-		compactionPresent,
-	)
-	if err != nil {
-		return Inspection{}, err
-	}
 	summaryLimit := 0
 	if prepared.definition.Compaction != nil {
 		summaryLimit = prepared.definition.Compaction.SummaryLimitBytes()
 	} else if compactionPresent && !compaction.Removed {
 		return Inspection{}, fmt.Errorf("%w: active Compaction has no Manager in the selected Definition", ErrDefinitionMismatch)
 	}
-	effective, err := effectiveCompactionMessages(visible, compaction, compactionPresent, summaryLimit)
+	effective, err := effectiveCompactionMessages(inspectionTranscript, compaction, compactionPresent, summaryLimit)
 	if err != nil {
 		return Inspection{}, err
 	}
@@ -169,16 +151,9 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 		MaterializedFingerprint: prepared.materializedFingerprint,
 		PrefixFingerprint:       prepared.prefixFingerprint,
 		ModelIdentity:           prepared.definition.ModelIdentity,
-		Cleanup:                 cloneCleanupStateIfPresent(cleanup, cleanupPresent),
-		Compaction:              cloneCompactionStateIfPresent(compaction, compactionPresent),
+		Compaction:              compactionStatePointer(compaction, compactionPresent),
+		CompactionMetrics:       compaction.Metrics,
 		ContextFragments:        append([]ContextFragment(nil), prepared.fragments...),
 		ModelRequest:            modelRequestInspection(request),
 	}, nil
-}
-
-func cloneCompactionStateIfPresent(state CompactionState, present bool) *CompactionState {
-	if !present || state.Removed {
-		return nil
-	}
-	return cloneCompactionState(&state)
 }

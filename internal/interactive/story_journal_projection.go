@@ -12,7 +12,7 @@ import (
 const (
 	// Version 14 rebuilds locators after the canonical context-batch protocol
 	// replaced its unreleased kind/hash fields with one sequence.
-	storyProjectionVersion      = 14
+	storyProjectionVersion      = 15
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -64,6 +64,7 @@ type storyJournalProjection struct {
 	RecentCommits []storyCommitLocator              `json:"recent_commits,omitempty"`
 	Branches      map[string]*storyBranchProjection `json:"branches"`
 	AgentSessions sessionjournal.Projection         `json:"agent_sessions,omitempty"`
+	TurnDrafts    map[string]storyDraftLocator      `json:"turn_drafts,omitempty"`
 
 	expectedID         string
 	expectedGeneration string
@@ -81,7 +82,7 @@ func (projection *storyJournalProjection) Reset() error {
 	expectedGeneration := projection.expectedGeneration
 	*projection = storyJournalProjection{
 		Version: storyProjectionVersion, StoryID: expectedID, Generation: expectedGeneration,
-		Branches: make(map[string]*storyBranchProjection), expectedID: expectedID, expectedGeneration: expectedGeneration,
+		Branches: make(map[string]*storyBranchProjection), TurnDrafts: make(map[string]storyDraftLocator), expectedID: expectedID, expectedGeneration: expectedGeneration,
 	}
 	projection.AgentSessions.Reset()
 	return nil
@@ -102,6 +103,9 @@ func (projection *storyJournalProjection) Restore(data json.RawMessage) error {
 	}
 	if restored.Branches == nil {
 		restored.Branches = make(map[string]*storyBranchProjection)
+	}
+	if restored.TurnDrafts == nil {
+		restored.TurnDrafts = make(map[string]storyDraftLocator)
 	}
 	restored.expectedID = expectedID
 	restored.expectedGeneration = expectedGeneration
@@ -207,6 +211,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if err := mapToStruct(record.Raw, &turn); err != nil {
 			return err
 		}
+		delete(projection.TurnDrafts, turnDraftKey(turn.BranchID, DomainCommitIdentity{CommandID: turn.AgentCommandID, OperationID: turn.AgentOperationID, Cycle: turn.AgentCycle}))
 		branch.consumePlayerInputs(turn.PlayerInputID, turn.ConsumedPlayerInputIDs)
 		if branch.PendingInterruption != nil && !branch.hasPendingPlayerInput(branch.PendingInterruption.PlayerInputID) {
 			branch.PendingInterruption = nil
@@ -339,6 +344,12 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		branch.StateBeforeLatest = nil
 		branch.Plan = cloneBranchPlan(event.CurrentPlan)
 		branch.PlanBeforeLatest = nil
+	case StoryEventTypeTurnDraft:
+		var event TurnDraftEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		projection.TurnDrafts[turnDraftKey(event.BranchID, event.Draft.Identity)] = storyDraftLocator{ID: event.ID, Cursor: cursor}
 	case StoryEventTypeHotChoices,
 		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended,
 		StoryEventTypeStoryConfigUpdated, StoryEventTypeBranchSwitched, StoryEventTypeBranchArchived:

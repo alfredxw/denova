@@ -18,66 +18,27 @@ import (
 	"github.com/gofrs/flock"
 )
 
-// MutateUserSettings atomically serializes all Denova-owned user settings
-// mutations while persisting Agent fields only into the Agents Project.
-func MutateUserSettings(
-	dataDir string,
-	expectedRevision string,
-	mutate func(Settings) (Settings, error),
-) (string, error) {
-	if mutate == nil {
-		return "", errors.New("settings mutator is nil")
-	}
-	if err := EnsureAgentProfiles(dataDir); err != nil {
-		return "", err
-	}
-	lock := flock.New(agentProfilesLockPath(dataDir))
-	if err := lock.Lock(); err != nil {
-		return "", fmt.Errorf("lock user settings: %w", err)
-	}
-	defer func() { _ = lock.Unlock() }()
-
-	currentRevision, err := userSettingsRevisionLocked(dataDir)
+// MutateUserSettings handles ordinary config.toml mutations. Agent Profile
+// writes must go through the Agents Project change service so they share its
+// conflict checks and recoverable history.
+func MutateUserSettings(dataDir, expectedRevision string, mutate func(Settings) (Settings, error)) (string, error) {
+	plan, err := PlanUserSettingsMutation(dataDir, UserSettingsMutationRequest{ExpectedRevision: expectedRevision, Mutate: mutate})
 	if err != nil {
 		return "", err
 	}
-	if expectedRevision != "" && currentRevision != expectedRevision {
-		return "", ErrSettingsRevisionConflict
+	if len(plan.Profiles) != 0 {
+		return "", errors.New("Agent Profile mutations require the Agents Project change service")
 	}
-	userPath := UserConfigPath(dataDir)
-	plain, err := ReadSettingsFile(userPath)
-	if err != nil {
-		return "", err
-	}
-	profiles, _, err := loadAgentProfileSettingsLocked(dataDir)
-	if err != nil {
-		return "", err
-	}
-	current := mergeAgentProfileLayer(plain, profiles)
-	next, err := mutate(current)
-	if err != nil {
-		return "", err
-	}
-	next = sanitizeEditableSettings(next)
-
-	nextPlain := next
-	clearAgentProfileSettings(&nextPlain)
-	currentPlain := plain
-	clearAgentProfileSettings(&currentPlain)
-	if !reflect.DeepEqual(currentPlain, nextPlain) {
-		if err := WriteSettingsFile(userPath, nextPlain); err != nil {
+	if plan.Config != nil {
+		if err := WriteSettingsFileIfRevision(UserConfigPath(dataDir), plan.Config.Settings, plan.Config.BaseRevision); err != nil {
 			return "", err
 		}
 	}
-	nextProfiles := agentProfileSettings(next)
-	if !reflect.DeepEqual(agentProfileSettings(current), nextProfiles) {
-		if err := writeAgentProfileSettingsLocked(dataDir, nextProfiles); err != nil {
-			return "", err
-		}
-	}
-	return userSettingsRevisionLocked(dataDir)
+	return UserSettingsRevision(dataDir)
 }
 
+// writeAgentProfileSettingsLocked imports the backed-up released configuration
+// during initial migration only. Runtime edits use file-local change intents.
 func writeAgentProfileSettingsLocked(dataDir string, settings Settings) error {
 	root := AgentProfilesRoot(dataDir)
 	if err := os.MkdirAll(filepath.Join(root, "main"), 0o755); err != nil {
@@ -184,9 +145,8 @@ func hasAgentProfileSettings(settings Settings) bool {
 	return !reflect.DeepEqual(agentProfileSettings(settings), Settings{})
 }
 
-// UserSettingsRevision covers the ordinary user config plus every Agent
-// Profile TOML file. UI saves therefore cannot silently overwrite a profile
-// edited by the Agents Project's General Agent.
+// UserSettingsRevision covers the ordinary config plus every Profile file for
+// stale UI snapshot detection. It is not a cross-file commit or lock token.
 func UserSettingsRevision(dataDir string) (string, error) {
 	if _, err := os.Stat(agentProfilesMarkerPath(dataDir)); errors.Is(err, fs.ErrNotExist) {
 		return SettingsFileRevision(UserConfigPath(dataDir))
@@ -202,39 +162,26 @@ func UserSettingsRevision(dataDir string) (string, error) {
 }
 
 func userSettingsRevisionLocked(dataDir string) (string, error) {
-	hash := sha256.New()
-	configSnapshot, err := revisionfile.Read(context.Background(), UserConfigPath(dataDir))
+	plain, files, err := readUserSettingsFiles(dataDir)
 	if err != nil {
 		return "", err
 	}
-	_, _ = hash.Write([]byte("config\x00" + configSnapshot.Revision + "\x00"))
-	root := AgentProfilesRoot(dataDir)
-	var paths []string
-	for _, directory := range []string{"main", "custom", "subagents"} {
-		entries, readErr := os.ReadDir(filepath.Join(root, directory))
-		if errors.Is(readErr, fs.ErrNotExist) {
-			continue
-		}
-		if readErr != nil {
-			return "", readErr
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".toml") || entry.Type()&os.ModeSymlink != 0 {
-				continue
-			}
-			paths = append(paths, filepath.Join(directory, entry.Name()))
-		}
+	return userSettingsFilesRevision(plain, files), nil
+}
+
+func userSettingsFilesRevision(plain revisionfile.Snapshot, files map[string]revisionfile.Snapshot) string {
+	hash := sha256.New()
+	_, _ = hash.Write([]byte("config\x00" + plain.Revision + "\x00"))
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
 	}
 	sort.Strings(paths)
-	for _, relative := range paths {
-		content, readErr := os.ReadFile(filepath.Join(root, relative))
-		if readErr != nil {
-			return "", readErr
-		}
-		_, _ = hash.Write([]byte(filepath.ToSlash(relative)))
+	for _, path := range paths {
+		_, _ = hash.Write([]byte(path))
 		_, _ = hash.Write([]byte{0})
-		_, _ = hash.Write(content)
+		_, _ = hash.Write(files[path].Content)
 		_, _ = hash.Write([]byte{0})
 	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return hex.EncodeToString(hash.Sum(nil))
 }

@@ -11,8 +11,6 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
-	agentcontext "denova/internal/agents/context"
-	agentcompaction "denova/internal/agents/context/compaction"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolresult"
@@ -25,6 +23,9 @@ func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request inter
 	}
 	c.turnCheckMu.Lock()
 	defer c.turnCheckMu.Unlock()
+	if err := c.loadTurnDraft(); err != nil {
+		return interactive.RuleResolution{}, err
+	}
 	c.mu.Lock()
 	if c.ruleResolution != nil {
 		resolution := *c.ruleResolution
@@ -53,16 +54,32 @@ func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request inter
 		return interactive.RuleResolution{}, err
 	}
 	c.mu.Lock()
-	c.ruleResolution = &resolution
+	draft := c.turnDraft
+	c.mu.Unlock()
+	draft.RuleResolution = &resolution
+	result, err := ruleResolutionToolResult(resolution)
+	if err != nil {
+		return interactive.RuleResolution{}, err
+	}
+	if err := c.commitTurnDraft(ctx, draft, result); err != nil {
+		return interactive.RuleResolution{}, err
+	}
+	c.mu.Lock()
+	c.ruleResolution, c.turnDraft = &resolution, draft
 	c.mu.Unlock()
 	return resolution, nil
 }
 
-// SubmitTurnResult stages the Game Agent's structured outcome. Nothing is
-// persisted until the final narrative is accepted and committed atomically.
+// SubmitTurnResult durably accepts valid modules without publishing Actor
+// State or the final story Turn. Failed modules remain available for repair.
 func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 	if c == nil || c.store == nil {
 		return interactive.TurnSubmissionReceipt{}, fmt.Errorf("互动故事不存在")
+	}
+	c.turnCheckMu.Lock()
+	defer c.turnCheckMu.Unlock()
+	if err := c.loadTurnDraft(); err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
 	}
 	select {
 	case <-ctx.Done():
@@ -100,7 +117,19 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 		PlanningMode:                storyCtx.Meta.PlanningMode,
 		CurrentPlan:                 storyCtx.Snapshot.BranchPlan,
 	}, current, input)
+	draft := c.turnDraft
+	c.mu.Unlock()
+	draft.Submission = prepared.Progress()
+	result, err := turnSubmissionToolResult(receipt)
+	if err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
+	}
+	if err := c.commitTurnDraft(ctx, draft, result); err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
+	}
+	c.mu.Lock()
 	staged := c.turnProtocol.update(prepared)
+	c.turnDraft = draft
 	c.mu.Unlock()
 	if !staged {
 		receipt = interactiveTurnResultAlreadyAcceptedReceipt()
@@ -119,38 +148,6 @@ func (c *Conversation) InteractiveNarrativeReady() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.turnProtocol.narrativeReady()
-}
-
-// ValidateCompactionProjection is the final safety boundary after
-// Game-specific stable context has been re-injected. A candidate that no
-// longer shrinks the true provider-visible context must not replace the live
-// model input or become a durable checkpoint.
-func ValidateCompactionProjection(
-	originalMessages []*agents.Message,
-	compactedMessages []*agents.Message,
-	result agentcompaction.Result,
-	tools []*agents.ToolInfo,
-) ([]*agents.Message, agentcompaction.Result, error) {
-	normalized, err := agentcontext.NormalizeModelContextMessages(compactedMessages)
-	if err != nil {
-		result.Triggered = false
-		result.SkippedReason = "protocol_invalid"
-		return originalMessages, result, err
-	}
-	compactedMessages = normalized
-	result.CandidateFingerprint, result.CandidateGeneration = agentcompaction.CandidateIdentity(compactedMessages, 0)
-	result = interactiveCompactionResultForMessages(result, compactedMessages, tools)
-	if result.RecoveryTargetTokens > 0 {
-		result.RecoveryBandMet = result.TokensAfter <= result.RecoveryTargetTokens
-		result.Degraded = !result.RecoveryBandMet && result.ContextWindowTokens > 0 &&
-			result.TokensAfter < agentcompaction.PublishLimit(result.ContextWindowTokens, result.Threshold)
-	}
-	if err := agentcompaction.Validate(result); err != nil {
-		result.Triggered = false
-		result.SkippedReason = "no_progress"
-		return originalMessages, result, err
-	}
-	return compactedMessages, result, nil
 }
 
 func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.ModelContextMessage, bool) {
@@ -254,41 +251,6 @@ func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []
 		})
 	}
 	return result
-}
-
-func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionProjection) ([]*agents.Message, string) {
-	return interactiveCompactionWindowSource(turns, 0, compaction)
-}
-
-func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionProjection) ([]*agents.Message, string) {
-	sourceStart := 0
-	existingCheckpoint := ""
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		existingCheckpoint = compaction.Summary
-		sourceStart = compaction.SourceTurnCount - turnStart
-		if sourceStart < 0 {
-			sourceStart = 0
-		}
-		if sourceStart > len(turns) {
-			sourceStart = len(turns)
-		}
-	}
-	return interactiveCompactionTurnMessages(turns[sourceStart:]), existingCheckpoint
-}
-
-func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agents.Message {
-	messages := make([]*agents.Message, 0, len(turns)*2)
-	for _, turn := range turns {
-		source := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)
-		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, agents.UserMessage(source+"\n"+turn.User))
-		}
-		messages = append(messages, settledTurnToolContextMessages(turn.ModelContextMessages)...)
-		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, agents.AssistantMessage(source+"\n"+turn.Narrative, nil))
-		}
-	}
-	return messages
 }
 
 func (c *Conversation) AppendAssistant(content string) error {
@@ -405,6 +367,7 @@ func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request 
 	if err != nil {
 		return "", err
 	}
+	intent.Checkpoint = request.Checkpoint
 	receipt, err := c.store.AppendModelContextBatch(c.storyID, intent)
 	if err != nil {
 		return "", err
@@ -432,6 +395,13 @@ func (c *Conversation) AppendAssistantWithMetadata(content, thinking string, met
 func (c *Conversation) stageAssistantOutput(content, thinking string, metadata session.MessageMetadata) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
+	}
+	retained, err := c.LoadNarrativeCandidate(context.Background())
+	if err != nil {
+		return err
+	}
+	if retained != "" {
+		content = retained
 	}
 	if strings.TrimSpace(metadata.RunID) != "" || len(metadata.ProviderContinuation) != 0 {
 		c.mu.Lock()
@@ -497,6 +467,7 @@ func (c *Conversation) CommitAgentCanonicalOutput(
 	ctx context.Context,
 	message *agents.Message,
 	metadata session.MessageMetadata,
+	checkpoint agent.CanonicalCheckpoint,
 ) (interactive.DomainCommitReceipt, error) {
 	if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 0 {
 		return interactive.DomainCommitReceipt{}, fmt.Errorf("canonical game output requires a final assistant message")
@@ -505,6 +476,11 @@ func (c *Conversation) CommitAgentCanonicalOutput(
 	if err := c.stageAssistantOutput(message.Content, message.ReasoningContent, metadata); err != nil {
 		return interactive.DomainCommitReceipt{}, err
 	}
+	c.mu.Lock()
+	if c.pendingDomainCommit != nil {
+		c.pendingDomainCommit.Request.Checkpoint = checkpoint
+	}
+	c.mu.Unlock()
 	if err := c.CommitAgentCycleStage(ctx, agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {
 		return interactive.DomainCommitReceipt{}, err
 	}

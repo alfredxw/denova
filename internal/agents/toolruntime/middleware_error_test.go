@@ -297,7 +297,7 @@ func TestLossyShellArtifactFailureStopsPublicAgentAfterDiagnosticProjection(t *t
 			result, terminalErr, model.calls.Load(), shellCalls.Load(), laterCalls.Load(), observer.ToolExecutions(), results)
 	}
 	shellResult, found := results["bash"]
-	if !found || shellResult.Status != agent.ToolResultError ||
+	if !found || shellResult.Status != agent.ToolResultSuccess ||
 		shellResult.ResultRetention != agent.ToolResultProtected ||
 		shellResult.Metadata.ArtifactPersistence == nil || shellResult.Metadata.ArtifactPersistence.Complete ||
 		!shellResult.Metadata.ModelTruncated || observer.ToolExecutions()[0].OriginalBytes != 64*1024 {

@@ -10,6 +10,7 @@ import {
   getActiveInteractiveChat,
   sendInteractiveMessage,
   streamActiveInteractiveChat,
+  submitInteractiveAgentCommand,
   type ActiveInteractiveChat,
 } from '../../api'
 import type { InteractiveSSEEvent, InteractiveTurnPersistedEvent, Snapshot } from '../../types'
@@ -20,7 +21,6 @@ import {
   clearStoryRunAbortController,
   registerStoryRunAbortController,
   useActiveStoryRunRecovery,
-  wakeStoryRunRecovery,
 } from '../../use-active-story-run'
 import type { useInteractiveAgentCommands } from '../../use-interactive-agent-commands'
 import { isAbortError, parseInlineStyleScenes } from './utils'
@@ -99,6 +99,7 @@ export function useStoryStageRuntime({
   const commandSubmittingRef = useRef(false)
   const compactionIdCounterRef = useRef(0)
   const initialStartCommandIDsRef = useRef(new Map<string, string>())
+  const commandIDsRef = useRef(new Map<string, string>())
   const streamConsumer = createStoryStageStreamConsumer({
     liveAccumulator,
     liveTurnNavigationAnchorId,
@@ -146,9 +147,9 @@ export function useStoryStageRuntime({
         return false
       }
     }
-    if (streaming) {
+    if (streaming || readStageRuntime().phase === 'suspended') {
       const runtime = readStageRuntime()
-      if (runtime.abortPending || !runtime.operationId || runtime.connection !== 'connected') return false
+      if (runtime.abortPending || !runtime.operationId || (runtime.phase !== 'suspended' && runtime.connection !== 'connected')) return false
       return submitFollowUp(message, attachmentUploads)
     }
     if (message === '/compact' && attachmentUploads.length === 0) {
@@ -208,6 +209,7 @@ export function useStoryStageRuntime({
     setCommandSubmitting(true)
     try {
       await interactiveAgentCommands.followUp({ message, styleScenes: mergedStyleScenes, attachments })
+      if (readStageRuntime().phase === 'suspended') interactiveAgentCommands.project(await getActiveInteractiveChat(storyId, branchId), 'disconnected')
       clearComposer()
       return true
     } catch (error) {
@@ -227,7 +229,12 @@ export function useStoryStageRuntime({
     try {
       const outcome = await interactiveAgentCommands.abort()
       const recoveryTaskID = outcome.receipt && 'task_id' in outcome.receipt ? String(outcome.receipt.task_id || '').trim() : ''
-      if (recoveryTaskID) wakeStoryRunRecovery(stageKey)
+      if (recoveryTaskID) {
+        const projected = await getActiveInteractiveChat(storyId, branchId)
+        const controller = new AbortController()
+        registerStoryRunAbortController(stageKey, controller)
+        void resumeActiveStoryRun({ ...projected, task_id: recoveryTaskID, runtime_recoverable: false }, controller, () => controller.signal.aborted).catch(appendError)
+      }
     } catch (error) {
       setActivity('')
       appendError(error)
@@ -253,6 +260,7 @@ export function useStoryStageRuntime({
     try {
       if (action === 'steer') await interactiveAgentCommands.steerQueued(item)
       else await interactiveAgentCommands.cancelQueued(item)
+      if (readStageRuntime().phase === 'suspended') interactiveAgentCommands.project(await getActiveInteractiveChat(storyId, branchId), 'disconnected')
       return true
     } catch (error) {
       appendError(error)
@@ -567,6 +575,44 @@ export function useStoryStageRuntime({
     if (finishedNormally) await storyImages.maybeGenerateAutomatically(nextSnapshot)
   }
 
+  async function suspend() {
+    if (commandSubmittingRef.current || !stageRun.runtime.operationId) return
+    commandSubmittingRef.current = true
+    setCommandSubmitting(true)
+    const key = agentCommandRetryKey(stageRun.runtime.operationId, 'suspend', {})
+    try {
+      const commandId = rememberAgentCommandID(commandIDsRef.current, key, createAgentCommandID)
+      await submitInteractiveAgentCommand({ type: 'suspend', commandId, targetOperationId: stageRun.runtime.operationId, storyId, branchId })
+      commandIDsRef.current.delete(key)
+      interactiveAgentCommands.project(await getActiveInteractiveChat(storyId, branchId))
+    } catch (error) {
+      if (isKnownAgentCommandOutcome(error)) commandIDsRef.current.delete(key)
+      appendError(error)
+    } finally {
+      commandSubmittingRef.current = false
+      setCommandSubmitting(false)
+    }
+  }
+
+  async function resumeTask() {
+    if (commandSubmittingRef.current) return
+    commandSubmittingRef.current = true
+    setCommandSubmitting(true)
+    try {
+      const active = await getActiveInteractiveChat(storyId, branchId)
+      const recovered = await interactiveAgentCommands.recover(active, true)
+      setStageRuntime(current => ({ ...current, streamEventCursor: '' }))
+      const controller = new AbortController()
+      registerStoryRunAbortController(stageKey, controller)
+      void resumeActiveStoryRun(recovered, controller, () => controller.signal.aborted).catch(appendError)
+    } catch (error) {
+      appendError(error)
+    } finally {
+      commandSubmittingRef.current = false
+      setCommandSubmitting(false)
+    }
+  }
+
   function handleStreamError(error: unknown) {
     liveAccumulator.flush()
     liveAccumulator.finishMessages(isAbortError(error) ? 'cancelled' : 'success')
@@ -585,14 +631,10 @@ export function useStoryStageRuntime({
       streaming: false,
       runtime: {
         ...current.runtime,
-        phase: 'idle',
-        recoveryPaused: false,
-        recoveryAbortAvailable: false,
-        operationId: '',
-        cycle: 0,
-        activeOutput: undefined,
-        queue: [],
-        openTools: [],
+        ...(current.runtime.phase === 'suspended' ? {} : {
+          phase: 'idle', recoveryPaused: false, recoveryAbortAvailable: false,
+          operationId: '', cycle: 0, activeOutput: undefined, queue: [], openTools: [],
+        }),
         connection: 'disconnected',
         streamEventCursor: '',
         abortPending: false,
@@ -611,7 +653,7 @@ export function useStoryStageRuntime({
     ])
   }
 
-  return { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, compactCurrentContext, send, steerQueuedCommand, stop }
+  return { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, compactCurrentContext, send, steerQueuedCommand, stop, suspend, resumeTask }
 }
 
 function systemMessage(content: string) {

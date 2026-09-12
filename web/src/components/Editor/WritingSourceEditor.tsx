@@ -123,7 +123,7 @@ export function WritingSourceEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-editor-toolbar flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3">
+      <div className="nova-editor-toolbar flex h-9 max-lg:h-11 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3 max-lg:gap-1 max-lg:px-2">
         <ProjectFileSnapshotBreadcrumb
           workspace={workspace}
           nodes={fileTree}

@@ -93,16 +93,11 @@ func TestEnsureAgentProfilesMigratesV033SettingsWithBackup(t *testing.T) {
 
 func TestAgentProfilesIsolateMalformedFilesAndTrackAggregateRevision(t *testing.T) {
 	dataDir := t.TempDir()
-	if err := EnsureAgentProfiles(dataDir); err != nil {
+	enabled := true
+	if err := WriteSettingsFile(UserConfigPath(dataDir), Settings{CustomAgents: []CustomAgentConfig{{ID: "editor", Name: "Editor", Contract: AgentContractGeneralProject, Enabled: &enabled}}}); err != nil {
 		t.Fatal(err)
 	}
-	enabled := true
-	if _, err := MutateUserSettings(dataDir, "", func(settings Settings) (Settings, error) {
-		settings.CustomAgents = []CustomAgentConfig{{
-			ID: "editor", Name: "Editor", Contract: AgentContractGeneralProject, Enabled: &enabled,
-		}}
-		return settings, nil
-	}); err != nil {
+	if err := EnsureAgentProfiles(dataDir); err != nil {
 		t.Fatal(err)
 	}
 	invalidPath := filepath.Join(AgentProfilesRoot(dataDir), "custom", "broken.toml")

@@ -142,6 +142,11 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 			return e.Finish("stop")
 		}
 		return e.writeChunk(map[string]any{"type": "abort", "reason": reason})
+	case "suspended":
+		if err := e.writeData(DataTypeActivity, eventID(data, "suspended"), map[string]any{"event": "suspended"}); err != nil {
+			return err
+		}
+		return e.Finish("stop")
 	case "done":
 		return e.Finish("stop")
 	default:

@@ -1,7 +1,6 @@
 const agents = {
   'agents.layer.workspace': 'Current Workspace',
   'agents.layer.user': 'User Settings',
-  'agents.close': 'Close Agents',
   'agents.saveError': 'Failed to save settings',
   'agents.group.general': 'General',
   'agents.group.writing': 'Writing',

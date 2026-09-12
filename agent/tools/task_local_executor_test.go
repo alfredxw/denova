@@ -44,6 +44,15 @@ func (*lateBoundTaskExecutor) TaskAgents() []TaskAgentInfo {
 func (executor *lateBoundTaskExecutor) Start(ctx context.Context, request TaskRequest) (Task, error) {
 	return executor.delegate.Start(ctx, request)
 }
+func (executor *lateBoundTaskExecutor) FollowUp(ctx context.Context, ref TaskRef, input agent.Input) (Task, error) {
+	return executor.delegate.FollowUp(ctx, ref, input)
+}
+func (executor *lateBoundTaskExecutor) SendMessage(ctx context.Context, ref TaskRef, input agent.Input) (agent.CommandReceipt, error) {
+	return executor.delegate.SendMessage(ctx, ref, input)
+}
+func (executor *lateBoundTaskExecutor) Resume(ctx context.Context, ref TaskRef, request agent.ResumeRequest) (Task, error) {
+	return executor.delegate.Resume(ctx, ref, request)
+}
 
 func (executor *lateBoundTaskExecutor) Observe(ctx context.Context, ref TaskRef, cursor string) (TaskObservation, error) {
 	return executor.delegate.Observe(ctx, ref, cursor)

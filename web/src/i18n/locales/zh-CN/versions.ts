@@ -38,7 +38,6 @@ const versions = {
   'versions.moreChangedFiles': '另有 {{count}} 个文件',
   'versions.refresh': '刷新版本状态',
   'versions.resizeHistorySidebar': '调整版本历史侧栏宽度',
-  'versions.close': '关闭版本管理',
   'versions.createFailed': '创建版本失败',
   'versions.diffReadFailed': '读取版本差异失败',
   'versions.firstVersionHint': '保存第一个版本后即可查看历史和恢复。',

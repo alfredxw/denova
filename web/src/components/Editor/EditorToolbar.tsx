@@ -1,3 +1,5 @@
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { MobileEditorToolbar } from './MobileEditorToolbar'
 import { BookOpen, Code2, Crosshair, FileText, ImagePlus, PanelLeft, Save, Settings, WrapText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -14,7 +16,7 @@ import { EditorSaveStatus, type SaveStatus } from './EditorSaveStatus'
 export type { SaveStatus } from './EditorSaveStatus'
 export type WritingEditorMode = 'document' | 'source'
 
-interface EditorToolbarProps {
+export interface EditorToolbarProps {
   fileName: string
   displayTitle?: string
   chapterPath?: string
@@ -37,29 +39,33 @@ interface EditorToolbarProps {
   generateIllustrationDisabled: boolean
 }
 
-export function EditorToolbar({
-  fileName,
-  displayTitle,
-  chapterPath,
-  chapterWords,
-  currentLine,
-  saveStatus,
-  onSave,
-  editorMode,
-  onEditorModeChange,
-  sourceWordWrap,
-  onSourceWordWrapToggle,
-  settingsOpen,
-  onSettingsOpenChange,
-  settings,
-  onSettingsChange,
-  readingTypography,
-  onOpenOutline,
-  onGenerateIllustration,
-  onRevealChapter,
-  generateIllustrationDisabled,
-}: EditorToolbarProps) {
+export function EditorToolbar(props: EditorToolbarProps) {
+  const isMobile = useIsMobile()
+  const {
+    fileName,
+    displayTitle,
+    chapterPath,
+    chapterWords,
+    currentLine,
+    saveStatus,
+    onSave,
+    editorMode,
+    onEditorModeChange,
+    sourceWordWrap,
+    onSourceWordWrapToggle,
+    settingsOpen,
+    onSettingsOpenChange,
+    settings,
+    onSettingsChange,
+    readingTypography,
+    onOpenOutline,
+    onGenerateIllustration,
+    onRevealChapter,
+    generateIllustrationDisabled,
+  } = props
   const { t } = useTranslation()
+
+  if (isMobile) return <MobileEditorToolbar {...props} />
 
   return (
     <div className="nova-editor-toolbar flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3">

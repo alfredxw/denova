@@ -2,368 +2,309 @@
 
 [English](README.en.md) | 简体中文
 
-`agent` 是 provider-neutral、可组合的 Go Agent 运行包。公共心智模型只有三层：
+一个可嵌入 Go 程序的 Agent 运行库。下面从一次调用开始，逐步加入连续会话和工具能力。
 
-- `Agent` 持有 Definition 来源、Session Store 和进程生命周期。
-- `Session` 表示一段稳定会话，保存 transcript 与能力状态，并串行执行 Run。
-- `Run` 表示一次进程内执行，提供流式事件、转向、排队、交互和中断。
+## 1. Quickstart：完成一次任务
 
-## Quickstart：运行一次 Agent
+需要 Go 1.26.6 或更新版本。在自己的 Go module 中安装：
 
-`agent` 是供宿主程序调用的 Go library，不是独立 CLI 或 Session Server。宿主通过 `agent.New` 创建 Agent，通过 `Run` 提交输入，并消费事件或等待最终结果。
+```sh
+go get github.com/alfredxw/denova/agent
+```
 
-下面是可作为 `main.go` 直接运行的最小示例。静态 `Definition` 自身就是 `Source`：
+保存为 `main.go`，设置 `OPENAI_API_KEY`，运行 `go run .`：
 
 ```go
 package main
 
 import (
-    "context"
-    "fmt"
-    "log"
-    "os"
+	"context"
+	"fmt"
+	"log"
+	"os"
 
-    "github.com/alfredxw/denova/agent"
-    "github.com/alfredxw/denova/agent/providers"
-    "github.com/alfredxw/denova/agent/providers/builtin"
+	"github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/builtin"
 )
 
 func main() {
-    ctx := context.Background()
-    assistant, err := agent.New(ctx, agent.Definition{
-        Key:  "writer.v1",
-        Name: "writer",
-        Model: builtin.Model(providers.ModelConfig{
-            Provider: providers.ProviderOpenAI,
-            Model:    "gpt-5",
-            APIKey:   os.Getenv("OPENAI_API_KEY"),
-        }),
-        Instructions: "Help the user write clear, precise prose.",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer func() {
-        if err := assistant.Close(context.Background()); err != nil {
-            log.Printf("close Agent: %v", err)
-        }
-    }()
+	ctx := context.Background()
+	model := builtin.Model(providers.ModelConfig{
+		Provider: providers.ProviderOpenAI,
+		Model:    "gpt-5",
+		APIKey:   os.Getenv("OPENAI_API_KEY"),
+	})
+	assistant, err := agent.New(ctx, agent.Definition{
+		Model:        model,
+		Instructions: "Help the user write clear, precise prose.",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer assistant.Close(context.Background())
 
-    run, err := assistant.Run(ctx, agent.Text("Draft an opening paragraph."))
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    for event := range run.Events() {
-        if delta, ok := event.Payload.(agent.AssistantDelta); ok {
-            fmt.Print(delta.Delta)
-        }
-    }
-
-    result, err := run.Wait(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    if result.Status != agent.ResultCompleted {
-        log.Fatalf("Agent Run ended with %s: %s", result.Status, result.Reason)
-    }
-    fmt.Println()
+	run, err := assistant.Run(ctx, agent.Text("Draft an opening paragraph."))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for event := range run.Events() {
+		if delta, ok := event.Payload.(agent.AssistantDelta); ok {
+			fmt.Print(delta.Delta)
+		}
+	}
+	result, err := run.Wait(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if result.Status != agent.ResultCompleted {
+		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
+	}
+	fmt.Println()
 }
 ```
 
-在一个 Go module 中保存该文件，设置 `OPENAI_API_KEY` 后运行：
+`agent.New` 创建助手，`Run` 提交任务，`Events` 读取过程，`Wait` 获取执行结果。这里使用一次性会话，结束后不保留历史。
 
-```sh
-go get github.com/alfredxw/denova/agent
-go run .
-```
+后两个示例沿用这里的 `ctx`、`model` 和错误处理方式，替换从创建助手开始的代码。
 
-`assistant.Run` 会创建并在结束后删除一次性 Session，适合无需保留上下文的单次任务。不读取流式输出时也可以直接调用 `run.Wait(ctx)`；面向 UI 或终端时，应持续消费 `run.Events()`。
+## 2. Session：连续对话、交互和会话管理
 
-## 连续对话与持久 Session
+用户先让助手写一段文字，再要求缩短。把两次任务放在同一个 Session，第二轮就能接着第一轮的内容工作。
 
-需要多轮对话时，先打开一个稳定 Session，再在该 Session 上执行 Run。默认 Store 只存在于内存；要跨进程重启保留 transcript 和能力状态，需要显式配置文件 Store 或自定义 Store：
+额外导入 `github.com/alfredxw/denova/agent/tools`，以及别名为 `sessionfile` 的 `github.com/alfredxw/denova/agent/session/file`：
 
 ```go
-import (
-    "context"
-    "fmt"
+store, err := sessionfile.New("./data/sessions")
+if err != nil {
+	log.Fatal(err)
+}
+assistant, err := agent.New(ctx, agent.Definition{
+	Model:        model,
+	Instructions: "Help the user write. Ask when required information is missing.",
+	Tools:        tools.Ask(),
+}, agent.WithSessionStore(store))
+if err != nil {
+	log.Fatal(err)
+}
+defer assistant.Close(context.Background())
 
-    "github.com/alfredxw/denova/agent"
-    sessionfile "github.com/alfredxw/denova/agent/session/file"
-)
+key := agent.NamedSession("draft-42")
+conversation, err := assistant.Session(ctx, key)
+if err != nil {
+	log.Fatal(err)
+}
 
-func continueConversation(ctx context.Context, definition agent.Definition) error {
-    owner, err := agent.New(ctx, definition,
-        agent.WithSessionStore(sessionfile.New("./data/agent-sessions")),
-    )
-    if err != nil {
-        return err
-    }
-    defer owner.Close(context.Background())
-
-    key := agent.SessionKey{
-        Namespace: "example.conversation",
-        ID:        "conversation-42",
-        Attributes: map[string]string{
-            "project_id": "project-7",
-        },
-    }
-    conversation, err := owner.Session(ctx, key)
-    if err != nil {
-        return err
-    }
-
-    first, err := conversation.Run(ctx, agent.Text("Draft an opening paragraph."))
-    if err != nil {
-        return err
-    }
-    firstResult, err := first.Wait(ctx)
-    if err != nil {
-        return err
-    }
-    if firstResult.Status != agent.ResultCompleted {
-        return fmt.Errorf("first Agent Run ended with %s: %s", firstResult.Status, firstResult.Reason)
-    }
-
-    second, err := conversation.Run(ctx, agent.Text("Make it more concise."))
-    if err != nil {
-        return err
-    }
-    result, err := second.Wait(ctx)
-    if err != nil {
-        return err
-    }
-    if result.Status != agent.ResultCompleted {
-        return fmt.Errorf("second Agent Run ended with %s: %s", result.Status, result.Reason)
-    }
-    return nil
+for _, prompt := range []string{
+	"Draft an opening paragraph for first-time readers.",
+	"Make it more concise, keeping the same audience.",
+} {
+	run, err := conversation.Run(ctx, agent.Text(prompt))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for event := range run.Events() {
+		switch payload := event.Payload.(type) {
+		case agent.AssistantDelta:
+			fmt.Print(payload.Delta)
+		case agent.InteractionRequested:
+			showQuestion(payload.Request) // Host UI; answer through Session.Respond.
+		}
+	}
+	result, err := run.Wait(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if result.Status != agent.ResultCompleted {
+		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
+	}
+	fmt.Println()
 }
 ```
 
-同一 Session 一次只能有一个主动 Run；必须等当前 Run 结束，才能再次调用 `Session.Run`，否则会返回 `agent.ErrSessionBusy`。如果需要在当前 Run 尚未结束时提交后续输入，使用下一节的 `Queue`、`Steer` 或 `FollowUp`。
-
-Session Key 是持久化身份。`Namespace`、`ID` 和 `Attributes` 都参与身份计算，因此不要将可变的显示名称放入其中。宿主重启后，用相同 Store 和相同 Key 调用 `owner.Session` 即可继续已完成的对话。简单场景可用 `agent.NamedSession("draft")`，它在默认 Namespace 中创建稳定 Key。
-
-## 控制运行中的 Run
-
-Run 是进程内句柄，控制操作只对当前进程中尚未结束的 Run 有效：
-
-| 需求 | API | 语义 |
-| --- | --- | --- |
-| 立即修正当前方向 | `run.Steer(ctx, input)` | 将输入提到队首，在下一个安全的模型循环边界转向 |
-| 在同一 Run 内追加工作 | `run.Queue(ctx, input)` | 排入当前 Run；返回的 `QueuedInput` 可以 `Cancel` 或 `Interrupt` |
-| 创建下一轮 | `run.FollowUp(ctx, input)` | 立即返回新 Run 句柄，并在当前 Run 后串行执行 |
-| 停止当前执行 | `run.Abort(ctx, request)` | 请求当前 Run 在可安全停止的位置结束 |
-| 回答 Ask 或权限交互 | `run.Respond(ctx, interactionID, response)` | 解决 `InteractionRequested` 事件中的当前交互 |
-
-`run.Events()` 输出 `AssistantDelta`、工具状态、交互请求和最终状态等类型化事件。`run.Wait(ctx)` 返回最终 `Result` 和 `error`。执行或存储失败会返回 error；`failed`、`incomplete` 和 `blocked` 也会以 `*agent.RunError` 返回。仍应检查 `Result.Status`，因为 `aborted` 通常不是 Go error。
-
-## 页面重连与进程重启
-
-页面刷新但 Agent 宿主进程仍在运行时，使用 Session 级观测重建 UI：
+`showQuestion` 代表你自己的界面显示函数。它展示问题后返回，用户提交答案时由另一个 UI 回调执行：
 
 ```go
-snapshot, err := conversation.Snapshot(ctx)
+// Called by the UI after the user submits the form.
+// response contains the user's answers, permission choice, or cancellation.
+_, _, err := conversation.Respond(ctx, request.ID, response)
 if err != nil {
-    return err
-}
-renderSnapshot(snapshot)
-
-observeCtx, cancelObserve := context.WithCancel(ctx)
-defer cancelObserve()
-observation, err := conversation.Observe(observeCtx, snapshot.Cursor)
-if err != nil {
-    return err
-}
-// Apply observation.Events in Cursor order and concurrently consume
-// observation.Errors until observeCtx is cancelled. The event stream first
-// catches up events after snapshot.Cursor, then remains live.
-
-if runID := observation.Snapshot.ActiveRunID; runID != "" {
-    active, found, err := conversation.AttachRun(ctx, runID)
-    if err != nil {
-        return err
-    }
-    if found {
-        _ = active // Use the handle for Steer, Queue, Abort, Respond, or Wait.
-    }
+	log.Print(err)
 }
 ```
 
-`Snapshot` 是界面恢复的基准，`Observe` 从 Cursor 之后补齐进程内历史事件并继续推送新事件。`Observation.Snapshot` 是建立观测时取得的更新快照；如果 UI 选择用它整体替换初始快照，则应忽略 Cursor 不大于该快照 Cursor 的重放事件，避免重复应用。`AttachRun` 只能重连当前进程持有的 Run。
+`response` 是 `agent.InteractionResponse`：普通问题填写 `Answers`（使用请求中的 QuestionID 和选项 Value，或填写 Text）；权限问题填写 `Permission`；取消填写 `Cancelled: true`。问题没回答时，Run 会继续等待，不能只调用 `Wait`。
 
-后端进程重启后，已完成 transcript 会从 Store 恢复，但实时事件、队列、工具栈和 Interaction waiter 不会恢复。未完成回合会标记为 `incomplete`；宿主应展示该状态，并在用户需要时创建新 Run，而不是重放旧工具调用。
+同一 Session 一次执行一个 Run；上一轮结束后再开始下一轮。文件 Store 会保留会话，程序重启后用相同目录和 `NamedSession("draft-42")` 再次打开即可。默认不配置 Store 时只保存在内存中。
 
-## 管理 Session
+**执行过程中，如何回应用户操作？**
 
-| 操作 | 结果 |
+下面是独立的 UI 操作入口，使用当前 `run` 或 `conversation`：
+
+| 用户操作 | 调用 |
 | --- | --- |
-| `owner.ListSessions(ctx, selector)` | 列出 Store 中匹配的 Session Key |
-| `owner.CountActiveSessions(ctx, selector)` | 统计当前进程中匹配的活动 Run |
-| `session.Close(ctx)` | 停止活动 Run 并释放句柄和 Store lease，保留持久数据 |
-| `session.Clear(ctx)` | 保留 Session 身份并开始空白对话；清除 Todo，保留 Goal |
-| `session.Delete(ctx)` | 关闭 Session 并永久删除其 transcript |
-| `owner.CloseSessions(ctx, selector)` | 关闭匹配 Session 及其子 Session，保留持久数据 |
-| `owner.DeleteSessions(ctx, selector)` | 关闭并永久删除匹配 Session 及其子 Session |
-| `owner.Close(ctx)` | 宿主停机时关闭全部进程内 Session 并释放 Store lease |
+| “换个方向写” | `run.Steer(ctx, agent.Text("Focus on beginners."))` |
+| “再补充一个要求” | `conversation.Queue(ctx, agent.Text("Keep it under 200 words."))` |
+| “完成后再翻译一遍” | `conversation.FollowUp(ctx, agent.Text("Then translate it into Chinese."))` |
+| “取消这条补充” | 对 Queue 返回的句柄调用 `queued.Cancel(ctx, agent.QueueControlRequest{})` |
+| “现在就处理这条补充” | `queued.Interrupt(ctx, agent.QueueControlRequest{})` |
+| “停止当前任务” | `run.Abort(ctx, agent.AbortRequest{Reason: "User cancelled."})` |
 
-Selector 的非空字段使用 AND 语义；`IDPrefix` 只在显式设置时才进行前缀匹配。删除 API 拒绝无约束或 `All` Selector，避免意外删除全部会话：
+这些方法都有返回值和错误，需要处理。`Queue` 在空闲时只保存输入，`FollowUp` 在空闲时会启动新任务。跨网络重试时给 Input 或控制请求设置稳定的 `IdempotencyKey`；收到凭证表示已接收，不表示任务已完成。
+
+**暂停和继续：**
 
 ```go
-selector := agent.SessionSelector{
-    Namespace: "example.conversation",
-    Attributes: map[string]string{
-        "project_id": "project-7",
-    },
-}
-keys, err := owner.ListSessions(ctx, selector)
+// User clicks Pause while a Run is active.
+paused, err := assistant.SuspendTree(ctx, key, agent.SuspendRequest{
+	RunID: run.ID(), Reason: "User paused the task.",
+})
 if err != nil {
-    return err
-}
-for _, key := range keys {
-    fmt.Println(key.ID)
+	log.Fatal(err)
 }
 
-// Close retains transcripts. DeleteSessions is permanent and should be
-// exposed behind an explicit user action in the host product.
-err = owner.CloseSessions(ctx, selector)
-// err = owner.DeleteSessions(ctx, selector)
+// Later, the user clicks Continue. The same RunID gets a new handle.
+resumed, err := assistant.ResumeTree(ctx, key, agent.ResumeRequest{
+	RunID: paused.RunID,
+})
+if err != nil {
+	log.Fatal(err)
+}
+// Consume resumed.Events() and check resumed.Wait(ctx), as above.
+fmt.Println(resumed.ID())
 ```
 
-## 完整能力组合
+暂停后原 Session 句柄关闭，需要时用 `assistant.Session(ctx, key)` 重新取得；重启后也先重新创建助手。打开 Session 不会自动继续任务。`SuspendTree` / `ResumeTree` 同时覆盖其子任务；取消整棵任务树用 `AbortTree`。
 
-内置能力构造器返回声明值，不单独返回构造错误。下面把工作区、Shell、Todo、Ask、Skills、Tasks、Goal、大工具结果处理、Cleanup、Compaction、文件 Store 和 Trace 全部组合在一个 `agent.New` 中：
+**页面重连和会话管理：**
+
+| 需求 | 调用与含义 |
+| --- | --- |
+| 恢复页面 | `conversation.Snapshot(ctx)` 获取当前状态和未决问题，再用 `Observe(ctx, snapshot.Cursor)` 订阅后续变化；同时消费 Events 和 Errors |
+| 找回运行句柄 | `conversation.AttachRun(ctx, runID)`；只连接，不自动继续 |
+| 列出会话 | `assistant.ListSessions(ctx, agent.SessionSelector{All: true})` |
+| 清空对话 | `conversation.Clear(ctx)`；保留会话身份，清除 Todo，保留 Goal |
+| 关闭会话 | `conversation.Close(ctx)`；保留数据，但终结当前任务。要稍后继续，应先暂停 |
+| 删除会话 | `conversation.Delete(ctx)`；永久删除，只在用户明确删除时调用 |
+
+`Wait` 返回的 `error` 和 `Result.Status` 都要检查：`completed` 才表示完成，`suspended` 表示暂停，`aborted` 表示取消。页面断开只取消观测，不要把整个 Agent 的生命周期绑定到一次 HTTP 请求。
+
+## 3. 完整组合：让助手检查一个真实项目
+
+假设你在做一个项目助手：读取代码和文档，用 Todo 拆解检查项，加载审阅 Skill，委派独立审阅任务，执行检查，最后给出报告。中途提问、权限确认、暂停和继续，都沿用示例二。
+
+主要变化集中在 `Definition`：把需要的能力组合进去即可。
+
+下面是**接入示例**，使用应用已有的依赖：
+
+- `projectRoot` 是项目目录，`model` 沿用示例一，`contextTokens` 是模型的实际上下文容量。
+- `projectContext` 提供项目规则和状态；`skillCatalog` 列出可用 Skill，`skillLoader` 加载其内容。
+- `commandRunner` 执行命令；`taskExecutor` 负责子任务；`artifactStorage` 保存完整工具输出。它们的接口与现成实现见代码后的链接。
+
+额外导入 `agent` 模块下的 `compaction`、`goal`、`permission`、`toolresult` 包，以及示例二的 `tools` 和 `sessionfile`。
 
 ```go
-owner, err := agent.New(ctx, agent.Definition{
-    Key:           "project-agent.v1",
-    Name:          "project-agent",
-    Model:         builtin.Model(modelConfig),
-    Instructions:  "Work from project evidence. Ask only when required input cannot be inferred.",
-
-    Tools: tools.Combine(
-        tools.Workspace(tools.WorkspaceConfig{
-            Root:   projectRoot,
-            Access: tools.WorkspaceReadOnly,
-        }),
-        tools.Shell(tools.ShellConfig{Runner: commandRunner}),
-        tools.Todo(), // 默认使用当前 Session 的持久状态
-        tools.Ask(),
-        tools.Skills(skillSource),
-        tools.Tasks(taskExecutor),
-    ),
-    ResultProcessor: toolresult.Standard(toolresult.Policy{
-        MaxBytes:            128 << 10,
-        ContextWindowTokens: 128_000,
-    }),
-    Goal: goal.Standard(),
-    Cleanup: cleanup.Standard(cleanup.StandardConfig{
-        ContextWindowTokens: 128_000,
-        ReservedTokens:      16_000,
-        CleanupThreshold:    0.70,
-        CompactionThreshold: 0.85,
-    }),
-    Compaction: compaction.Standard(compaction.StandardConfig{
-        Summarizer:        summarizer,
-        TriggerBytes:      2 << 20,
-        KeepRecentBytes:   512 << 10,
-        KeepRecentTurns:   2,
-        HardLimitBytes:    4 << 20,
-        SummaryLimitBytes: 256 << 10,
-    }),
-    Execution: agent.ExecutionPolicy{
-        ToolParallelism: 4,
-        // MaxIterations=0、IdleTimeout=0 表示不设上限。
-    },
-},
-    agent.WithSessionStore(sessionfile.New("/var/lib/myapp/agent-sessions")),
-    agent.WithTrace(agent.TraceFunc(recordTrace)),
-)
+store, err := sessionfile.New("./data/sessions")
 if err != nil {
-    return err
+	log.Fatal(err)
 }
+assistant, err := agent.New(ctx, agent.Definition{
+	Model: model,
+	Instructions: "Check whether the project documentation matches the code. " +
+		"Use Todo to track work, delegate independent review, run relevant checks, " +
+		"and report findings with evidence. Ask when required information is missing. " +
+		"Available Skills:\n" + skillCatalog,
+	Context: projectContext,
+	Tools: tools.Combine(
+		tools.Workspace(tools.WorkspaceConfig{
+			Root: projectRoot, Access: tools.WorkspaceReadOnly,
+		}),
+		tools.Shell(tools.ShellConfig{Runner: commandRunner}),
+		tools.Todo(),
+		tools.Ask(),
+		tools.Skills(skillLoader),
+		tools.Tasks(taskExecutor),
+	),
+	Permission: permission.SafeDefault(),
+	Goal:       goal.Standard(),
+	Artifacts:  artifactStorage,
+	ResultProcessor: toolresult.Standard(toolresult.Policy{
+		MaxBytes: 128 << 10, ContextWindowTokens: contextTokens,
+	}),
+	Compaction: compaction.Standard(compaction.StandardConfig{
+		ContextWindowTokens: contextTokens,
+	}),
+	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
+}, agent.WithSessionStore(store))
+if err != nil {
+	log.Fatal(err)
+}
+defer assistant.Close(context.Background())
+
+conversation, err := assistant.Session(ctx, agent.NamedSession("project-review-42"))
+if err != nil {
+	log.Fatal(err)
+}
+run, err := conversation.Run(ctx, agent.Input{
+	Text: "Review this project's documentation, check its examples, and report inconsistencies.",
+	Goal: &agent.GoalMutation{
+		Kind:      agent.GoalSet,
+		Objective: "Complete the documentation review with evidence and a list of unresolved issues.",
+	},
+})
+if err != nil {
+	log.Fatal(err)
+}
+// Reuse example 2's event loop, interaction handling, and result check.
+fmt.Println(run.ID())
 ```
 
-`modelConfig`、`commandRunner`、`summarizer`、`skillSource` 和 `taskExecutor` 是宿主提供的配置或 Adapter。`builtin.Model` 会在初始化时同时生成不含密钥的稳定模型 Identity。读写工作区还需要提供产品 `MutationAdapter`；完整保存超大工具结果时，需要配置宿主 `ToolArtifactStorage`。
+这段配置对应的工作过程是：
 
-对于静态 `Definition`，`agent.New` 会初始化全部声明式能力，并把多个错误按 `Tools: Toolset[1]`、`Cleanup`、`Compaction` 等组件路径一起返回。模型调用、工具执行和 Session I/O 属于运行时错误，仍由对应操作返回。
+1. **获取证据**：Context 提供项目背景；Workspace 读取、搜索文件；Skills 加载审阅方法。
+2. **推进任务**：Todo 记录步骤，Tasks 委派审阅，Shell 执行检查，Goal 保存完成目标。
+3. **与用户协作**：Ask 补齐信息；Permission 决定哪些工具操作需要确认，回答仍走 `Session.Respond`。
+4. **处理长任务**：Artifacts 保存完整结果，ResultProcessor 限制单项及整批工具输出，单一 Compaction checkpoint 合并已完成步骤；一个用户请求内可多次压缩，同时保留当前指令和最近原始结果。
+5. **保留进度**：Session Store 保存会话和恢复记录，用户可以稍后继续。
 
-## 定制示例：按项目动态组装
+**需要自己接入的部分，从这些接口开始：**
 
-当模型、上下文或产品 Store 需要按 Session 选择时，实现 `Source`。`CanonicalInput` 只解析输入提交 Adapter，`Prepare` 再返回这一轮的完整 Definition；内置声明式能力仍由 Agent 在 Prepare 后统一校验：
+| 依赖 | 接口 / 可复用实现 |
+| --- | --- |
+| 项目上下文 | [`agent.ContextSource`](definition.go)：每段内容声明来源、用途和容量上限，稳定规则与变化状态分开注入 |
+| Skills | [`tools.SkillLoader`](tools/skill_tool.go)：按名称加载完整内容，清单由应用提供 |
+| 命令执行 | [`tools.CommandRunner`](tools/shell_tools.go)；本地可用 [`NewLocalCommandRunner`](tools/shell_local_runner.go) |
+| 子任务 | [`tools.TaskExecutor`](tools/task_tool.go)；本地可用 [`NewLocalTasks`](tools/task_local_executor.go) |
+| 大结果存储 | [`agent.ToolArtifactStorage`](tool_artifact.go) |
+| 压缩定制（可选） | 默认使用当前模型；可替换 [`compaction.Summarizer`](compaction/standard.go)，或实现 [`agent.CompactionManager`](compaction.go) |
+
+换成写作、研究或客服场景，主要替换 Instructions、Context、Skills 和 Tools；不需要的能力直接移除。需要写文件时，把 Workspace 改为 `WorkspaceReadWrite` 并提供 `MutationAdapter`。工作区只读不限制 Shell，命令权限仍需由执行器和权限策略控制。
+
+简单场景使用上面的静态 Definition 即可。确实需要按会话动态选择模型和能力时，再实现 [`Source`](definition.go)；已有产品会话存储时，再接入 [`CanonicalAdapter`](canonical.go) 和 [`session.Store`](session/store.go)，让产品历史和 Agent 恢复记录共享同一份 journal。
+
+### 压缩的三个接入级别
 
 ```go
-type projectSource struct {
-    models    ModelRegistry
-    projects ProjectRepository
-}
+// Default planning and summarization use the active Agent model snapshot.
+Compaction: compaction.Standard(compaction.StandardConfig{ContextWindowTokens: 128_000})
 
-func (source *projectSource) CanonicalInput(
-    ctx context.Context,
-    request agent.PrepareRequest,
-) (agent.CanonicalAdapter, error) {
-    project, err := source.projects.Open(ctx, request.Session.Key.Attributes["project_id"])
-    if err != nil {
-        return nil, err
-    }
-    return project.CanonicalAdapter(), nil
-}
-
-func (source *projectSource) Prepare(
-    ctx context.Context,
-    request agent.PrepareRequest,
-) (agent.Definition, error) {
-    projectID := request.Session.Key.Attributes["project_id"]
-    project, err := source.projects.Open(ctx, projectID)
-    if err != nil {
-        return agent.Definition{}, err
-    }
-    model, identity, err := source.models.ForProject(ctx, projectID)
-    if err != nil {
-        return agent.Definition{}, err
-    }
-    return agent.Definition{
-        Key:           "project-agent.v1",
-        Name:          "project-agent",
-        Model:         model,
-        ModelIdentity: identity,
-        Instructions:  "Use the injected project rules and current project state.",
-        Context:       project.ContextSource(),
-        Tools: tools.Combine(
-            project.Toolset(),
-            tools.Todo(project.TodoStore()),
-            tools.Ask(),
-        ),
-        Canonical:  project.CanonicalAdapter(),
-        Effects:    project.EffectApplier(),
-        Permission: project.PermissionPolicy(),
-    }, nil
-}
-
-owner, err := agent.New(ctx,
-    &projectSource{models: models, projects: projects},
-    agent.WithSessionStore(sessionfile.New(transcriptRoot)),
-)
-if err != nil {
-    return err
-}
-session, err := owner.Session(ctx, agent.SessionKey{
-    Namespace: "myapp.project",
-    ID:        conversationID,
-    Attributes: map[string]string{
-        "project_id": projectID,
+// Customize summary generation while retaining the standard policy.
+Compaction: compaction.Standard(compaction.StandardConfig{
+    ContextWindowTokens: 128_000,
+    Summarizer: compaction.SummarizerFunc{
+        Capability: agent.CapabilityIdentity{Kind: "app.summary", Version: 1},
+        Func: func(ctx context.Context, input compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+            return summarizeSelectedSource(ctx, input.Messages, input.Current)
+        },
     },
 })
+
+// Customize triggering, selection and generation through the same runtime.
+Compaction: myCompactionManager
 ```
 
-自定义 `ContextSource` 的每个模型可见片段都必须声明来源、用途、资源、Revision、稳定性、位置和足够高的 `HardLimit`。自定义 Toolset、Canonical Adapter、Permission、Context 和模型配置应提供稳定且不包含密钥的 `CapabilityIdentity`。
+`Standard` 默认保留最近的完整交互，使用当前模型快照生成摘要；容量不足时按顺序分批处理，模型失败不会偷偷切换执行方式。`Prompt` 可增加领域侧重点；`ModelSummarizer` 可指定替代模型，替代模型需声明稳定的 Identity。
 
-## 职责边界
+自定义 Manager 的 `Plan` 接收完整交互组和最终模型快照，返回需要覆盖的前缀 `GroupCount`。`Compact` 只接收旧 checkpoint 与新选材料。两级扩展都返回 `CompactionCheckpoint{Summary, ContextData}`；ContextData 为可选的类型化、版本化 JSON（最多 8 MiB），随摘要原子保存，不自动注入模型。
 
-- Agent Session Store 只负责模型会话 transcript 和能力状态。
-- Canonical Adapter 负责产品对话日志；`Definition.Effects` 独立处理工具变更的幂等回执，让子 Agent 在保留自己 Session 对话的同时，将变更提交到父级 Project。
-- Trace 只负责观测，不是恢复或业务事实源。
-- 实时 Run 控制、事件、队列、工具栈和 Interaction waiter 属于当前进程。
-
-更详细的接口和设计边界见 [`docs/agent-package-api-design.md`](../docs/agent-package-api-design.md)。
+Agent 统一保护当前用户要求、最近完整工具组及未完成步骤，检查最终请求容量和实际压缩进展，并负责 journal、revision、取消和恢复。应用通过 `Session.Snapshot().Compaction` 读取摘要视图，详细数据位于 `Inspect().CompactionMetrics` 和压缩事件。运行时返回的视图可调用 `Project` 检查有效历史；序列化后的展示数据不携带历史覆盖权限。

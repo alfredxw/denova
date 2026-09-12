@@ -115,7 +115,7 @@ func bindAgentRecoveryRequest(c *app.RequestContext, binding agentRecoveryBindin
 
 func validRecoveryActionKind(kind novaApp.AgentRuntimeRecoveryActionKind) bool {
 	switch kind {
-	case novaApp.AgentRuntimeRecoveryAttach:
+	case novaApp.AgentRuntimeRecoveryAttach, novaApp.AgentRuntimeRecoveryResume, novaApp.AgentRuntimeRecoveryAbort:
 		return true
 	default:
 		return false

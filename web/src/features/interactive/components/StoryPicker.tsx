@@ -1,4 +1,4 @@
-import { Check, ListChecks, PencilLine, Plus, Trash2 } from 'lucide-react'
+import { Check, History, ListChecks, PencilLine, Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,9 @@ import { Spinner } from '@/components/ui/spinner'
 import { formatDateTime } from '@/i18n'
 import type { StorySummary } from '../types'
 import { CompactResourcePicker } from './CompactResourcePicker'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
-interface StoryPickerProps {
+export interface StoryPickerProps {
   stories: StorySummary[]
   currentStoryId: string
   onSelect: (storyId: string) => void
@@ -20,10 +21,13 @@ interface StoryPickerProps {
   onRenameStory?: (storyId: string, title: string) => void | Promise<void>
   layout?: 'inline' | 'sidebar'
   hideCreate?: boolean
+  onOpenHistory?: () => void
 }
 
-export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDeleteStories, onRenameStory, layout = 'inline', hideCreate = false }: StoryPickerProps) {
+export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDeleteStories, onRenameStory, layout = 'inline', hideCreate = false, onOpenHistory }: StoryPickerProps) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
+  const titleMenu = isMobile && layout === 'inline'
   const [selectingForDelete, setSelectingForDelete] = useState(false)
   const [deleteSelection, setDeleteSelection] = useState<Set<string>>(() => new Set())
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -34,7 +38,7 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
   const selectedStories = stories.filter((story) => deleteSelection.has(story.id))
   const currentStory = stories.find((story) => story.id === currentStoryId)
   const allStoriesSelected = stories.length > 0 && selectedStories.length === stories.length
-  const createButton = hideCreate ? null : <Button type="button" variant="ghost" size="xs" className="nova-nav-item" onClick={onCreate}><Plus data-icon="inline-start" />{t('chat.new')}</Button>
+  const createButton = hideCreate ? null : <Button type="button" variant="ghost" size="xs" className="nova-nav-item" aria-label={t('chat.new')} title={t('chat.new')} onClick={onCreate}><Plus data-icon="inline-start" /><span className="max-lg:sr-only">{t('chat.new')}</span></Button>
 
   const beginDeleteSelection = () => {
     const initialStoryId = stories.some((story) => story.id === currentStoryId) ? currentStoryId : stories[0]?.id
@@ -109,7 +113,8 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
         emptyLabel={t('storyPicker.empty')}
         layout={layout}
         contentClassName="w-[min(calc(100vw-2rem),22rem)]"
-        trailingAction={createButton}
+        triggerClassName={titleMenu ? 'nova-mobile-story-title' : undefined}
+        trailingAction={titleMenu ? null : createButton}
         renderItem={selectingForDelete ? (_story, { id, label }) => {
           const checked = deleteSelection.has(id)
           return (
@@ -154,7 +159,7 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
             </button>
           )
         }}
-        renderFooter={stories.length > 0 ? (close) => selectingForDelete ? (
+        renderFooter={(close) => selectingForDelete ? (
           <div className="sticky bottom-0 mt-1 space-y-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
             <div className="flex items-center justify-between gap-2 px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">
               <span>{t('storyPicker.selectedCount', { count: selectedStories.length })}</span>
@@ -190,6 +195,8 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
           </div>
         ) : (
           <div className="sticky bottom-0 mt-1 space-y-0.5 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
+            {titleMenu && !hideCreate && <Button variant="ghost" className="w-full justify-start" onClick={() => { close(); onCreate() }}><Plus />{t('chat.new')}</Button>}
+            {onOpenHistory && <Button variant="ghost" className="w-full justify-start" onClick={() => { close(); onOpenHistory() }} aria-label={t('storyStage.turnNavigator.label')}><History />{t('storyStage.mobile.history')}</Button>}
             {currentStory && onRenameStory ? (
               <Button
                 type="button"
@@ -202,7 +209,7 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
                 {t('storyPicker.renameCurrent')}
               </Button>
             ) : null}
-            <Button
+            {stories.length > 0 && <Button
               type="button"
               variant="ghost"
               size="xs"
@@ -211,9 +218,9 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
             >
               <ListChecks data-icon="inline-start" />
               {t('storyPicker.batchDelete')}
-            </Button>
+            </Button>}
           </div>
-        ) : undefined}
+        )}
         onSelect={onSelect}
       />
       <ConfirmDialog

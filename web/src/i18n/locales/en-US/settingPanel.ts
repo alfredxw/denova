@@ -735,7 +735,7 @@ const settingPanel = {
   'settingPanel.switch.disableRule': 'Disable rule',
   'settingPanel.target.system.label': 'System Prompt',
   'settingPanel.target.system.summary': 'Injected when the agent initializes',
-  'settingPanel.target.system.detail': 'Injected at the same system-prompt layer as CREATOR.md. Defines narrative positioning, genre preference, and long-term narrative principles.',
+  'settingPanel.target.system.detail': 'Defines narrative positioning, genre preference, and long-term narrative principles in the narrative style system prompt. CREATOR.md is supplied separately as project creative instructions.',
   'settingPanel.target.turnContext.label': 'Turn Context',
   'settingPanel.target.turnContext.summary': 'Close to the user action each turn',
   'settingPanel.target.turnContext.detail': 'Injected for every next-turn generation. Strongly constrains adjudication, NPC reactions, costs, hidden-thread progress, and available choices.',

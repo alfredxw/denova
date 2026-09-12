@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/config"
+	"denova/internal/agentprofiles"
 	appsvc "denova/internal/app"
 	appsettings "denova/internal/app/settings"
 )
@@ -59,6 +60,10 @@ func (h *Handlers) HandleSettingsPatch(ctx context.Context, c *app.RequestContex
 	}
 	layered, err := h.app.SettingsService().Patch(settingsTarget(c), layer, body.Changes, body.BaseRevision)
 	if err != nil {
+		if writeSettingsMutationError(c, err) {
+			return
+		}
+
 		switch {
 		case errors.Is(err, config.ErrSettingsRevisionConflict):
 			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
@@ -97,4 +102,26 @@ func settingsErrorKey(err error) string {
 	default:
 		return ""
 	}
+}
+
+// writeSettingsMutationError exposes per-file outcomes without leaking raw
+// storage errors, including when independent files have already been saved.
+func writeSettingsMutationError(c *app.RequestContext, err error) bool {
+	var partial *agentprofiles.MutationError
+	if !errors.As(err, &partial) {
+		return false
+	}
+	status := consts.StatusInternalServerError
+	if errors.Is(err, config.ErrInvalidAgentProfile) {
+		status = consts.StatusBadRequest
+	}
+	if errors.Is(err, config.ErrSettingsRevisionConflict) {
+		status = consts.StatusConflict
+	}
+	writeJSON(c, status, map[string]any{
+		"error":   messageKey(c, "api.settings.fileSaveFailed", "paths", strings.Join(partial.FailedPaths(), ", ")),
+		"code":    "settings_file_save_failed",
+		"details": map[string]any{"files": partial.Files},
+	})
+	return true
 }

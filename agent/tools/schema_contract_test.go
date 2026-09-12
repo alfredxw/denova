@@ -18,6 +18,15 @@ func (schemaTaskExecutor) Identity() agent.CapabilityIdentity {
 	return agent.CapabilityIdentity{Kind: "tasks.schema-test", Version: 1}
 }
 func (schemaTaskExecutor) Start(context.Context, TaskRequest) (Task, error) { return Task{}, nil }
+func (schemaTaskExecutor) FollowUp(context.Context, TaskRef, agent.Input) (Task, error) {
+	return Task{}, nil
+}
+func (schemaTaskExecutor) SendMessage(context.Context, TaskRef, agent.Input) (agent.CommandReceipt, error) {
+	return agent.CommandReceipt{}, nil
+}
+func (schemaTaskExecutor) Resume(context.Context, TaskRef, agent.ResumeRequest) (Task, error) {
+	return Task{}, nil
+}
 func (schemaTaskExecutor) Observe(context.Context, TaskRef, string) (TaskObservation, error) {
 	return TaskObservation{}, nil
 }

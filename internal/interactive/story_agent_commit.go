@@ -12,6 +12,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
+	"denova/internal/agents/sessionjournal"
 	interactivestate "denova/internal/interactive/state"
 )
 
@@ -323,6 +324,11 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if len(req.ProviderContinuation) != 0 {
 		newEvents = append(newEvents, newProviderContinuationEvent(turn, req.ProviderContinuation))
 	}
+	agentRecords, err := sessionjournal.CheckpointRecords(&s.storyJournals[storyID].projection.AgentSessions, req.Checkpoint, turn.ID)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	newEvents = append(newEvents, agentRecords...)
 	if appendErr := s.appendStoryTransactionLocked(storyID, meta, newEvents...); appendErr != nil {
 		return TurnEvent{}, nil, appendErr
 	}

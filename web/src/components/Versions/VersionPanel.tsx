@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw, X } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   createVersion,
@@ -13,18 +13,18 @@ import {
   versionQueryKeys,
 } from '@/lib/api'
 import type { VersionDiffComparison, VersionEntry, VersionRestorePlan } from '@/lib/api'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace } from '@/components/layout/resource-workspace'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { RollbackDialog } from '@/features/versions/components/rollback-dialog'
 import { CURRENT_WORKSPACE_SELECTION, VersionSidebar } from './VersionSidebar'
 import { VersionDiffWorkspace, type VersionDiffMode } from './VersionDiffWorkspace'
 
 interface VersionPanelProps {
+  embedded?: boolean
   projectId: string
   workspace: string
   refreshSignal?: number
   visible?: boolean
-  onClose?: () => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
 }
 
@@ -32,7 +32,7 @@ const INITIAL_HISTORY_LIMIT = 30
 const MAX_HISTORY_LIMIT = 200
 
 /** Project-scoped version history with a persistent, responsive diff workspace. */
-export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible = true, onClose, onWorkspaceChanged }: VersionPanelProps) {
+export function VersionPanel({ embedded = false, projectId, workspace, refreshSignal = 0, visible = true, onWorkspaceChanged }: VersionPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
@@ -188,19 +188,14 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
   )
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <div className="flex h-9 shrink-0 items-center border-b px-3">
+      <div className="hidden h-9 shrink-0 items-center border-b px-3 lg:flex">
         <span className="text-xs font-semibold">{t('versions.title')}</span>
         <TooltipIconButton label={t('versions.refresh')} className="ml-auto" onClick={() => void refresh()} disabled={operationLoading || refreshing}>
           <RefreshCw className={refreshing ? 'animate-spin' : ''} />
         </TooltipIconButton>
-        {onClose && (
-          <TooltipIconButton label={t('versions.close')} onClick={onClose}>
-            <X />
-          </TooltipIconButton>
-        )}
       </div>
 
-      <AdaptiveSurface
+      <ResourceWorkspace title={t('versions.title')} embedded={embedded}
         className="min-h-0 flex-1"
         collapseAt={1080}
         mobilePaneScope="surface"
@@ -240,7 +235,7 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
             />
           )
         }}
-      </AdaptiveSurface>
+      </ResourceWorkspace>
 
       <RollbackDialog
         open={Boolean(rollbackVersion)}

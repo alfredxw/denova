@@ -1,8 +1,9 @@
+import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, AlertTriangle, Download, ListTree, RefreshCw, Route } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceWorkspace } from '@/components/layout/resource-workspace'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,12 +16,8 @@ import { TrajectoryRunHeader } from './TrajectoryRunHeader'
 import { TrajectoryTraceWorkspace } from './TrajectoryTraceWorkspace'
 import { useTrajectoryNavigation, type TrajectoryNavigationTarget } from './trajectory-navigation'
 
-interface TrajectoryPageProps {
-  onClose?: () => void
-}
-
 /** Global read-only evidence workspace. Agent behavior is managed from Agents. */
-export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
+export function TrajectoryPage() {
   const { t } = useTranslation()
   const trajectoryNavigation = useTrajectoryNavigation()
   const [runsOpen, setRunsOpen] = useState(true)
@@ -148,7 +145,7 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
   }
 
   return (
-    <AdaptiveSurface
+    <ResourceWorkspace title={t('trajectory.title')}
       className="h-full min-h-0"
       mainClassName="min-h-0 min-w-0"
       collapseAt={850}
@@ -161,7 +158,7 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
         desktopVisible: runsOpen,
         desktopClassName: 'min-h-0 border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)]',
         mobileClassName: 'w-[min(88vw,360px)] bg-[var(--nova-surface-2)]',
-        content: <TrajectoryRunList runs={visibleRuns} selectedRunURI={selectedRunURI} onSelect={setSelectedRunURI} />,
+        content: <TrajectoryRunList runs={visibleRuns} selectedRunURI={selectedRunURI} onSelect={(uri) => { setSelectedRunURI(uri); closeMobilePanes() }} />,
       }}
       leftResize={{
         layoutKey: 'nova-trajectory-runs-layout',
@@ -175,12 +172,11 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
       {({ isMobile, openPaneId, togglePane }) => {
         const runsVisible = isMobile ? openPaneId === 'trajectory-runs' : runsOpen
         return (
-          <FeaturePageShell
+          <FeaturePageShell mobileHeader="toolbar"
             icon={Route}
             title={t('trajectory.title')}
             subtitle={t('trajectory.globalSubtitle')}
             className="[&_button]:focus-visible:border-transparent [&_button]:focus-visible:bg-[var(--nova-hover)] [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-0"
-            onClose={onClose}
             error={error}
             actions={(
               <>
@@ -196,7 +192,7 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
                   type="button"
                   size="xs"
                   variant={runsVisible ? 'secondary' : 'outline'}
-                  className="px-1.5 xl:px-2.5"
+                  className="hidden px-1.5 lg:inline-flex xl:px-2.5"
                   aria-label={t('trajectory.runs.title')}
                   aria-pressed={runsVisible}
                   onClick={() => {
@@ -226,7 +222,7 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
           </FeaturePageShell>
         )
       }}
-    </AdaptiveSurface>
+    </ResourceWorkspace>
   )
 }
 

@@ -30,7 +30,7 @@ func taskFromSnapshot(ref TaskRef, snapshot agent.SessionSnapshot) (Task, error)
 	switch status {
 	case "unknown":
 		return Task{}, errors.New("task Run was not found")
-	case "running", "waiting_input", "aborting",
+	case "running", "waiting_input", "aborting", "queued", string(agent.ResultSuspended),
 		string(agent.ResultCompleted), string(agent.ResultFailed), string(agent.ResultIncomplete),
 		string(agent.ResultBlocked), string(agent.ResultAborted):
 		return Task{
@@ -56,7 +56,7 @@ func isTaskTerminal(status string) bool {
 	case string(agent.ResultCompleted), string(agent.ResultFailed), string(agent.ResultIncomplete),
 		string(agent.ResultBlocked), string(agent.ResultAborted):
 		return true
-	case "running", "waiting_input", "aborting":
+	case "running", "waiting_input", "aborting", "queued", string(agent.ResultSuspended):
 		return false
 	default:
 		return false
@@ -68,6 +68,9 @@ func collectTaskEvents(ctx context.Context, observation agent.Observation, runID
 	var output string
 	target := observation.Snapshot.Cursor
 	cursor := after
+	if observation.Snapshot.RetentionStart > target {
+		return nil, strconv.FormatUint(uint64(target), 10), "", observation.Snapshot.MessagesTruncated, nil
+	}
 	if cursor >= target {
 		return nil, strconv.FormatUint(uint64(target), 10), "", observation.Snapshot.MessagesTruncated, nil
 	}
@@ -133,6 +136,8 @@ func taskEventType(payload agent.EventPayload) string {
 		return "thinking_delta"
 	case agent.ModelCompleted:
 		return "model_completed"
+	case agent.ModelRetry:
+		return "model_retry"
 	case agent.ContextNormalized:
 		return "context_normalized"
 	case agent.AssistantFinal:
@@ -196,6 +201,9 @@ func taskEventType(payload agent.EventPayload) string {
 
 func taskStatus(snapshot agent.SessionSnapshot, runID string) string {
 	if snapshot.ActiveRunID == runID {
+		if snapshot.ActiveStatus == agent.ResultSuspended {
+			return string(agent.ResultSuspended)
+		}
 		if snapshot.ActiveAbortPending {
 			return "aborting"
 		}
@@ -203,6 +211,11 @@ func taskStatus(snapshot agent.SessionSnapshot, runID string) string {
 			return "waiting_input"
 		}
 		return "running"
+	}
+	for _, queued := range snapshot.QueuedRuns {
+		if queued.ID == runID && queued.Delivery == agent.DeliveryNextTurn {
+			return "queued"
+		}
 	}
 	for _, recent := range snapshot.RecentRuns {
 		if recent.ID == runID {

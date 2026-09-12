@@ -73,10 +73,15 @@ func (backend *publicBackend) resolveTaskDefinition(
 	if backend.childDefinitions == nil {
 		return agent.Definition{}, fmt.Errorf("%w: profile %q cannot rebuild delegated Agents", ErrCyclePreparationUnavailable, profileID)
 	}
-	route, err := agentdelegation.ParentRoute(request.Session.Key)
+	hostData := request.HostData
+	if hostData == nil {
+		hostData = request.Input.HostData
+	}
+	ownership, err := agentdelegation.DecodeRunBinding(hostData)
 	if err != nil {
 		return agent.Definition{}, err
 	}
+	route := ownership.HostData
 	child, err := backend.childDefinitions.PrepareChildDefinition(ctx, ChildDefinitionRequest{
 		Parent: parent, Child: childName, HostData: route,
 	})

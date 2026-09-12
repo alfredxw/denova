@@ -7,8 +7,6 @@ const narrativeStyle = {
   'narrativeStyle.builtin.screenwriter.description': 'Uses standard screenplay form for scenes, action, and dialogue while preserving the established plot and character logic.',
   'narrativeStyle.builtin.grimdark.name': 'Bleak Narrative',
   'narrativeStyle.builtin.grimdark.description': 'Persistent pressure, meaningful costs, scarce but real hope, and cold, credible consequences.',
-  'narrativeStyle.builtin.direct-erotica.name': 'Direct Erotica',
-  'narrativeStyle.builtin.direct-erotica.description': 'Event-driven storytelling that develops naturally toward explicit erotic scenes in blunt language.',
 } as const
 
 export default narrativeStyle

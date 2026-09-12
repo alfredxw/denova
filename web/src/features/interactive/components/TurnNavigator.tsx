@@ -1,5 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { History, X } from 'lucide-react'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 
 export interface TurnNavigationItem {
   anchorId: string
@@ -9,10 +13,12 @@ export interface TurnNavigationItem {
   pending?: boolean
 }
 
-interface TurnNavigatorProps {
+export interface TurnNavigatorProps {
   items: TurnNavigationItem[]
   activeAnchorId?: string
   onSelect: (anchorId: string) => void
+  /** Keep the history sheet mounted when a title menu closes after selection. */
+  renderTrigger?: (openHistory: () => void) => ReactNode
 }
 
 const MAX_TURN_NAVIGATION_MARKS = 28
@@ -22,14 +28,47 @@ interface AggregatedTurnNavigationItem {
   sourceIndex: number
 }
 
-export function TurnNavigator({ items, activeAnchorId = '', onSelect }: TurnNavigatorProps) {
+export function TurnNavigator({ items, activeAnchorId = '', onSelect, renderTrigger }: TurnNavigatorProps) {
   const { t } = useTranslation()
   const [previewAnchorId, setPreviewAnchorId] = useState('')
+  const isMobile = useIsMobile()
+  const [historyOpen, setHistoryOpen] = useState(false)
   const navigationItems = useMemo(
     () => aggregateTurnNavigationItems(items, activeAnchorId),
     [activeAnchorId, items],
   )
-  if (items.length === 0) return null
+  if (items.length === 0 && !renderTrigger) return null
+
+  if (isMobile) {
+    return (
+      <>
+        {renderTrigger ? renderTrigger(() => setHistoryOpen(true)) : <Button type="button" variant="ghost" size="icon" aria-label={t('storyStage.turnNavigator.label')} title={t('storyStage.mobile.history')} onClick={() => setHistoryOpen(true)}>
+          <History />
+        </Button>}
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetContent side="bottom" showCloseButton={false} aria-describedby={undefined} className="nova-mobile-navigation-sheet gap-0 rounded-t-2xl p-0">
+            <header className="flex min-h-14 shrink-0 items-center justify-between border-b px-4">
+              <SheetTitle>{t('storyStage.turnNavigator.label')}</SheetTitle>
+              <Button variant="ghost" size="icon" aria-label={t('common.close')} onClick={() => setHistoryOpen(false)}><X /></Button>
+            </header>
+            <div className="flex flex-col gap-1 overflow-y-auto p-3">
+              {items.map((item, index) => (
+                <button key={item.anchorId} type="button" aria-label={t('storyStage.turnNavigator.goto', { index: index + 1 })} aria-current={item.anchorId === activeAnchorId ? 'true' : undefined}
+                  className="flex min-w-0 items-start gap-3 rounded-xl p-3 text-left text-sm active:bg-accent aria-current:bg-accent"
+                  onClick={() => { setHistoryOpen(false); onSelect(item.anchorId) }}>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">{index + 1}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{item.contextOnly ? t('storyStage.turnNavigator.autonomousContinuation') : item.user.trim() || t('storyStage.turnNavigator.emptyUser')}</span>
+                    <span className="mt-1 line-clamp-2 break-words text-muted-foreground">{item.narrative.trim() || t(item.pending ? 'storyStage.turnNavigator.generating' : 'storyStage.turnNavigator.emptyAgent')}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </>
+    )
+  }
 
   return (
     <aside className="nova-turn-navigator" aria-label={t('storyStage.turnNavigator.label')}>

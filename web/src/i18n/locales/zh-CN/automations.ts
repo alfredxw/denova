@@ -1,6 +1,5 @@
 const automations = {
   'automations.title': '自动化',
-  'automations.close': '关闭自动化',
   'automations.error': '自动化错误',
   'automations.newTask': '新建自动化',
   'automations.defaultName': '未命名自动化',
@@ -17,6 +16,8 @@ const automations = {
   'automations.enabled': '已启用',
   'automations.disabled': '已停用',
   'automations.group.running': '{{count}} 个运行中',
+  'automations.mobile.task': '任务',
+  'automations.mobile.inbox': '收件箱',
   'automations.view.config': '任务配置',
   'automations.view.inbox': '触发收件箱',
   'automations.view.agent': '配置管理',

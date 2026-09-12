@@ -6,6 +6,32 @@ import (
 	"testing"
 )
 
+func TestUnconfiguredModelSettingsStayEmptyAfterReload(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, key := range []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL", "OPENAI_CONTEXT_WINDOW_TOKENS"} {
+		t.Setenv(key, "")
+	}
+	dataDir := t.TempDir()
+	for attempt := 0; attempt < 2; attempt++ {
+		cfg, layered, err := LoadWithProject(dataDir, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(layered.Effective.ModelEndpoints) != 0 || len(layered.Effective.ModelProfiles) != 0 {
+			t.Fatalf("unconfigured settings must not create model connections or profiles: %+v", layered.Effective.ModelProfiles)
+		}
+		for _, kind := range []string{AgentKindIDE, AgentKindInteractiveStory} {
+			model := ResolveAgentModel(cfg, kind)
+			if model.Model != "" || model.BaseURL != "" || model.APIKey != "" || model.Provider != "" {
+				t.Fatalf("unconfigured %s must not resolve a preset: %+v", kind, model)
+			}
+		}
+		if err := WriteSettingsFile(layered.Paths.UserConfig, Settings{Language: "en-US"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestLoadDefaultsDenovaDir(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("DENOVA_DIR", "")

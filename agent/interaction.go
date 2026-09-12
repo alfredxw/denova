@@ -86,6 +86,15 @@ type InteractionRequest struct {
 	Questions  []InteractionQuestion   `json:"questions,omitempty"`
 	Permission *PermissionPresentation `json:"permission,omitempty"`
 	AllowOther bool                    `json:"allow_other,omitempty"`
+	// Verification is host-owned evidence for an unknown external tool effect.
+	// Its stable call identity, never the question wording, controls resolution.
+	Verification *ToolEffectVerification `json:"verification,omitempty"`
+}
+
+type ToolEffectVerification struct {
+	ExecutionID string          `json:"execution_id"`
+	Tool        string          `json:"tool"`
+	Arguments   json.RawMessage `json:"arguments"`
 }
 
 type InteractionAnswer struct {
@@ -101,7 +110,7 @@ type InteractionResponse struct {
 }
 
 // InteractionResolution is validated and normalized before it reaches a Tool.
-// Interaction waiters and responses intentionally remain process-local.
+// Accepted requests and responses are journal facts; waiters remain process-local.
 type InteractionResolution struct {
 	Answers    []InteractionAnswer `json:"answers,omitempty"`
 	Permission PermissionChoice    `json:"permission,omitempty"`
@@ -516,12 +525,18 @@ type engineInteractionClient struct {
 	policy InteractionPolicy
 	emit   runstate.EngineEventSink
 
-	mu      sync.Mutex
-	waiters map[string]chan json.RawMessage
+	mu            sync.Mutex
+	waiters       map[string]chan json.RawMessage
+	interrupted   chan struct{}
+	interruptOnce sync.Once
 }
 
 func newEngineInteractionClient(policy InteractionPolicy, emit runstate.EngineEventSink) *engineInteractionClient {
-	return &engineInteractionClient{policy: policy, emit: emit, waiters: make(map[string]chan json.RawMessage)}
+	return &engineInteractionClient{policy: policy, emit: emit, waiters: make(map[string]chan json.RawMessage), interrupted: make(chan struct{})}
+}
+
+func (client *engineInteractionClient) interrupt() {
+	client.interruptOnce.Do(func() { close(client.interrupted) })
 }
 
 func (client *engineInteractionClient) Request(ctx context.Context, request InteractionRequest) (InteractionResolution, error) {
@@ -556,6 +571,11 @@ func (client *engineInteractionClient) Request(ctx context.Context, request Inte
 	select {
 	case response := <-waiter:
 		return decodeInteractionResolution(response)
+	case <-client.interrupted:
+		client.mu.Lock()
+		delete(client.waiters, request.ID)
+		client.mu.Unlock()
+		return InteractionResolution{}, MarkToolControlError(context.Canceled)
 	case <-ctx.Done():
 		client.mu.Lock()
 		delete(client.waiters, request.ID)

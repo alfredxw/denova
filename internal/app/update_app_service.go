@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"log/slog"
 
 	agentrun "denova/internal/agents/run"
@@ -16,6 +17,11 @@ func (a *App) CheckUpdate(ctx context.Context) (update.CheckResult, error) {
 
 func (a *App) InstallUpdate(ctx context.Context) (update.InstallResult, error) {
 	return update.NewService().Install(ctx)
+}
+
+// InstallLocalUpdate validates and stages an uploaded archive for explicit apply.
+func (a *App) InstallLocalUpdate(ctx context.Context, name string, archive io.Reader) (update.InstallResult, error) {
+	return update.NewService().InstallLocal(ctx, name, archive)
 }
 
 func (a *App) ApplyUpdate(ctx context.Context) (update.ApplyResult, error) {

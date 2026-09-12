@@ -1,3 +1,4 @@
+import { WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, LoaderCircle, Plus } from 'lucide-react'
 import { nanoid } from 'nanoid'
@@ -74,6 +75,24 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   const [sessionPending, setSessionPending] = useState(false)
   const [internalRailVisible, setInternalRailVisible] = useState(readWritingSessionRailVisibility)
   const railVisible = props.sessionRailVisible ?? internalRailVisible
+  // The conversation list may still be loading when the user starts from the empty editor.
+  // Retain that request locally until its active AgentPanel has mounted and can receive it.
+  const pendingWritingInit = useRef<{ projectId: string; detail: { prompt?: string; autoSend?: boolean } } | null>(null)
+  useEffect(() => {
+    if (activeSessionPreferenceScope || props.active === false) return
+    const retain = (event: Event) => {
+      if (loading) pendingWritingInit.current = { projectId: props.projectId, detail: (event as CustomEvent).detail }
+    }
+    window.addEventListener(WRITING_AGENT_INIT_EVENT, retain)
+    return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, retain)
+  }, [activeSessionPreferenceScope, loading, props.active, props.projectId])
+  useEffect(() => {
+    if (loading || !activeSessionId || props.active === false) return
+    const pending = pendingWritingInit.current
+    if (!pending || pending.projectId !== props.projectId) return
+    pendingWritingInit.current = null
+    window.dispatchEvent(new CustomEvent(WRITING_AGENT_INIT_EVENT, { detail: pending.detail }))
+  }, [activeSessionId, loading, props.active, props.projectId])
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
 

@@ -106,6 +106,7 @@ func newAsyncIteratorPair[T any]() (*asyncIterator[T], *asyncGenerator[T]) {
 
 // loopMessage carries either one complete message or an exclusive stream.
 type loopMessage struct {
+	previewOnly   bool
 	IsStreaming   bool
 	Message       *Message
 	MessageStream *StreamReader[*Message]
@@ -138,12 +139,19 @@ func (variant *loopMessage) GetMessage() (*Message, error) {
 
 // loopOutput is the payload of one loopEvent.
 type loopOutput struct {
+	ModelAttempt     *modelAttemptBoundary
+	ModelRetry       *ModelRetry
 	MessageOutput    *loopMessage
 	ToolExecution    *toolExecutionEvent
 	ToolBatch        *toolBatchBoundary
 	NestedEvent      *NestedEvent
 	TaskCompletions  *taskCompletionBoundary
 	CustomizedOutput any
+}
+
+type modelAttemptBoundary struct {
+	Ordinal int
+	Receipt chan error
 }
 
 type toolBatchPhase string
@@ -230,6 +238,8 @@ type toolExecutionEvent struct {
 	// startReceipt lets the Session publish ToolStarted before the concrete
 	// endpoint runs while the low-level loop keeps its asynchronous event API.
 	startReceipt chan error
+	// finishReceipt confirms durable results before the next tool can start.
+	finishReceipt chan error
 }
 
 func (event *toolExecutionEvent) acknowledgeStart(err error) {

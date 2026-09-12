@@ -19,16 +19,15 @@ scope.onconnect = event => {
   hub.connect(port as unknown as WorkspaceEventPort)
 }
 
-async function openProjectEventStream(options: { projectId: string; signal: AbortSignal; authorization?: string }) {
+async function openProjectEventStream(options: { projectId: string; signal: AbortSignal }) {
   const headers = new Headers({ Accept: 'text/event-stream' })
-  if (options.authorization) headers.set('Authorization', options.authorization)
   const response = await fetch(`/api/projects/${encodeURIComponent(options.projectId)}/events`, {
     headers,
+    credentials: 'same-origin',
     signal: options.signal,
   })
   if (!response.ok) {
-    const challenge = response.headers.get('WWW-Authenticate')?.toLowerCase() ?? ''
-    throw new ProjectEventStreamHTTPError(response.status, challenge.includes('basic'))
+    throw new ProjectEventStreamHTTPError(response.status, response.headers.get('X-Denova-Auth') === 'required')
   }
   if (!response.body) throw new Error('Project event stream has no response body')
   return parseSSEStream(response.body)

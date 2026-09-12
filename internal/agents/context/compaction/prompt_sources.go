@@ -1,7 +1,6 @@
 package compaction
 
 import (
-	"fmt"
 	"strings"
 
 	"denova/config"
@@ -30,7 +29,7 @@ func BuiltinPromptSources() config.AgentPromptSourceSettings {
 func compactionPromptSourceList(agentKind string) config.AgentPromptSourceList {
 	runtimeContract := strings.Join([]string{
 		compactionForkContract,
-		compactionRetentionRequirements(config.DefaultContextCompactionRetainedTurns),
+		compactionRetentionRequirements(),
 		compactionGuidancePrecedence,
 		compactionEvidenceRequirements,
 	}, "\n")
@@ -41,8 +40,8 @@ func compactionPromptSourceList(agentKind string) config.AgentPromptSourceList {
 	}}
 }
 
-func compactionRetentionRequirements(retainedTurns int) string {
-	return fmt.Sprintf("Keep the most recent %d complete user turn(s) as a verbatim convenience tail in the primary context. The checkpoint must still cover durable facts from the entire canonical source range, including that retained tail, because a later compaction can age those turns out. Summarize those facts concisely instead of copying the tail verbatim.", retainedTurns)
+func compactionRetentionRequirements() string {
+	return "Summarize only the selected source range. It may contain completed assistant steps inside the current user task. The newest complete tool group stays outside that range as original context. Merge the prior checkpoint with newly selected evidence; preserve goals, constraints, corrected numbers and identifiers, completed work, pending work, and the next action. Do not repeat a completed side effect merely because it appears in this checkpoint."
 }
 
 func compactionDomainRequirements(agentKind string) string {
@@ -50,16 +49,4 @@ func compactionDomainRequirements(agentKind string) string {
 		return "Game-mode requirements: preserve event order and causality, source turn IDs, Actor State changes, Lore sources, branch-plan status, relationships, quests, foreshadowing, secrets, dangers, and countdowns. Treat current Actor State, Lore, and the branch plan as deterministic sources rather than inventing replacements."
 	}
 	return "Workspace/writing requirements: preserve the user's objective and constraints, current draft or implementation state, file/artifact references, decisions and rationale, verified results, rejected approaches, unresolved risks, and dependency-ordered next actions."
-}
-
-func appendCheckpointGuidance(builder *strings.Builder, guidance string) {
-	guidance = strings.TrimSpace(guidance)
-	if guidance == "" {
-		return
-	}
-	builder.WriteString("<checkpoint_guidance>\n")
-	builder.WriteString(guidance)
-	builder.WriteString("\n</checkpoint_guidance>\n")
-	builder.WriteString(compactionGuidancePrecedence)
-	builder.WriteString("\n\n")
 }

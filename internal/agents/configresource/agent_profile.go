@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"denova/config"
+	"denova/internal/agentprofiles"
 )
 
 const (
@@ -60,7 +61,7 @@ func newAgentProfileResource(cfg *config.Config) Adapter {
 			}
 			return readAgentProfiles(cfg)
 		},
-		apply: func(_ context.Context, mutation Mutation) (any, error) {
+		apply: func(ctx context.Context, mutation Mutation) (any, error) {
 			scope := strings.TrimSpace(mutation.Scope)
 			if scope != "user" && scope != "workspace" {
 				return nil, fmt.Errorf("agent_profile scope must be user or workspace")
@@ -113,7 +114,20 @@ func newAgentProfileResource(cfg *config.Config) Adapter {
 					if cfg != nil {
 						dataDir = cfg.DataDir()
 					}
-					return config.MutateUserSettings(dataDir, revision, apply)
+					var profilePath string
+					var err error
+					switch kind {
+					case agentProfileKindAgent, agentProfileKindGeneralSubAgent:
+						profilePath, err = config.AgentProfilePath(strings.TrimSpace(mutation.ID))
+					case agentProfileKindCustomAgent:
+						profilePath = "custom/" + config.NormalizeCustomAgentID(receiptID) + ".toml"
+					case agentProfileKindSubAgent:
+						profilePath = "subagents/" + config.NormalizeSubAgentID(receiptID) + ".toml"
+					}
+					if err != nil {
+						return "", err
+					}
+					return agentprofiles.Mutate(ctx, dataDir, config.UserSettingsMutationRequest{ExpectedRevision: revision, ProfilePaths: []string{profilePath}, Mutate: apply})
 				}
 			}
 			revision, err := mutate(path, mutation.Revision, func(settings config.Settings) (config.Settings, error) {

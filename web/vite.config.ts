@@ -1,6 +1,7 @@
 import { configDefaults, defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { Agent } from 'node:http'
 import path from 'path'
 
 const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT || '8080'
@@ -50,7 +51,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: `http://localhost:${backendPort}`,
+        target: `http://127.0.0.1:${backendPort}`,
+        // Without an agent the proxy sends Connection: close, forcing browsers
+        // to reconnect for every API call (including Windows IPv6 fallback).
+        agent: new Agent({ keepAlive: true }),
         changeOrigin: true,
         xfwd: true,
         // AgentChat terminals attach over /api/terminal/sessions/:id/attach, so the dev proxy

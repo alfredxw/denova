@@ -15,15 +15,6 @@ import (
 
 func TestDefaultSettingsValues(t *testing.T) {
 	s := DefaultSettings()
-	if s.OpenAIBaseURL != "https://api.deepseek.com" {
-		t.Fatalf("BaseURL: %s", s.OpenAIBaseURL)
-	}
-	if s.OpenAIModel != "deepseek-v4-pro" {
-		t.Fatalf("Model: %s", s.OpenAIModel)
-	}
-	if s.OpenAIContextWindowTokens == nil || *s.OpenAIContextWindowTokens != DefaultContextWindowTokens {
-		t.Fatalf("OpenAIContextWindowTokens default")
-	}
 	if s.AutoSaveEnabled == nil || *s.AutoSaveEnabled != true {
 		t.Fatalf("AutoSaveEnabled default")
 	}

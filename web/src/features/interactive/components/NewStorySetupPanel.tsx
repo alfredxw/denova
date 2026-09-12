@@ -1,6 +1,7 @@
 import { ChevronDown, Play, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
@@ -57,6 +58,7 @@ export function NewStorySetupPanel({
   onCreate,
 }: NewStorySetupPanelProps) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const initialTemplate = planningTemplates.find((item) => item.id === story?.planning_template_id) || planningTemplates[0]
   const recentTeller = resolveNarrativeStyle(tellers, recentNarrativeStyleID)
   const initialProtagonist = story?.protagonist || defaultStoryProtagonist(loreItems)
@@ -64,7 +66,7 @@ export function NewStorySetupPanel({
   const [protagonist, setProtagonist] = useState<StoryProtagonist>(initialProtagonist)
   const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'custom' })
   const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, recentTeller?.id, conversationConfig.snapshot))
-  const [advancedOpen, setAdvancedOpen] = useState(true)
+  const [advancedOpen, setAdvancedOpen] = useState(!isMobile)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const initialProtagonistRef = useRef<StoryProtagonist>(initialProtagonist)
@@ -83,6 +85,10 @@ export function NewStorySetupPanel({
   let startButtonLabel = t('storyPicker.setup.start')
   if (narrativeStyleLoading || runtimeConfigLoading) startButtonLabel = t('common.loading')
   if (creating) startButtonLabel = t('storyPicker.setup.starting')
+
+  useEffect(() => {
+    if (conversationConfig.error) setAdvancedOpen(true)
+  }, [conversationConfig.error])
 
   useEffect(() => {
     if (story || narrativeStyleSelectionLockedRef.current || !recentTeller) return

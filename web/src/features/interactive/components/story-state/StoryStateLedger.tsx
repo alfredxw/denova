@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, Gauge, Globe2, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
+import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, Gauge, Globe2, LayoutDashboard, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -65,20 +66,22 @@ interface StateLedgerPresentation {
  */
 export function StoryStateLedger({ snapshot, displayPreference, onDisplayPreferenceChange, onOpenDirectorState }: StoryStateLedgerProps) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const { model, actorLedgers, worldLedger, allActors, actorTabs, hasWorldFacts, storyId } = useStoryStateLedgerData(snapshot)
   const [selectedTab, setSelectedTab] = useStoryStateTab(actorTabs, hasWorldFacts)
   const [layoutState, setLayoutState] = useState<{ storyId: string; layouts: StoryStateLayouts }>(() => ({ storyId, layouts: readStoryStateLayouts(storyId) }))
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false)
   const turnKey = `${snapshot?.story_id || ''}:${snapshot?.branch_id || ''}:${snapshot?.current_turn?.id || ''}`
-  const [panelMode, setPanelMode] = useState<StoryStatePanelMode>(PANEL_MODE_BY_PREFERENCE[displayPreference])
+  const [panelMode, setPanelMode] = useState<StoryStatePanelMode>(isMobile ? 'collapsed' : PANEL_MODE_BY_PREFERENCE[displayPreference])
   const layouts = layoutState.storyId === storyId ? layoutState.layouts : {}
   const selectedLedger = selectedTab === WORLD_STATE_TAB
     ? worldLedger
     : actorLedgers.find((ledger) => ledger.id === selectedTab)
 
   useEffect(() => {
-    setPanelMode(PANEL_MODE_BY_PREFERENCE[displayPreference])
-  }, [displayPreference, turnKey])
+    // Mobile summaries must not change the saved desktop display preference.
+    setPanelMode(isMobile ? 'collapsed' : PANEL_MODE_BY_PREFERENCE[displayPreference])
+  }, [displayPreference, turnKey, isMobile])
 
   useEffect(() => {
     setLayoutState({ storyId, layouts: readStoryStateLayouts(storyId) })
@@ -102,17 +105,32 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
         className="story-state-ledger mt-3 overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
       >
         <header className="flex h-10 min-w-0 items-center gap-2 px-2.5">
+          {isMobile ? (
+            <CollapsibleTrigger asChild>
+              <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-label={collapsed ? t('storyStage.state.expand') : t('storyStage.state.collapse')}>
+                <StatusIndicator status={snapshot?.current_turn?.state_status} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{t('storyStage.state.current')}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{turnStatusLabel(snapshot, t)}</span>
+                </span>
+                {collapsed ? <ChevronDown className="size-4 shrink-0" /> : <ChevronUp className="size-4 shrink-0" />}
+              </button>
+            </CollapsibleTrigger>
+          ) : <>
           <StatusIndicator status={snapshot?.current_turn?.state_status} />
           <div className="flex min-w-0 flex-1 items-baseline gap-2">
             <h2 className="shrink-0 text-[13px] font-semibold tracking-tight text-[var(--nova-text)]">{t('storyStage.state.current')}</h2>
             <p className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{turnStatusLabel(snapshot, t)}</p>
           </div>
-          <StateDisplayPreferenceMenu
+          </>}
+          {isMobile ? (
+            selectedLedger?.groups.length ? <Button type="button" variant="ghost" size="icon-sm" aria-label={t('storyStage.state.layout.customize')} onClick={() => setLayoutEditorOpen(true)}><LayoutDashboard /></Button> : null
+          ) : <StateDisplayPreferenceMenu
             value={displayPreference}
             onChange={onDisplayPreferenceChange}
             onCustomizeLayout={selectedLedger?.groups.length ? () => setLayoutEditorOpen(true) : undefined}
             compact
-          />
+          />}
           {onOpenDirectorState ? (
             <Button
               type="button"
@@ -125,7 +143,7 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
               <span className="story-state-ledger__director-label">{t('storyStage.state.openDirector')}</span>
             </Button>
           ) : null}
-          <CollapsibleTrigger asChild>
+          {!isMobile ? <CollapsibleTrigger asChild>
             <Button
               type="button"
               variant="ghost"
@@ -134,9 +152,10 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
             >
               {collapsed ? <ChevronDown data-icon="inline-start" /> : <ChevronUp data-icon="inline-start" />}
             </Button>
-          </CollapsibleTrigger>
+          </CollapsibleTrigger> : null}
         </header>
 
+        {isMobile && collapsed && model.changes.length > 0 ? <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} /> : null}
         <CollapsibleContent>
           {model.changes.length > 0 ? (
             <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} />

@@ -102,6 +102,24 @@ func cloneDisplayToolPresentation(presentation *agent.ToolPresentation) *agent.T
 	return &cloned
 }
 
+func (c *Conversation) DiscardDisplayEvents(ids []string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	selected := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		selected[id] = true
+	}
+	for index := range c.displayEvents {
+		if selected[c.displayEvents[index].ID] {
+			c.displayEvents[index].Status = "discarded"
+			if err := c.persistLastTurnDisplayEventLocked(c.displayEvents[index]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (c *Conversation) AppendDisplayToolArgs(id, name, delta string) error {
 	if c == nil || delta == "" {
 		return nil

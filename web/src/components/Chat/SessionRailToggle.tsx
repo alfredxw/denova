@@ -20,6 +20,7 @@ export function SessionRailToggle({
       type="button"
       variant={visible ? 'secondary' : 'ghost'}
       size="icon-sm"
+      className="max-lg:hidden"
       onClick={() => onVisibleChange(!visible)}
       aria-label={label}
       aria-pressed={visible}

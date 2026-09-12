@@ -111,7 +111,7 @@ func testChildTracesAfterParentStops(t *testing.T, kind string) {
 	if len(handles) != 2 {
 		t.Fatalf("child handles = %d", len(handles))
 	}
-	if _, err := handles["writer"].run.Queue(ctx, agent.Text("Continue writing")); err != nil {
+	if _, err := handles["writer"].session.Queue(ctx, agent.Text("Continue writing")); err != nil {
 		t.Fatal(err)
 	}
 	close(models["writer"].release)

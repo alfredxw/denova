@@ -1,7 +1,6 @@
 import type { WorkspaceChangeEvent } from '@/features/changes/types'
 import { isProjectChangeForProject } from '@/features/changes/types'
 import {
-  getRemoteAccessAuthorization,
   handleRemoteAccessChallenge,
 } from '@/lib/api-client/client'
 
@@ -10,9 +9,8 @@ import {
   type WorkspaceEventClientMessage,
   type WorkspaceEventWorkerMessage,
 } from './protocol'
-import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
 
-const SHARED_WORKER_NAME = 'denova-project-events-v2'
+const SHARED_WORKER_NAME = 'denova-project-events-v3'
 
 /** Subscribes one page to the origin-wide SharedWorker-owned event stream. */
 export function subscribeProjectFileEvents(
@@ -90,17 +88,11 @@ export function subscribeProjectFileEvents(
   port.start()
 
   const post = (message: WorkspaceEventClientMessage) => port.postMessage(message)
-  post({ type: 'subscribe', projectId, authorization: getRemoteAccessAuthorization() })
-
-  const updateAuthorization = () => {
-    post({ type: 'authorization', authorization: getRemoteAccessAuthorization() })
-  }
-  const unsubscribeSettings = subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, updateAuthorization)
+  post({ type: 'subscribe', projectId })
 
   const dispose = () => {
     if (disposed) return
     disposed = true
-    unsubscribeSettings()
     window.removeEventListener('pagehide', dispose)
     // The worker closes both ends after processing this message. Closing the
     // page-side port immediately can discard the queued unsubscribe.

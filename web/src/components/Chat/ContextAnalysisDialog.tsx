@@ -78,14 +78,17 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
           ) : analysis ? (
             <div className="flex flex-col gap-4">
               <ContextUsageSummary analysis={analysis} />
+              {analysis.compaction?.removable && onRemoveCompaction ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {removeError ? <span role="alert" className="min-w-0 break-words text-xs text-destructive">{removeError}</span> : null}
+                  <CompactionRemoveButton removing={removingCompaction} onClick={handleRemoveCompaction} />
+                </div>
+              ) : null}
               <ContextAnalysisSection title={t('chat.contextAnalysis.systemPrompt')} parts={analysis.system_prompt_parts} copyContent={analysis.system_prompt} />
               <ContextAnalysisMessageGroups
                 title={t('chat.contextAnalysis.finalMessages')}
                 groups={finalMessageGroups}
                 compaction={analysis.compaction}
-                removingCompaction={removingCompaction}
-                removeCompactionError={removeError}
-                onRemoveCompaction={analysis.compaction?.removable ? handleRemoveCompaction : undefined}
               />
             </div>
           ) : (
@@ -112,7 +115,7 @@ function ContextUsageSummary({ analysis }: { analysis: ContextAnalysis }) {
 		},
     { label: t('chat.contextAnalysis.contextWindow'), value: analysis.context_window_tokens ? formatNumber(analysis.context_window_tokens) : t('common.notSet') },
     { label: t('chat.contextAnalysis.contextUsage'), value: analysis.context_window_tokens ? `${usage}%` : t('common.notSet') },
-    { label: t('chat.contextAnalysis.compaction'), value: analysis.compaction_active ? t('chat.contextAnalysis.compactionActive', { epoch: analysis.compaction_epoch ?? 0 }) : t('chat.contextAnalysis.compactionInactive') },
+    { label: t('chat.contextAnalysis.compaction'), value: analysis.compaction_active ? t('chat.contextAnalysis.compactionActive', { revision: analysis.compaction_revision ?? 0 }) : t('chat.contextAnalysis.compactionInactive') },
     { label: t('chat.contextAnalysis.wouldCompact'), value: analysis.would_compact ? t('common.yes') : t('common.no') },
   ]
   return (
@@ -227,15 +230,12 @@ function turnGroupTitle(part: ContextAnalysisPart, index: number, t: ReturnType<
   return t('chat.contextAnalysis.turnGroup', { index })
 }
 
-function ContextAnalysisSection({ title, parts, copyContent, showRole = false, compaction, removingCompaction = false, removeCompactionError, onRemoveCompaction }: {
+function ContextAnalysisSection({ title, parts, copyContent, showRole = false, compaction }: {
   title: string
   parts: ContextAnalysisPart[]
   copyContent?: string
   showRole?: boolean
   compaction?: ContextAnalysisCompaction
-  removingCompaction?: boolean
-  removeCompactionError?: string | null
-  onRemoveCompaction?: () => void
 }) {
   const { t } = useTranslation()
   return (
@@ -261,9 +261,6 @@ function ContextAnalysisSection({ title, parts, copyContent, showRole = false, c
             part={part}
             showRole={showRole}
             compaction={isCompactionPart(part) ? compaction : undefined}
-            removingCompaction={removingCompaction}
-            removeCompactionError={isCompactionPart(part) ? removeCompactionError : undefined}
-            onRemoveCompaction={isCompactionPart(part) ? onRemoveCompaction : undefined}
           />
         )) : (
           <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-faint)]">
@@ -275,13 +272,10 @@ function ContextAnalysisSection({ title, parts, copyContent, showRole = false, c
   )
 }
 
-function ContextAnalysisMessageGroups({ title, groups, compaction, removingCompaction = false, removeCompactionError, onRemoveCompaction }: {
+function ContextAnalysisMessageGroups({ title, groups, compaction }: {
   title: string
   groups: ContextAnalysisMessageGroup[]
   compaction?: ContextAnalysisCompaction
-  removingCompaction?: boolean
-  removeCompactionError?: string | null
-  onRemoveCompaction?: () => void
 }) {
   const { t } = useTranslation()
   const partCount = groups.reduce((sum, group) => sum + group.parts.length, 0)
@@ -302,18 +296,12 @@ function ContextAnalysisMessageGroups({ title, groups, compaction, removingCompa
               copyContent={contextAnalysisMessageGroupCopyContent(group)}
               copyLabel={t('chat.contextAnalysis.copyGroup')}
               compaction={group.parts.some(isCompactionPart) ? compaction : undefined}
-              removingCompaction={removingCompaction}
-              removeCompactionError={group.parts.some(isCompactionPart) ? removeCompactionError : undefined}
-              onRemoveCompaction={group.parts.some(isCompactionPart) ? onRemoveCompaction : undefined}
             />
           ) : (
             <ContextAnalysisMessageGroupBlock
               key={group.id}
               group={group}
               compaction={group.parts.some(isCompactionPart) ? compaction : undefined}
-              removingCompaction={removingCompaction}
-              removeCompactionError={group.parts.some(isCompactionPart) ? removeCompactionError : undefined}
-              onRemoveCompaction={group.parts.some(isCompactionPart) ? onRemoveCompaction : undefined}
             />
           )
         )) : (
@@ -330,12 +318,9 @@ function shouldFlattenMessageGroup(group: ContextAnalysisMessageGroup) {
   return group.parts.length === 1 && !group.messages.some((message) => message.parts?.length)
 }
 
-function ContextAnalysisMessageGroupBlock({ group, compaction, removingCompaction = false, removeCompactionError, onRemoveCompaction }: {
+function ContextAnalysisMessageGroupBlock({ group, compaction }: {
   group: ContextAnalysisMessageGroup
   compaction?: ContextAnalysisCompaction
-  removingCompaction?: boolean
-  removeCompactionError?: string | null
-  onRemoveCompaction?: () => void
 }) {
   const { t } = useTranslation()
   const compactionMeta = compaction ? buildCompactionMeta(t, compaction) : ''
@@ -352,10 +337,8 @@ function ContextAnalysisMessageGroupBlock({ group, compaction, removingCompactio
             copiedLabel={t('chat.contextAnalysis.copied')}
             failedLabel={t('chat.contextAnalysis.copyFailed')}
           />
-          {onRemoveCompaction ? <CompactionRemoveButton removing={removingCompaction} onClick={onRemoveCompaction} /> : null}
         </div>
       )}
-      error={removeCompactionError}
       contentClassName="px-3 py-2"
     >
       <div className="flex flex-col gap-2 border-l border-border pl-3">
@@ -422,16 +405,13 @@ function fallbackContextAnalysisKind(part: ContextAnalysisPart) {
   return ''
 }
 
-function ContextAnalysisPartBlock({ part, showRole, showKind = false, copyContent, copyLabel, compaction, removingCompaction = false, removeCompactionError, onRemoveCompaction }: {
+function ContextAnalysisPartBlock({ part, showRole, showKind = false, copyContent, copyLabel, compaction }: {
   part: ContextAnalysisPart
   showRole: boolean
   showKind?: boolean
   copyContent?: string
   copyLabel?: string
   compaction?: ContextAnalysisCompaction
-  removingCompaction?: boolean
-  removeCompactionError?: string | null
-  onRemoveCompaction?: () => void
 }) {
   const { t } = useTranslation()
   const compactionMeta = compaction ? buildCompactionMeta(t, compaction) : ''
@@ -449,10 +429,8 @@ function ContextAnalysisPartBlock({ part, showRole, showKind = false, copyConten
             copiedLabel={t('chat.contextAnalysis.copied')}
             failedLabel={t('chat.contextAnalysis.copyFailed')}
           />
-          {onRemoveCompaction ? <CompactionRemoveButton removing={removingCompaction} onClick={onRemoveCompaction} /> : null}
         </div>
       )}
-      error={removeCompactionError}
       contentClassName="p-3"
     >
       {part.content.trim() ? (
@@ -485,14 +463,10 @@ function isCompactionPart(part: ContextAnalysisPart) {
 }
 
 function buildCompactionMeta(t: ReturnType<typeof useTranslation>['t'], compaction: ContextAnalysisCompaction) {
-  const source = compaction.source_turn_count
-    ? t('chat.contextAnalysis.sourceTurns', { count: compaction.source_turn_count })
-    : t('chat.contextAnalysis.sourceMessages', { count: compaction.source_message_count ?? 0 })
-  const ratio = compaction.target_ratio ? Math.round(compaction.target_ratio * 100) : 0
+  const source = t('chat.contextAnalysis.sourceMessages', { count: compaction.source_message_count ?? 0 })
   return t('chat.contextAnalysis.compactionMeta', {
     source,
     before: formatNumber(compaction.tokens_before ?? 0),
     after: formatNumber(compaction.tokens_after ?? 0),
-    ratio,
   })
 }

@@ -188,6 +188,7 @@ func (c *SessionConversation) CommitAgentCanonicalOutput(
 	ctx context.Context,
 	message *agent.Message,
 	metadata session.MessageMetadata,
+	checkpoint agent.CanonicalCheckpoint,
 ) (session.DomainCommitReceipt, error) {
 	if c == nil || c.session == nil {
 		return session.DomainCommitReceipt{}, fmt.Errorf("会话不存在")
@@ -207,6 +208,7 @@ func (c *SessionConversation) CommitAgentCanonicalOutput(
 	}
 	c.cycleMu.Lock()
 	intent = intent.WithExpectedContextCursor(c.cycleCursor)
+	intent.Checkpoint = checkpoint
 	c.cycleMu.Unlock()
 	receipt, err := c.session.CommitDomainMessageContext(ctx, intent)
 	if err != nil {
@@ -444,6 +446,10 @@ func (c *SessionConversation) FinalizeDisplayAssistantRun(runID, finalSegmentID,
 		return fmt.Errorf("会话不存在")
 	}
 	return c.session.FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase)
+}
+
+func (c *SessionConversation) DiscardDisplayEvents(ids []string) error {
+	return c.session.DiscardDisplayEvents(ids)
 }
 
 func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error {

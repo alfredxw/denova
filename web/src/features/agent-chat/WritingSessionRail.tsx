@@ -12,7 +12,7 @@ interface WritingSessionRailProps {
   onVisibleChange: (visible: boolean) => void
 }
 
-/** Persistent, readable navigation for conversations in the current Book. */
+/** Desktop conversation rail. Phones use the searchable session picker without narrowing chat. */
 export function WritingSessionRail({
   sessions,
   activeSessionId,
@@ -25,7 +25,7 @@ export function WritingSessionRail({
   return (
     <nav
       aria-label={t('chat.sessionRail.label')}
-      className="flex h-full w-44 max-w-full shrink-0 flex-col overflow-hidden border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)]"
+      className="flex h-full w-44 max-lg:hidden max-w-full shrink-0 flex-col overflow-hidden border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)]"
     >
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-2">
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text-muted)]">

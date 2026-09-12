@@ -30,9 +30,10 @@ func adaptAPIError(err error) error {
 	}
 	return &providers.APIError{
 		StatusCode: sdkError.StatusCode,
-		RequestID:  requestID,
-		Message:    strings.TrimSpace(err.Error()),
-		Cause:      err,
+		Code:       sdkError.Code, Kind: sdkError.Type, RetryAfter: providers.RetryAfterDelay(sdkError.Response),
+		RequestID: requestID,
+		Message:   strings.TrimSpace(err.Error()),
+		Cause:     err,
 	}
 }
 
@@ -53,6 +54,7 @@ func responseFailure(response *responses.Response, rawResponse *http.Response) e
 	}
 	return &providers.APIError{
 		RequestID: responseRequestID(rawResponse),
-		Message:   message,
+		Code:      string(response.Error.Code), RetryAfter: providers.RetryAfterDelay(rawResponse),
+		Message: message,
 	}
 }

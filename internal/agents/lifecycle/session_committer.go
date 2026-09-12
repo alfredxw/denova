@@ -66,6 +66,7 @@ func (committer *sessionConversationCommitter) MaterializeInput(
 		request.Input.Text,
 		request.Input.Attachments,
 		agentchat.UserMessageReferences(committer.config.Request),
+		request.Checkpoint,
 	)
 	if err != nil {
 		return agent.CommitReceipt{}, err
@@ -133,7 +134,7 @@ func (committer *sessionConversationCommitter) CommitOutput(
 		return agent.OutputCommitReceipt{}, errors.New("Denova Session output projector returned no canonical message")
 	}
 	receipt, err := committer.config.Conversation.CommitAgentCanonicalOutput(
-		ctx, projection.Message, projection.Metadata,
+		ctx, projection.Message, projection.Metadata, request.Checkpoint,
 	)
 	if err != nil {
 		return agent.OutputCommitReceipt{}, err

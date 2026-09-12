@@ -10,6 +10,7 @@ import (
 )
 
 type partialTaskExecutor struct {
+	schemaTaskExecutor
 	observed []TaskObserveTarget
 }
 

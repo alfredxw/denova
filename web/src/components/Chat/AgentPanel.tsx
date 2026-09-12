@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { AgentTaskControls } from './AgentTaskControls'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
@@ -148,8 +149,8 @@ export interface AgentPanelProps {
   onRefreshHistory: (sessionId?: string) => void | Promise<void>
   /** Scoped AgentChat tabs override interaction endpoints so Writing state is never touched. */
   onAnswerAsk?: (sessionId: string, askId: string, answers: AgentAskAnswer[]) => Promise<AgentAskResolution>
-  onCancelAsk?: (sessionId: string, askId: string) => Promise<AgentAskResolution>
-  onRemoveContextCompaction?: () => Promise<boolean>
+  onCancelAsk?: (sessionId: string, askId: string, reason?: string) => Promise<AgentAskResolution>
+  onRemoveContextCompaction?: (() => Promise<boolean>) | null
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (
     message: string,
@@ -161,6 +162,8 @@ export interface AgentPanelProps {
     },
   ) => Promise<ContextAnalysis>
   onStop: () => void
+  onSuspend?: () => void
+  onResumeTask?: () => void
   onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>
@@ -245,6 +248,8 @@ function AgentPanelComponent({
   onSend,
   onAnalyzeContext,
   onStop,
+  onSuspend,
+  onResumeTask,
   onSteerQueuedCommand,
   onDeleteQueuedCommand,
   onEditQueuedCommand,
@@ -291,7 +296,7 @@ function AgentPanelComponent({
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const pendingWritingInitRef = useRef<string | null>(null)
   const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
-  const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && (!runtimeProjection.stream_attached || recoveryPaused))
+  const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && runtimeProjection.phase !== 'suspended' && !runtimeProjection.stream_attached)
   const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
   const activeControlsDisabled =
     isStreaming && (!runtimeProjection?.active_operation_id?.trim() || Boolean(runtimeProjection?.runtime_recoverable && !runtimeProjection.stream_attached))
@@ -335,7 +340,8 @@ function AgentPanelComponent({
   }, [ideTellerId, tellers])
 
   useEffect(() => {
-    if (generalAgent) return
+    // Cached configuration and workbench conversations must not consume Writing's entry action.
+    if (generalAgent || chrome === 'workbench' || (configuredQuickPromptScope && configuredQuickPromptScope !== 'writing')) return
     if (!active) return
     const handleWritingInitRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
@@ -361,7 +367,7 @@ function AgentPanelComponent({
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [active, generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
+  }, [active, chrome, configuredQuickPromptScope, generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
 
   useEffect(() => {
     if (generalAgent) return
@@ -440,7 +446,7 @@ function AgentPanelComponent({
   }, [onPlanModeChange])
 
   const removeContextCompaction = async () => {
-    await onRemoveContextCompaction()
+    await onRemoveContextCompaction?.()
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
@@ -585,7 +591,7 @@ function AgentPanelComponent({
         action,
         {
           answer: (answers) => onAnswerAsk(activeSessionId, askID, answers),
-          cancel: () => onCancelAsk(activeSessionId, askID),
+          cancel: (reason) => onCancelAsk(activeSessionId, askID, reason),
         },
         () => onRefreshHistory(activeSessionId),
       )
@@ -619,17 +625,17 @@ function AgentPanelComponent({
     onExitPlanMode,
     onResolveAsk: resolveAsk,
     activeRunId: runtimeProjection?.active_operation_id,
-    afterContent: lastRuntimeFailure ? (
+    afterContent: <>
+      <AgentTaskControls active={isExecutionActive} suspended={runtimeProjection?.phase === 'suspended'} pending={commandSubmitting || abortPending} onSuspend={onSuspend} onResume={onResumeTask} onAbort={onStop} />
+      {lastRuntimeFailure ? (
       <div
         role="alert"
         className="whitespace-pre-wrap break-words rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--nova-danger)]"
       >
         {t('chat.activity.requestFailed', { error: lastRuntimeFailure })}
       </div>
-    ) : undefined,
-    afterContentKey: lastRuntimeFailure
-      ? `runtime-failure:${runtimeProjection?.last_operation?.operation_id || lastRuntimeFailure}`
-      : undefined,
+    ) : null}</>,
+    afterContentKey: `${runtimeProjection?.phase || 'idle'}:${commandSubmitting}:${lastRuntimeFailure || ''}`,
   }
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
@@ -740,9 +746,9 @@ function AgentPanelComponent({
         workbench only.
       */}
       {dockedChrome && (
-        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--nova-border)] px-2">
+        <div className="nova-writing-agent-toolbar flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--nova-border)] px-2 max-lg:h-11">
           <div
-            className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5"
+            className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5 max-lg:h-11 max-lg:p-0"
             role="group"
             aria-label={t('chat.sessionControls')}
           >
@@ -826,7 +832,7 @@ function AgentPanelComponent({
             error={contextAnalysisError}
             analysis={contextAnalysis}
             onOpenChange={setContextAnalysisOpen}
-            onRemoveCompaction={removeContextCompaction}
+            onRemoveCompaction={onRemoveContextCompaction ? removeContextCompaction : undefined}
           />
         </>
       ) : (

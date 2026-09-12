@@ -163,14 +163,16 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		return nil, err
 	}
 	builtAgent, err := appagentruntime.BuildInteractiveAgent(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentHost, agentinteractive.InteractiveStoryToolContext{
-		Store:                  cycle.store,
-		StoryID:                cycle.storyID,
-		BranchID:               cycle.branchID,
-		SubmitStateSchemaBatch: submitOpeningStateSchema,
-		PrepareTurn:            prepareTurn,
-		SelectProtagonist:      selectProtagonist,
-		SubmitTurnResult:       cycle.conversation.SubmitTurnResult,
-		TurnResultReady:        cycle.conversation.InteractiveNarrativeReady,
+		Store:                    cycle.store,
+		StoryID:                  cycle.storyID,
+		BranchID:                 cycle.branchID,
+		SubmitStateSchemaBatch:   submitOpeningStateSchema,
+		PrepareTurn:              prepareTurn,
+		SelectProtagonist:        selectProtagonist,
+		SubmitTurnResult:         cycle.conversation.SubmitTurnResult,
+		TurnResultReady:          cycle.conversation.InteractiveNarrativeReady,
+		LoadNarrativeCandidate:   cycle.conversation.LoadNarrativeCandidate,
+		AcceptNarrativeCandidate: cycle.conversation.AcceptNarrativeCandidate,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build interactive story runner: %w", err)

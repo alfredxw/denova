@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 type CommitStage string
@@ -27,9 +29,10 @@ type CommitIdentity struct {
 }
 
 type InputCommitRequest struct {
-	Identity CommitIdentity
-	Hash     string
-	Input    Input
+	Identity   CommitIdentity
+	Hash       string
+	Input      Input
+	Checkpoint CanonicalCheckpoint
 }
 
 type OutputCommitRequest struct {
@@ -38,7 +41,8 @@ type OutputCommitRequest struct {
 	// Message is the exact provider-neutral final output. Hosts may persist
 	// continuation metadata and usage beside their product projection without
 	// depending on a provider SDK type.
-	Message Message
+	Message    Message
+	Checkpoint CanonicalCheckpoint
 }
 
 // ContextCommitRequest appends one model-visible, UI-hidden message batch to
@@ -46,9 +50,23 @@ type OutputCommitRequest struct {
 // retries deterministic within one Agent cycle; the messages define the batch
 // shape so callers cannot label content inconsistently.
 type ContextCommitRequest struct {
-	Identity CommitIdentity
-	Sequence int
-	Messages []Message
+	Identity   CommitIdentity
+	Sequence   int
+	Messages   []Message
+	Checkpoint CanonicalCheckpoint
+}
+
+// CanonicalCheckpoint supplies Agent continuation records for the host's
+// exact product commit receipt. Embedded hosts must append these records in
+// the same journal transaction as the product change, after validating the
+// expected Agent revision. Invoke once while preparing that transaction; do
+// not call back into the same Session. A nil callback means no embedded log.
+type CanonicalCheckpoint func(CommitReceipt) (JournalCheckpoint, error)
+
+type JournalCheckpoint struct {
+	Session          SessionKey
+	ExpectedRevision agentsession.Revision
+	Records          []agentsession.Record
 }
 
 type CommitReceipt struct{ Revision string }
@@ -60,11 +78,25 @@ type CommitReceipt struct{ Revision string }
 type OutputProjection struct {
 	Content  string
 	Thinking string
+	// CanonicalMessages, when non-nil, replaces the retained transcript with
+	// the complete model-visible history reconstructed after the host commit.
+	// Hosts that transform settled messages must return the same projection
+	// used on reload, preserving existing raw message positions for capabilities.
+	// Current-turn output and lifecycle still retain the provider's metadata.
+	// Hosts that persist complete Agent messages can leave this nil.
+	CanonicalMessages []*Message
 }
 
 type OutputCommitReceipt struct {
 	Revision   string
 	Transcript *OutputProjection
+}
+
+// CanonicalPreparedOutput is optional for hosts that durably accept a complete
+// product draft before final publication. PendingOutput only reads that exact
+// cycle's accepted output; Agent commits it through the ordinary output path.
+type CanonicalPreparedOutput interface {
+	PendingOutput(context.Context, CommitIdentity) (*Message, error)
 }
 
 type Effect struct {

@@ -67,8 +67,7 @@ export function ModelProfilesEditor({
   const profileOptions = modelProfileOptions(profiles, effectiveProfiles)
   const selectedDefaultProfileID = defaultProfileID || effectiveDefaultProfileID || DEFAULT_MODEL_PROFILE_ID
   const effectiveDefaultLabel = profileOptions.find((profile) => profile.id === effectiveDefaultProfileID)?.label
-    || effectiveDefaultProfileID
-    || DEFAULT_MODEL_PROFILE_ID
+    || t('settings.model.noDefaultProfile')
 
   useEffect(() => {
     const request = new AbortController()
@@ -111,7 +110,9 @@ export function ModelProfilesEditor({
     const shouldSyncID = !previousID || previousID === previousModel
     const nextID = shouldSyncID ? uniqueModelProfileID(model, profiles, index) : profile.id
     updateProfile(index, { id: nextID, model })
-    if (shouldSyncID && previousID && selectedDefaultProfileID === previousID && nextID !== previousID) {
+    if (nextID && profileOptions.length === 0) {
+      onDefaultProfileChange(nextID)
+    } else if (shouldSyncID && previousID && selectedDefaultProfileID === previousID && nextID !== previousID) {
       onDefaultProfileChange(nextID || '')
     }
   }
@@ -135,6 +136,9 @@ export function ModelProfilesEditor({
       })
     }
     onProfilesChange(next)
+    if (profileOptions.length === 0 && models.length > 0) {
+      onDefaultProfileChange(modelProfileID(next[profiles.length]))
+    }
   }
 
   return (
@@ -149,7 +153,7 @@ export function ModelProfilesEditor({
             <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
               <SelectGroup>
-                <SelectItem value={INHERIT_VALUE}>{t('common.inherit', { value: effectiveDefaultLabel })}</SelectItem>
+                <SelectItem value={INHERIT_VALUE}>{t('common.defaultValue', { value: effectiveDefaultLabel })}</SelectItem>
                 {profileOptions.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}
               </SelectGroup>
             </SelectContent>
@@ -158,7 +162,9 @@ export function ModelProfilesEditor({
 
         {endpoints.length === 0 && (
           <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-3 text-[var(--nova-text-faint)]">
-            {t('settings.model.endpointEmpty', { count: effectiveEndpoints.length })}
+            {effectiveEndpoints.length > 0
+              ? t('settings.model.endpointInherited', { count: effectiveEndpoints.length })
+              : t('settings.model.endpointEmpty')}
           </div>
         )}
 

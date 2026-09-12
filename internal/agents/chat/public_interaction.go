@@ -22,6 +22,7 @@ func ProjectPendingInteraction(request agent.InteractionRequest, status agentrun
 		ToolCallID: request.ID, AgentKind: status.Binding.AgentKind,
 		AgentCommandID: string(status.ActiveCommandID), AgentOperationID: string(status.ActiveOperation), AgentCycle: status.ActiveCycle,
 		Status: session.AskPending, AllowOther: request.AllowOther, CreatedAt: now,
+		Verification: request.Verification,
 	}
 	if request.Kind == agent.InteractionPermission && request.Permission != nil {
 		permission := request.Permission

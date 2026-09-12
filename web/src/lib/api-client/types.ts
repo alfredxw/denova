@@ -129,7 +129,7 @@ export interface ContextCompactionChatMessage extends ChatMessageBase {
   context_window_tokens?: number
   threshold?: number
   target_ratio?: number
-  epoch?: number
+  revision?: number
   source_message_count?: number
   message_count_before?: number
   message_count_after?: number
@@ -238,6 +238,7 @@ export interface AgentAskInteraction {
   questions: AgentAskQuestion[]
   allow_other?: boolean
   approval?: AgentToolApprovalPresentation
+  verification?: { execution_id: string; tool: string; arguments: unknown }
   answers?: AgentAskAnswerResult[]
   cancel_reason?: string
   created_at?: string
@@ -247,7 +248,7 @@ export interface AgentAskInteraction {
 export interface AgentAskResolution {
   schema: 'ask.result.v1'
   id: string
-  status: 'answered' | 'cancelled'
+  status: 'pending' | 'answered' | 'cancelled'
   answers?: AgentAskAnswerResult[]
   cancel_reason?: string
 }
@@ -453,13 +454,11 @@ export interface ContextAnalysisPart {
 
 export interface ContextAnalysisCompaction {
   id?: string
-  epoch: number
+  revision: number
   summary: string
   tokens_before?: number
   tokens_after?: number
-  target_ratio?: number
   source_message_count?: number
-  source_turn_count?: number
   removable?: boolean
 }
 
@@ -477,7 +476,7 @@ export interface ContextAnalysis {
 	reserved_tool_result_tokens?: number
   context_window_tokens?: number
   context_usage_ratio?: number
-  compaction_epoch?: number
+  compaction_revision?: number
   compaction_active?: boolean
   would_compact?: boolean
   compaction?: ContextAnalysisCompaction

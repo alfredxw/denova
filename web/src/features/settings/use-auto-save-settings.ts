@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSaveLane } from '@/hooks/use-save-lane'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
+import { SettingsSaveError } from './save-error'
 
 const AUTO_SAVE_DELAY_MS = 1000
 
@@ -14,6 +15,7 @@ interface SettingsSaveRequest {
 
 /** Settings adapter over the shared after-delay, latest-only save lane. */
 export function useAutoSaveSettings({
+  layer,
   draft,
   saved,
   baseRevision,
@@ -24,9 +26,11 @@ export function useAutoSaveSettings({
   save,
   onSavingChange,
   onSaved,
+  onPartialSaved,
   onStaleSuccess,
   onError,
 }: {
+  layer: SettingsLayer
   draft: Settings
   saved: Settings
   baseRevision?: string
@@ -39,6 +43,9 @@ export function useAutoSaveSettings({
   save: SaveSettings
   onSavingChange: (saving: boolean) => void
   onSaved: (next: LayeredSettings, submitted: Settings) => void | Promise<void>
+  /** Reconciles durable partial effects and returns the latest retained draft.
+   * This lane advances its own baseline without treating the failed save as success. */
+  onPartialSaved: (next: LayeredSettings, submitted: Settings) => Promise<Settings>
   /** Reconcile a successful write whose response was superseded by a newer server sync. */
   onStaleSuccess?: (next: LayeredSettings) => void | Promise<void>
   onError: (message: string) => void
@@ -63,6 +70,7 @@ export function useAutoSaveSettings({
   const savedRevisionRef = useRef(savedRevision)
   const onSavingChangeRef = useRef(onSavingChange)
   const onSavedRef = useRef(onSaved)
+  const onPartialSavedRef = useRef(onPartialSaved)
   const onStaleSuccessRef = useRef(onStaleSuccess)
   const onErrorRef = useRef(onError)
 
@@ -73,6 +81,7 @@ export function useAutoSaveSettings({
   savedRevisionRef.current = savedRevision
   onSavingChangeRef.current = onSavingChange
   onSavedRef.current = onSaved
+  onPartialSavedRef.current = onPartialSaved
   onStaleSuccessRef.current = onStaleSuccess
   onErrorRef.current = onError
   if (draftKey !== blockedDraftKeyRef.current) blockedDraftKeyRef.current = ''
@@ -98,8 +107,24 @@ export function useAutoSaveSettings({
         await onSavedRef.current(next, request.draft)
         return next
       } catch (error) {
+        if (mountedRef.current && error instanceof SettingsSaveError) {
+          if (request.generation !== generationRef.current) {
+            await onStaleSuccessRef.current?.(error.snapshot)
+            throw error
+          }
+          const retained = await onPartialSavedRef.current(error.snapshot, request.draft)
+          if (mountedRef.current && request.generation === generationRef.current) {
+            baselineRef.current = stableStringifySettings(settingsForLayer(error.snapshot, layer))
+            baseRevisionRef.current = savedRevisionRef.current?.(error.snapshot) || baseRevisionRef.current
+            // A queued draft was built against the pre-save baseline. Keep the
+            // reconciled intent in the editor and require an edit or explicit retry.
+            cancel()
+            blockedDraftKeyRef.current = stableStringifySettings(retained)
+            observedDraftKeyRef.current = blockedDraftKeyRef.current
+          }
+        }
         if (mountedRef.current && request.generation === generationRef.current) {
-          blockedDraftKeyRef.current = request.key
+          if (!(error instanceof SettingsSaveError)) blockedDraftKeyRef.current = request.key
           const message = error instanceof Error ? error.message : String(error)
           onErrorRef.current(message)
         }
@@ -162,17 +187,21 @@ export function useAutoSaveSettings({
     }
     if (draftKey === baselineRef.current) {
       observedDraftKeyRef.current = draftKey
-      if (!hasWork()) cancel()
+      if (getSnapshot().status !== 'saving') cancel()
       return
     }
     if (draftKey === blockedDraftKeyRef.current || observedDraftKeyRef.current === draftKey) return
     observedDraftKeyRef.current = draftKey
     edit({ draft, key: draftKey, generation: generationRef.current })
-  }, [cancel, draft, draftKey, edit, hasWork, ready, syncKey])
+  }, [cancel, draft, draftKey, edit, getSnapshot, ready, syncKey])
 
   const flush = useCallback(async () => {
     if (!readyRef.current || waitingForDraftSyncRef.current) return null
     const key = latestDraftKeyRef.current
+    if (key === baselineRef.current && getSnapshot().status !== 'saving') {
+      cancel()
+      return null
+    }
     if (key !== baselineRef.current && (!hasWork() || getSnapshot().status === 'error')) {
       blockedDraftKeyRef.current = ''
       observedDraftKeyRef.current = key
@@ -182,7 +211,7 @@ export function useAutoSaveSettings({
     const snapshot = getSnapshot()
     if (snapshot.status === 'error') throw snapshot.error
     return result
-  }, [edit, flushLane, getSnapshot, hasWork])
+  }, [cancel, edit, flushLane, getSnapshot, hasWork])
 
   const error = lane.error instanceof Error
     ? lane.error.message

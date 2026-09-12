@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEventHandler, type PointerEventHandler } from 'react'
-import { Gauge, GripHorizontal, GripVertical } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
-import { Panel } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
 import { readOptionalProjectFile, type LoreItem } from '@/lib/api'
@@ -22,9 +20,7 @@ import {
 } from './story-state/display-preference'
 import { novaEase, panelPresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from '@/components/layout/panel-motion'
-import { usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
+import { StoryWorkspace } from './StoryWorkspace'
 import type { ImagePreset, InteractiveStoryUpdateInput, InteractiveTurnPersistedEvent, Snapshot, StorySummary } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
@@ -106,10 +102,6 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const [storyStateDisplayPreference, setStoryStateDisplayPreference] = useState(readStoryStateDisplayPreference)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
   const [branchCreationSource, setBranchCreationSource] = useState<BranchCreationSource | null>(null)
-  const storyPanelLayout = usePersistedPanelLayout({
-    storageKey: 'nova-interactive-horizontal',
-    panelIds: ['story-stage', 'snapshot'],
-  })
 
   if (currentBranchSnapshot) {
     lastStableSnapshotRef.current = currentBranchSnapshot
@@ -285,6 +277,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   }
 
   const handleStorySelect = useCallback((storyId: string) => {
+    setMobileSnapshotOpen(false)
     if (!storyId || storyId === useInteractiveStore.getState().currentStoryId) return
     setCurrentStoryId(storyId)
     const persisted = storySelectionQueueRef.current
@@ -515,71 +508,13 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {submode === 'timeline' ? (
                 <BranchTimeline projectId={projectId} snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} onRenameStory={handleRenameStory} hideCreate />} />
-              ) : isMobile ? (
-                <MobilePaneHost
-                  panes={[{
-                    id: 'director-panel',
-                    title: t('directorPanel.title'),
-                    side: 'right',
-                    icon: <Gauge className="h-4 w-4" />,
-                    content: (
-                      <DirectorPanel
-                        storyId={currentStoryId}
-                        story={currentStory}
-                        planningTemplates={planningTemplates}
-                        tellers={tellers}
-                        imagePresets={imagePresets}
-                        onPlanningTemplateChange={handlePlanningTemplateChange}
-                        onStoryUpdate={handleStoryUpdate}
-                        onOpenPresets={onOpenPresets}
-                        branchId={currentBranchId}
-                        branches={branches}
-                        snapshot={displaySnapshot}
-                        branchPlanEditingDisabled={branchPlanEditingDisabled}
-                        onBranchPlanUpdate={handleBranchPlanUpdate}
-                        stateDisplayPreference={storyStateDisplayPreference}
-                        onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
-                        onSwitchBranch={handleSwitchBranch}
-                        onOpenBranchTimeline={openBranchTimeline}
-                      />
-                    ),
-                  }]}
-                  closeLabel={t('common.close')}
-                  openPaneId={mobileSnapshotOpen ? 'director-panel' : null}
-                  onOpenPaneChange={(id) => setMobileSnapshotOpen(id === 'director-panel')}
-                  className="relative flex min-h-0 flex-1"
-                >
-                  {storyStage}
-                </MobilePaneHost>
               ) : (
-                <PanelMotionGroup
-                  id="nova-interactive-horizontal"
-                  defaultLayout={storyPanelLayout.defaultLayout}
-                  onLayoutChanged={(layout) => {
-                    if (rightPanelVisible) storyPanelLayout.persistUserLayout(layout)
-                  }}
-                  orientation="horizontal"
-                  className="min-h-0 flex-1"
-                >
-                  <Panel id="story-stage" minSize="240px" className="min-w-0">
-                    {storyStage}
-                  </Panel>
-                  <InteractiveResizeHandle
-                    visible={rightPanelVisible}
-                    direction="vertical"
-                    label={t('interactiveLayout.resizeDirectorPanel')}
-                    {...storyPanelLayout.resizeHandleIntentProps}
-                  />
-                  <CollapsibleResizablePanel
-                    id="snapshot"
-                    visible={rightPanelVisible}
-                    side="right"
-                    defaultSize="320px"
-                    minSize="240px"
-                    maxSize="45%"
-                    className="min-w-[240px]"
-                  >
-                    <DirectorPanel
+                <StoryWorkspace
+                  rightPanelVisible={rightPanelVisible}
+                  mobileConsoleOpen={mobileSnapshotOpen}
+                  onMobileConsoleOpenChange={setMobileSnapshotOpen}
+                  story={storyStage}
+                  console={<DirectorPanel
                       storyId={currentStoryId}
                       story={currentStory}
                       planningTemplates={planningTemplates}
@@ -597,9 +532,8 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                       onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
                       onSwitchBranch={handleSwitchBranch}
                       onOpenBranchTimeline={openBranchTimeline}
-                    />
-                  </CollapsibleResizablePanel>
-                </PanelMotionGroup>
+                    />}
+                />
               )}
             </motion.div>
           </div>
@@ -629,37 +563,4 @@ function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySumm
     return preferredStory
   })
   return found ? nextStories : [preferredStory, ...nextStories]
-}
-
-function InteractiveResizeHandle({
-  direction,
-  label,
-  prominent = false,
-  visible = true,
-  onPointerDownCapture,
-  onKeyDownCapture,
-}: {
-  direction: 'horizontal' | 'vertical'
-  label: string
-  prominent?: boolean
-  visible?: boolean
-  onPointerDownCapture?: PointerEventHandler<HTMLElement>
-  onKeyDownCapture?: KeyboardEventHandler<HTMLElement>
-}) {
-  const Icon = direction === 'vertical' ? GripVertical : GripHorizontal
-  const className = direction === 'vertical' ? 'nova-resize-handle group -mx-1 flex w-3 cursor-col-resize items-center justify-center bg-transparent transition-colors' : `nova-resize-handle group ${prominent ? '-my-0.5 h-4' : '-my-1 h-3'} flex cursor-row-resize items-center justify-center bg-transparent transition-colors`
-
-  return (
-    <CollapsiblePanelSeparator
-      visible={visible}
-      aria-label={label}
-      className={className}
-      onPointerDownCapture={onPointerDownCapture}
-      onKeyDownCapture={onKeyDownCapture}
-    >
-      <span className={`flex items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)] shadow-[0_4px_14px_rgba(0,0,0,0.22)] transition-colors group-hover:border-[var(--nova-active)] group-data-[resize-handle-active]:border-[var(--nova-active)] group-data-[resize-handle-active]:text-[var(--nova-text)] ${direction === 'vertical' ? 'h-9 w-2.5' : 'h-2.5 w-16'}`}>
-        <Icon className={direction === 'vertical' ? 'h-3.5 w-3.5' : 'h-3 w-3'} aria-hidden="true" />
-      </span>
-    </CollapsiblePanelSeparator>
-  )
 }

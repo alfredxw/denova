@@ -142,6 +142,13 @@ func (adapter conversationBoundaryCanonical) CommitOutput(ctx context.Context, r
 	return adapter.boundary.commitOutput(ctx, request)
 }
 
+func (adapter conversationBoundaryCanonical) PendingOutput(ctx context.Context, identity agent.CommitIdentity) (*agent.Message, error) {
+	if source, ok := adapter.boundary.config.Conversation.(agent.CanonicalPreparedOutput); ok {
+		return source.PendingOutput(ctx, identity)
+	}
+	return nil, nil
+}
+
 func (adapter conversationBoundaryCanonicalContext) CommitContext(ctx context.Context, request agent.ContextCommitRequest) (agent.CommitReceipt, error) {
 	return adapter.boundary.commitContext(ctx, request)
 }
@@ -276,7 +283,7 @@ func compactionContextRevision(state *agent.CompactionState) string {
 	if state == nil {
 		return "none"
 	}
-	return fmt.Sprintf("%s:%d:%t", state.ID, state.Revision, state.Removed)
+	return fmt.Sprintf("%s:%d", state.ID, state.Revision)
 }
 
 var _ agent.ContextSource = conversationBoundaryContext{}

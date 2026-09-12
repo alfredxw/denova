@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import { Bot, Check, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, Pencil, RefreshCw } from 'lucide-react'
+import { Bot, Check, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, MoreHorizontal, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { ChatMessage, RuleRollChatMessage, UserMessageReference } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import {
@@ -106,6 +109,8 @@ function formatSignedRuleRollNumber(value: number) {
 export function MessageInlineMeta({ projectId, message, content, align, reserveSpace = false, hideActions = false, onEdit, editLabelKey = 'chat.action.editTurn', onCreateBranch, onGenerateInteractiveImage, generatingInteractiveImage = false, interactiveImageGenerationDisabled = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { projectId?: string; message: ChatMessage; content: string; align: 'left' | 'right'; reserveSpace?: boolean; hideActions?: boolean; onEdit?: (message: ChatMessage) => void; editLabelKey?: 'chat.action.editTurn' | 'chat.action.editAssistantReply'; onCreateBranch?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; interactiveImageGenerationDisabled?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const isMobile = useIsMobile()
+  const [actionsOpen, setActionsOpen] = useState(false)
   const formatted = formatMessageHoverTime(message.created_at)
   const runID = message.run_id?.trim()
   const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
@@ -122,6 +127,34 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
     return (
       <div className={`nova-message-meta nova-message-meta-${align} nova-message-meta-spacer`} aria-hidden="true">
         <span />
+      </div>
+    )
+  }
+  if (isMobile) {
+    const actions = [
+      ...(onEdit ? [{ label: t(editLabelKey), icon: Pencil, run: () => onEdit(message) }] : []),
+      ...(onCreateBranch ? [{ label: t('chat.action.createBranch'), icon: GitBranch, run: () => onCreateBranch(message) }] : []),
+      ...(onGenerateInteractiveImage ? [{ label: t(message.role === 'assistant' && (message.interactive_images?.length || message.interactive_image) ? 'chat.interactiveImage.regenerate' : 'chat.action.generateInteractiveImage'), icon: generatingInteractiveImage ? Loader2 : ImagePlus, disabled: interactiveImageGenerationDisabled, run: () => onGenerateInteractiveImage(message) }] : []),
+      ...(onRegenerate ? [{ label: t('chat.action.regenerateTurn'), icon: RefreshCw, run: () => onRegenerate(message) }] : []),
+      ...(canSwitchVersion && onSwitchVersion ? [
+        { label: t('chat.action.prevVersion'), icon: ChevronLeft, disabled: versionIndex <= 0, run: () => onSwitchVersion(message, -1) },
+        { label: t('chat.action.nextVersion'), icon: ChevronRight, disabled: versionIndex >= versionCount - 1, run: () => onSwitchVersion(message, 1) },
+      ] : []),
+    ]
+    return (
+      <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
+        {formatted ? <time className="nova-message-time mr-auto" dateTime={message.created_at}>{formatted}</time> : null}
+        {canSwitchVersion ? <span className="text-xs tabular-nums">{versionIndex + 1}/{versionCount}</span> : null}
+        {showCopyAction ? <Button variant="ghost" size="icon" aria-label={t(copied ? 'chat.action.copyMessageDone' : 'chat.action.copyMessage')} onClick={() => { setCopied(true); window.setTimeout(() => setCopied(false), copyFeedbackDurationMs); void copyText(content) }}>{copied ? <Check /> : <Copy />}</Button> : null}
+        {hasMessageAction ? (
+          <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
+            <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label={t('chat.action.more')}><MoreHorizontal /></Button></PopoverTrigger>
+            <PopoverContent side="top" align={align === 'right' ? 'end' : 'start'} className="flex w-72 flex-col gap-1 p-2" aria-label={t('chat.action.more')}>
+              {actions.map(({ label, icon: Icon, run, ...options }) => <Button key={label} variant="ghost" className="w-full justify-start gap-2 whitespace-normal text-left" disabled={'disabled' in options && options.disabled} onClick={() => { setActionsOpen(false); run() }}><Icon />{label}</Button>)}
+              {hasRunActions && runID ? <AgentRunActions projectId={projectId} runID={runID} showLabels onNavigate={() => setActionsOpen(false)} /> : null}
+            </PopoverContent>
+          </Popover>
+        ) : null}
       </div>
     )
   }

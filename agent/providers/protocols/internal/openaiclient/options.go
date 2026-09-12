@@ -14,7 +14,7 @@ import (
 // Options returns deterministic client options. Explicit headers are applied
 // last so custom endpoints can replace the SDK's default Authorization header.
 func Options(config providers.ModelConfig) []option.RequestOption {
-	result := []option.RequestOption{option.WithAPIKey(config.APIKey)}
+	result := []option.RequestOption{option.WithAPIKey(config.APIKey), option.WithMaxRetries(0)}
 	if config.BaseURL != "" {
 		result = append(result, option.WithBaseURL(config.BaseURL))
 	}

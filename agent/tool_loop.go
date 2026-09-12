@@ -33,6 +33,7 @@ type toolExecutionResult struct {
 
 type preparedToolCall struct {
 	index        int
+	batchSize    int
 	call         ToolCall
 	executionID  string
 	parentCallID string
@@ -70,6 +71,9 @@ func (agent *modelToolLoop) executePreparedToolBatch(
 		ctx = context.Background()
 	}
 	results := make([]toolExecutionResult, len(prepared))
+	for index := range prepared {
+		prepared[index].batchSize = len(prepared)
+	}
 
 	for index := 0; index < len(prepared); {
 		if err := ctx.Err(); err != nil {
@@ -203,12 +207,10 @@ func (agent *modelToolLoop) runOneToolCall(
 ) (toolExecutionResult, error) {
 	completed := make(chan toolExecutionResult, 1)
 	agent.launchToolCall(ctx, call, events, cancel, completed)
-	select {
-	case result := <-completed:
-		return result, result.err
-	case <-ctx.Done():
-		return toolExecutionResult{}, ctx.Err()
-	}
+	// Cancellation requests stopping; it does not prove Tool.Run has stopped
+	// writing. Keep the execution owner until the endpoint actually returns.
+	result := <-completed
+	return result, result.err
 }
 
 func (agent *modelToolLoop) runParallelToolStage(
@@ -255,6 +257,11 @@ func (agent *modelToolLoop) runParallelToolStage(
 				launch(started)
 			}
 		case <-ctx.Done():
+			for running > 0 {
+				completion := <-completed
+				running--
+				results[completion.index] = completion.result
+			}
 			return results, started, ctx.Err()
 		}
 	}
@@ -273,7 +280,7 @@ func (agent *modelToolLoop) launchToolCall(
 	}, func(err error) {
 		result := toolFailureResultForDescriptor(call.call, call.snapshot.Descriptor, err)
 		bindToolExecutionIdentity(&result, call)
-		agent.emitToolFinished(events, call, result.result)
+		result.err = errors.Join(result.err, agent.confirmToolFinished(ctx, events, call, result.result))
 		completed <- result
 	})
 }
@@ -379,6 +386,7 @@ func (agent *modelToolLoop) executePreparedTool(
 		// presented as an executing process.
 		started.Do(func() {
 			event := agent.toolExecutionEvent(prepared, toolExecutionStarted, "", nil)
+			event.Output.ToolExecution.Arguments = json.RawMessage(normalizedArguments)
 			if toolStartReceiptRequired(runCtx) {
 				event.Output.ToolExecution.startReceipt = make(chan error, 1)
 			}
@@ -464,6 +472,10 @@ func (agent *modelToolLoop) executePreparedTool(
 	if err != nil {
 		if prepared.snapshot.Descriptor.Steering == SteeringInterruptibleWait &&
 			cancel.pending(cancelAfterTools|cancelAfterModel) && errors.Is(callCtx.Err(), context.Canceled) {
+			if cancel.pending(cancelModel) {
+				return toolExecutionResult{executionID: prepared.executionID, providerCallID: prepared.call.ID,
+					err: &cancelError{Info: &cancelInfo{Mode: cancelAfterTools | cancelModel}}}
+			}
 			result = SyntheticToolResult(ToolResultSkipped, ToolSyntheticSteeringInterrupted,
 				fmt.Sprintf("tool %q was interrupted to apply pending user steering", prepared.call.Function.Name))
 			err = nil
@@ -487,6 +499,7 @@ func (agent *modelToolLoop) executePreparedTool(
 		processed, processErr := agent.resultProcessor.Process(callCtx, ToolResultProcessRequest{
 			ToolName: prepared.call.Function.Name, Arguments: prepared.call.Function.Arguments,
 			ExecutionID: prepared.executionID, ProviderCallID: prepared.call.ID,
+			BatchSize:  prepared.batchSize,
 			Definition: prepared.snapshot, Result: result,
 		})
 		result = processed
@@ -508,8 +521,27 @@ func (agent *modelToolLoop) executePreparedTool(
 		result: normalized, message: ToolMessage(normalized, prepared.call.ID, WithToolName(prepared.call.Function.Name)),
 		executionID: prepared.executionID, providerCallID: prepared.call.ID, err: terminalErr,
 	}
-	agent.emitToolFinished(events, prepared, normalized)
+	completion.err = errors.Join(completion.err, agent.confirmToolFinished(ctx, events, prepared, normalized))
 	return completion
+}
+
+// confirmToolFinished keeps a completed effect ahead of subsequent work. The
+// standalone loop has no journal consumer and retains asynchronous delivery.
+func (agent *modelToolLoop) confirmToolFinished(ctx context.Context, events *asyncGenerator[*loopEvent], prepared preparedToolCall, result ToolResult) error {
+	event := agent.toolExecutionEvent(prepared, toolExecutionFinished, "", &result)
+	if toolStartReceiptRequired(ctx) {
+		event.Output.ToolExecution.finishReceipt = make(chan error, 1)
+	}
+	events.Send(event)
+	if receipt := event.Output.ToolExecution.finishReceipt; receipt != nil {
+		select {
+		case err := <-receipt:
+			return err
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+	return nil
 }
 
 // retainToolResultProcessorFailure preserves every valid partial projection
@@ -518,8 +550,10 @@ func (agent *modelToolLoop) executePreparedTool(
 // or display output merely to change the outcome status.
 func retainToolResultProcessorFailure(call ToolCall, result ToolResult, err error) ToolResult {
 	diagnostic := toolErrorContent(call, err)
-	result.Status = ToolResultError
-	result.SyntheticReason = ""
+	if !IsToolControlError(err) {
+		result.Status = ToolResultError
+		result.SyntheticReason = ""
+	}
 	if strings.TrimSpace(result.ModelContent) == "" {
 		result.ModelContent = diagnostic
 	} else {

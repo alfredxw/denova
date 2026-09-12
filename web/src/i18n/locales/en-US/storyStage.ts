@@ -72,6 +72,7 @@ const storyStage = {
   'storyStage.turnNavigator.emptyAgent': 'No story prose yet',
   'storyStage.turnNavigator.generating': 'Generating...',
   'storyStage.history.backToLatest': 'Back to latest story',
+  'storyStage.mobile.history': 'History',
   'storyStage.mobile.controls': 'Stage Controls',
   'storyStage.empty': 'Enter the first line to start the text adventure.',
   'storyStage.editingNotice': 'Editing this input. Sending will regenerate subsequent content from this turn.',

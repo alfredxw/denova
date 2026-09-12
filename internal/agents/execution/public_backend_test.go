@@ -1498,7 +1498,7 @@ func TestAgentRuntimeRestartRetainsTranscriptAndRunsNewInput(t *testing.T) {
 	}
 }
 
-func TestAgentRuntimeRestartMarksUnfinishedRunInterrupted(t *testing.T) {
+func TestAgentRuntimeRestartContinuesUnfinishedRunOnlyWhenRequested(t *testing.T) {
 	ctx := context.Background()
 	workspace := t.TempDir()
 	liveDataDir := t.TempDir()
@@ -1598,14 +1598,23 @@ func TestAgentRuntimeRestartMarksUnfinishedRunInterrupted(t *testing.T) {
 	t.Cleanup(observation.Close)
 	initialStatus := observation.InitialStatus()
 	actions := RuntimeRecoveryActions(initialStatus)
-	if initialStatus.Phase != agentrun.PhaseIdle || len(actions) != 0 {
-		t.Fatalf("restart status=%#v actions=%#v, want idle without recovery actions", initialStatus, actions)
+	if initialStatus.Phase != agentrun.PhaseSuspended || len(actions) != 2 || actions[0].Kind != RuntimeRecoveryResume || actions[1].Kind != RuntimeRecoveryAbort {
+		t.Fatalf("restart status=%#v actions=%#v, want explicit continue/cancel actions", initialStatus, actions)
 	}
-	if initialStatus.LastOperation == nil || initialStatus.LastOperation.OperationID != runID ||
-		initialStatus.LastOperation.CommandID != "recovery-start" ||
-		initialStatus.LastOperation.Status != agentrun.OperationFailed ||
-		initialStatus.LastOperation.Reason != "Agent process stopped before the turn finished" {
-		t.Fatalf("restart did not expose the interrupted run: %#v", initialStatus.LastOperation)
+	if initialStatus.LastOperation != nil || initialStatus.ActiveOperation != runID || len(recoveredModel.inputs) != 0 {
+		t.Fatalf("observation settled or executed the paused Run: %#v", initialStatus)
+	}
+	if _, err := observation.Resume(ctx, actions[0], "recovered-display", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if outcome := observation.Wait(waitCtx, nil); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("resumed outcome: %#v", outcome)
+	}
+	messages := sess.GetMessages()
+	if len(messages) != 2 || messages[0].Content != "uncertain request" || messages[1].Content != "recovered answer" {
+		t.Fatalf("resuming duplicated canonical input/output: %#v", messages)
 	}
 }
 

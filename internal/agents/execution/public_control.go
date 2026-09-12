@@ -2,8 +2,7 @@ package execution
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"errors"
 
 	agentrun "denova/internal/agents/run"
 
@@ -39,7 +38,23 @@ func (backend *publicBackend) status(ctx context.Context, options agentrun.Optio
 	if err != nil {
 		return agentrun.RuntimeStatus{}, err
 	}
-	return publicRuntimeStatus(binding, snapshot), nil
+	status := publicRuntimeStatus(binding, snapshot)
+	sessions, err := backend.taskSessions(ctx, session)
+	if err != nil {
+		return agentrun.RuntimeStatus{}, err
+	}
+	for _, child := range sessions[1:] {
+		childSnapshot, err := child.Snapshot(ctx)
+		if err != nil {
+			return agentrun.RuntimeStatus{}, err
+		}
+		for _, request := range childSnapshot.PendingInteractions {
+			if request.Verification != nil {
+				status.PendingInteractions = append(status.PendingInteractions, request)
+			}
+		}
+	}
+	return status, nil
 }
 
 func (backend *publicBackend) goal(ctx context.Context, options agentrun.Options) (agent.GoalState, bool, error) {
@@ -82,6 +97,9 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 	}
 	if snapshot.ActiveRunID != "" {
 		status.Phase = agentrun.RunPhaseRunning
+		if snapshot.ActiveStatus == agent.ResultSuspended {
+			status.Phase = agentrun.RunPhaseSuspended
+		}
 	}
 	for _, item := range snapshot.QueuedRuns {
 		status.Queue = append(status.Queue, agentrun.QueuedCommand{
@@ -111,9 +129,8 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 	if snapshot.Compaction != nil {
 		projected := &agentrun.AgentCompactionState{
 			ID: snapshot.Compaction.ID, Revision: snapshot.Compaction.Revision,
-			Summary: snapshot.Compaction.Summary, TokenEstimate: snapshot.Compaction.TokenEstimate,
-			ReplacementFrom: snapshot.Compaction.ReplacementFrom,
-			ReplacementTo:   snapshot.Compaction.ReplacementTo,
+			Summary: snapshot.Compaction.Summary, TokensBefore: snapshot.Compaction.TokensBefore, TokensAfter: snapshot.Compaction.TokensAfter,
+			SourceMessageCount: snapshot.Compaction.SourceMessageCount,
 		}
 		if snapshot.Compaction.ContextData != nil {
 			projected.ContextData = &agentrun.RestoreData{
@@ -122,11 +139,6 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 			}
 		}
 		status.Compaction = projected
-	}
-	if snapshot.Cleanup != nil {
-		projected := *snapshot.Cleanup
-		projected.Replacements = append([]agent.CleanupReplacement(nil), snapshot.Cleanup.Replacements...)
-		status.Cleanup = &projected
 	}
 	status.PendingInteractions = append([]agent.InteractionRequest(nil), snapshot.PendingInteractions...)
 	return status
@@ -142,35 +154,18 @@ func (backend *publicBackend) resolveInteraction(
 	if err != nil {
 		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
 	}
-	snapshot, err := session.Snapshot(ctx)
+	sessions, err := backend.taskSessions(ctx, session)
 	if err != nil {
 		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
 	}
-	var request agent.InteractionRequest
-	for _, candidate := range snapshot.PendingInteractions {
-		if candidate.ID == strings.TrimSpace(interactionID) {
-			request = candidate
-			break
+	for _, candidate := range sessions {
+		request, resolution, err := candidate.Respond(ctx, interactionID, response)
+		if errors.Is(err, agent.ErrInteractionStale) {
+			continue
 		}
+		return request, resolution, err
 	}
-	if request.ID == "" {
-		return agent.InteractionRequest{}, agent.InteractionResolution{}, fmt.Errorf("%w: id=%q", agent.ErrInteractionStale, interactionID)
-	}
-	resolution, err := agent.StandardInteraction().Resolve(ctx, request, response)
-	if err != nil {
-		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
-	}
-	run, found, err := session.AttachRun(ctx, snapshot.ActiveRunID)
-	if err != nil {
-		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
-	}
-	if !found || run == nil {
-		return agent.InteractionRequest{}, agent.InteractionResolution{}, agent.ErrRunSettled
-	}
-	if err := run.Respond(ctx, request.ID, response); err != nil {
-		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
-	}
-	return request, resolution, nil
+	return agent.InteractionRequest{}, agent.InteractionResolution{}, agent.ErrInteractionStale
 }
 
 func publicDeliveryKind(delivery agent.InputDelivery) agentrun.DeliveryKind {

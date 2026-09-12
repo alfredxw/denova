@@ -4,13 +4,152 @@ Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据�
 
 Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.4.2）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.2 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本（当前为 v0.4.5）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.5 后从未发布的中间格式不计入。
 
-`Unreleased` compares against the latest release (currently v0.4.2) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.2 are excluded.
+`Unreleased` compares against the latest release (currently v0.4.5) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.5 are excluded.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
+
+### Added / 新增
+
+- 写作与游戏支持暂停整个 Agent 任务，重启后继续原任务，保留已接收输入、子任务及游戏已接纳草稿；中断后结果不明的操作可核实或直接取消任务。
+- Pause an entire Writing or Game Agent task and continue it after restart, preserving accepted input, child tasks, and accepted Game drafts; verify uncertain interrupted operations or cancel the task directly.
+
+- 支持从设置中的“手动更新”上传 GitHub Release 安装包，离线校验后重启安装。
+- Upload a GitHub Release archive through Manual update in Settings, validate it offline, and restart to install.
+
+### Fixed / 修复
+
+- 写作与游戏的长任务可在同一个请求内反复压缩已完成步骤，保留当前要求与最近工具结果；超大工具输出可回读完整文件，重启后继续使用摘要。
+- Writing and Game long tasks can compact completed steps repeatedly within one request while preserving current instructions and recent tool results; complete oversized output remains readable from artifacts, and checkpoints survive restart.
+
+- 修复生成中途断流不能重试的问题，统一网络重试与输出修复次数，支持可取消退避，避免执行未接纳响应中的工具。
+- Retry interrupted model streams with one shared budget for network retries and output repair, cancellable backoff, and no execution of tools from unaccepted responses.
+
+- 修复设置部分保存失败后，已保存状态未同步、撤回修改后重试仍提交旧草稿的问题；保留未保存修改并展示逐文件结果。
+- Fixed partial settings saves leaving stale saved state or retrying withdrawn drafts; unsaved edits are preserved and per-file outcomes are shown.
+
+- 修复游戏已有摘要并保留旧回合时，再次压缩因上下文来源匹配失败而报错的问题。
+- Fix repeated game context compaction failing source validation when older turns remain visible beside an existing checkpoint.
+
+### Changed / 变更
+
+- 新版压缩首次写入前备份会话 journal 为 `.pre-incremental-compaction-v2.bak`。v0.4.5 的游戏摘要会从原始历史重建；新版回合内压缩边界不能由旧版直接解释。降回 v0.4.5 应恢复最早的升级前备份（已升级任务恢复格式时使用 `.pre-resilience-v1.bak`），并另行保留后续内容。
+- Conversation journals receive a `.pre-incremental-compaction-v2.bak` before their first new checkpoint. Game checkpoints from v0.4.5 are rebuilt from original history; the old release cannot interpret within-turn coverage. To return to v0.4.5, restore the earliest pre-upgrade backup (`.pre-resilience-v1.bak` when task recovery was also upgraded) and separately preserve newer content.
+
+- 新的任务恢复记录无法由 v0.4.5 直接读取；首次升级写入前为既有会话 journal 保留 `.pre-resilience-v1.bak`。降级需退出应用并恢复备份，备份之后的新内容应另行保留。
+- New task recovery records cannot be read directly by v0.4.5. Existing conversation journals receive a `.pre-resilience-v1.bak` before the first upgraded write. Downgrading requires stopping the app and restoring those backups while separately preserving newer content.
+
+## [v0.4.5] - 2026-09-09
+
+### Brief / 简要说明
+
+#### 中文
+
+- 修复写作与游戏的手动压缩和长故事反复压缩，摘要在继续回合与重启后保持有效。
+- 修复版本对比显示旧快照中的运行时文件，以及 Windows 开发环境的请求连接延迟。
+- 更新默认创作指令与内置叙事风格，迁移前备份旧默认内容，保留用户自定义内容。
+
+#### English
+
+- Fixed manual compaction in Writing and Game and repeated compaction in long stories; summaries remain valid across subsequent turns and restarts.
+- Fixed version comparisons exposing runtime files from older snapshots and request connection delays in Windows development.
+- Updated default creative instructions and built-in narrative styles, backing up retired defaults and preserving user customizations.
+
+### Changed / 调整
+
+- 清理默认创作指令中的破限提示，移除“直白情色”内置叙事风格；升级时备份并清理未修改的旧默认内容，保留用户自定义内容。
+- Remove unrestricted-content instructions from the default creator template and retire the Direct Erotica preset; back up unchanged released defaults during migration and preserve user customizations.
+
+### Fixed / 修复
+
+- 修复写作和游戏在查看上下文分析或重启后无法手动压缩的问题，以及游戏继续回合后摘要失效、长故事反复压缩的问题。
+- Fix manual context compaction after context analysis or restart in writing and games, and preserve game checkpoints across subsequent turns to prevent repeated compaction in long stories.
+
+- 版本对比沿用当前文件排除规则，不再显示旧快照中的会话锁等运行时文件；改善 Windows 开发环境的 API 连接复用与本机双栈连接。
+- Apply current file exclusions to historical version comparisons so runtime files such as session locks stay hidden; improve API connection reuse and local dual-stack connections in Windows development.
+
+## [v0.4.4] - 2026-09-08
+
+### Brief / 简要说明
+
+#### 中文
+
+- 首次开启局域网访问时自动生成随机用户名和密码，支持查看、复制与重新生成密码。
+- 修复局域网地址误用代理虚拟网卡、开发环境端口不正确的问题。
+- 修复长写作会话无法继续、子 Agent 结果读取失败，以及 Windows 版本管理报错。
+- 修复同一轮对话中后续工具审批失败或卡片消失的问题，可连续审批并继续执行。
+- 更新编辑器和 HTML 清理依赖，修复已知安全问题。
+
+#### English
+
+- Automatically generate a random username and password when enabling LAN access for the first time, with password viewing, copying, and regeneration.
+- Fixed LAN links selecting proxy tunnel addresses or the wrong port in development.
+- Fixed long writing conversations failing to continue, completed SubAgent result reads, and version management errors on Windows.
+- Fixed subsequent tool approvals failing or disappearing within a run, allowing consecutive approvals and continued execution.
+- Updated editor and HTML sanitization dependencies to address known security issues.
+
+### Changed / 调整
+
+- 首次开启局域网访问时自动补齐缺失的用户名和密码并一并保存，已有凭据继续保留；新密码可在当前设置页面查看、复制或重新生成。
+- Enabling LAN access now generates and saves missing credentials together while preserving existing credentials; newly entered or generated passwords can be viewed, copied, or regenerated in the current settings page.
+
+### Fixed / 修复
+
+- 局域网链接优先使用有效的内网地址，跳过代理使用的测试网段，并在本机开发代理下沿用实际网页端口；地址提示与配对二维码保持一致。
+- LAN links now prefer valid private network addresses, exclude proxy benchmarking networks, and preserve the actual web port behind a local development proxy; displayed addresses and pairing codes stay consistent.
+
+- 修复 Windows 上活动会话的锁文件导致版本状态读取及快照创建失败的问题。
+- Fixed active session lock files blocking version status and snapshot creation on Windows.
+
+- 修复长写作会话因上下文索引错位而无法继续的问题，已有会话可在重新加载后正常续写。
+- Fixed context index mismatches blocking long writing conversations; existing sessions can continue after reloading.
+
+- 修复同一轮对话后续工具审批提交失败，以及待审批卡片被历史刷新覆盖的问题。
+- Fixed subsequent tool approvals failing within a run and history refreshes hiding pending approval cards.
+
+- 修复多个观察者同时读取子 Agent 完成结果时，会话句柄关闭导致的偶发失败。
+- Fixed intermittent completed SubAgent result reads failing when another observer closes the shared session handle.
+
+### Security / 安全
+
+- 更新 Tiptap 与 DOMPurify，修复编辑器属性处理及 HTML 清理中的已知安全问题。
+- Updated Tiptap and DOMPurify to fix known security issues in editor attribute handling and HTML sanitization.
+
+## [v0.4.3] - 2026-09-07
+
+### Brief / 简要说明
+
+#### 中文
+
+- 改善手机网页与 PWA 的写作、游戏、导航和输入体验。
+- 修复局域网登录与刷新后的认证，支持一次性二维码登录。
+- 修复 Agent 设置保存覆盖无关配置，并将异常对话历史的影响限制在对应会话内。
+
+#### English
+
+- Improved writing, gameplay, navigation, and input on mobile web and PWA.
+- Fixed LAN sign-in and authentication after refresh, with one-use QR sign-in.
+- Prevented Agent settings saves from overwriting unrelated profiles and isolated invalid conversation history to the affected session.
+
+
+### Changed / 调整
+
+- 优化手机网页与 PWA 的导航、写作和游戏交互：全屏工作面板、独立正文与 Agent 视图、剧情历史与分支列表，以及适应软键盘的输入布局；保留桌面布局。
+- Improved mobile web and PWA navigation, writing, and gameplay with full-screen panels, separate editor and Agent views, readable story history and branches, and keyboard-aware input while preserving desktop layouts.
+
+### Fixed / 修复
+
+- 异常对话历史仅阻止对应会话或故事加载，避免影响其他会话和工作台使用。
+- Invalid conversation history now blocks only the affected session or story, keeping other conversations and the workbench usable.
+
+- 修复切换模型或保存 Agent 设置时覆盖无关配置文件的问题；按文件检查冲突并保留可恢复的变更记录。
+- Fixed model selection and Agent settings saves overwriting unrelated profiles; each changed file now checks for conflicts and retains recoverable history.
+
+- 修复局域网登录页面无法显示及刷新后反复认证的问题；浏览器可保持登录 30 天，并支持本机生成短时一次性登录二维码和链接。
+- Fixed LAN sign-in pages failing to load and repeated authentication after refresh; browsers stay signed in for 30 days and can connect through short-lived, one-use QR codes and links created on the host.
 
 ## [v0.4.2] - 2026-09-06
 

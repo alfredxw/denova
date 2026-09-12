@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'motion/react'
+import { MobileSheetHost } from './mobile-sheet-host'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { novaEase } from '@/features/motion/motion-tokens'
 
 export interface MobilePane {
@@ -13,6 +15,8 @@ export interface MobilePane {
   onOpen?: () => void
   onClose?: () => void
   className?: string
+  /** At most one default drawer per edge in a mobile surface. */
+  swipeToOpen?: boolean
 }
 
 export interface MobilePaneControls {
@@ -22,7 +26,7 @@ export interface MobilePaneControls {
   togglePane: (id: string) => void
 }
 
-interface MobilePaneHostProps {
+export interface MobilePaneHostProps {
   panes: MobilePane[]
   closeLabel: string
   children: ReactNode | ((controls: MobilePaneControls) => ReactNode)
@@ -40,7 +44,13 @@ const DRAG_START_DISTANCE = 8
 const DRAWER_SETTLE_MS = 180
 const DRAWER_OPEN_RATIO = 0.18
 
-export function MobilePaneHost({
+export function MobilePaneHost(props: MobilePaneHostProps) {
+  const isMobile = useIsMobile()
+  return isMobile ? <MobileSheetHost {...props} /> : <DesktopCollapsedPaneHost {...props} />
+}
+
+// Preserve surface-scoped desktop panes and their existing resize behavior.
+function DesktopCollapsedPaneHost({
   panes,
   closeLabel,
   children,
