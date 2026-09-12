@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -37,10 +38,12 @@ type LocalTaskAgent struct {
 	Description string
 	Opener      SessionOpener
 	Identity    agent.CapabilityIdentity
-	// Attributes are immutable parent-routing identity copied into every child
-	// Session. They let the Agent Source rebuild the selected Definition after
-	// a process restart without an executor-local task registry.
+	// Attributes contain the stable parent Session and definition selector.
+	// Per-Run ownership belongs in HostData and never changes Session identity.
 	Attributes map[string]string
+	// HostData binds Start/FollowUp to this executor's current host Run. Queue,
+	// Steer, and Resume retain the target Run's previously accepted binding.
+	HostData *agent.HostData
 	// LookupAttributes are the parent-stable subset used to find the exact
 	// durable child key again. Per-turn route attributes deliberately stay out
 	// of this selector, so an earlier TaskRef remains usable from later parent
@@ -58,10 +61,13 @@ type LocalTasks struct {
 	identity         agent.CapabilityIdentity
 	completionParent *agent.Session
 	maxResultBytes   int
-	startMu          sync.Mutex
 	watchMu          sync.Mutex
 	watched          map[string]struct{}
 }
+
+// Admission spans the count and accepted Run across all executor instances.
+// This mutex holds no task state; authoritative activity stays with Sessions.
+var localTaskAdmissionMu sync.Mutex
 
 func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*LocalTasks, error) {
 	if len(candidates) == 0 {
@@ -88,6 +94,7 @@ func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*Loc
 			return nil, fmt.Errorf("local task Agent %q is duplicated", candidate.Name)
 		}
 		candidate.Attributes = cloneTaskAttributes(candidate.Attributes)
+		candidate.HostData = cloneTaskHostData(candidate.HostData)
 		candidate.LookupAttributes = cloneTaskAttributes(candidate.LookupAttributes)
 		for name, value := range candidate.LookupAttributes {
 			if candidate.Attributes[name] != value {
@@ -149,9 +156,9 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 	}
 	sessionID := localTaskSessionID(candidate.Name, commandID)
 
-	tasks.startMu.Lock()
-	defer tasks.startMu.Unlock()
-	if existing, found, existingErr := tasks.existingTask(ctx, candidate, sessionID, commandID); existingErr != nil {
+	localTaskAdmissionMu.Lock()
+	defer localTaskAdmissionMu.Unlock()
+	if existing, found, existingErr := tasks.existingTask(ctx, candidate, sessionID, commandID, prompt); existingErr != nil {
 		return Task{}, existingErr
 	} else if found {
 		if completionErr := tasks.resumeCompletionTracking(ctx, existing); completionErr != nil {
@@ -159,18 +166,14 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		}
 		return existing, nil
 	}
-	active, err := tasks.activeTaskCount(ctx)
-	if err != nil {
-		return Task{}, fmt.Errorf("count active tasks: %w", err)
-	}
-	if active >= tasks.parallelism {
-		return Task{}, fmt.Errorf("%w: %d active tasks reached the configured limit of %d", ErrTaskCapacityExceeded, active, tasks.parallelism)
+	if err := tasks.checkCapacity(ctx); err != nil {
+		return Task{}, err
 	}
 	session, err := candidate.Opener.Session(ctx, localTaskSessionKey(candidate, sessionID))
 	if err != nil {
 		return Task{}, fmt.Errorf("open task Session: %w", err)
 	}
-	run, err := session.Run(ctx, agent.Input{Text: prompt, IdempotencyKey: commandID})
+	run, err := session.Run(ctx, agent.Input{Text: prompt, IdempotencyKey: commandID, HostData: cloneTaskHostData(candidate.HostData)})
 	if err != nil {
 		if deleteErr := session.Delete(context.Background()); deleteErr != nil {
 			return Task{}, errors.Join(
@@ -186,7 +189,8 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		return Task{}, completionErr
 	}
 	tasks.watchCompletion(ctx, run, ref)
-	return Task{Ref: ref, Status: "running"}, nil
+	receipt := run.Receipt()
+	return Task{Ref: ref, Status: "running", Receipt: &receipt}, nil
 }
 
 func (tasks *LocalTasks) Observe(ctx context.Context, ref TaskRef, cursor string) (TaskObservation, error) {
@@ -226,7 +230,7 @@ func (tasks *LocalTasks) observe(ctx context.Context, ref TaskRef, cursor string
 	if result.Output != "" {
 		result.Task.Output = result.Output
 	}
-	if terminal {
+	if terminal && observation.Snapshot.ActiveRunID == "" && len(observation.Snapshot.QueuedRuns) == 0 {
 		err = errors.Join(err, session.Close(context.Background()))
 	}
 	return result, err
@@ -244,6 +248,11 @@ func (tasks *LocalTasks) Steer(ctx context.Context, ref TaskRef, input agent.Inp
 		}
 		return err
 	}
+	original, _, err := session.RunInput(ctx, ref.Run)
+	if err != nil {
+		return err
+	}
+	input.HostData = original.HostData
 	_, err = run.Steer(ctx, input)
 	return err
 }
@@ -289,6 +298,7 @@ func (tasks *LocalTasks) existingTask(
 	candidate LocalTaskAgent,
 	sessionID string,
 	commandID string,
+	prompt string,
 ) (Task, bool, error) {
 	keys, err := taskSessionKeys(ctx, candidate, sessionID)
 	if err != nil {
@@ -312,6 +322,13 @@ func (tasks *LocalTasks) existingTask(
 	ref := TaskRef{Agent: candidate.Name, Session: sessionID}
 	if snapshot.ActiveCommandID == commandID {
 		ref.Run = snapshot.ActiveRunID
+		original, _, err := session.RunInput(ctx, ref.Run)
+		if err != nil {
+			return Task{}, false, err
+		}
+		if original.Text != prompt {
+			return Task{}, false, agent.ErrIdempotencyConflict
+		}
 		task, taskErr := taskFromSnapshot(ref, snapshot)
 		return task, true, taskErr
 	}
@@ -320,9 +337,16 @@ func (tasks *LocalTasks) existingTask(
 			continue
 		}
 		ref.Run = snapshot.RecentRuns[index].ID
+		if original, found, err := session.RunInput(ctx, ref.Run); err != nil {
+			return Task{}, false, err
+		} else if found && original.Text != prompt {
+			return Task{}, false, agent.ErrIdempotencyConflict
+		}
 		task, taskErr := tasks.taskFromSessionSnapshot(ctx, session, ref, snapshot)
-		if closeErr := session.Close(context.Background()); closeErr != nil {
-			taskErr = errors.Join(taskErr, closeErr)
+		if snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 {
+			if closeErr := session.Close(context.Background()); closeErr != nil {
+				taskErr = errors.Join(taskErr, closeErr)
+			}
 		}
 		return task, true, taskErr
 	}
@@ -354,10 +378,12 @@ func (tasks *LocalTasks) activeTaskCount(ctx context.Context) (int, error) {
 			if snapshotErr != nil {
 				return 0, snapshotErr
 			}
-			if snapshot.ActiveRunID != "" {
+			if snapshot.ActiveRunID != "" && snapshot.ActiveStatus != agent.ResultSuspended {
 				total++
-			} else if closeErr := session.Close(context.Background()); closeErr != nil {
-				return 0, closeErr
+			} else if snapshot.ActiveRunID == "" {
+				if closeErr := session.Close(context.Background()); closeErr != nil {
+					return 0, closeErr
+				}
 			}
 		}
 	}
@@ -381,6 +407,9 @@ func (tasks *LocalTasks) openExisting(
 	candidate LocalTaskAgent,
 	sessionID string,
 ) (*agent.Session, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return nil, errors.New("task Session ID is required")
+	}
 	keys, err := taskSessionKeys(ctx, candidate, sessionID)
 	if err != nil {
 		return nil, err
@@ -460,6 +489,13 @@ func cloneTaskAttributes(source map[string]string) map[string]string {
 		cloned[name] = value
 	}
 	return cloned
+}
+
+func cloneTaskHostData(data *agent.HostData) *agent.HostData {
+	if data == nil {
+		return nil
+	}
+	return &agent.HostData{Type: data.Type, Version: data.Version, Data: append(json.RawMessage(nil), data.Data...)}
 }
 
 var _ TaskExecutor = (*LocalTasks)(nil)

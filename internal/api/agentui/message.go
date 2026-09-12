@@ -54,6 +54,9 @@ func MessagesFromHistoryAtOffset(entries []appsvc.AgentSessionHistoryEntry, offs
 }
 
 func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (Message, bool) {
+	if entry.Status == "discarded" {
+		return Message{}, false
+	}
 	if entry.Type == "clear" {
 		return assistantDataMessage(entry, index, DataTypeClear, map[string]any{
 			"created_at": formatEntryTime(entry),

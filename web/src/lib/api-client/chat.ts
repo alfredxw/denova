@@ -123,7 +123,7 @@ export type AgentRuntimeQueueDelivery = AgentCommandDelivery | 'next_turn'
 export type AgentQueuedCommandAction = 'steer_queued' | 'cancel_queued'
 
 export type AgentRuntimeRecoveryActionKind =
-  'start_turn' | 'steer' | 'follow_up' | 'next_turn' | 'compact_context' | 'remove_compaction' | 'abort'
+  'start_turn' | 'resume' | 'steer' | 'follow_up' | 'next_turn' | 'compact_context' | 'remove_compaction' | 'abort'
 
 /** Public, payload-free identity selected from the server recovery projection. */
 export interface AgentRuntimeRecoveryAction {
@@ -225,11 +225,11 @@ export function answerSessionAsk(sessionId: string, askId: string, answers: Agen
   })
 }
 
-export function cancelSessionAsk(sessionId: string, askId: string): Promise<AgentAskResolution> {
+export function cancelSessionAsk(sessionId: string, askId: string, reason = 'user_cancelled'): Promise<AgentAskResolution> {
   return requestJSON(`/api/session/asks/${encodeURIComponent(askId)}/cancel`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ session_id: sessionId, reason: 'user_cancelled' }),
+    body: JSON.stringify({ session_id: sessionId, reason }),
   })
 }
 
@@ -244,7 +244,7 @@ export function recoverChatAgentRuntime(action: AgentRuntimeRecoveryAction, sess
 
 /** Submit a command to the exact operation currently shown by the client. */
 export async function submitChatCommand(
-  type: AgentCommandDelivery | 'abort',
+  type: AgentCommandDelivery | 'abort' | 'suspend',
   commandId: string,
   targetOperationId: string,
   sessionId: string,

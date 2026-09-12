@@ -1,10 +1,9 @@
 package compaction
 
 import (
-	agent "github.com/alfredxw/denova/agent"
+	agenttoolresult "github.com/alfredxw/denova/agent/toolresult"
 
 	"denova/config"
-	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/toolresult"
 )
 
@@ -38,12 +37,7 @@ func EstimateProjectionReservesForModel(
 	}
 	contextPolicy := config.ResolveAgentContext(cfg, agentKind)
 	if contextPolicy.ToolResultContextEnabled {
-		// A result is bounded at the tool boundary before it is persisted. Reserve
-		// for one such result; older exchanges are owned by normal compaction.
-		toolResultTokens = toolResultLimitBytes(cfg) / 3
-		if window > 0 {
-			toolResultTokens = min(toolResultTokens, max(1024, window/10))
-		}
+		toolResultTokens = (agenttoolresult.Policy{MaxBytes: toolResultLimitBytes(cfg), ContextWindowTokens: window}).BatchTokenLimit()
 	}
 	return completionTokens, toolResultTokens
 }
@@ -54,67 +48,4 @@ func toolResultLimitBytes(cfg *config.Config) int {
 		limitKB = cfg.AgentToolResultLimitKB
 	}
 	return toolresult.NormalizeLimitBytes(limitKB * 1024)
-}
-
-func withDefaultContextProjectionReserves(cfg *config.Config, agentKind string, input Input, expectedOutputChars int) Input {
-	completion, tools := EstimateProjectionReserves(cfg, agentKind, expectedOutputChars)
-	if input.ReservedCompletionTokens <= 0 {
-		input.ReservedCompletionTokens = completion
-	}
-	if input.ReservedToolResultTokens <= 0 {
-		input.ReservedToolResultTokens = tools
-	}
-	return input
-}
-
-func projectedContextTokens(promptTokens int, input Input) int {
-	return max(1, promptTokens+max(0, input.ReservedCompletionTokens)+max(0, input.ReservedToolResultTokens))
-}
-
-// calibratedContextTokens uses provider usage only as a one-way correction
-// measured on the exact previous request. The current assembly is still
-// projected locally, so newly added tool results and completion reserves
-// cannot be mistaken for usage the provider has not observed yet.
-func calibratedContextTokens(estimated int, input Input) int {
-	return (agent.CompactionMetrics{
-		ObservedPromptTokens:   input.ObservedPromptTokens,
-		ObservedEstimateTokens: input.ObservedEstimateTokens,
-	}).CalibratedTokens(estimated)
-}
-
-// RecalculateProjection applies the same provider/local
-// calibration and completion/tool reserves used by Prepare to
-// an exact post-compaction message estimate. Domain conversations must call it
-// after re-injecting stable provider-visible state.
-func RecalculateProjection(result Result, estimatedPromptTokens int) Result {
-	input := Input{
-		ObservedPromptTokens:     result.ObservedPromptTokens,
-		ObservedEstimateTokens:   result.ObservedEstimateTokens,
-		ReservedCompletionTokens: result.ReservedCompletionTokens,
-		ReservedToolResultTokens: result.ReservedToolResultTokens,
-	}
-	result.TokensAfter = calibratedContextTokens(estimatedPromptTokens, input)
-	result.ProjectedTokensAfter = projectedContextTokens(result.TokensAfter, input)
-	applyContextCompactionRecovery(&result)
-	return result
-}
-
-// LatestPromptUsageCalibration returns the newest exact provider/local token
-// pair suitable for calibrating the next context projection.
-func LatestPromptUsageCalibration(messages []*agent.Message, tools []*agent.ToolInfo) (observed, estimated int) {
-	for index := len(messages) - 1; index >= 0; index-- {
-		message := messages[index]
-		if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.PromptTokens <= 0 {
-			continue
-		}
-		return message.ResponseMeta.Usage.PromptTokens, agentcontext.EstimateTokens(messages[:index], tools)
-	}
-	return 0, 0
-}
-
-func compactionSourceBaseMessages(input Input) []*agent.Message {
-	if input.SourceMessagesSet || len(input.SourceMessages) > 0 {
-		return input.SourceMessages
-	}
-	return input.Messages
 }

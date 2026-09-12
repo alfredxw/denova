@@ -12,6 +12,36 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Added / 新增
+
+- 写作与游戏支持暂停整个 Agent 任务，重启后继续原任务，保留已接收输入、子任务及游戏已接纳草稿；中断后结果不明的操作可核实或直接取消任务。
+- Pause an entire Writing or Game Agent task and continue it after restart, preserving accepted input, child tasks, and accepted Game drafts; verify uncertain interrupted operations or cancel the task directly.
+
+- 支持从设置中的“手动更新”上传 GitHub Release 安装包，离线校验后重启安装。
+- Upload a GitHub Release archive through Manual update in Settings, validate it offline, and restart to install.
+
+### Fixed / 修复
+
+- 写作与游戏的长任务可在同一个请求内反复压缩已完成步骤，保留当前要求与最近工具结果；超大工具输出可回读完整文件，重启后继续使用摘要。修正压缩后的 token 校准，避免多余压缩与误报容量不足。
+- Writing and Game long tasks can compact completed steps repeatedly within one request while preserving current instructions and recent tool results; complete oversized output remains readable from artifacts, and checkpoints survive restart. Correct post-compaction token calibration to avoid redundant summaries and false capacity failures.
+
+- 修复生成中途断流不能重试的问题，统一网络重试与输出修复次数，支持可取消退避，避免执行未接纳响应中的工具。
+- Retry interrupted model streams with one shared budget for network retries and output repair, cancellable backoff, and no execution of tools from unaccepted responses.
+
+- 修复设置部分保存失败后，已保存状态未同步、撤回修改后重试仍提交旧草稿的问题；保留未保存修改并展示逐文件结果。
+- Fixed partial settings saves leaving stale saved state or retrying withdrawn drafts; unsaved edits are preserved and per-file outcomes are shown.
+
+- 修复游戏已有摘要并保留旧回合时，再次压缩因上下文来源匹配失败而报错的问题。
+- Fix repeated game context compaction failing source validation when older turns remain visible beside an existing checkpoint.
+
+### Changed / 变更
+
+- 新版压缩首次写入前备份会话 journal 为 `.pre-incremental-compaction-v2.bak`。v0.4.5 的游戏摘要会从原始历史重建；新版回合内压缩边界不能由旧版直接解释。降回 v0.4.5 应恢复最早的升级前备份（已升级任务恢复格式时使用 `.pre-resilience-v1.bak`），并另行保留后续内容。
+- Conversation journals receive a `.pre-incremental-compaction-v2.bak` before their first new checkpoint. Game checkpoints from v0.4.5 are rebuilt from original history; the old release cannot interpret within-turn coverage. To return to v0.4.5, restore the earliest pre-upgrade backup (`.pre-resilience-v1.bak` when task recovery was also upgraded) and separately preserve newer content.
+
+- 新的任务恢复记录无法由 v0.4.5 直接读取；首次升级写入前为既有会话 journal 保留 `.pre-resilience-v1.bak`。降级需退出应用并恢复备份，备份之后的新内容应另行保留。
+- New task recovery records cannot be read directly by v0.4.5. Existing conversation journals receive a `.pre-resilience-v1.bak` before the first upgraded write. Downgrading requires stopping the app and restoring those backups while separately preserving newer content.
+
 ## [v0.4.5] - 2026-09-09
 
 ### Brief / 简要说明

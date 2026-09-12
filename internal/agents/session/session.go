@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -238,7 +239,7 @@ func (s *Session) History() []HistoryEntry {
 	}
 	segmentedAssistantContentByRun := make(map[string]*assistantDisplayCoverage)
 	for _, record := range s.records {
-		if record.kind != historyTypeDisplay || record.display == nil || record.display.Role != "assistant" || record.display.SubAgent {
+		if record.kind != historyTypeDisplay || record.display == nil || record.display.Status == "discarded" || record.display.Role != "assistant" || record.display.SubAgent {
 			continue
 		}
 		if runID := strings.TrimSpace(record.display.RunID); runID != "" {
@@ -338,6 +339,11 @@ func (s *Session) History() []HistoryEntry {
 				DurationMS:           record.display.DurationMS,
 				RunStatus:            record.display.RunStatus,
 			})
+		}
+	}
+	if s.projection != nil {
+		if err := applyJournalAskAnswers(result, &s.projection.AgentSessions); err != nil {
+			slog.Error("Project Agent interaction answers failed", "session_id", s.ID, "error", err)
 		}
 	}
 	return normalizeCompletedToolDisplayEntries(result)

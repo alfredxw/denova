@@ -41,12 +41,14 @@ const (
 	RunPhaseIdle       RunPhase = "idle"
 	RunPhaseRunning    RunPhase = "running"
 	RunPhaseCompacting RunPhase = "compacting"
+	RunPhaseSuspended  RunPhase = "suspended"
 )
 
 const (
 	PhaseIdle       = RunPhaseIdle
 	PhaseRunning    = RunPhaseRunning
 	PhaseCompacting = RunPhaseCompacting
+	PhaseSuspended  = RunPhaseSuspended
 )
 
 // OperationStatus is the terminal state of one accepted Agent operation.
@@ -156,10 +158,9 @@ type RuntimeStatus struct {
 	OpenToolCalls            []OpenToolCall
 	LastOperation            *OperationSummary
 	RecentOperations         []OperationSummary
-	// Cleanup and Compaction are read-only projections of the public Agent
+	// Compaction is a read-only projection of the public Agent
 	// Session capabilities. Product stores may display them, but must never
 	// persist competing maintenance state.
-	Cleanup             *agent.CleanupState
 	Compaction          *AgentCompactionState
 	PendingInteractions []agent.InteractionRequest
 }
@@ -167,13 +168,13 @@ type RuntimeStatus struct {
 // AgentCompactionState is the bounded public Session checkpoint projection.
 // Product stores may render it but must not persist a competing checkpoint.
 type AgentCompactionState struct {
-	ID              string
-	Revision        uint64
-	Summary         string
-	TokenEstimate   int
-	ReplacementFrom int
-	ReplacementTo   int
-	ContextData     *RestoreData
+	ID                 string
+	Revision           uint64
+	Summary            string
+	TokensBefore       int
+	TokensAfter        int
+	SourceMessageCount int
+	ContextData        *RestoreData
 }
 
 type StatusSnapshot = RuntimeStatus

@@ -11,8 +11,8 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// RecoveryObservation attaches a new display stream to an active in-process
-// Agent Run. It does not resume work after a process restart.
+// RecoveryObservation observes accepted work without executing it. Resume
+// performs the selected attach, continue, or cancel action explicitly.
 type RecoveryObservation struct {
 	publicBackend     *publicBackend
 	publicSession     *agent.Session
@@ -25,6 +25,7 @@ type RecoveryObservation struct {
 
 	mu                      sync.Mutex
 	publicTerminalDelivered bool
+	publicAborted           bool
 }
 
 func (s *Runtime) OpenRecoveryObservation(ctx context.Context, options agentrun.Options) (*RecoveryObservation, error) {

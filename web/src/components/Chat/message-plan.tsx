@@ -44,8 +44,8 @@ export function ContextCompactionBlock({ message }: { message: ContextCompaction
               <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${status === 'error' ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}>
                 {t(`chat.contextCompaction.status.${status}`)}
               </span>
-              {message.epoch ? (
-                <span className="font-mono text-[10px] text-[var(--nova-text-faint)]">epoch {message.epoch}</span>
+              {message.revision ? (
+                <span className="font-mono text-[10px] text-[var(--nova-text-faint)]">{t('chat.contextCompaction.revision', { revision: message.revision })}</span>
               ) : null}
               {message.attempt && message.attempt > 1 ? (
                 <span className="font-mono text-[10px] text-[var(--nova-text-faint)]">{t('chat.contextCompaction.attempt', { count: message.attempt })}</span>

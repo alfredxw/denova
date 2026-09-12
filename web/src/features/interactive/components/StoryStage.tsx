@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Button } from '@/components/ui/button'
+import { AgentTaskControls } from '@/components/Chat/AgentTaskControls'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
@@ -11,12 +12,12 @@ import type { ComposerTokenInputHandle, ComposerTokenSpec, ComposerTrigger } fro
 import type { ContextAnalysis } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentMessageDisplayText, createAgentDataMessage } from '@/lib/agent-ui-message'
-import { agentSubAgentSessionKey, agentViewContent, type AgentMessageView } from '@/lib/agent-message-view'
+import { agentSubAgentSessionKey, agentViewContent, agentViewAskID, agentViewAskInteraction, type AgentMessageView } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import type { ConversationConfigBinding, ConversationConfigChanges } from '@/features/conversation-config/types'
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
-import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
+import { analyzeInteractiveContext, getActiveInteractiveChat, getInteractiveHistoryPage, removeInteractiveContextCompaction, resolveInteractiveAsk, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
 import { sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
@@ -208,6 +209,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     turnNavigationItems,
     turnsById,
   } = useStoryStageMessages({
+    pendingAsk: stageRun.runtime.pendingAsk,
     snapshot: displaySnapshot,
     rewindTurnId,
     liveMessages,
@@ -334,7 +336,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     setActiveSkillCommandIndex(0)
   }
 
-  const { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, send, steerQueuedCommand, stop } = useStoryStageRuntime({
+  const { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, send, steerQueuedCommand, stop, suspend, resumeTask } = useStoryStageRuntime({
     stageKey,
     storyId,
     branchId,
@@ -710,6 +712,16 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 projectId={projectId}
                 attachmentScope={storyId ? { kind: 'story', id: storyId } : undefined}
                 messages={agentMessages}
+                onResolveAsk={async (view, action) => {
+                  const askID = agentViewAskID(view)
+                  const result = await resolveInteractiveAsk(storyId, branchId, askID, action)
+                  const previous = agentViewAskInteraction(view)
+                  if (previous && result.status !== 'pending') {
+                    setStageLiveMessages(current => [...current, createAgentDataMessage({ id: `ask-${askID}`, type: 'agent-ask', data: { ...previous, ...result } })])
+                  }
+                  interactiveAgentCommands.project(await getActiveInteractiveChat(storyId, branchId))
+                  return result
+                }}
                 isStreaming={streaming}
                 activityContent={stageRun.runtime.recoveryPaused ? t('storyStage.activity.recoveryPaused') : activityContent}
                 highlightDialogue
@@ -761,6 +773,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         </div>
       </div>
       <StoryStageComposer
+        taskControls={(streaming || stageRun.runtime.phase === 'suspended') && <AgentTaskControls active={streaming} suspended={stageRun.runtime.phase === 'suspended'} pending={commandSubmitting || stageRun.runtime.abortPending} onSuspend={() => void suspend()} onResume={() => void resumeTask()} onAbort={() => void stop()} />}
         layout={{ projectId, creatingStory: storySetupVisible || (waitingToStartOpening && (!isMobile || !streaming)), isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}

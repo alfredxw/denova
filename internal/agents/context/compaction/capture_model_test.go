@@ -43,3 +43,11 @@ func (model *compactionForkCaptureModel) capture(input []*agent.Message, opts []
 	model.inputs = append(model.inputs, messages)
 	model.options = append(model.options, agent.GetCommonOptions(nil, opts...))
 }
+
+func cloneMessages(messages []*agent.Message) []*agent.Message {
+	result := make([]*agent.Message, len(messages))
+	for index, message := range messages {
+		result[index] = message.Clone()
+	}
+	return result
+}

@@ -121,7 +121,7 @@ func (t *Task) mergeDisplayCheckpointEventLocked(event agentrun.Event) bool {
 			return true
 		}
 		return t.mergeDisplayCheckpointTextLocked(event, "delta")
-	case "tool_call", "tool_result", "done", "error", "aborted", "agent_cycle_started":
+	case "tool_call", "tool_result", "done", "error", "aborted", "suspended", "agent_cycle_started":
 		return false
 	}
 

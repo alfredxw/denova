@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"denova/internal/agents/sessionjournal"
 	"denova/internal/localfs"
@@ -94,7 +95,17 @@ func (s *Session) releasedContextCompactionMigration(agentKind string) (released
 	if createdAt.IsZero() {
 		createdAt = s.UpdatedAt
 	}
-	state := agent.CompactionState{
+	state := struct {
+		ID              string                  `json:"id"`
+		Revision        uint64                  `json:"revision"`
+		SourceRevision  string                  `json:"source_revision"`
+		Summary         string                  `json:"summary"`
+		TokenEstimate   int                     `json:"token_estimate"`
+		Metrics         agent.CompactionMetrics `json:"metrics"`
+		ReplacementFrom int                     `json:"replacement_from"`
+		ReplacementTo   int                     `json:"replacement_to"`
+		CreatedAt       time.Time               `json:"created_at"`
+	}{
 		ID: record.ID, Revision: revision,
 		SourceRevision: fmt.Sprintf("product-session-v0.3.3:%s", record.ID),
 		Summary:        record.Summary, TokenEstimate: record.TokensAfter,

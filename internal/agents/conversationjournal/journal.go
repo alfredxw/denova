@@ -38,6 +38,7 @@ type Journal struct {
 	stats               ReplayStats
 	closed              bool
 	projectionInvalid   bool
+	backupUpgrades      map[string]bool
 }
 
 // Open restores a reducer from the sidecar and replays only the unindexed

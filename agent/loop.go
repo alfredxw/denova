@@ -13,12 +13,14 @@ type loopConfig struct {
 	Description     string
 	Instruction     string
 	Model           BaseChatModel
+	ModelIdentity   CapabilityIdentity
 	Tools           []ToolDefinition
 	ResultProcessor ToolResultProcessor
 	Artifacts       ToolArtifactStorage
 
-	Middlewares []Middleware
-	Retry       *RetryConfig
+	Middlewares      []Middleware
+	Retry            *RetryConfig
+	ModelMaxAttempts int
 
 	// MaxIterations is an explicit caller-owned guard. Zero means unlimited;
 	// the agent runtime never installs an implicit iteration limit.
@@ -31,7 +33,7 @@ type loopConfig struct {
 
 	// modelCallGate is owned by the Agent lifecycle. It runs after all
 	// caller middleware has formed the exact provider-neutral request and may
-	// restart the first model step after publishing a checkpoint.
+	// replace the call with the validated preparation after publishing a checkpoint.
 	modelCallGate modelCallGate
 
 	// permission is the Agent-owned authorization fence. It is intentionally
@@ -41,12 +43,15 @@ type loopConfig struct {
 	permission *permissionMiddleware
 }
 
-type modelCallRestart struct {
-	Messages             []*Message
-	stablePrefixMessages int
+type preparedModelCall struct {
+	ctx             context.Context
+	call            *ModelCall
+	modelContext    *ModelContext
+	state           *RunState
+	feedbackIndexes []int
 }
 
-type modelCallGate func(context.Context, *ModelCall, *ModelContext) (*modelCallRestart, error)
+type modelCallGate func(context.Context, *ModelCall, *ModelContext) (*preparedModelCall, error)
 
 const (
 	defaultToolParallelism = 8
@@ -56,20 +61,22 @@ const (
 // modelToolLoop owns one provider-neutral model/tool loop. Session and Run
 // lifecycle are intentionally owned by the higher-level Agent module.
 type modelToolLoop struct {
-	name            string
-	description     string
-	instruction     string
-	model           BaseChatModel
-	tools           []ToolDefinition
-	middlewares     []Middleware
-	resultProcessor ToolResultProcessor
-	artifacts       ToolArtifactStorage
-	retry           *RetryConfig
-	maxIterations   int
-	idleTimeout     time.Duration
-	toolParallelism int
-	modelCallGate   modelCallGate
-	permission      *permissionMiddleware
+	name             string
+	description      string
+	instruction      string
+	model            BaseChatModel
+	modelIdentity    CapabilityIdentity
+	tools            []ToolDefinition
+	middlewares      []Middleware
+	resultProcessor  ToolResultProcessor
+	artifacts        ToolArtifactStorage
+	retry            *RetryConfig
+	modelMaxAttempts int
+	maxIterations    int
+	idleTimeout      time.Duration
+	toolParallelism  int
+	modelCallGate    modelCallGate
+	permission       *permissionMiddleware
 }
 
 // errMaxIterations is returned only when the caller explicitly configures a limit.
@@ -104,8 +111,8 @@ func newModelToolLoop(ctx context.Context, config loopConfig) (*modelToolLoop, e
 		}
 	}
 	retry := config.Retry
-	if retry != nil && retry.MaxRetries < 0 {
-		return nil, errors.New("new agent: retry MaxRetries cannot be negative")
+	if config.ModelMaxAttempts < 0 {
+		return nil, errors.New("new agent: ModelMaxAttempts cannot be negative")
 	}
 	if config.MaxIterations < 0 {
 		return nil, errors.New("new agent: MaxIterations cannot be negative")
@@ -120,20 +127,22 @@ func newModelToolLoop(ctx context.Context, config loopConfig) (*modelToolLoop, e
 		parallelism = maxToolParallelism
 	}
 	return &modelToolLoop{
-		name:            config.Name,
-		description:     config.Description,
-		instruction:     config.Instruction,
-		model:           config.Model,
-		tools:           tools,
-		middlewares:     middlewares,
-		resultProcessor: config.ResultProcessor,
-		artifacts:       config.Artifacts,
-		retry:           retry,
-		maxIterations:   config.MaxIterations,
-		idleTimeout:     config.IdleTimeout,
-		toolParallelism: parallelism,
-		modelCallGate:   config.modelCallGate,
-		permission:      config.permission,
+		name:             config.Name,
+		description:      config.Description,
+		instruction:      config.Instruction,
+		model:            config.Model,
+		modelIdentity:    config.ModelIdentity,
+		tools:            tools,
+		middlewares:      middlewares,
+		resultProcessor:  config.ResultProcessor,
+		artifacts:        config.Artifacts,
+		retry:            retry,
+		modelMaxAttempts: max(1, config.ModelMaxAttempts),
+		maxIterations:    config.MaxIterations,
+		idleTimeout:      config.IdleTimeout,
+		toolParallelism:  parallelism,
+		modelCallGate:    config.modelCallGate,
+		permission:       config.permission,
 	}, nil
 }
 
@@ -282,75 +291,26 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 		}
 
 		modelContext := &ModelContext{
-			Tools: cloneToolInfos(state.ToolInfos), Retry: agent.retry, Iteration: iteration,
-			stablePrefixSeed: cloneMessages(stablePrefixSeed),
+			Tools: cloneToolInfos(state.ToolInfos), Iteration: iteration,
+			stablePrefixSeed: cloneMessages(stablePrefixSeed), instruction: runContext.Instruction,
 		}
-		for _, middleware := range agent.middlewares {
-			ctx, state, err = middleware.BeforeModelRewriteState(ctx, state, modelContext)
-			if err != nil {
-				events.Send(agent.errorEvent(fmt.Errorf("before model middleware: %w", err)))
-				return
-			}
-			if ctx == nil {
-				events.Send(agent.errorEvent(errors.New("before model middleware returned nil Go context")))
-				return
-			}
-			if state == nil {
-				events.Send(agent.errorEvent(errors.New("before model middleware returned nil state")))
-				return
-			}
-		}
-		modelContext.Tools = cloneToolInfos(state.ToolInfos)
-
-		modelForCall, err := agent.modelForCall(ctx, modelContext)
+		step, err := agent.prepareModelStep(ctx, state, modelContext, input.EnableStreaming)
 		if err != nil {
 			events.Send(agent.errorEvent(err))
 			return
 		}
-		modelOptions := []ModelOption{WithTools(state.ToolInfos)}
-		if sessionKey, ok := SessionKeyFromContext(ctx); ok {
-			modelOptions = append(modelOptions, WithSessionKey(sessionKey))
-		}
-		modelCall := &ModelCall{
-			Model: modelForCall, Messages: cloneMessages(state.Messages),
-			Options: modelOptions, Streaming: input.EnableStreaming,
-		}
-		modelContext.maintenanceMessages = cloneMessages(modelCall.Messages)
-		for _, middleware := range agent.middlewares {
-			ctx, modelCall, err = middleware.BeforeModelCall(ctx, modelCall, modelContext)
-			if err != nil {
-				events.Send(agent.errorEvent(fmt.Errorf("before model call middleware: %w", err)))
-				return
-			}
-			if ctx == nil {
-				events.Send(agent.errorEvent(errors.New("before model call middleware returned nil Go context")))
-				return
-			}
-			if modelCall == nil || modelCall.Model == nil {
-				events.Send(agent.errorEvent(errors.New("before model call middleware returned nil model call")))
-				return
-			}
-		}
-		modelCall.stablePrefixMessages = authenticatedStablePrefixMessages(modelCall.Messages, stablePrefixSeed)
+		ctx, state, modelContext = step.ctx, step.state, step.modelContext
+		modelCall := step.call
 		if agent.modelCallGate != nil {
-			restart, gateErr := agent.modelCallGate(ctx, modelCall, modelContext)
+			restart, gateErr := agent.applyModelCallGate(ctx, modelCall, modelContext, options.cancel)
 			if gateErr != nil {
 				events.Send(agent.errorEvent(fmt.Errorf("agent model call gate: %w", gateErr)))
 				return
 			}
 			if restart != nil {
-				if len(restart.Messages) == 0 {
-					events.Send(agent.errorEvent(errors.New("agent model call gate returned an empty restart context")))
-					return
-				}
-				state.Messages = cloneMessages(restart.Messages)
-				stablePrefixMessages = min(max(0, restart.stablePrefixMessages), len(state.Messages))
-				stablePrefixSeed = cloneMessages(state.Messages[:stablePrefixMessages])
-				ctx = contextWithMaintenanceCommitted(ctx)
-				// A checkpoint restart has not called the provider and therefore
-				// does not consume a model iteration or the caller's explicit cap.
-				iteration--
-				continue
+				ctx, state, modelContext = restart.ctx, restart.state, restart.modelContext
+				modelCall = restart.call
+				stablePrefixSeed = cloneMessages(modelContext.stablePrefixSeed)
 			}
 		}
 		modelCall.stablePrefixMessages = authenticatedStablePrefixMessages(modelCall.Messages, stablePrefixSeed)
@@ -376,6 +336,7 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			options.cancel,
 		)
 		ctx = nextCtx
+		stablePrefixSeed = cloneMessages(modelContext.stablePrefixSeed)
 		if err != nil {
 			var cancelErr *cancelError
 			if !errors.As(err, &cancelErr) {

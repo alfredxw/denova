@@ -12,7 +12,7 @@ import (
 )
 
 // ResolveAsk adapts Denova's stable transport shape to the public Interaction
-// response vocabulary. It never writes the product Session journal.
+// response vocabulary. Only the owning Agent journal accepts the answer.
 func (runtime *Runtime) ResolveAsk(
 	ctx context.Context,
 	options agentrun.Options,
@@ -20,22 +20,8 @@ func (runtime *Runtime) ResolveAsk(
 	answers []agentconversation.HostAskAnswer,
 	cancelReason string,
 ) (agentconversation.HostAskResolution, error) {
-	statusSnapshot, err := runtime.RuntimeStatusProjection(ctx, options)
-	if err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	var pending agent.InteractionRequest
-	for _, candidate := range statusSnapshot.PendingInteractions {
-		if candidate.ID == strings.TrimSpace(askID) {
-			pending = candidate
-			break
-		}
-	}
-	if pending.ID == "" {
-		return agentconversation.HostAskResolution{}, agent.ErrInteractionStale
-	}
 	response := agent.InteractionResponse{Cancelled: status == session.AskCancelled}
-	if !response.Cancelled && pending.Kind == agent.InteractionPermission {
+	if !response.Cancelled && len(answers) == 1 && answers[0].QuestionID == "tool-approval" {
 		if len(answers) != 1 || len(answers[0].SelectedOptionIDs) != 1 {
 			return agentconversation.HostAskResolution{}, agent.ErrInteractionStale
 		}
@@ -68,6 +54,24 @@ func (runtime *Runtime) ResolveAsk(
 		return agentconversation.HostAskResolution{}, err
 	}
 	result := agentconversation.HostAskResolution{Schema: "ask.result.v1", ID: askID}
+	if request.Verification != nil && resolution.Cancelled && cancelReason == "task_aborted" {
+		root, _, err := runtime.public.openSession(ctx, options)
+		if err != nil {
+			return agentconversation.HostAskResolution{}, err
+		}
+		if _, err := runtime.public.agent.AbortTree(ctx, root.Key(), agent.AbortRequest{
+			IdempotencyKey: "abort-verification:" + askID, Reason: "User cancelled the task during effect verification",
+		}); err != nil {
+			return agentconversation.HostAskResolution{}, err
+		}
+		result.Status, result.CancelReason = session.AskCancelled, cancelReason
+		return result, nil
+	}
+	if request.Verification != nil && (resolution.Cancelled || len(resolution.Answers) != 1 || len(resolution.Answers[0].Values) != 1 ||
+		(resolution.Answers[0].Values[0] != "executed" && resolution.Answers[0].Values[0] != "not_executed")) {
+		result.Status = session.AskPending
+		return result, nil
+	}
 	if resolution.Cancelled {
 		result.Status, result.CancelReason = session.AskCancelled, strings.TrimSpace(cancelReason)
 		return result, nil

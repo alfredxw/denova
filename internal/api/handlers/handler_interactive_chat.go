@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	agentchat "denova/internal/agents/chat"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
@@ -149,8 +150,12 @@ func (h *Handlers) HandleInteractiveChatActive(ctx context.Context, c *app.Reque
 		return
 	}
 	view := h.app.InteractiveAgentActiveView(ctx, storyID, branchID)
+	var pendingAsk any
+	if len(view.Runtime.PendingInteractions) > 0 {
+		pendingAsk = agentchat.ProjectPendingInteraction(view.Runtime.PendingInteractions[0], view.Runtime)
+	}
 	if view.Task == nil {
-		response := map[string]any{"active": false}
+		response := map[string]any{"active": false, "pending_ask": pendingAsk}
 		if view.PendingInterruptionID != "" {
 			response["pending_interruption_id"] = view.PendingInterruptionID
 		}
@@ -159,6 +164,7 @@ func (h *Handlers) HandleInteractiveChatActive(ctx context.Context, c *app.Reque
 		return
 	}
 	response := map[string]any{
+		"pending_ask":             pendingAsk,
 		"active":                  !view.Task.Finished,
 		"status":                  view.Task.Status,
 		"task_id":                 view.Info.TaskID,

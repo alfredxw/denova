@@ -51,6 +51,16 @@ function consumerFixture(initialMessages: AgentUIMessage[] = []) {
 }
 
 describe('story stage stream event contract', () => {
+  it('ends a paused stream without requiring a final game turn or reporting failure', async () => {
+    const fixture = consumerFixture()
+    const outcome = await fixture.consumer.consume(eventStream([
+      { id: '1', event: 'agent_cycle_started', data: JSON.stringify({ command_id: 'input', delivery: 'start_turn', message: 'Open door', operation_id: 'run', cycle: 1 }) },
+      { id: '2', event: 'suspended', data: '{}' },
+    ]), fixture.consumer.initialOutcome())
+    expect(outcome).toMatchObject({ terminalStatus: 'suspended', terminalEventReceived: true, streamFailed: false, finishedNormally: false })
+    expect(fixture.consumer.settleInactiveProjection(outcome).streamFailed).toBe(false)
+    expect(fixture.messages()).toHaveLength(0)
+  })
   it('treats a user abort as a paused terminal state without an error message', async () => {
     const fixture = consumerFixture()
 
@@ -97,8 +107,6 @@ describe('story stage stream event contract', () => {
       .filter(([, handling]) => handling === 'ignored')
       .map(([event]) => event)
     expect(ignored).toEqual([
-      'ask_pending',
-      'ask_resolved',
       'context_cleanup',
       'context_normalizer',
       'post_run_verification',

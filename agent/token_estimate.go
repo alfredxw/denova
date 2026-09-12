@@ -85,3 +85,12 @@ func estimateBase64PayloadTokens(byteSize int64) int {
 	}
 	return int(estimate)
 }
+
+// EstimateRequestTokens includes provider-visible messages and tool schemas.
+func EstimateRequestTokens(messages []*Message, tools []*ToolInfo) int {
+	tokens := EstimateMessagesTokens(messages)
+	if encoded, err := json.Marshal(tools); err == nil && string(encoded) != "null" {
+		tokens += EstimateTextTokens(string(encoded))
+	}
+	return max(1, tokens)
+}

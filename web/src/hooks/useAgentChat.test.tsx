@@ -1435,6 +1435,32 @@ describe('useAgentChat', () => {
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
   })
 
+  it('observes a suspended Run without executing it and continues the exact Run explicitly', async () => {
+    vi.mocked(submitChatCommand).mockResolvedValue({ command_id: 'queued', operation_id: 'run-1', cursor: 8 })
+    vi.mocked(submitQueuedChatCommand).mockResolvedValue({ command_id: 'cancel-queue', operation_id: 'run-1', cursor: 9 })
+    const queued = { command_id: 'queued', operation_id: 'run-1', delivery: 'next_turn' as const, message: 'Queued input' }
+    const action = { kind: 'resume' as const, action_id: 'pause-7', command_id: 'input-1', operation_id: 'run-1' }
+    vi.mocked(getActiveChatTask).mockResolvedValue({ active: false, phase: 'suspended', recovery_paused: true,
+      runtime_recoverable: true, active_operation_id: 'run-1', recovery_actions: [action, { ...action, kind: 'abort' }], queue: [queued] })
+    vi.mocked(recoverChatAgentRuntime).mockResolvedValue({ task_id: 'resumed-display', status: 'running', stream_cursor: 0, cursor: 8, recovery_action: action })
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => result.current.resumeActiveChat())
+    expect(result.current.runtimeProjection?.phase).toBe('suspended')
+    expect(result.current.isStreaming).toBe(false)
+    expect(recoverChatAgentRuntime).not.toHaveBeenCalled()
+    expect(chatMock.sendMessage).not.toHaveBeenCalled()
+    await act(async () => { expect(await result.current.send('Receive this while paused')).toBe(true) })
+    expect(submitChatCommand).toHaveBeenCalledWith('follow_up', expect.any(String), 'run-1', 'session-test', expect.objectContaining({ message: 'Receive this while paused' }))
+    expect(result.current.runtimeProjection?.phase).toBe('suspended')
+    expect(recoverChatAgentRuntime).not.toHaveBeenCalled()
+    await act(async () => { expect(await result.current.deleteQueuedCommand(queued)).toBe(true) })
+    expect(submitQueuedChatCommand).toHaveBeenCalledWith('cancel_queued', expect.any(String), 'run-1', 'queued', 'session-test', 'user_deleted')
+    await act(async () => result.current.resumeTask())
+    expect(recoverChatAgentRuntime).toHaveBeenCalledExactlyOnceWith(action, 'session-test')
+    expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
+    expect(chatMock.sendMessage).not.toHaveBeenCalled()
+  })
+
   it('attaches an existing writing recovery task without posting start_turn again', async () => {
     const attachAction = {
       kind: 'start_turn' as const,

@@ -52,10 +52,13 @@ const (
 	CommandSteerQueued  = agentexecution.CommandSteerQueued
 	CommandCancelQueued = agentexecution.CommandCancelQueued
 	CommandAbort        = agentexecution.CommandAbort
+	CommandSuspend      = agentexecution.CommandSuspend
 
 	AgentRuntimePhaseIdle = agentrun.RunPhaseIdle
 
 	AgentRuntimeRecoveryAttach = agentexecution.RuntimeRecoveryAttach
+	AgentRuntimeRecoveryResume = agentexecution.RuntimeRecoveryResume
+	AgentRuntimeRecoveryAbort  = agentexecution.RuntimeRecoveryAbort
 
 	SkillScopeUser              = skills.ScopeUser
 	MaxSkillInstallArchiveBytes = skills.MaxInstallArchiveBytes

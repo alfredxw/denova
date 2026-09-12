@@ -24,6 +24,7 @@ const (
 	CommandSteerQueued  CommandKind = "steer_queued"
 	CommandCancelQueued CommandKind = "cancel_queued"
 	CommandAbort        CommandKind = "abort"
+	CommandSuspend      CommandKind = "suspend"
 )
 
 type CommandRequest struct {

@@ -15,13 +15,6 @@ const (
 	DefaultContextCompactionTargetMinRatio         = 0.05
 	DefaultContextCompactionTargetMaxRatio         = 0.20
 	AgentContextCompactionStrategyCheckpointFork   = "checkpoint_fork"
-	DefaultToolResultCleanupThreshold              = 0.70
-	DefaultToolResultCleanupTarget                 = 0.60
-	DefaultToolResultCleanupMinTokens              = 20_000
-	DefaultToolResultKeepRecent                    = 3
-	DefaultToolResultKeepRecentTokens              = 16_000
-	DefaultToolResultWarmSuffixTokens              = 8_000
-	DefaultToolResultEagerMinTokens                = 32_000
 	DefaultContextCompactionThreshold              = 0.85
 	DefaultContextCompactionRecoveryBand           = 0.80
 	DefaultContextCompactionMaxConsecutiveFailures = 3

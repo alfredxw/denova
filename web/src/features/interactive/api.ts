@@ -346,7 +346,8 @@ export async function sendInteractiveMessage(input: InteractiveStartInput): Prom
 
 export interface ActiveInteractiveChat {
   active: boolean
-  status?: 'running' | 'done' | 'aborted' | 'error'
+  status?: 'running' | 'done' | 'aborted' | 'error' | 'suspended'
+  pending_ask?: import('@/lib/api').AgentAskInteraction
   task_id?: string
   command_id?: string
   story_id?: string
@@ -372,6 +373,13 @@ export interface ActiveInteractiveChat {
   pending_interruption_id?: string
 }
 
+export function resolveInteractiveAsk(storyId: string, branchId: string, askId: string, action: import('@/lib/agent-ask').AgentAskResolveAction): Promise<import('@/lib/api').AgentAskResolution> {
+  return requestJSON(`/api/interactive/chat/asks/${encodeURIComponent(askId)}/${action.status === 'answered' ? 'answer' : 'cancel'}`, {
+    method: 'POST', headers: jsonHeaders,
+    body: JSON.stringify({ story_id: storyId, branch_id: branchId, ...(action.status === 'answered' ? { answers: action.answers } : { reason: action.reason }) }),
+  })
+}
+
 interface InteractiveAgentCommandBase {
   commandId: string
   targetOperationId: string
@@ -394,7 +402,7 @@ export type InteractiveAgentCommand = InteractiveAgentCommandBase & (
     reason?: string
   }
   | {
-    type: 'abort'
+    type: 'abort' | 'suspend'
     reason?: string
   }
 )

@@ -2,368 +2,309 @@
 
 English | [简体中文](README.md)
 
-`agent` is a provider-neutral, composable Go runtime. Its public mental model has only three layers:
+An Agent runtime you can embed in Go applications. Start with one call, then add conversations and tools.
 
-- `Agent` owns the Definition source, Session Store, and process lifetime.
-- `Session` is a stable conversation that persists transcript and capability state and serializes Runs.
-- `Run` is one in-process execution with streaming events, steering, queues, interactions, and abort control.
+## 1. Quickstart: complete one task
 
-## Quickstart: run an Agent once
+Requires Go 1.26.6 or later. Install in your own Go module:
 
-`agent` is a Go library embedded by a host application, not a standalone CLI or Session Server. The host creates an Agent with `agent.New`, submits input through `Run`, and consumes events or waits for the final result.
+```sh
+go get github.com/alfredxw/denova/agent
+```
 
-The following minimal example can be saved as `main.go` and run directly. A static `Definition` implements `Source` itself:
+Save this as `main.go`, set `OPENAI_API_KEY`, and run `go run .`:
 
 ```go
 package main
 
 import (
-    "context"
-    "fmt"
-    "log"
-    "os"
+	"context"
+	"fmt"
+	"log"
+	"os"
 
-    "github.com/alfredxw/denova/agent"
-    "github.com/alfredxw/denova/agent/providers"
-    "github.com/alfredxw/denova/agent/providers/builtin"
+	"github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/builtin"
 )
 
 func main() {
-    ctx := context.Background()
-    assistant, err := agent.New(ctx, agent.Definition{
-        Key:  "writer.v1",
-        Name: "writer",
-        Model: builtin.Model(providers.ModelConfig{
-            Provider: providers.ProviderOpenAI,
-            Model:    "gpt-5",
-            APIKey:   os.Getenv("OPENAI_API_KEY"),
-        }),
-        Instructions: "Help the user write clear, precise prose.",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer func() {
-        if err := assistant.Close(context.Background()); err != nil {
-            log.Printf("close Agent: %v", err)
-        }
-    }()
+	ctx := context.Background()
+	model := builtin.Model(providers.ModelConfig{
+		Provider: providers.ProviderOpenAI,
+		Model:    "gpt-5",
+		APIKey:   os.Getenv("OPENAI_API_KEY"),
+	})
+	assistant, err := agent.New(ctx, agent.Definition{
+		Model:        model,
+		Instructions: "Help the user write clear, precise prose.",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer assistant.Close(context.Background())
 
-    run, err := assistant.Run(ctx, agent.Text("Draft an opening paragraph."))
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    for event := range run.Events() {
-        if delta, ok := event.Payload.(agent.AssistantDelta); ok {
-            fmt.Print(delta.Delta)
-        }
-    }
-
-    result, err := run.Wait(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    if result.Status != agent.ResultCompleted {
-        log.Fatalf("Agent Run ended with %s: %s", result.Status, result.Reason)
-    }
-    fmt.Println()
+	run, err := assistant.Run(ctx, agent.Text("Draft an opening paragraph."))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for event := range run.Events() {
+		if delta, ok := event.Payload.(agent.AssistantDelta); ok {
+			fmt.Print(delta.Delta)
+		}
+	}
+	result, err := run.Wait(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if result.Status != agent.ResultCompleted {
+		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
+	}
+	fmt.Println()
 }
 ```
 
-Save the file in a Go module, set `OPENAI_API_KEY`, and run:
+`agent.New` creates the assistant, `Run` submits a task, `Events` streams progress, and `Wait` returns its result. This uses a temporary conversation whose history is removed afterward.
 
-```sh
-go get github.com/alfredxw/denova/agent
-go run .
-```
+The next two examples reuse `ctx`, `model`, and the error-handling style above, replacing the assistant construction and subsequent code.
 
-`assistant.Run` creates a temporary Session and deletes it after the Run settles, which is appropriate for one-shot work that does not need conversation history. If streaming output is unnecessary, the host can call `run.Wait(ctx)` directly. A terminal or UI should continuously consume `run.Events()`.
+## 2. Session: conversations, interactions, and management
 
-## Continuing conversations and durable Sessions
+A user requests a paragraph, then asks for a shorter version. Put both tasks in the same Session so the second turn can build on the first.
 
-For a multi-turn conversation, open a stable Session and run each turn on that Session. The default Store is in-memory only. To retain the transcript and capability state across process restarts, explicitly configure the file Store or provide a custom Store:
+Also import `github.com/alfredxw/denova/agent/tools` and `github.com/alfredxw/denova/agent/session/file` with the alias `sessionfile`:
 
 ```go
-import (
-    "context"
-    "fmt"
+store, err := sessionfile.New("./data/sessions")
+if err != nil {
+	log.Fatal(err)
+}
+assistant, err := agent.New(ctx, agent.Definition{
+	Model:        model,
+	Instructions: "Help the user write. Ask when required information is missing.",
+	Tools:        tools.Ask(),
+}, agent.WithSessionStore(store))
+if err != nil {
+	log.Fatal(err)
+}
+defer assistant.Close(context.Background())
 
-    "github.com/alfredxw/denova/agent"
-    sessionfile "github.com/alfredxw/denova/agent/session/file"
-)
+key := agent.NamedSession("draft-42")
+conversation, err := assistant.Session(ctx, key)
+if err != nil {
+	log.Fatal(err)
+}
 
-func continueConversation(ctx context.Context, definition agent.Definition) error {
-    owner, err := agent.New(ctx, definition,
-        agent.WithSessionStore(sessionfile.New("./data/agent-sessions")),
-    )
-    if err != nil {
-        return err
-    }
-    defer owner.Close(context.Background())
-
-    key := agent.SessionKey{
-        Namespace: "example.conversation",
-        ID:        "conversation-42",
-        Attributes: map[string]string{
-            "project_id": "project-7",
-        },
-    }
-    conversation, err := owner.Session(ctx, key)
-    if err != nil {
-        return err
-    }
-
-    first, err := conversation.Run(ctx, agent.Text("Draft an opening paragraph."))
-    if err != nil {
-        return err
-    }
-    firstResult, err := first.Wait(ctx)
-    if err != nil {
-        return err
-    }
-    if firstResult.Status != agent.ResultCompleted {
-        return fmt.Errorf("first Agent Run ended with %s: %s", firstResult.Status, firstResult.Reason)
-    }
-
-    second, err := conversation.Run(ctx, agent.Text("Make it more concise."))
-    if err != nil {
-        return err
-    }
-    result, err := second.Wait(ctx)
-    if err != nil {
-        return err
-    }
-    if result.Status != agent.ResultCompleted {
-        return fmt.Errorf("second Agent Run ended with %s: %s", result.Status, result.Reason)
-    }
-    return nil
+for _, prompt := range []string{
+	"Draft an opening paragraph for first-time readers.",
+	"Make it more concise, keeping the same audience.",
+} {
+	run, err := conversation.Run(ctx, agent.Text(prompt))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for event := range run.Events() {
+		switch payload := event.Payload.(type) {
+		case agent.AssistantDelta:
+			fmt.Print(payload.Delta)
+		case agent.InteractionRequested:
+			showQuestion(payload.Request) // Host UI; answer through Session.Respond.
+		}
+	}
+	result, err := run.Wait(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if result.Status != agent.ResultCompleted {
+		log.Fatalf("Run ended with %s: %s", result.Status, result.Reason)
+	}
+	fmt.Println()
 }
 ```
 
-A Session has at most one active Run. Wait for the current Run to settle before calling `Session.Run` again, or the call returns `agent.ErrSessionBusy`. To submit input while the current Run is still active, use `Queue`, `Steer`, or `FollowUp` as described below.
-
-The Session Key is its durable identity. `Namespace`, `ID`, and `Attributes` all participate in identity, so do not put mutable display names in them. After the host restarts, call `owner.Session` with the same Store and Key to continue the completed conversation. For a simple stable key in the default namespace, use `agent.NamedSession("draft")`.
-
-## Controlling a live Run
-
-A Run is a process-local handle. Controls apply only while that Run remains live in the current process:
-
-| Intent | API | Semantics |
-| --- | --- | --- |
-| Correct the current direction immediately | `run.Steer(ctx, input)` | Places input at the front and preempts at the next safe model-loop boundary |
-| Add work inside the same Run | `run.Queue(ctx, input)` | Queues input in the current Run; the returned `QueuedInput` supports `Cancel` and `Interrupt` |
-| Create the next turn | `run.FollowUp(ctx, input)` | Returns a new Run handle immediately and executes it serially after the current Run |
-| Stop current execution | `run.Abort(ctx, request)` | Requests that the Run settle at a safe stopping point |
-| Answer an Ask or permission interaction | `run.Respond(ctx, interactionID, response)` | Resolves the current `InteractionRequested` event |
-
-`run.Events()` emits typed events such as `AssistantDelta`, tool state, interaction requests, and terminal state. `run.Wait(ctx)` returns the terminal `Result` and `error`. Execution or storage failures return an error; `failed`, `incomplete`, and `blocked` also return an `*agent.RunError`. Still inspect `Result.Status`, because `aborted` is normally not a Go error.
-
-## Reconnecting a page and restarting a process
-
-When a page reloads while the Agent host process is still running, rebuild the UI from Session-level observation:
+`showQuestion` represents your own UI display function. It presents the question and returns; a separate UI callback submits the user's answer:
 
 ```go
-snapshot, err := conversation.Snapshot(ctx)
+// Called by the UI after the user submits the form.
+// response contains the user's answers, permission choice, or cancellation.
+_, _, err := conversation.Respond(ctx, request.ID, response)
 if err != nil {
-    return err
-}
-renderSnapshot(snapshot)
-
-observeCtx, cancelObserve := context.WithCancel(ctx)
-defer cancelObserve()
-observation, err := conversation.Observe(observeCtx, snapshot.Cursor)
-if err != nil {
-    return err
-}
-// Apply observation.Events in Cursor order and concurrently consume
-// observation.Errors until observeCtx is cancelled. The event stream first
-// catches up events after snapshot.Cursor, then remains live.
-
-if runID := observation.Snapshot.ActiveRunID; runID != "" {
-    active, found, err := conversation.AttachRun(ctx, runID)
-    if err != nil {
-        return err
-    }
-    if found {
-        _ = active // Use the handle for Steer, Queue, Abort, Respond, or Wait.
-    }
+	log.Print(err)
 }
 ```
 
-`Snapshot` is the baseline for UI restoration. `Observe` catches up process-local events after a Cursor and continues delivering new events. `Observation.Snapshot` is a newer view captured when observation begins; if the UI replaces the initial snapshot with it, ignore replayed events whose Cursor is not greater than that newer snapshot's Cursor to avoid applying them twice. `AttachRun` can reattach only to a Run owned by the current process.
+`response` is an `agent.InteractionResponse`: set `Answers` for ordinary questions (using the request's QuestionID and option Value, or Text), `Permission` for permission choices, or `Cancelled: true` for cancellation. A Run keeps waiting for unanswered questions; calling only `Wait` is insufficient.
 
-After the backend process restarts, completed transcript is restored from the Store, but live events, queues, tool stacks, and Interaction waiters are not. An unfinished turn is recorded as `incomplete`; the host should display that state and start a new Run when requested instead of replaying old tool calls.
+A Session executes one Run at a time; finish the previous turn before starting another. The file Store retains the conversation. After restarting, reopen it with the same directory and `NamedSession("draft-42")`. Without a Store option, Sessions live only in memory.
 
-## Managing Sessions
+**How do you handle user actions during execution?**
 
-| Operation | Effect |
+These are separate UI actions using the current `run` or `conversation`:
+
+| User action | Call |
 | --- | --- |
-| `owner.ListSessions(ctx, selector)` | Lists matching Session Keys in the Store |
-| `owner.CountActiveSessions(ctx, selector)` | Counts matching active Runs in the current process |
-| `session.Close(ctx)` | Stops the active Run and releases the handle and Store lease while retaining durable data |
-| `session.Clear(ctx)` | Keeps Session identity and starts a blank conversation; clears Todo and retains Goal |
-| `session.Delete(ctx)` | Closes the Session and permanently deletes its transcript |
-| `owner.CloseSessions(ctx, selector)` | Closes matching Sessions and their child Sessions while retaining durable data |
-| `owner.DeleteSessions(ctx, selector)` | Closes and permanently deletes matching Sessions and their child Sessions |
-| `owner.Close(ctx)` | Closes every in-process Session and releases Store leases during host shutdown |
+| “Change direction” | `run.Steer(ctx, agent.Text("Focus on beginners."))` |
+| “One more constraint” | `conversation.Queue(ctx, agent.Text("Keep it under 200 words."))` |
+| “Translate it afterward” | `conversation.FollowUp(ctx, agent.Text("Then translate it into Chinese."))` |
+| “Remove that extra input” | Call `queued.Cancel(ctx, agent.QueueControlRequest{})` on the handle returned by Queue |
+| “Handle that input now” | `queued.Interrupt(ctx, agent.QueueControlRequest{})` |
+| “Stop this task” | `run.Abort(ctx, agent.AbortRequest{Reason: "User cancelled."})` |
 
-Non-empty Selector fields use AND semantics. `IDPrefix` performs prefix matching only when explicitly populated. Deletion rejects an unconstrained or `All` Selector to prevent accidental removal of every conversation:
+Handle each method's return values and errors. `Queue` only retains input while idle; `FollowUp` starts a new task while idle. For network retries, set a stable `IdempotencyKey` on the Input or control request. A receipt means accepted, not completed.
+
+**Pause and continue:**
 
 ```go
-selector := agent.SessionSelector{
-    Namespace: "example.conversation",
-    Attributes: map[string]string{
-        "project_id": "project-7",
-    },
-}
-keys, err := owner.ListSessions(ctx, selector)
+// User clicks Pause while a Run is active.
+paused, err := assistant.SuspendTree(ctx, key, agent.SuspendRequest{
+	RunID: run.ID(), Reason: "User paused the task.",
+})
 if err != nil {
-    return err
-}
-for _, key := range keys {
-    fmt.Println(key.ID)
+	log.Fatal(err)
 }
 
-// Close retains transcripts. DeleteSessions is permanent and should be
-// exposed behind an explicit user action in the host product.
-err = owner.CloseSessions(ctx, selector)
-// err = owner.DeleteSessions(ctx, selector)
+// Later, the user clicks Continue. The same RunID gets a new handle.
+resumed, err := assistant.ResumeTree(ctx, key, agent.ResumeRequest{
+	RunID: paused.RunID,
+})
+if err != nil {
+	log.Fatal(err)
+}
+// Consume resumed.Events() and check resumed.Wait(ctx), as above.
+fmt.Println(resumed.ID())
 ```
 
-## Complete capability composition
+Suspension closes the old Session handle; reacquire it with `assistant.Session(ctx, key)` when needed. Recreate the assistant first after restarting. Opening a Session does not resume execution. `SuspendTree` / `ResumeTree` include child tasks; use `AbortTree` to cancel the whole tree.
 
-Built-in capability constructors return declarations rather than separate construction errors. This example composes workspace access, Shell, Todo, Ask, Skills, Tasks, Goal, large tool-result processing, Cleanup, Compaction, a file Store, and Trace in one `agent.New`:
+**Reconnect a page and manage conversations:**
+
+| Need | Call and meaning |
+| --- | --- |
+| Restore the page | `conversation.Snapshot(ctx)` returns current state and pending questions; subscribe with `Observe(ctx, snapshot.Cursor)` and consume both Events and Errors |
+| Retrieve a Run handle | `conversation.AttachRun(ctx, runID)` attaches without resuming |
+| List conversations | `assistant.ListSessions(ctx, agent.SessionSelector{All: true})` |
+| Clear the conversation | `conversation.Clear(ctx)` keeps identity, clears Todo, and retains Goal |
+| Close the conversation | `conversation.Close(ctx)` retains data but terminates the current task; suspend first if it needs continuation |
+| Delete the conversation | `conversation.Delete(ctx)` permanently deletes it; call only for an explicit delete action |
+
+Check both the `Wait` error and `Result.Status`: `completed` means finished, `suspended` means paused, and `aborted` means cancelled. A page disconnect should cancel observation; do not bind the entire Agent lifetime to one HTTP request.
+
+## 3. Complete composition: review a real project
+
+Suppose you are building a project assistant: read code and documentation, track checks with Todo, load a review Skill, delegate an independent review, run checks, and produce a report. Questions, permission confirmation, pause, and continuation all reuse example 2.
+
+Most changes stay in `Definition`: compose the capabilities you need.
+
+This **integration example** uses dependencies supplied by your application:
+
+- `projectRoot` is the project directory, `model` comes from example 1, and `contextTokens` is the actual model capacity.
+- `projectContext` supplies project rules and state; `skillCatalog` lists available Skills, and `skillLoader` loads their content.
+- `commandRunner` executes commands, `taskExecutor` handles child tasks, and `artifactStorage` retains complete tool output. Their interfaces and existing implementations are linked below the code.
+
+Also import the `agent` module's `compaction`, `goal`, `permission`, and `toolresult` packages, plus `tools` and `sessionfile` from example 2.
 
 ```go
-owner, err := agent.New(ctx, agent.Definition{
-    Key:           "project-agent.v1",
-    Name:          "project-agent",
-    Model:         builtin.Model(modelConfig),
-    Instructions:  "Work from project evidence. Ask only when required input cannot be inferred.",
-
-    Tools: tools.Combine(
-        tools.Workspace(tools.WorkspaceConfig{
-            Root:   projectRoot,
-            Access: tools.WorkspaceReadOnly,
-        }),
-        tools.Shell(tools.ShellConfig{Runner: commandRunner}),
-        tools.Todo(), // Uses durable state in the current Session.
-        tools.Ask(),
-        tools.Skills(skillSource),
-        tools.Tasks(taskExecutor),
-    ),
-    ResultProcessor: toolresult.Standard(toolresult.Policy{
-        MaxBytes:            128 << 10,
-        ContextWindowTokens: 128_000,
-    }),
-    Goal: goal.Standard(),
-    Cleanup: cleanup.Standard(cleanup.StandardConfig{
-        ContextWindowTokens: 128_000,
-        ReservedTokens:      16_000,
-        CleanupThreshold:    0.70,
-        CompactionThreshold: 0.85,
-    }),
-    Compaction: compaction.Standard(compaction.StandardConfig{
-        Summarizer:        summarizer,
-        TriggerBytes:      2 << 20,
-        KeepRecentBytes:   512 << 10,
-        KeepRecentTurns:   2,
-        HardLimitBytes:    4 << 20,
-        SummaryLimitBytes: 256 << 10,
-    }),
-    Execution: agent.ExecutionPolicy{
-        ToolParallelism: 4,
-        // MaxIterations=0 and IdleTimeout=0 mean unlimited.
-    },
-},
-    agent.WithSessionStore(sessionfile.New("/var/lib/myapp/agent-sessions")),
-    agent.WithTrace(agent.TraceFunc(recordTrace)),
-)
+store, err := sessionfile.New("./data/sessions")
 if err != nil {
-    return err
+	log.Fatal(err)
 }
+assistant, err := agent.New(ctx, agent.Definition{
+	Model: model,
+	Instructions: "Check whether the project documentation matches the code. " +
+		"Use Todo to track work, delegate independent review, run relevant checks, " +
+		"and report findings with evidence. Ask when required information is missing. " +
+		"Available Skills:\n" + skillCatalog,
+	Context: projectContext,
+	Tools: tools.Combine(
+		tools.Workspace(tools.WorkspaceConfig{
+			Root: projectRoot, Access: tools.WorkspaceReadOnly,
+		}),
+		tools.Shell(tools.ShellConfig{Runner: commandRunner}),
+		tools.Todo(),
+		tools.Ask(),
+		tools.Skills(skillLoader),
+		tools.Tasks(taskExecutor),
+	),
+	Permission: permission.SafeDefault(),
+	Goal:       goal.Standard(),
+	Artifacts:  artifactStorage,
+	ResultProcessor: toolresult.Standard(toolresult.Policy{
+		MaxBytes: 128 << 10, ContextWindowTokens: contextTokens,
+	}),
+	Compaction: compaction.Standard(compaction.StandardConfig{
+		ContextWindowTokens: contextTokens,
+	}),
+	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
+}, agent.WithSessionStore(store))
+if err != nil {
+	log.Fatal(err)
+}
+defer assistant.Close(context.Background())
+
+conversation, err := assistant.Session(ctx, agent.NamedSession("project-review-42"))
+if err != nil {
+	log.Fatal(err)
+}
+run, err := conversation.Run(ctx, agent.Input{
+	Text: "Review this project's documentation, check its examples, and report inconsistencies.",
+	Goal: &agent.GoalMutation{
+		Kind:      agent.GoalSet,
+		Objective: "Complete the documentation review with evidence and a list of unresolved issues.",
+	},
+})
+if err != nil {
+	log.Fatal(err)
+}
+// Reuse example 2's event loop, interaction handling, and result check.
+fmt.Println(run.ID())
 ```
 
-`modelConfig`, `commandRunner`, `summarizer`, `skillSource`, and `taskExecutor` are host-provided configuration or adapters. `builtin.Model` also derives the stable credential-free model identity during initialization. A read-write workspace requires a product `MutationAdapter`; preserving complete oversized tool results requires a host `ToolArtifactStorage`.
+This configuration supports the following workflow:
 
-For a static `Definition`, `agent.New` initializes every declarative capability and joins failures with component paths such as `Tools: Toolset[1]`, `Cleanup`, and `Compaction`. Model calls, tool execution, and Session I/O remain runtime errors returned by their respective operations.
+1. **Gather evidence**: Context provides project background, Workspace reads and searches files, and Skills loads review instructions.
+2. **Advance the task**: Todo tracks steps, Tasks delegates reviews, Shell runs checks, and Goal retains the objective.
+3. **Collaborate with the user**: Ask requests missing information; Permission decides which tool operations require confirmation. Answers still use `Session.Respond`.
+4. **Handle long tasks**: Artifacts retains full output, ResultProcessor bounds individual and aggregate tool output, and one incremental Compaction checkpoint folds completed steps. A single user Run can compact repeatedly while keeping its instructions and newest original results.
+5. **Retain progress**: the Session Store persists conversation and recovery records for later continuation.
 
-## Custom example: per-project composition
+**Start with these interfaces for application integration:**
 
-Implement `Source` when the model, context, or product Store must vary by Session. `CanonicalInput` resolves only the input-commit adapter, while `Prepare` returns the complete Definition for the cycle. Agent still validates built-in declarations together after Prepare:
+| Dependency | Interface / reusable implementation |
+| --- | --- |
+| Project context | [`agent.ContextSource`](definition.go): attribute each fragment's source, purpose, and capacity; inject stable rules separately from changing state |
+| Skills | [`tools.SkillLoader`](tools/skill_tool.go): load full content by name; the application supplies the catalog |
+| Commands | [`tools.CommandRunner`](tools/shell_tools.go); use [`NewLocalCommandRunner`](tools/shell_local_runner.go) for local execution |
+| Child tasks | [`tools.TaskExecutor`](tools/task_tool.go); use [`NewLocalTasks`](tools/task_local_executor.go) for local execution |
+| Large result storage | [`agent.ToolArtifactStorage`](tool_artifact.go) |
+| Compaction customization (optional) | Uses the active model by default; replace [`compaction.Summarizer`](compaction/standard.go) or implement [`agent.CompactionManager`](compaction.go) |
+
+For writing, research, or support, primarily replace Instructions, Context, Skills, and Tools; remove capabilities you do not need. For file editing, select `WorkspaceReadWrite` and supply a `MutationAdapter`. A read-only workspace does not constrain Shell; command permissions still belong to the runner and permission policy.
+
+Use the static Definition above for simple cases. Implement [`Source`](definition.go) when models and capabilities must vary by Session. For existing product conversation storage, integrate [`CanonicalAdapter`](canonical.go) and [`session.Store`](session/store.go) so product history and Agent recovery records share one journal.
+
+### Three levels of compaction integration
 
 ```go
-type projectSource struct {
-    models    ModelRegistry
-    projects ProjectRepository
-}
+// Default planning and summarization use the active Agent model snapshot.
+Compaction: compaction.Standard(compaction.StandardConfig{ContextWindowTokens: 128_000})
 
-func (source *projectSource) CanonicalInput(
-    ctx context.Context,
-    request agent.PrepareRequest,
-) (agent.CanonicalAdapter, error) {
-    project, err := source.projects.Open(ctx, request.Session.Key.Attributes["project_id"])
-    if err != nil {
-        return nil, err
-    }
-    return project.CanonicalAdapter(), nil
-}
-
-func (source *projectSource) Prepare(
-    ctx context.Context,
-    request agent.PrepareRequest,
-) (agent.Definition, error) {
-    projectID := request.Session.Key.Attributes["project_id"]
-    project, err := source.projects.Open(ctx, projectID)
-    if err != nil {
-        return agent.Definition{}, err
-    }
-    model, identity, err := source.models.ForProject(ctx, projectID)
-    if err != nil {
-        return agent.Definition{}, err
-    }
-    return agent.Definition{
-        Key:           "project-agent.v1",
-        Name:          "project-agent",
-        Model:         model,
-        ModelIdentity: identity,
-        Instructions:  "Use the injected project rules and current project state.",
-        Context:       project.ContextSource(),
-        Tools: tools.Combine(
-            project.Toolset(),
-            tools.Todo(project.TodoStore()),
-            tools.Ask(),
-        ),
-        Canonical:  project.CanonicalAdapter(),
-        Effects:    project.EffectApplier(),
-        Permission: project.PermissionPolicy(),
-    }, nil
-}
-
-owner, err := agent.New(ctx,
-    &projectSource{models: models, projects: projects},
-    agent.WithSessionStore(sessionfile.New(transcriptRoot)),
-)
-if err != nil {
-    return err
-}
-session, err := owner.Session(ctx, agent.SessionKey{
-    Namespace: "myapp.project",
-    ID:        conversationID,
-    Attributes: map[string]string{
-        "project_id": projectID,
+// Customize summary generation while retaining the standard policy.
+Compaction: compaction.Standard(compaction.StandardConfig{
+    ContextWindowTokens: 128_000,
+    Summarizer: compaction.SummarizerFunc{
+        Capability: agent.CapabilityIdentity{Kind: "app.summary", Version: 1},
+        Func: func(ctx context.Context, input compaction.SummaryRequest) (agent.CompactionCheckpoint, error) {
+            return summarizeSelectedSource(ctx, input.Messages, input.Current)
+        },
     },
 })
+
+// Customize triggering, selection and generation through the same runtime.
+Compaction: myCompactionManager
 ```
 
-Every model-visible fragment from a custom `ContextSource` must declare its source, purpose, resource, Revision, stability, placement, and a generous `HardLimit`. Custom Toolsets, Canonical Adapters, Permission policies, Context sources, and model configurations should expose stable, credential-free `CapabilityIdentity` values.
+`Standard` retains the most recent complete interaction and generates summaries with the active model snapshot. If capacity is insufficient, it processes the source in ordered batches; model failures do not silently switch execution modes. `Prompt` adds domain guidance. `ModelSummarizer` supports a replacement model with a stable Identity.
 
-## Ownership boundaries
+A custom manager's `Plan` receives complete interaction groups and the final model snapshot, then selects a prefix through `GroupCount`. `Compact` receives only the previous checkpoint and newly selected material. Both extension points return `CompactionCheckpoint{Summary, ContextData}`. Optional ContextData is typed, versioned JSON (at most 8 MiB), persisted atomically with the summary and never injected into the model automatically.
 
-- Agent Session Store owns only model conversation transcript and capability state.
-- Canonical Adapter owns the product conversation journal. `Definition.Effects` independently handles idempotent tool effects, so a delegated Agent can keep its own Session transcript while applying changes to the parent Project.
-- Trace is observational only and is not a recovery or business authority.
-- Live Run controls, events, queues, tool stacks, and Interaction waiters belong to the current process.
-
-See [`docs/agent-package-api-design.md`](../docs/agent-package-api-design.md) for more detailed API and design boundaries.
+Agent protects current user instructions, the newest complete tool group, and unfinished steps; measures final request capacity and actual progress; and owns journal commits, revision, cancellation, and recovery. Read the checkpoint view through `Session.Snapshot().Compaction`; detailed diagnostics live in `Inspect().CompactionMetrics` and compaction events. Runtime-issued views can `Project` effective history. Serialized display data does not carry history projection authority.

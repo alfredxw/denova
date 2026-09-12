@@ -167,7 +167,6 @@ type PrepareRequest struct {
 	BehaviorKey   string
 	HostData      *HostData
 	Compaction    *CompactionState
-	Cleanup       *CleanupState
 }
 
 // Source prepares a complete immutable Definition for one cycle. CanonicalInput
@@ -231,7 +230,6 @@ type Definition struct {
 	Artifacts   ToolArtifactStorage
 	Context     ContextSource
 	Goal        GoalManager
-	Cleanup     CleanupManager
 	Compaction  CompactionManager
 	Permission  PermissionPolicy
 	Interaction InteractionPolicy
@@ -298,6 +296,9 @@ func (definition Definition) CanonicalInput(context.Context, PrepareRequest) (Ca
 
 type ExecutionPolicy struct {
 	Retry *RetryConfig
+	// ModelMaxAttempts includes the first provider call and any failure retries
+	// or business output repairs for one logical response. Zero means one.
+	ModelMaxAttempts int
 	// RetryIdentity gives retry behavior a stable, inspectable identity when
 	// Retry is non-nil. Function and closure addresses are not identities.
 	RetryIdentity   CapabilityIdentity
@@ -321,6 +322,9 @@ func validateDefinition(definition Definition) error {
 	if definition.Execution.MaxIterations < 0 {
 		return errors.New("agent Definition MaxIterations cannot be negative")
 	}
+	if definition.Execution.ModelMaxAttempts < 0 {
+		return errors.New("agent Definition ModelMaxAttempts cannot be negative")
+	}
 	if definition.Execution.IdleTimeout < 0 {
 		return errors.New("agent Definition IdleTimeout cannot be negative")
 	}
@@ -332,11 +336,6 @@ func validateDefinition(definition Definition) error {
 	}
 	if definition.Compaction != nil && definition.Compaction.SummaryLimitBytes() <= 0 {
 		return errors.New("agent Definition Compaction summary limit must be positive")
-	}
-	if definition.Cleanup != nil {
-		if err := definition.Cleanup.Identity().validate("Cleanup"); err != nil {
-			return err
-		}
 	}
 	if definition.ResultProcessor != nil {
 		if err := definition.ResultProcessor.Identity().validate("ToolResultProcessor"); err != nil {
@@ -371,7 +370,6 @@ func initializeDefinition(ctx context.Context, definition Definition) (Definitio
 		{name: "ToolArtifactStorage", value: definition.Artifacts},
 		{name: "Context", value: definition.Context},
 		{name: "Goal", value: definition.Goal},
-		{name: "Cleanup", value: definition.Cleanup},
 		{name: "Compaction", value: definition.Compaction},
 		{name: "Permission", value: definition.Permission},
 		{name: "Interaction", value: definition.Interaction},
@@ -414,6 +412,9 @@ func initializeDefinition(ctx context.Context, definition Definition) (Definitio
 }
 
 type preparedDefinition struct {
+	activeModelUser         *Message
+	activeUserIndex         int
+	lastResponseOrdinal     int
 	definition              Definition
 	tools                   []ToolDefinition
 	toolSnapshots           []ToolDefinitionSnapshot
@@ -499,7 +500,7 @@ func definitionBehaviorIdentity(definition Definition) (string, error) {
 		Instructions: definition.Instructions, Execution: identityOfExecution(definition.Execution),
 		Toolset: identityOfToolset(definition.Tools), ResultProcessor: identityOfToolResultProcessor(definition.ResultProcessor),
 		Artifacts: identityOfToolArtifactStorage(definition.Artifacts), Context: identityOfContext(definition.Context),
-		Goal: identityOfGoal(definition.Goal), Cleanup: identityOfCleanup(definition.Cleanup), Compaction: identityOfCompaction(definition.Compaction),
+		Goal: identityOfGoal(definition.Goal), Compaction: identityOfCompaction(definition.Compaction),
 		Permission: identityOfPermission(definition.Permission), Interaction: identityOfInteraction(definition.Interaction),
 		Canonical:   identityOfCanonical(definition.Canonical),
 		Effects:     identityOfEffects(definition.Effects),
@@ -617,7 +618,6 @@ type definitionIdentity struct {
 	Artifacts       CapabilityIdentity
 	Context         CapabilityIdentity
 	Goal            CapabilityIdentity
-	Cleanup         CapabilityIdentity
 	Compaction      CapabilityIdentity
 	Permission      CapabilityIdentity
 	Interaction     CapabilityIdentity
@@ -628,6 +628,7 @@ type definitionIdentity struct {
 
 type executionPolicyIdentity struct {
 	Retry                          CapabilityIdentity
+	ModelMaxAttempts               int
 	ToolParallelism                int
 	MaxIterations                  int
 	IdleTimeout                    time.Duration
@@ -640,7 +641,8 @@ func identityOfExecution(policy ExecutionPolicy) executionPolicyIdentity {
 		retry = CapabilityIdentity{Kind: "retry.none", Version: 1}
 	}
 	return executionPolicyIdentity{
-		Retry: retry, ToolParallelism: policy.ToolParallelism, MaxIterations: policy.MaxIterations,
+		ModelMaxAttempts: max(1, policy.ModelMaxAttempts),
+		Retry:            retry, ToolParallelism: policy.ToolParallelism, MaxIterations: policy.MaxIterations,
 		IdleTimeout:                    policy.IdleTimeout,
 		MaxAutomaticCompactionFailures: normalizedAutomaticCompactionFailureLimit(policy),
 	}
@@ -720,13 +722,6 @@ func identityOfGoal(manager GoalManager) CapabilityIdentity {
 func identityOfCompaction(manager CompactionManager) CapabilityIdentity {
 	if manager == nil {
 		return CapabilityIdentity{Kind: "compaction.none", Version: 1}
-	}
-	return manager.Identity()
-}
-
-func identityOfCleanup(manager CleanupManager) CapabilityIdentity {
-	if manager == nil {
-		return CapabilityIdentity{Kind: "cleanup.none", Version: 1}
 	}
 	return manager.Identity()
 }

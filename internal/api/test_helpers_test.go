@@ -17,6 +17,7 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 	root := t.TempDir()
 	application, err := runtimeapp.New(context.Background(), &config.Config{
 		OpenAIModel: "test-model", NovaDir: root, Workspace: root, ResumeLastWorkspace: false,
+		OpenAIBaseURL: "http://127.0.0.1:1/v1",
 	})
 	if err != nil {
 		t.Fatal(err)

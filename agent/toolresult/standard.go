@@ -17,20 +17,19 @@ import (
 )
 
 const (
-	DefaultMaxBytes                = 128 * 1024
-	ProtectedArgumentsMaxBytes     = 4 * 1024
-	ProtectedOutcomeMaxBytes       = 8 * 1024
-	standardReceiptSchema          = "agent.tool_result.receipt.v1"
-	toolResultArtifactContentType  = "text/plain; charset=utf-8"
-	redactedValue                  = "[redacted from retained tool context]"
-	eagerToolResultRetentionNotice = "[Context retention notice]\nThis is a very large, recoverable result and may be replaced by a compact receipt before the next user turn. Preserve only conclusions needed later; do not copy the entire result."
+	DefaultMaxBytes               = 128 * 1024
+	ProtectedArgumentsMaxBytes    = 4 * 1024
+	ProtectedOutcomeMaxBytes      = 8 * 1024
+	standardReceiptSchema         = "agent.tool_result.receipt.v1"
+	toolResultArtifactContentType = "text/plain; charset=utf-8"
+	redactedValue                 = "[redacted from retained tool context]"
 )
 
 // Policy is semantic processor configuration and therefore participates in
-// Definition behavior identity. Zero MaxBytes selects DefaultMaxBytes.
+// Definition behavior identity. MaxBytes bounds one result and the aggregate
+// content of one assistant tool batch. Zero selects DefaultMaxBytes.
 type Policy struct {
 	MaxBytes            int
-	EagerMinTokens      int
 	ContextWindowTokens int
 }
 
@@ -43,7 +42,6 @@ type standardProcessor struct {
 // standalone coding Agents as well as product-composed Definitions.
 func Standard(policy Policy) agent.ToolResultProcessor {
 	policy.MaxBytes = normalizeLimit(policy.MaxBytes)
-	policy.EagerMinTokens = max(0, policy.EagerMinTokens)
 	policy.ContextWindowTokens = max(0, policy.ContextWindowTokens)
 	encoded, _ := json.Marshal(policy)
 	hash := sha256.Sum256(encoded)
@@ -54,6 +52,17 @@ func Standard(policy Policy) agent.ToolResultProcessor {
 			ConfigHash: hex.EncodeToString(hash[:]),
 		},
 	}
+}
+
+// BatchTokenLimit is the complete next-tool-batch reserve used by both the
+// result processor and the checkpoint planner. It counts protocol envelopes as
+// well as content, and adapts to the actual model's context window.
+func (policy Policy) BatchTokenLimit() int {
+	limit := max(1, normalizeLimit(policy.MaxBytes)/3)
+	if policy.ContextWindowTokens > 0 {
+		limit = min(limit, max(1, policy.ContextWindowTokens/10))
+	}
+	return limit
 }
 
 func (processor *standardProcessor) Identity() agent.CapabilityIdentity {
@@ -75,6 +84,10 @@ func (processor *standardProcessor) Process(
 	if limit <= 0 || limit > processor.policy.MaxBytes {
 		limit = processor.policy.MaxBytes
 	}
+	batchSize := max(1, request.BatchSize)
+	limit = min(limit, max(1, processor.policy.MaxBytes/batchSize))
+	envelope := agent.ToolMessage(agent.TextToolResult(""), request.ProviderCallID, agent.WithToolName(request.ToolName))
+	tokenLimit := processor.policy.BatchTokenLimit()/batchSize - agent.EstimateMessageTokens(envelope)
 	descriptor.MaxResultBytes = limit
 	result := request.Result
 	result.ModelContent = strings.ToValidUTF8(result.ModelContent, "\uFFFD")
@@ -86,7 +99,8 @@ func (processor *standardProcessor) Process(
 
 	artifact := recoverableArtifact(result.Artifacts)
 	upstreamLoss := result.Metadata.ModelTruncated && artifact == nil
-	if visibleBytes > limit && artifact == nil && !upstreamLoss {
+	oversized := visibleBytes > limit || agent.EstimateTextTokens(result.ModelContent) > tokenLimit
+	if oversized && artifact == nil && !upstreamLoss {
 		var failure string
 		artifact, failure = materialize(ctx, request, result.ModelContent)
 		if artifact != nil {
@@ -103,20 +117,24 @@ func (processor *standardProcessor) Process(
 	if artifact != nil {
 		result.Metadata.ArtifactPersistence = &agent.ToolArtifactPersistence{Attempted: true, Complete: true}
 		applyArtifactRecovery(&result, *artifact, originalBytes, descriptor.ResultRetention)
-		if originalBytes > limit {
-			result.ModelContent = headTail(result.ModelContent, limit, "complete=true; artifact="+artifact.ReadablePath)
+		if oversized || originalBytes > limit {
+			preview, err := boundedPreview(result.ModelContent, limit, tokenLimit,
+				"status="+string(result.Status)+"; complete=true; artifact="+artifact.ReadablePath)
+			if err != nil {
+				return result, agent.MarkToolControlError(err)
+			}
+			result.ModelContent = preview
 			result.Metadata.ModelTruncated = true
 		}
 	} else {
 		applyReplayRecovery(&result, request, originalBytes)
 	}
-	applyEagerNotice(&result, descriptor, originalBytes, limit, processor.policy)
 	applyProtectedReceipt(&result, request, descriptor, limit)
 	normalized, err := agent.NormalizeToolResult(result, descriptor)
 	if err != nil {
 		return result, fmt.Errorf("normalize processed tool result: %w", err)
 	}
-	if artifact == nil && normalized.Metadata.ModelTruncated && requiresLossless(descriptor, normalized) {
+	if artifact == nil && (oversized || normalized.Metadata.ModelTruncated) {
 		failure := agent.ToolArtifactFailureStoreUnavailable
 		if persistence := normalized.Metadata.ArtifactPersistence; persistence != nil && persistence.FailureReason != "" {
 			failure = persistence.FailureReason
@@ -125,13 +143,11 @@ func (processor *standardProcessor) Process(
 				Attempted: true, Complete: false, FailureReason: failure,
 			}
 		}
-		normalized.Status = agent.ToolResultError
-		normalized.SyntheticReason = ""
 		applyProtectedReceipt(&normalized, request, descriptor, limit)
 		if failed, normalizeErr := agent.NormalizeToolResult(normalized, descriptor); normalizeErr == nil {
 			normalized = failed
 		}
-		return normalized, agent.MarkToolControlError(fmt.Errorf("persist complete protected tool result: %s", failure))
+		return normalized, agent.MarkToolControlError(fmt.Errorf("persist complete tool result: %s", failure))
 	}
 	return normalized, nil
 }
@@ -276,27 +292,6 @@ func applyReplayRecovery(result *agent.ToolResult, request agent.ToolResultProce
 	}
 }
 
-func applyEagerNotice(result *agent.ToolResult, descriptor agent.ToolDescriptor, originalBytes, limit int, policy Policy) {
-	minimum := max(policy.EagerMinTokens, policy.ContextWindowTokens*15/100)
-	if descriptor.ResultRetention != agent.ToolResultEagerCandidate || result.Status != agent.ToolResultSuccess ||
-		result.SyntheticReason != "" || result.ContextHints == nil || result.ContextHints.Recovery.Kind == "" ||
-		estimatedTokens(int64(originalBytes)) < minimum {
-		return
-	}
-	notice := "\n\n" + eagerToolResultRetentionNotice
-	if len(notice) >= limit {
-		result.ModelContent = utf8Suffix(notice, limit)
-		result.Metadata.ModelTruncated = true
-		return
-	}
-	contentLimit := limit - len(notice)
-	if len(result.ModelContent) > contentLimit {
-		result.ModelContent = headTail(result.ModelContent, contentLimit, "space reserved for context retention notice")
-		result.Metadata.ModelTruncated = true
-	}
-	result.ModelContent += notice
-}
-
 func applyProtectedReceipt(result *agent.ToolResult, request agent.ToolResultProcessRequest, descriptor agent.ToolDescriptor, limit int) {
 	protected := descriptor.ResultRetention == agent.ToolResultProtected || result.Status != agent.ToolResultSuccess ||
 		result.SyntheticReason != "" || descriptor.MutationScope != agent.ToolMutationNone ||
@@ -432,12 +427,6 @@ func sanitizeValue(value any, depth int) any {
 	}
 }
 
-func requiresLossless(descriptor agent.ToolDescriptor, result agent.ToolResult) bool {
-	return descriptor.ResultRetention == agent.ToolResultProtected || result.Status != agent.ToolResultSuccess ||
-		result.SyntheticReason == agent.ToolSyntheticEffectUnknown || descriptor.MutationScope != agent.ToolMutationNone ||
-		descriptor.Recovery == agent.ToolRecoveryNonIdempotent
-}
-
 func boundedArguments(arguments string) map[string]any {
 	arguments = strings.TrimSpace(arguments)
 	if arguments == "" || len(arguments) > 32*1024 {
@@ -486,6 +475,33 @@ func estimatedTokens(bytes int64) int {
 		return 0
 	}
 	return int((bytes + 3) / 4)
+}
+
+func boundedPreview(content string, byteLimit, tokenLimit int, status string) (string, error) {
+	notice := fmt.Sprintf("[tool result preview: original_bytes=%d; %s]\n", len(content), status)
+	if len(notice) > byteLimit || agent.EstimateTextTokens(notice) > tokenLimit {
+		return "", fmt.Errorf("%w: tool batch cannot fit its complete-output references (%d bytes, %d tokens per result)", agent.ErrContextLimit, byteLimit, tokenLimit)
+	}
+	available := byteLimit - len(notice)
+	for {
+		excerpt := content
+		if len(excerpt) > available {
+			const separator = "\n...[middle omitted]...\n"
+			if available <= len(separator) {
+				excerpt = ""
+			} else {
+				bodyBytes := available - len(separator)
+				head := utf8Prefix(content, bodyBytes/2)
+				excerpt = head + separator + utf8Suffix(content, bodyBytes-len(head))
+			}
+		}
+		preview := notice + excerpt
+		tokens := agent.EstimateTextTokens(preview)
+		if tokens <= tokenLimit {
+			return preview, nil
+		}
+		available = max(0, min(available-1, available*tokenLimit/tokens))
+	}
 }
 
 func headTail(content string, limit int, status string) string {

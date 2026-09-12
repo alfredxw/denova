@@ -69,7 +69,7 @@ func advanceContextState(
 	raw []*Message,
 	fragments []ContextFragment,
 	current contextStateSnapshot,
-	compaction CompactionState,
+	compaction compactionRecord,
 	compactionPresent bool,
 ) ([]*Message, contextStateSnapshot, error) {
 	next := cloneContextStateSnapshot(current)

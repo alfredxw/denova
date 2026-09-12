@@ -632,6 +632,8 @@ func publicResultOutcome(result agent.Result, err error, content, thinking strin
 		status = agentrun.OutcomeCompleted
 	case agent.ResultAborted:
 		status = agentrun.OutcomeAborted
+	case agent.ResultSuspended:
+		status = agentrun.OutcomeSuspended
 	case agent.ResultIncomplete, agent.ResultBlocked:
 		status = agentrun.OutcomeFailed
 	}

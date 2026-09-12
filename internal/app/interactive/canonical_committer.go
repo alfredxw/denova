@@ -45,6 +45,7 @@ func (committer *canonicalConversationCommitter) MaterializeInput(
 		ctx,
 		request.Input.Text,
 		request.Input.Attachments,
+		request.Checkpoint,
 	)
 	if err != nil {
 		return agent.CommitReceipt{}, err
@@ -84,7 +85,7 @@ func (committer *canonicalConversationCommitter) CommitOutput(
 		metadata.RunPath = []string{options.RootAgentName}
 	}
 	receipt, err := committer.config.Conversation.CommitAgentCanonicalOutput(
-		ctx, request.Message.Clone(), metadata,
+		ctx, request.Message.Clone(), metadata, request.Checkpoint,
 	)
 	if err != nil {
 		return agent.OutputCommitReceipt{}, err

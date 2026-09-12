@@ -230,7 +230,11 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 	if err != nil || len(snapshot.RecentRuns) != 1 || snapshot.RecentRuns[0].Status != agent.ResultCompleted || snapshot.RecentRuns[0].Output != "Chapter saved and verified." {
 		t.Fatalf("reopened child = %#v, error = %v", snapshot, err)
 	}
-	inspection, err := childSession.Inspect(ctx, agent.Text("Inspect the saved chapter."))
+	accepted, _, err := childSession.RunInput(ctx, childRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := childSession.Inspect(ctx, agent.Input{Text: "Inspect the saved chapter.", HostData: accepted.HostData})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +272,7 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 		}}}),
 		agent.AssistantMessage("Cold revision saved.", nil),
 	}
-	input := agent.Input{Text: "Revise the existing chapter.", IdempotencyKey: "cold-revision"}
+	input := agent.Input{Text: "Revise the existing chapter.", IdempotencyKey: "cold-revision", HostData: accepted.HostData}
 	coldRun, err := childSession.Run(ctx, input)
 	if err != nil {
 		t.Fatal(err)

@@ -44,6 +44,8 @@ type Conversation struct {
 	modelContextMessages        []interactive.ModelContextMessage
 	modelContextBatchSequence   int
 	ruleResolution              *interactive.RuleResolution
+	turnDraft                   interactive.TurnDraft
+	turnDraftLoaded             bool
 	turnProtocol                interactiveTurnProtocol
 	baseParentID                *string
 	replaceTurnID               string
@@ -53,7 +55,7 @@ type Conversation struct {
 	acceptedPlayerInputID       string
 	pendingDomainCommit         *interactive.DomainCommitIntent
 	lastDomainReceipt           *interactive.DomainCommitReceipt
-	agentCompaction             *interactive.ContextCompactionProjection
+	agentCompaction             *agent.CompactionState
 	modelHistoryKey             string
 	modelHistory                *interactive.StoryModelHistory
 	openingStateSchemaDraft     *interactive.ActorStateSchemaBatchDraft
@@ -94,6 +96,10 @@ func (c *Conversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
 	c.agentCycleIdentity = identity
 	if !sameCycle {
 		c.acceptedPlayerInputID = ""
+		c.turnDraftLoaded = false
+		c.turnDraft = interactive.TurnDraft{}
+		c.turnProtocol = interactiveTurnProtocol{}
+		c.ruleResolution = nil
 	}
 	c.modelContextMessages = nil
 	c.modelContextBatchSequence = 0
@@ -483,7 +489,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	if err != nil {
 		return agentcontext.ModelContextResult{}, err
 	}
-	turnHistory := buildInteractiveModelVisibleHistory(modelHistory, activeCompaction)
+	turnHistory := interactiveTurnHistory{Turns: append([]interactive.StoryModelTurn(nil), modelHistory.Turns...)}
 	checkpointSummary := ""
 	if activeCompaction != nil {
 		checkpointSummary = strings.TrimSpace(activeCompaction.Summary)
@@ -533,7 +539,6 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		StoryRuleCatalog:          ruleSummary,
 		ActorState:                actorStateRuntime,
 		StateSchemaInitialization: stateSchemaInitialization,
-		PreviousTurnsSummary:      turnHistory.PreviousSummary,
 		LoreContext:               loreRuntime,
 	})
 	cycleIdentity := c.AgentCycleIdentitySnapshot()
@@ -674,6 +679,7 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 	ctx context.Context,
 	message string,
 	attachments []agent.Attachment,
+	checkpoint agent.CanonicalCheckpoint,
 ) (interactive.PlayerInputReceipt, error) {
 	if c == nil || c.store == nil {
 		return interactive.PlayerInputReceipt{}, fmt.Errorf("互动故事不存在")
@@ -704,6 +710,7 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 			return interactive.PlayerInputReceipt{}, err
 		}
 	}
+	intent.Checkpoint = checkpoint
 	receipt, err := c.store.CommitPlayerInput(c.storyID, intent)
 	if err != nil {
 		return interactive.PlayerInputReceipt{}, err

@@ -74,6 +74,10 @@ func (log *Log) Replay(ctx context.Context, apply func(agentsession.Record) erro
 			return stats, err
 		}
 		stats.BytesRead += int64(len(record.Kind) + len(record.Data))
+		record, err = projectReleasedGameCompaction(record)
+		if err != nil {
+			return stats, err
+		}
 		if err := apply(record); err != nil {
 			return stats, err
 		}
@@ -93,6 +97,9 @@ func (log *Log) appendLocked(ctx context.Context, expected agentsession.Revision
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if _, err := log.journal.ReadRange(ctx, conversationjournal.Range{After: log.journal.Head().Cursor}); err != nil {
+		return 0, err
 	}
 	for _, record := range records {
 		if err := agentsession.ValidateRecord(record); err != nil {
@@ -134,7 +141,24 @@ func (log *Log) appendLocked(ctx context.Context, expected agentsession.Revision
 			payloads[index] = payload
 		}
 		head := log.journal.Head()
-		_, appendErr := log.journal.Append(ctx, conversationjournal.Guard{
+		appendRecords := log.journal.Append
+		for _, record := range records {
+			if requiresResilienceFormat(record.Kind) {
+				appendRecords = func(ctx context.Context, guard conversationjournal.Guard, payloads ...json.RawMessage) (conversationjournal.Commit, error) {
+					return log.journal.AppendWithBackup(ctx, guard, "resilience-v1", payloads...)
+				}
+				break
+			}
+		}
+		for _, record := range records {
+			if usesIncrementalCompaction(record) {
+				appendRecords = func(ctx context.Context, guard conversationjournal.Guard, payloads ...json.RawMessage) (conversationjournal.Commit, error) {
+					return log.journal.AppendWithBackup(ctx, guard, "incremental-compaction-v2", payloads...)
+				}
+				break
+			}
+		}
+		_, appendErr := appendRecords(ctx, conversationjournal.Guard{
 			Cursor: head.Cursor, RecordSHA256: head.RecordSHA256,
 		}, payloads...)
 		if appendErr == nil {
@@ -148,6 +172,15 @@ func (log *Log) appendLocked(ctx context.Context, expected agentsession.Revision
 		if err := ctx.Err(); err != nil {
 			return current, err
 		}
+	}
+}
+
+func requiresResilienceFormat(kind string) bool {
+	switch kind {
+	case "session.input", "session.input_update", "session.control", "turn.checkpoint", "turn.tool", "turn.interaction", "turn.interaction_response":
+		return true
+	default:
+		return false
 	}
 }
 

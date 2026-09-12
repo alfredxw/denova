@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeQueuedCommand } from '@/lib/api'
+import type { AgentAskInteraction, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeQueuedCommand } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { BranchSummary, GamePlanningTemplate, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StorySummary, Teller, TurnEvent } from '../types'
 
@@ -28,6 +28,7 @@ export interface StoryStageRuntimeState {
   operationId: string
   cycle: number
   activeOutput?: AgentRuntimeActiveOutput
+  pendingAsk?: AgentAskInteraction
   queue: AgentRuntimeQueuedCommand[]
   openTools: AgentRuntimeOpenTool[]
   connection: 'disconnected' | 'connecting' | 'connected'

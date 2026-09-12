@@ -55,6 +55,7 @@ type invocationResourceState struct {
 
 type invocationScopeKey struct{}
 type invocationIdentityKey struct{}
+type modelResponseSeedKey struct{}
 
 var invocationSequence atomic.Uint64
 
@@ -123,6 +124,11 @@ func beginRootInvocation(ctx context.Context, agentName string) (context.Context
 
 func beginInvocation(ctx context.Context, scope InvocationScope) (context.Context, func() error, error) {
 	state := &invocationResourceState{resources: make(map[string]invocationResource)}
+	if scope.Depth == 0 {
+		if ordinal, ok := ctx.Value(modelResponseSeedKey{}).(int); ok && ordinal > 0 {
+			state.responses = uint64(ordinal)
+		}
+	}
 	value := invocationContextValue{scope: cloneInvocationScope(scope), state: state}
 	invocationCtx, cancel := context.WithCancel(context.WithValue(ctx, invocationScopeKey{}, value))
 	var once sync.Once
@@ -221,8 +227,8 @@ func CurrentToolExecutionID(ctx context.Context) string {
 	return metadata.executionID
 }
 
-// nextModelResponseOrdinal is intentionally invocation-local. Each new Run
-// starts from ordinal one; unfinished Runs are never resumed after restart.
+// nextModelResponseOrdinal is cycle-local. A resumed cycle seeds the counter
+// from its last durable model-attempt boundary before issuing another call.
 func nextModelResponseOrdinal(ctx context.Context) int {
 	value, ok := invocationValueFromContext(ctx)
 	if !ok || value.state == nil {

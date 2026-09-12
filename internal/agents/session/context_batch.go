@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 )
 
 type ContextBatchReceipt struct {
@@ -27,6 +29,7 @@ func (s *Session) CommitContextBatch(
 	identity DomainCommitIdentity,
 	sequence int,
 	messages []*agent.Message,
+	checkpoint agent.CanonicalCheckpoint,
 ) (_ ContextBatchReceipt, resultErr error) {
 	var receipt ContextBatchReceipt
 	identity = normalizeDomainCommitIdentity(identity)
@@ -60,7 +63,15 @@ func (s *Session) CommitContextBatch(
 		now := time.Now().UTC()
 		candidate.CreatedAt = now
 		candidate.ContextRevision = s.contextRevision + uint64(len(values))
-		if err := s.appendJournalRecordLocked(candidate); err != nil {
+		agentRecords, err := sessionjournal.CheckpointRecords(&s.projection.AgentSessions, checkpoint, strconv.FormatUint(candidate.ContextRevision, 10))
+		if err != nil {
+			return err
+		}
+		records := append([]any{candidate}, agentRecords...)
+		if _, err := s.appendJournalRecordsLocked(records...); err != nil {
+			if errors.Is(err, conversationjournal.ErrCommitUnknown) {
+				return err
+			}
 			if recoveryErr := s.refreshCanonicalTailLocked(); recoveryErr == nil {
 				reconciled, found, reconcileErr := s.findContextBatchLocked(ctx, identity, sequence, values)
 				if reconcileErr != nil {

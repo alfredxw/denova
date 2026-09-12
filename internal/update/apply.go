@@ -90,6 +90,10 @@ func (s ApplyScheduler) Schedule(ctx context.Context) error {
 }
 
 func (s *Service) Apply(ctx context.Context) (ApplyResult, error) {
+	if !updateOperation.TryLock() {
+		return ApplyResult{}, ErrUpdateBusy
+	}
+	defer updateOperation.Unlock()
 	_ = ctx
 	if s.executablePath == "" {
 		return ApplyResult{}, fmt.Errorf("cannot locate the current executable")

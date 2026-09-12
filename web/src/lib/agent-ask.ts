@@ -2,15 +2,15 @@ import type { AgentAskAnswer, AgentAskResolution } from './api'
 
 export type AgentAskResolveAction =
   | { status: 'answered'; answers: AgentAskAnswer[] }
-  | { status: 'cancelled' }
+  | { status: 'cancelled'; reason?: 'task_aborted' }
 
 interface AgentAskTransport {
   answer: (answers: AgentAskAnswer[]) => Promise<AgentAskResolution>
-  cancel: () => Promise<AgentAskResolution>
+  cancel: (reason?: 'task_aborted') => Promise<AgentAskResolution>
 }
 
-/** Returns the canonical terminal result immediately, then reloads durable
- * history so every mounted timeline converges on the same Ask record. */
+/** Refresh terminal answers from history. An unresolved verification stays on
+ * its current card, including when it belongs to a child with a separate journal. */
 export async function resolveAgentAskAndRefresh(
   action: AgentAskResolveAction,
   transport: AgentAskTransport,
@@ -18,7 +18,9 @@ export async function resolveAgentAskAndRefresh(
 ): Promise<AgentAskResolution> {
   const resolution = action.status === 'answered'
     ? await transport.answer(action.answers)
-    : await transport.cancel()
+    : await transport.cancel(action.reason)
+
+  if (resolution.status === 'pending') return resolution
 
   void Promise.resolve()
     .then(refreshHistory)

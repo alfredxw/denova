@@ -23,6 +23,7 @@ import { buildTokenUsageMessage, mergeTokenUsageMessages } from './token-usage'
 import { normalizeMessageContent } from './utils'
 
 interface UseStoryStageMessagesOptions {
+  pendingAsk?: import('@/lib/api').AgentAskInteraction
   snapshot: Snapshot | null
   rewindTurnId?: string
   liveMessages: AgentUIMessage[]
@@ -39,6 +40,7 @@ interface UseStoryStageMessagesOptions {
 // the shared UI message protocol. This remains a UI-only read model and never
 // participates in model-context assembly.
 export function useStoryStageMessages({
+  pendingAsk,
   snapshot,
   rewindTurnId,
   liveMessages,
@@ -87,8 +89,9 @@ export function useStoryStageMessages({
     () => normalizeAgentUIMessages([
       ...historyMessages,
       ...(hasPersistedLiveTurn ? [] : liveMessages.filter((message) => !agentMessageHasDataPart(message, 'agent-token-usage'))),
+      ...(pendingAsk ? [createAgentDataMessage({ id: `ask-${pendingAsk.id}`, type: 'agent-ask', data: { ...pendingAsk } })] : []),
     ]),
-    [hasPersistedLiveTurn, historyMessages, liveMessages],
+    [hasPersistedLiveTurn, historyMessages, liveMessages, pendingAsk],
   )
   const turnNavigationItems = useMemo<TurnNavigationItem[]>(() => {
     const items: TurnNavigationItem[] = storyPathTurns.map((turn) => ({
@@ -141,7 +144,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
       ...(turn.attachments?.length ? { attachments: turn.attachments } : {}),
     },
   })]
-  const displayEvents = turn.display_events || []
+  const displayEvents = (turn.display_events || []).filter(event => event.status !== 'discarded')
   if (!displayEvents.some((event) => event.role === 'thinking') && turn.thinking?.trim()) {
     messages.push(createAgentReasoningMessage({
       id: `${turn.id}-thinking`,

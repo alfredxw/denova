@@ -35,6 +35,9 @@ type TurnSnapshot struct {
 	// InputCommit lets Engine.Run verify that admission used the same canonical
 	// identity and hash.
 	InputCommit *DomainCommitState
+	// OutputCommit prevents a resumed cycle from generating a second final
+	// output when the product transaction already committed before shutdown.
+	OutputCommit *DomainCommitState
 }
 
 type EngineControlKind string
@@ -42,6 +45,7 @@ type EngineControlKind string
 const (
 	EngineControlPreempt             EngineControlKind = "preempt"
 	EngineControlAbort               EngineControlKind = "abort"
+	EngineControlSuspend             EngineControlKind = "suspend"
 	EngineControlInteractionResolved EngineControlKind = "interaction_resolved"
 )
 
@@ -89,17 +93,19 @@ type EventSource struct {
 }
 
 type EngineAssistantDelta struct {
-	Source      EventSource
-	Delta       string
-	DisplayOnly bool
+	ResponseOrdinal int
+	Source          EventSource
+	Delta           string
+	DisplayOnly     bool
 }
 
 func (EngineAssistantDelta) engineEvent() {}
 
 type EngineThinkingDelta struct {
-	Source      EventSource
-	Delta       string
-	DisplayOnly bool
+	ResponseOrdinal int
+	Source          EventSource
+	Delta           string
+	DisplayOnly     bool
 }
 
 func (EngineThinkingDelta) engineEvent() {}
@@ -138,6 +144,18 @@ type EngineModelCompleted struct {
 
 func (EngineModelCompleted) engineEvent() {}
 
+type EngineModelRetry struct {
+	Source          EventSource
+	Attempt         int
+	MaxAttempts     int
+	ResponseOrdinal int
+	OutputState     string
+	Delay           time.Duration
+	Reason          string
+}
+
+func (EngineModelRetry) engineEvent() {}
+
 // EngineTranscriptUpdated replaces the in-process transcript used by later
 // cycles in this Run. TaskCompletionIDs make one safe-boundary checkpoint
 // durable together with its completion delivery receipts; ordinary unfinished
@@ -174,80 +192,6 @@ type EngineContextNormalized struct {
 }
 
 func (EngineContextNormalized) engineEvent() {}
-
-type EngineCleanupStarted struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Transient bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupStarted) engineEvent() {}
-
-type EngineCleanupCompleted struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Transient bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupCompleted) engineEvent() {}
-
-type EngineCleanupFailed struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupFailed) engineEvent() {}
-
-type EngineCleanupSkipped struct {
-	ID        string
-	Reason    string
-	Automatic bool
-	Metrics   CleanupMetrics
-}
-
-func (EngineCleanupSkipped) engineEvent() {}
-
-// CleanupMetrics is the Agent-owned, provider-neutral event vocabulary.
-// Agent maps its public cleanup measurements without importing product types.
-type CleanupMetrics struct {
-	EstimatedTokensBefore      int
-	LocalProjectedTokens       int
-	ObservedPromptTokens       int
-	EffectiveTokens            int
-	EstimatedTokensAfter       int
-	ReclaimedTokens            int
-	ContextWindowTokens        int
-	PressureBefore             float64
-	PressureAfter              float64
-	BodyPressureBefore         float64
-	BodyPressureAfter          float64
-	StablePrefixTokens         int
-	CandidateTokens            int
-	CacheViableCandidateTokens int
-	SkippedBelowMinimumCount   int
-	SkippedWarmSuffixCount     int
-	EagerCandidateCount        int
-	EagerSelectedCount         int
-	SupersededCandidateCount   int
-	DiscardableCandidateCount  int
-	MinimumCleanupTokens       int
-	ProtectedResults           int
-	EarliestChanged            int
-	WarmSuffixTokens           int
-	PlaceholderTokens          int
-	ReplacementCount           int
-	EagerOnly                  bool
-	PressureScope              string
-	ProviderCacheState         string
-	ExecutionMode              string
-	RendererVersion            string
-}
 
 // EngineCompactionStarted is the live edge for automatic compaction.
 type EngineCompactionStarted struct {
@@ -338,9 +282,6 @@ type EngineAssistantFinal struct {
 	State json.RawMessage
 	// CapabilityUpdates become visible before the final assistant event.
 	CapabilityUpdates []EngineCapabilityState
-	// CleanupCompleted describes the cleanup capability update associated with
-	// the final assistant output.
-	CleanupCompleted *EngineCleanupCompleted
 	// Continuation is an Engine-authorized next cycle in the same Run.
 	Continuation *EngineContinuation
 }
@@ -438,6 +379,7 @@ const (
 	EngineCompleted  EngineStatus = "completed"
 	EngineIncomplete EngineStatus = "incomplete"
 	EnginePreempted  EngineStatus = "preempted"
+	EngineSuspended  EngineStatus = "suspended"
 	EngineAborted    EngineStatus = "aborted"
 )
 

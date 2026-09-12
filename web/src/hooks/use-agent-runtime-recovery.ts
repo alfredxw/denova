@@ -14,7 +14,7 @@ export interface WritingDisplayRehydrateRequest {
   terminalReasonTruncated?: boolean
 }
 
-export type WritingTaskStatus = 'running' | 'done' | 'aborted' | 'error'
+export type WritingTaskStatus = 'running' | 'done' | 'aborted' | 'error' | 'suspended'
 
 interface WritingAgentRuntimeRecoveryOptions {
   activeSessionId: string
@@ -201,7 +201,7 @@ export function useWritingAgentRuntimeRecovery({
           if (recovered.projection.runtime_recoverable) {
             retryNeededRef.current = false
             attachedRecoveryRetryNeededRef.current = false
-            setRecoveryPending(attachStream)
+            setRecoveryPending(attachStream && recovered.projection.phase !== 'suspended')
             return
           }
 
@@ -456,8 +456,8 @@ export function useWritingAgentRuntimeRecovery({
     await inspectAndAttach(false, true, targetSessionID)
   }, [inspectAndAttach, transport, transportStreaming])
 
-  const abortRecovery = useCallback(async () => {
-    const action = runtimeProjection?.recovery_actions?.find((candidate) => candidate.kind === 'abort')
+  const executeRecoveryAction = useCallback(async (kind: 'abort' | 'resume') => {
+    const action = runtimeProjection?.recovery_actions?.find((candidate) => candidate.kind === kind)
     if (!action) return false
     if (recoveryActionInFlightRef.current) return true
     recoveryActionInFlightRef.current = true
@@ -479,6 +479,7 @@ export function useWritingAgentRuntimeRecovery({
               ...current,
               active: true,
               status: 'running',
+              phase: 'running',
               task_id: taskID,
               recovery_paused: false,
               runtime_recoverable: false,
@@ -501,7 +502,8 @@ export function useWritingAgentRuntimeRecovery({
   }, [attachDisplayStream, client, runtimeProjection, transport, transportStreaming])
 
   return {
-    abortRecovery,
+    abortRecovery: useCallback(() => executeRecoveryAction('abort'), [executeRecoveryAction]),
+    resumeTask: useCallback(() => executeRecoveryAction('resume'), [executeRecoveryAction]),
     projectStreamCycle,
     recoveryPending,
     resumeActiveChat,
@@ -518,6 +520,7 @@ async function recoverWritingProjection(
   taskID: string
 }> {
   let taskID = initial.task_id?.trim() || ''
+  if (initial.phase === 'suspended') return { projection: initial, taskID: '' }
   const actions = recoveryActionsToSubmit(initial)
   for (const action of actions) {
     const receipt = await recover(action)
@@ -546,8 +549,8 @@ async function recoverWritingProjection(
       // start_turn only restores the display stream. The durable operation is
       // still paused until a queued/structural action resumes it or the user
       // submits the server-projected abort action.
-      recovery_paused: !executionResumed,
-      runtime_recoverable: !executionResumed,
+      recovery_paused: !executionResumed && Boolean(initial.recovery_paused),
+      runtime_recoverable: !executionResumed && Boolean(initial.recovery_paused),
       stream_attached: true,
       recovery_actions: executionResumed ? [] : abortActions,
     },
@@ -563,7 +566,7 @@ function recoveryActionsToSubmit(projection: ActiveChatTask) {
   // that owner. A head-of-line state action may still need to run after the
   // attach succeeded but before the previous browser observed its receipt.
   const attach = projection.stream_attached ? undefined : projected.find((action) => action.kind === 'start_turn')
-  const stateChange = projected.find((action) => action.kind !== 'start_turn' && action.kind !== 'abort')
+  const stateChange = projected.find((action) => action.kind !== 'start_turn' && action.kind !== 'abort' && action.kind !== 'resume')
   return [attach, stateChange].filter((action): action is AgentRuntimeRecoveryAction => Boolean(action))
 }
 

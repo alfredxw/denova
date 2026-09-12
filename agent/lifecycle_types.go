@@ -31,11 +31,11 @@ type Input struct {
 
 func Text(value string) Input { return Input{Text: value} }
 
-// CommandReceipt identifies a command accepted by the current process.
+// CommandReceipt identifies a command durably accepted by this Session.
 type CommandReceipt struct {
-	CommandID string
-	RunID     string
-	Cursor    Cursor
+	CommandID string `json:"command_id"`
+	RunID     string `json:"run_id,omitempty"`
+	Cursor    Cursor `json:"cursor"`
 }
 
 // AbortRequest describes one explicit Run termination command. Callers that
@@ -88,17 +88,19 @@ type EventSource struct {
 }
 
 type AssistantDelta struct {
-	Source      EventSource
-	Delta       string
-	DisplayOnly bool
+	ResponseOrdinal int
+	Source          EventSource
+	Delta           string
+	DisplayOnly     bool
 }
 
 func (AssistantDelta) eventPayload() {}
 
 type ThinkingDelta struct {
-	Source      EventSource
-	Delta       string
-	DisplayOnly bool
+	ResponseOrdinal int
+	Source          EventSource
+	Delta           string
+	DisplayOnly     bool
 }
 
 func (ThinkingDelta) eventPayload() {}
@@ -113,6 +115,20 @@ type ModelCompleted struct {
 }
 
 func (ModelCompleted) eventPayload() {}
+
+// ModelRetry closes an unaccepted preview and reports the wait before the next
+// provider call. Attempt counts the failed/rejected call, starting at one.
+type ModelRetry struct {
+	Source          EventSource
+	Attempt         int
+	MaxAttempts     int
+	ResponseOrdinal int
+	OutputState     ModelOutputState
+	Delay           time.Duration
+	Reason          string
+}
+
+func (ModelRetry) eventPayload() {}
 
 // ContextNormalized is bounded telemetry for provider-protocol repairs made
 // immediately before fixed context maintenance. Message content is never
@@ -291,6 +307,7 @@ type CompactionStarted struct {
 func (CompactionStarted) eventPayload() {}
 
 type CompactionCommitted struct {
+	Metrics   CompactionMetrics
 	State     CompactionState
 	Automatic bool
 }
@@ -397,6 +414,9 @@ const (
 	ResultAborted    ResultStatus = "aborted"
 	ResultIncomplete ResultStatus = "incomplete"
 	ResultBlocked    ResultStatus = "blocked"
+	// ResultSuspended ends the current process handle without settling the
+	// logical Run. ResumeRun creates a new handle for the same RunID.
+	ResultSuspended ResultStatus = "suspended"
 )
 
 type RunSettled struct {
@@ -426,6 +446,7 @@ type SessionSnapshot struct {
 	ActiveRunID         string
 	ActiveCommandID     string
 	ActiveAbortPending  bool
+	ActiveStatus        ResultStatus
 	ActiveReceiptCursor Cursor
 	ActiveCycle         int
 	ActiveOutput        ActiveOutputSnapshot
@@ -434,7 +455,6 @@ type SessionSnapshot struct {
 	RecentRuns          []RunSummary
 	Goal                *GoalState
 	Todo                *TodoState
-	Cleanup             *CleanupState
 	Compaction          *CompactionState
 	ClearRevision       uint64
 	PendingInteractions []InteractionRequest

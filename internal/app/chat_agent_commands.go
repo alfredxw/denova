@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	agentexecution "denova/internal/agents/execution"
@@ -41,30 +42,56 @@ func (s *ChatAppService) SubmitAgentCommandForSession(ctx context.Context, sessi
 }
 
 func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAgentCommand) (agentrun.CommandReceipt, error) {
-	if command.Kind == agentexecution.CommandAbort || command.Kind == agentexecution.CommandSteerQueued || command.Kind == agentexecution.CommandCancelQueued {
-		runtime, task, err := s.activeCommandRuntime()
-		if err != nil {
-			return agentrun.CommandReceipt{}, err
-		}
+	runtime, task, err := s.commandRuntime(ctx)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
+	}
+	taskID := ""
+	var emit func(agentrun.Event)
+	if task != nil {
+		taskID, emit = task.ID(), task.Emit
+	}
+	if command.Kind == agentexecution.CommandAbort || command.Kind == agentexecution.CommandSuspend || command.Kind == agentexecution.CommandSteerQueued || command.Kind == agentexecution.CommandCancelQueued {
 		return runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 			Kind: command.Kind, CommandID: command.CommandID,
 			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Options: runtime.agentOptions(task.ID()),
+			Options: runtime.agentOptions(taskID),
 		})
 	}
 	if command.Kind != agentexecution.CommandSteer && command.Kind != agentexecution.CommandFollowUp && command.Kind != agentexecution.CommandNextTurn {
 		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported writing command %q", agentrun.ErrInvalidCommand, command.Kind)
 	}
-	activeRuntime, task, err := s.activeCommandRuntime()
-	if err != nil {
-		return agentrun.CommandReceipt{}, err
-	}
-	return activeRuntime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
+	return runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 		Kind: command.Kind, CommandID: command.CommandID,
 		OperationID: command.OperationID, AfterOperationID: command.OperationID,
-		Request: command.Input, Emit: task.Emit,
-		Options: activeRuntime.agentOptions(task.ID()),
+		Request: command.Input, Emit: emit,
+		Options: runtime.agentOptions(taskID),
 	})
+}
+
+// A paused logical Run remains addressable after its display task closes.
+func (s *ChatAppService) commandRuntime(ctx context.Context) (ideChatRuntime, *apptask.Task, error) {
+	runtime, task, err := s.activeCommandRuntime()
+	if !errors.Is(err, ErrNoActiveAgentOperation) {
+		return runtime, task, err
+	}
+	a := s.app
+	a.mu.RLock()
+	if a.cfg == nil || a.session == nil || a.executionRuntime == nil || a.workspaceTransition {
+		a.mu.RUnlock()
+		return ideChatRuntime{}, nil, ErrAgentContextChanged
+	}
+	runtime = ideChatRuntime{app: a, projectID: a.cfg.ProjectID, projectStore: a.cfg.ProjectStoreDir,
+		workspace: a.workspace, sess: a.session, state: a.bookState, executionRuntime: a.executionRuntime}
+	a.mu.RUnlock()
+	status, err := runtime.executionRuntime.RuntimeStatusProjection(ctx, runtime.agentOptions(""))
+	if err != nil {
+		return ideChatRuntime{}, nil, err
+	}
+	if status.Phase != agentrun.RunPhaseSuspended {
+		return ideChatRuntime{}, nil, ErrNoActiveAgentOperation
+	}
+	return runtime, nil, nil
 }
 
 func (s *ChatAppService) confirmActiveCommandRuntime(expected ideChatRuntime, task *apptask.Task) error {

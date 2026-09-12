@@ -201,14 +201,16 @@ func newPreparedDefinitionLoop(
 	return newModelToolLoop(ctx, loopConfig{
 		Name: prepared.definition.Name, Description: prepared.definition.Description,
 		Instruction: prepared.definition.Instructions, Model: prepared.definition.Model,
-		Tools: prepared.tools, Middlewares: middlewares,
+		ModelIdentity: prepared.definition.ModelIdentity,
+		Tools:         prepared.tools, Middlewares: middlewares,
 		ResultProcessor: prepared.definition.ResultProcessor, Artifacts: prepared.definition.Artifacts,
-		Retry:           prepared.definition.Execution.Retry,
-		MaxIterations:   prepared.definition.Execution.MaxIterations,
-		IdleTimeout:     prepared.definition.Execution.IdleTimeout,
-		ToolParallelism: prepared.definition.Execution.ToolParallelism,
-		modelCallGate:   gate,
-		permission:      permission,
+		Retry:            prepared.definition.Execution.Retry,
+		ModelMaxAttempts: prepared.definition.Execution.ModelMaxAttempts,
+		MaxIterations:    prepared.definition.Execution.MaxIterations,
+		IdleTimeout:      prepared.definition.Execution.IdleTimeout,
+		ToolParallelism:  prepared.definition.Execution.ToolParallelism,
+		modelCallGate:    gate,
+		permission:       permission,
 	})
 }
 
@@ -257,7 +259,7 @@ func prepareDefinitionModelRequest(
 // replacement cannot extend the provider cache prefix across mutable history.
 func stableContextPrefixMessages(
 	fragments []ContextFragment,
-	compaction CompactionState,
+	compaction compactionRecord,
 	compactionPresent bool,
 ) int {
 	count := 0
@@ -295,18 +297,21 @@ func consumeMessageVariant(variant *loopMessage, source runstate.EventSource, di
 		message := CloneMessage(variant.Message)
 		if message != nil && message.Role == Assistant {
 			if message.Content != "" {
-				if err := emit(runstate.EngineAssistantDelta{Source: source, Delta: message.Content, DisplayOnly: displayOnly}); err != nil {
+				if err := emit(runstate.EngineAssistantDelta{Source: source, Delta: message.Content, DisplayOnly: displayOnly, ResponseOrdinal: variant.ModelResponseOrdinal}); err != nil {
 					return nil, err
 				}
 			}
 			if message.ReasoningContent != "" {
-				if err := emit(runstate.EngineThinkingDelta{Source: source, Delta: message.ReasoningContent, DisplayOnly: displayOnly}); err != nil {
+				if err := emit(runstate.EngineThinkingDelta{Source: source, Delta: message.ReasoningContent, DisplayOnly: displayOnly, ResponseOrdinal: variant.ModelResponseOrdinal}); err != nil {
 					return nil, err
 				}
 			}
 		}
 		if err := toolInputs.observe(message, emit); err != nil {
 			return nil, err
+		}
+		if variant.previewOnly {
+			return nil, nil
 		}
 		return message, nil
 	}
@@ -321,18 +326,22 @@ func consumeMessageVariant(variant *loopMessage, source runstate.EventSource, di
 			return assembler.Message()
 		}
 		if err != nil {
+			var rejected *modelResponseRejected
+			if errors.As(err, &rejected) {
+				return nil, nil
+			}
 			return nil, err
 		}
 		if chunk == nil {
 			return nil, errors.New("Agent modelToolLoop streamed a nil Message chunk")
 		}
 		if chunk.Content != "" {
-			if err := emit(runstate.EngineAssistantDelta{Source: source, Delta: chunk.Content, DisplayOnly: displayOnly}); err != nil {
+			if err := emit(runstate.EngineAssistantDelta{Source: source, Delta: chunk.Content, DisplayOnly: displayOnly, ResponseOrdinal: variant.ModelResponseOrdinal}); err != nil {
 				return nil, err
 			}
 		}
 		if chunk.ReasoningContent != "" {
-			if err := emit(runstate.EngineThinkingDelta{Source: source, Delta: chunk.ReasoningContent, DisplayOnly: displayOnly}); err != nil {
+			if err := emit(runstate.EngineThinkingDelta{Source: source, Delta: chunk.ReasoningContent, DisplayOnly: displayOnly, ResponseOrdinal: variant.ModelResponseOrdinal}); err != nil {
 				return nil, err
 			}
 		}

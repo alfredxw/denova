@@ -233,7 +233,7 @@ func TestConversationBoundaryRematerializesSameCycleAfterAgentCompaction(t *test
 		t.Fatal(err)
 	}
 	request.Compaction = &agent.CompactionState{
-		ID: "checkpoint-1", Revision: 1, Summary: "summary", ReplacementFrom: 0, ReplacementTo: 1,
+		ID: "checkpoint-1", Revision: 1, Summary: "summary", SourceMessageCount: 1,
 	}
 	if _, err := boundary.ContextSource().Materialize(context.Background(), request); err != nil {
 		t.Fatal(err)

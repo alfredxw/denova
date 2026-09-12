@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next'
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
+import { discardAgentPreviews } from '@/lib/agent-ui'
 import { withErrorLogID } from '@/lib/api-client'
 import { localizeAgentRuntimeError, localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
 import { agentMessageHasDataPart, createAgentDataMessage } from '@/lib/agent-ui-message'
@@ -38,7 +39,7 @@ export type StoryStageStreamOutcome = {
 
 type InteractiveAgentCycleStarted = Extract<DecodedHandledStreamEvent, { type: 'agent_cycle_started' }>['data']
 
-type TaskCheckpointStatus = 'running' | 'done' | 'aborted' | 'error'
+type TaskCheckpointStatus = 'running' | 'done' | 'aborted' | 'error' | 'suspended'
 
 interface StoryStageStreamConsumerOptions {
   liveAccumulator: LiveMessageAccumulator
@@ -81,6 +82,7 @@ export function createStoryStageStreamConsumer({
 
   function settleInactiveProjection(previous: StoryStageStreamOutcome): StoryStageStreamOutcome {
     const next = { ...previous, terminalEventReceived: true }
+    if (next.terminalStatus === 'suspended') return next
     if (next.persistenceRequired) {
       setMessages([errorMessage(t('storyStage.activity.persistenceMissing'))])
       next.finishedNormally = false
@@ -273,11 +275,48 @@ export function createStoryStageStreamConsumer({
           setActivity(t('storyStage.activity.thinking'))
           break
         }
+        case 'model_retry': {
+          const data = event.data
+          liveAccumulator.flush()
+          if (!data.subagent && data.output_state !== 'complete') {
+            liveAccumulator.resetAssistant()
+            narrativeFilter = createInteractiveNarrativeFilter()
+          }
+          setMessages(current => discardAgentPreviews(current, data.discard_ids).filter(message =>
+            data.subagent || data.output_state === 'complete' || data.accepted_content !== '' ||
+            message.role !== 'assistant' || message.metadata?.subagent || message.metadata?.run_id !== data.run_id ||
+            !message.parts.some(part => part.type === 'text' && part.state === 'streaming'),
+          ))
+          setActivity(t(data.output_state === 'complete' ? 'chat.activity.modelRepair' : 'chat.activity.modelRetry', {
+            attempt: data.attempt + 1, total: data.max_attempts, seconds: Math.ceil(data.delay_ms / 1000),
+          }))
+          break
+        }
+        case 'suspended': {
+          liveAccumulator.flush()
+          liveAccumulator.finishMessages('cancelled')
+          terminalStatus = 'suspended'
+          terminalEventReceived = true
+          setStageRuntime(current => ({ ...current, phase: 'suspended', recoveryPaused: true }))
+          setActivity(t('chat.runtime.suspended'))
+          break
+        }
         case 'interactive_content_reclassified': {
           const data = event.data
           liveAccumulator.resetAssistant()
           liveAccumulator.appendThinking(data.content || '', streamMetadataFromPayload(data))
           setActivity(t('storyStage.activity.thinking'))
+          break
+        }
+        case 'ask_pending': {
+          liveAccumulator.flush()
+          setStageRuntime(current => ({ ...current, pendingAsk: event.data as unknown as import('@/lib/api').AgentAskInteraction }))
+          break
+        }
+        case 'ask_resolved': {
+          const data = event.data
+          setStageRuntime(current => current.pendingAsk?.id === data.id ? { ...current, pendingAsk: undefined } : current)
+          setMessages(current => [...current, createAgentDataMessage({ id: `ask-${data.id}`, type: 'agent-ask', data })])
           break
         }
         case 'tool_call': {

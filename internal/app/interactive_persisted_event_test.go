@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -26,6 +25,8 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	bindInteractiveCycleForTest(conversation)
+	materializeInteractiveInputForTest(t, store, story.ID, "main", "继续前进", conversation.AgentCycleIdentitySnapshot())
 	submitTestTurnResult(t, store, story.ID, "main", conversation, "走出门外", "确认雾中环境")
 	if err := commitInteractiveAssistantForTest(t, store, story.ID, "main", "继续前进", conversation, "雾气在门外散开。", "先确认场景。"); err != nil {
 		t.Fatal(err)
@@ -43,12 +44,8 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	projection, err := conversation.PrepareAgentCompaction(context.Background(), agent.CompactionCompactRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := conversation.BindAgentCompaction(&agent.CompactionState{
-		ID: "agent-checkpoint", Revision: 2, Summary: "bounded current story", ContextData: projection.ContextData,
+		ID: "agent-checkpoint", Revision: 2, Summary: "bounded current story", SourceMessageCount: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
+import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
 
 const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
@@ -296,6 +297,7 @@ function writeModelError(response, message) {
 
 const server = createServer(async (request, response) => {
   const requestURL = new URL(request.url || '/', 'http://127.0.0.1')
+  if (request.method === 'GET' && compactionControl(requestURL, response, writeJSON)) return
   if (request.method === 'GET' && request.url === '/health') {
     writeJSON(response, 200, { status: 'ok' })
     return
@@ -350,6 +352,15 @@ const server = createServer(async (request, response) => {
     if (!capturedRequests.has(marker) && requestIncludesMarker(body, marker)) {
       capturedRequests.set(marker, body)
     }
+  }
+
+  const compaction = compactionCompletion(body)
+  if (compaction) {
+    if (body.stream !== true) writeGeneratedCompletion(response, compaction.content)
+    else if (compaction.tool) writeChatCompletion(response, toolCompletionFrames(compaction.tool, compaction.arguments, compaction.id))
+    else if (!compaction.summary && requestIncludesTool(body, 'submit_interactive_turn')) writeChatCompletion(response, chatCompletionFrames(compaction.content))
+    else writeChatCompletion(response, textCompletionFrames(compaction.content))
+    return
   }
 
   if (body.stream !== true) {

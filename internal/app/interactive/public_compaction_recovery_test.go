@@ -9,6 +9,7 @@ import (
 	"denova/config"
 	"denova/internal/agents/canonicalstore"
 	agentchat "denova/internal/agents/chat"
+	agentcompaction "denova/internal/agents/context/compaction"
 	agentstructural "denova/internal/agents/context/structural"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
@@ -39,7 +40,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rich := strings.Repeat("Important historical evidence. ", 100)
+			rich := strings.Repeat("Important historical evidence. ", 1000)
 			appendPublicGameToolTurn(t, store, story.ID, rich)
 			newRuntime := func() *agentexecution.Runtime {
 				runtime, err := agentexecution.NewAgentRuntime(ctx, dataDir,
@@ -54,18 +55,23 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			}
 			runtime := newRuntime()
 			t.Cleanup(func() { _ = runtime.Close(ctx) })
-			cfg := &config.Config{Workspace: workspace}
-			model := &publicGameHistoryModel{narrative: "Continue the story."}
+			cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 128_000}
+			model := &publicGameHistoryModel{narrative: "Continue the story.", checkpoint: "public Game checkpoint"}
+			manager, err := agentcompaction.NewAgentManagerForModel(cfg, config.AgentKindInteractiveStory, 128_000)
+			if err != nil {
+				t.Fatal(err)
+			}
 			newCycle := func(message string) agentexecution.Cycle {
-				cycle := publicGameMaintenanceCycle(store, workspace, story.ID, cfg, nil)
+				cycle := publicGameMaintenanceCycle(store, workspace, story.ID, cfg)
 				cycle.Conversation = NewConversation(store, "", workspace, story.ID, "main", message, 800, cfg)
 				cycle.Options.ProjectID = record.ID
 				cycle.Definition.Model = model
+				cycle.Definition.Compaction = manager
 				return cycle
 			}
 			initial := newCycle("Continue")
 			initial.Request = agentchat.ChatRequest{CommandID: "game-before-maintenance", Message: "Continue"}
-			submitTestTurnResult(t, initial.Conversation.(*Conversation), "Continue", "Continue")
+			initial.Definition.Middlewares = append(initial.Definition.Middlewares, gameSubmissionForTest(t, initial.Conversation.(*Conversation), "Continue", "Continue"))
 			operation, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: initial})
 			if err != nil {
 				t.Fatal(err)
@@ -104,12 +110,30 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			if !reflect.DeepEqual(before.Turns, after.Turns) {
 				t.Fatal("manual compaction changed canonical game turns")
 			}
+			for range 3 {
+				appendPublicGameToolTurn(t, store, story.ID, rich)
+			}
+			before, err = store.Snapshot(story.ID, "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			repeated, err := runtime.ExecuteStructuralOperation(ctx, newCycle(""), agentstructural.Spec{
+				Action: agentstructural.Compact, CommandID: "game-manual-compact-again",
+				Ref: agentrun.ContextCompactionRef{Force: true},
+			})
+			if err != nil || !repeated.Compaction.Triggered {
+				t.Fatalf("repeated manual compaction: result=%+v error=%v", repeated, err)
+			}
+			after, err = store.Snapshot(story.ID, "main")
+			if err != nil || !reflect.DeepEqual(before.Turns, after.Turns) {
+				t.Fatalf("repeated compaction changed canonical game turns: %v", err)
+			}
 			if err := runtime.Close(ctx); err != nil {
 				t.Fatal(err)
 			}
 			runtime = newRuntime()
 			status, err := runtime.RuntimeStatusProjection(ctx, newCycle("").Options)
-			if err != nil || status.Compaction == nil {
+			if err != nil || status.Compaction == nil || status.Compaction.Revision != uint64(repeated.Compaction.Revision) {
 				t.Fatalf("checkpoint was not restored from the Story journal: %+v, %v", status.Compaction, err)
 			}
 			compactedContinuation := newCycle("Continue with checkpoint")
@@ -134,7 +158,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			compactedContinuation.Definition.Tools = toolset
 			compactedContinuation.Definition.Permission = agentpermission.FullAccess()
 			compactedContinuation.Request = agentchat.ChatRequest{CommandID: "game-with-checkpoint", Message: "Continue with checkpoint"}
-			submitTestTurnResult(t, compactedContinuation.Conversation.(*Conversation), "Continue with checkpoint", "Continue with checkpoint")
+			compactedContinuation.Definition.Middlewares = append(compactedContinuation.Definition.Middlewares, gameSubmissionForTest(t, compactedContinuation.Conversation.(*Conversation), "Continue with checkpoint", "Continue with checkpoint"))
 			operation, err = runtime.Start(ctx, agentexecution.StartRequest{Cycle: compactedContinuation})
 			if err != nil {
 				t.Fatal(err)
@@ -158,7 +182,7 @@ func TestGameManualCompactionAfterInspectionAndRestart(t *testing.T) {
 			}
 			continuation := newCycle("Continue after maintenance")
 			continuation.Request = agentchat.ChatRequest{CommandID: "game-after-maintenance", Message: "Continue after maintenance"}
-			submitTestTurnResult(t, continuation.Conversation.(*Conversation), "Continue after maintenance", "Continue after maintenance")
+			continuation.Definition.Middlewares = append(continuation.Definition.Middlewares, gameSubmissionForTest(t, continuation.Conversation.(*Conversation), "Continue after maintenance", "Continue after maintenance"))
 			operation, err = runtime.Start(ctx, agentexecution.StartRequest{Cycle: continuation})
 			if err != nil {
 				t.Fatal(err)
@@ -199,14 +223,14 @@ func (model *checkpointToolModel) Stream(ctx context.Context, messages []*agent.
 	return agent.StreamReaderFromArray([]*agent.Message{response}), nil
 }
 
-func publicGameMaintenanceCycle(store *interactive.Store, workspace, storyID string, cfg *config.Config, cleanup agent.CleanupManager) agentexecution.Cycle {
+func publicGameMaintenanceCycle(store *interactive.Store, workspace, storyID string, cfg *config.Config) agentexecution.Cycle {
 	options := publicGameOptions(workspace, storyID, "main")
 	options.TaskID = ""
 	return agentexecution.Cycle{
 		Definition: agent.Definition{
 			Key: "denova.test.public-game-history", Name: "game", Model: &publicGameHistoryModel{narrative: "Unexpected model call."},
 			ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.public-game-history", Version: 1},
-			Cleanup:       cleanup, Compaction: publicGameCompactionManager{},
+			Compaction:    publicGameCompactionManager{},
 		},
 		Conversation: NewConversation(store, "", workspace, storyID, "main", "", 800, cfg),
 		Options:      options,

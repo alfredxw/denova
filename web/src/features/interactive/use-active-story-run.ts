@@ -94,6 +94,7 @@ export function useActiveStoryRunRecovery({ stageKey, storyId, branchId, isStrea
 }
 
 function isObservableInteractiveRuntime(active: ActiveInteractiveChat) {
+  if (active.phase === 'suspended') return false
   if (active.active && active.task_id?.trim()) return true
   // The active endpoint retains the last settled display Task for replay. Once
   // its canonical turn is persisted, that Task is observable only when the

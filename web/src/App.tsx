@@ -214,6 +214,8 @@ function App() {
     approveProposedPlan,
     exitPlanMode,
     stop,
+    suspend,
+    resumeTask,
     loadHistory,
     loadEarlierHistory,
     hasEarlierMessages,
@@ -972,6 +974,8 @@ function App() {
         onSend={send}
         onAnalyzeContext={analyzeContext}
         onStop={stop}
+        onSuspend={suspend}
+        onResumeTask={resumeTask}
         onSteerQueuedCommand={steerQueuedCommand}
         onDeleteQueuedCommand={deleteQueuedCommand}
         onEditQueuedCommand={editQueuedCommand}

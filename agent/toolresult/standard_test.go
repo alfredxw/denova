@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -122,5 +123,53 @@ func resultDescriptor(retention agent.ToolResultRetentionMode) agent.ToolDescrip
 		Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
 		ResultRetention: retention, ResultRecoveryKind: agent.ToolResultRecoveryRead,
 		Steering: agent.SteeringFinishCurrent, MaxResultBytes: 1 << 20,
+	}
+}
+
+func TestStandardBoundsAggregateBatchAndPersistsMultibyteEvidence(t *testing.T) {
+	const batchSize = 12
+	policy := Policy{MaxBytes: 32 << 10, ContextWindowTokens: 16_000}
+	processor := Standard(policy)
+	content := "HEAD-SENTINEL\n" + strings.Repeat("é验a证🌏", 2000) + "\nMIDDLE: budget corrected to 72519\n" + strings.Repeat("日本語", 1000) + "\nTAIL-SENTINEL"
+	var totalBytes, totalTokens int
+	for index := range batchSize {
+		storage := &memoryStorage{}
+		ctx := agent.ContextWithToolArtifactBackend(context.Background(), storage)
+		processed, err := processor.Process(ctx, agent.ToolResultProcessRequest{
+			ToolName: "read", ProviderCallID: "source", ExecutionID: "source", BatchSize: batchSize,
+			Definition: agent.ToolDefinitionSnapshot{Descriptor: resultDescriptor(agent.ToolResultDeferred)},
+			Result:     agent.TextToolResult(content),
+		})
+		if err != nil {
+			t.Fatalf("result %d: %v", index, err)
+		}
+		if storage.content.String() != content {
+			t.Fatal("batch projection lost complete source evidence")
+		}
+		if !utf8.ValidString(processed.ModelContent) || !strings.Contains(processed.ModelContent, storage.content.String()[:13]) || !strings.Contains(processed.ModelContent, "TAIL-SENTINEL") || !strings.Contains(processed.ModelContent, "artifact=.agent/artifacts/complete.log") {
+			t.Fatalf("invalid batch preview: %q", processed.ModelContent)
+		}
+		totalBytes += len(processed.ModelContent)
+		totalTokens += agent.EstimateMessageTokens(agent.ToolMessage(processed, "source", agent.WithToolName("read")))
+	}
+	if totalBytes > policy.MaxBytes || totalTokens > policy.BatchTokenLimit() {
+		t.Fatalf("aggregate batch exceeds reserves: bytes=%d/%d tokens=%d/%d", totalBytes, policy.MaxBytes, totalTokens, policy.BatchTokenLimit())
+	}
+}
+
+func TestStandardStopsWhenBatchCannotFitArtifactReferences(t *testing.T) {
+	storage := &memoryStorage{}
+	ctx := agent.ContextWithToolArtifactBackend(context.Background(), storage)
+	content := strings.Repeat("completed mutation receipt; ", 100)
+	result, err := Standard(Policy{MaxBytes: 128, ContextWindowTokens: 1000}).Process(ctx, agent.ToolResultProcessRequest{
+		ToolName: "write", ExecutionID: "mutation", ProviderCallID: "mutation", BatchSize: 100,
+		Definition: agent.ToolDefinitionSnapshot{Descriptor: resultDescriptor(agent.ToolResultProtected)},
+		Result:     agent.TextToolResult(content),
+	})
+	if err == nil || !agent.IsToolControlError(err) {
+		t.Fatalf("capacity error=%v", err)
+	}
+	if storage.content.String() != content || len(result.Artifacts) != 1 || !result.Artifacts[0].Complete || result.Status != agent.ToolResultSuccess {
+		t.Fatalf("capacity failure erased the completed tool outcome: %+v", result)
 	}
 }

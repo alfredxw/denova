@@ -7,17 +7,21 @@ import (
 )
 
 func TestMessageLegacyWireGolden(t *testing.T) {
-	var message Message
-	legacy := `{"role":"user","content":"legacy"}`
-	if err := json.Unmarshal([]byte(legacy), &message); err != nil {
-		t.Fatal(err)
-	}
-	encoded, err := json.Marshal(&message)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(encoded) != legacy {
-		t.Fatalf("wire changed:\n got %s\nwant %s", encoded, legacy)
+	for _, legacy := range []string{
+		`{"role":"user","content":"legacy"}`,
+		`{"role":"assistant","content":"legacy","response_meta":{"usage":{"prompt_tokens":20,"prompt_token_details":{"cached_tokens":0},"completion_tokens":7,"total_tokens":27,"completion_token_details":{}}}}`,
+	} {
+		var message Message
+		if err := json.Unmarshal([]byte(legacy), &message); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(&message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(encoded) != legacy {
+			t.Fatalf("wire changed:\n got %s\nwant %s", encoded, legacy)
+		}
 	}
 }
 
@@ -57,6 +61,9 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 		ReasoningContent: "reason",
 		ResponseMeta: &ResponseMeta{
 			FinishReason: "tool_calls",
+			InputEstimate: &ModelInputEstimate{
+				Tokens: 8, Model: CapabilityIdentity{Kind: "test.model", Version: 1},
+			},
 			Usage: &TokenUsage{
 				PromptTokens:       10,
 				PromptTokenDetails: PromptTokenDetails{CachedTokens: 2},
@@ -108,19 +115,21 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 	clone.ToolResult.ArtifactPersistence.Complete = false
 	clone.Extra["nested"].(map[string]any)["items"].([]any)[0] = "changed"
 	clone.ResponseMeta.Usage.TotalTokens = 99
+	clone.ResponseMeta.InputEstimate.Tokens = 99
 	if message.MultiContent[0][0] == '[' || message.ToolCalls[0].Function.Name != "lookup" ||
 		message.ToolCalls[0].Extra["provider"] != "p" ||
 		message.ToolResult.Artifacts[0].ReadablePath != "/workspace/.denova/sessions/artifact.log" ||
 		message.ToolResult.ContextHints.Recovery.Reference["path"] != "chapter.md" ||
 		!message.ToolResult.ArtifactPersistence.Complete ||
 		message.Extra["nested"].(map[string]any)["items"].([]any)[0] != "a" ||
-		message.ResponseMeta.Usage.TotalTokens != 13 {
+		message.ResponseMeta.Usage.TotalTokens != 13 || message.ResponseMeta.InputEstimate.Tokens != 8 {
 		t.Fatal("Clone shared mutable storage with the source")
 	}
 }
 
 func TestConcatMessagesInterleavedToolCallsAndUsageTail(t *testing.T) {
 	zero, one := 0, 1
+	estimate := ModelInputEstimate{Tokens: 16, Model: CapabilityIdentity{Kind: "test.model", Version: 1}}
 	chunks := []*Message{
 		{
 			Role: Assistant, Content: "hel", ReasoningContent: "rea",
@@ -136,9 +145,10 @@ func TestConcatMessagesInterleavedToolCallsAndUsageTail(t *testing.T) {
 				{Index: &one, Function: FunctionCall{Arguments: `2}`}, Extra: map[string]any{"trace": "y"}},
 			},
 		},
+		{ResponseMeta: &ResponseMeta{FinishReason: "tool_calls"}},
 		{
 			ResponseMeta: &ResponseMeta{
-				FinishReason: "tool_calls",
+				InputEstimate: &estimate,
 				Usage: &TokenUsage{
 					PromptTokens:       20,
 					PromptTokenDetails: PromptTokenDetails{CachedTokens: 5},
@@ -171,7 +181,8 @@ func TestConcatMessagesInterleavedToolCallsAndUsageTail(t *testing.T) {
 		t.Fatalf("tool type/extra lost: %#v", message.ToolCalls[1])
 	}
 	if message.ResponseMeta == nil || message.ResponseMeta.Usage == nil ||
-		message.ResponseMeta.FinishReason != "tool_calls" || message.ResponseMeta.Usage.TotalTokens != 27 {
+		message.ResponseMeta.FinishReason != "tool_calls" || message.ResponseMeta.Usage.TotalTokens != 27 ||
+		message.ResponseMeta.InputEstimate == nil || *message.ResponseMeta.InputEstimate != estimate {
 		t.Fatalf("usage-only tail lost: %#v", message.ResponseMeta)
 	}
 }

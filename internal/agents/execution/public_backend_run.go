@@ -103,33 +103,33 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 	}
 	spec.Request.CommandID = commandID
 	spec.Request = agentchat.CaptureChatRequestCallerInput(spec.Request)
-	backend.mu.RLock()
-	target := backend.runs[string(spec.OperationID)]
-	if target == nil {
-		target = backend.runs[string(spec.AfterOperationID)]
+	sessionHandle, err := backend.agent.Session(ctx, key)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
 	}
-	backend.mu.RUnlock()
-	if target == nil {
-		sessionHandle, openErr := backend.agent.Session(ctx, key)
-		if openErr != nil {
-			return agentrun.CommandReceipt{}, openErr
-		}
-		runID := string(spec.OperationID)
-		if runID == "" {
-			runID = string(spec.AfterOperationID)
-		}
-		attached, found, attachErr := sessionHandle.AttachRun(ctx, runID)
-		if attachErr != nil {
-			return agentrun.CommandReceipt{}, attachErr
-		}
-		if !found {
-			return agentrun.CommandReceipt{}, agent.ErrNoActiveRun
-		}
-		target = backend.trackRun(sessionHandle, attached, nil, "")
+	runID := string(spec.OperationID)
+	if runID == "" {
+		runID = string(spec.AfterOperationID)
 	}
+	attached, found, err := sessionHandle.AttachRun(ctx, runID)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
+	}
+	if !found {
+		return agentrun.CommandReceipt{}, agent.ErrNoActiveRun
+	}
+	target := &publicRunHandle{session: sessionHandle, run: attached}
 	switch spec.Kind {
+	case CommandSuspend:
+		suspension, err := backend.agent.SuspendTree(ctx, key, agent.SuspendRequest{
+			RunID: target.run.ID(), Reason: spec.Reason, IdempotencyKey: commandID,
+		})
+		if err != nil {
+			return agentrun.CommandReceipt{}, err
+		}
+		return mapPublicCommandReceipt(suspension.Receipt), nil
 	case CommandAbort:
-		receipt, err := target.run.Abort(ctx, agent.AbortRequest{
+		receipt, err := backend.agent.AbortTree(ctx, key, agent.AbortRequest{
 			Reason: spec.Reason, IdempotencyKey: commandID,
 		})
 		if err != nil {
@@ -137,8 +137,11 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 		}
 		return mapPublicCommandReceipt(receipt), nil
 	case CommandSteerQueued, CommandCancelQueued:
-		queued, found, queuedErr := target.run.Queued(ctx, string(spec.TargetCommandID))
+		queued, found, queuedErr := target.session.Queued(ctx, string(spec.TargetCommandID))
 		if queuedErr != nil {
+			if errors.Is(queuedErr, agent.ErrInputConsumed) || errors.Is(queuedErr, agent.ErrInputCancelled) {
+				return agentrun.CommandReceipt{}, fmt.Errorf("%w: %w", agentrun.ErrQueueConflict, queuedErr)
+			}
 			return agentrun.CommandReceipt{}, queuedErr
 		}
 		if !found {
@@ -152,6 +155,9 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 			receipt, queuedErr = queued.Cancel(ctx, control)
 		}
 		if queuedErr != nil {
+			if errors.Is(queuedErr, agent.ErrInputConsumed) || errors.Is(queuedErr, agent.ErrInputCancelled) {
+				return agentrun.CommandReceipt{}, fmt.Errorf("%w: %w", agentrun.ErrQueueConflict, queuedErr)
+			}
 			return agentrun.CommandReceipt{}, queuedErr
 		}
 		return mapPublicCommandReceipt(receipt), nil
@@ -174,18 +180,22 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 		}
 		return mapPublicCommandReceipt(receipt), nil
 	case CommandFollowUp:
-		queued, err := target.run.Queue(ctx, input)
+		queued, err := target.session.Queue(ctx, input)
 		if err != nil {
 			return agentrun.CommandReceipt{}, err
 		}
 		return mapPublicCommandReceipt(queued.Receipt()), nil
 	case CommandNextTurn:
-		next, err := target.run.FollowUp(ctx, input)
+		receipt, err := target.session.FollowUp(ctx, input)
 		if err != nil {
 			return agentrun.CommandReceipt{}, err
 		}
+		next, found, err := target.session.AttachRun(ctx, receipt.RunID)
+		if err != nil || !found {
+			return agentrun.CommandReceipt{}, errors.Join(err, agent.ErrNoActiveRun)
+		}
 		backend.trackRun(target.session, next, registration, target.run.ID())
-		return mapPublicReceipt(next), nil
+		return mapPublicCommandReceipt(receipt), nil
 	default:
 		return agentrun.CommandReceipt{}, fmt.Errorf("unsupported Denova public Agent command %q", spec.Kind)
 	}
@@ -197,6 +207,12 @@ func (backend *publicBackend) trackRun(
 	registration *publicCycleRegistration,
 	parentRunID string,
 ) *publicRunHandle {
+	backend.mu.RLock()
+	existing := backend.runs[publicRun.ID()]
+	backend.mu.RUnlock()
+	if existing != nil && existing.run == publicRun {
+		return existing
+	}
 	trace := publicTraceForRun(registration, publicRun.ID())
 	handle := &publicRunHandle{
 		session: sessionHandle, run: publicRun, registration: registration, trace: trace, done: make(chan struct{}),
@@ -322,7 +338,7 @@ func (backend *publicBackend) wait(
 	for current != nil {
 		result, err := current.run.Wait(ctx)
 		if ctx != nil && ctx.Err() != nil {
-			_, abortErr := current.run.Abort(context.Background(), agent.AbortRequest{Reason: "Denova display task was cancelled"})
+			_, abortErr := backend.agent.AbortTree(context.Background(), current.session.Key(), agent.AbortRequest{Reason: "Denova display task was cancelled"})
 			if abortErr != nil && !errors.Is(abortErr, agent.ErrRunSettled) && !errors.Is(abortErr, agent.ErrAgentClosed) {
 				return agentrun.NewOutcome(agentrun.OutcomeFailed, abortErr, abortErr.Error(), "", "")
 			}

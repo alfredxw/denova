@@ -64,9 +64,8 @@ func WithCacheKeyGenerator(generate CacheKeyGenerator) Option {
 	}
 }
 
-// Agent owns a small set of in-process Sessions. Session stores contain only
-// canonical messages, capability updates, and settled turns; live Runs, event
-// cursors, queues, and interactions deliberately remain process-local.
+// Agent owns Session handles and serializes task-tree admission. Journals own
+// accepted inputs and execution facts; handles and waiters are process-local.
 type Agent struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -76,9 +75,10 @@ type Agent struct {
 	runIDs    RunIDGenerator
 	cacheKeys CacheKeyGenerator
 
-	mu       sync.RWMutex
-	sessions map[string]*Session
-	closed   bool
+	mu          sync.RWMutex
+	sessions    map[string]*Session
+	closed      bool
+	admissionMu sync.Mutex
 }
 
 func New(lifecycle context.Context, source Source, options ...Option) (*Agent, error) {
@@ -214,6 +214,8 @@ func (agent *Agent) Session(ctx context.Context, key SessionKey) (*Session, erro
 		agent: agent, key: key, binding: binding, engine: engine, log: log,
 		capabilities: make(map[string]json.RawMessage), durableCapabilities: make(map[string]json.RawMessage),
 		runs:            make(map[string]*Run),
+		inputs:          make(map[string]*acceptedInput),
+		controlReceipts: make(map[string]persistedControlReceipt),
 		observers:       make(map[uint64]*sessionObserver),
 		taskCompletions: newTaskCompletionMailbox(),
 	}
@@ -278,7 +280,7 @@ func (agent *Agent) CountActiveSessions(ctx context.Context, selector SessionSel
 			}
 			return 0, err
 		}
-		if found && active != nil {
+		if found && active != nil && !active.isSuspended() {
 			count++
 		}
 	}
