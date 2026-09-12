@@ -86,6 +86,10 @@ func (agent *modelToolLoop) beforeModelCall(ctx context.Context, call *ModelCall
 			return ctx, nil, errors.New("before model call middleware returned nil model call")
 		}
 	}
+	call.modelIdentity = agent.modelIdentity
+	if model, ok := call.Model.(DefinitionModel); ok {
+		call.modelIdentity = model.ModelIdentity()
+	}
 	call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
 	return ctx, call, nil
 }

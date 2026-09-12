@@ -291,13 +291,24 @@ func compactionPlanMetrics(request agent.CompactionPlanRequest) agent.Compaction
 }
 
 func latestPromptUsage(messages []*agent.Message, snapshot *agent.ModelRequestSnapshot) (prompt, estimated, cached int) {
+	identity := snapshot.ModelIdentity()
+	if validateIdentity(identity) != nil {
+		return 0, 0, 0
+	}
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
-		if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.PromptTokens <= 0 {
+		if message == nil || message.Role != agent.Assistant || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.PromptTokens <= 0 {
 			continue
 		}
+		// History and schemas may have changed since this response. Only its
+		// original request estimate is comparable to the provider usage. Older
+		// journals and other models safely fall back to the current local estimate.
+		estimate := message.ResponseMeta.InputEstimate
+		if estimate == nil || estimate.Tokens <= 0 || estimate.Model != identity {
+			return 0, 0, 0
+		}
 		return message.ResponseMeta.Usage.PromptTokens,
-			estimateSnapshotTokens(messages[:index], snapshot),
+			estimate.Tokens,
 			message.ResponseMeta.Usage.PromptTokenDetails.CachedTokens
 	}
 	return 0, 0, 0

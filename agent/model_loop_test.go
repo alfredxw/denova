@@ -23,10 +23,11 @@ type retryBeforeFirstChunkModel struct {
 }
 
 type fullSeamRetryModel struct {
-	mu        sync.Mutex
-	responses []*Message
-	inputs    [][]*Message
-	options   []*Options
+	mu          sync.Mutex
+	reportUsage bool
+	responses   []*Message
+	inputs      [][]*Message
+	options     []*Options
 }
 
 func (model *fullSeamRetryModel) Generate(_ context.Context, input []*Message, options ...ModelOption) (*Message, error) {
@@ -37,6 +38,11 @@ func (model *fullSeamRetryModel) Stream(_ context.Context, input []*Message, opt
 	message, err := model.next(input, options...)
 	if err != nil {
 		return nil, err
+	}
+	if model.reportUsage {
+		content := message.Clone()
+		content.ResponseMeta = nil
+		return StreamReaderFromArray([]*Message{content, {ResponseMeta: message.ResponseMeta}}), nil
 	}
 	return StreamReaderFromArray([]*Message{message}), nil
 }
@@ -51,6 +57,13 @@ func (model *fullSeamRetryModel) next(input []*Message, options ...ModelOption) 
 	}
 	message := model.responses[0].Clone()
 	model.responses = model.responses[1:]
+	if model.reportUsage {
+		message.ResponseMeta = &ResponseMeta{
+			Usage: &TokenUsage{PromptTokens: EstimateRequestTokens(input, GetCommonOptions(nil, options...).Tools)},
+			// Runtime request accounting must replace untrusted adapter metadata.
+			InputEstimate: &ModelInputEstimate{Tokens: 1, Model: CapabilityIdentity{Kind: "wrong", Version: 1}},
+		}
+	}
 	return message, nil
 }
 
@@ -103,7 +116,16 @@ func (middleware *retryNormalizationMiddleware) calls() []int {
 }
 
 func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
-	model := &fullSeamRetryModel{responses: []*Message{
+	for _, streaming := range []bool{false, true} {
+		t.Run(fmt.Sprintf("streaming=%t", streaming), func(t *testing.T) {
+			testRetryReentersCompleteModelSeam(t, streaming)
+		})
+	}
+}
+
+func testRetryReentersCompleteModelSeam(t *testing.T, streaming bool) {
+	identity := CapabilityIdentity{Kind: "test.retry-model", Version: 1}
+	model := &fullSeamRetryModel{reportUsage: true, responses: []*Message{
 		AssistantMessage("reject me", nil),
 		AssistantMessage("", []ToolCall{{
 			ID: "retry-tool", Type: "function", Function: FunctionCall{Name: "echo", Arguments: `{}`},
@@ -118,6 +140,7 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 	}})
 	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "retry-complete-seam", Model: model, Tools: []ToolDefinition{echo},
+		ModelIdentity:    identity,
 		Middlewares:      []Middleware{middleware},
 		ModelMaxAttempts: 2,
 		modelCallGate: func(_ context.Context, call *ModelCall, modelContext *ModelContext) (*preparedModelCall, error) {
@@ -136,7 +159,8 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := ContextWithSessionKey(context.Background(), "stable-cache-key")
-	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(ctx, "source")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native, EnableStreaming: streaming}).Query(ctx, "source")
+	var published []*Message
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -144,6 +168,19 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 		}
 		if event != nil && event.Err != nil {
 			t.Fatal(event.Err)
+		}
+		if event != nil && event.Output != nil && event.Output.MessageOutput != nil {
+			message, err := event.Output.MessageOutput.GetMessage()
+			if err != nil {
+				var rejected *modelResponseRejected
+				if errors.As(err, &rejected) {
+					continue
+				}
+				t.Fatal(err)
+			}
+			if message != nil && message.Role == Assistant {
+				published = append(published, message)
+			}
 		}
 	}
 	model.mu.Lock()
@@ -174,6 +211,31 @@ func TestRetryReentersCompleteModelSeamAndKeepsFeedbackEphemeral(t *testing.T) {
 	}
 	if gateCalls != 3 || !restarted {
 		t.Fatalf("maintenance gate calls=%d restarted=%v", gateCalls, restarted)
+	}
+	firstAccepted := 0
+	if streaming {
+		firstAccepted = 1 // The rejected stream ends with a rejection error.
+	}
+	if len(published) != 3-firstAccepted {
+		t.Fatalf("published responses=%d; want %d", len(published), 3-firstAccepted)
+	}
+	for index, message := range published {
+		attempt := index + firstAccepted
+		want := EstimateRequestTokens(inputs[attempt], options[attempt].Tools)
+		meta := message.ResponseMeta
+		if meta == nil || meta.InputEstimate == nil || meta.InputEstimate.Model != identity || meta.InputEstimate.Tokens != want || meta.Usage.PromptTokens != want {
+			t.Fatalf("response %d lost its exact request pair: %+v; want %d", index, meta, want)
+		}
+	}
+	// The accepted tool response retains the retry request's estimate even
+	// though the following model input no longer contains ephemeral feedback.
+	for _, message := range inputs[2] {
+		if len(message.ToolCalls) > 0 {
+			want := EstimateRequestTokens(inputs[1], options[1].Tools)
+			if message.ResponseMeta == nil || message.ResponseMeta.InputEstimate == nil || message.ResponseMeta.InputEstimate.Tokens != want {
+				t.Fatalf("accepted retry estimate changed with history: %+v", message.ResponseMeta)
+			}
+		}
 	}
 }
 

@@ -30,7 +30,10 @@ func (observer *preparationStateObserver) AfterAgent(ctx context.Context, state 
 func TestPreparedCompactionFreezesArtifactPathsAndKeepsPortableLoopState(t *testing.T) {
 	resolver := &changingArtifactResolver{}
 	observer := &preparationStateObserver{}
-	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("done", nil)}}}
+	answer := AssistantMessage("done", nil)
+	answer.ResponseMeta = &ResponseMeta{Usage: &TokenUsage{PromptTokens: 200}}
+	model := &scriptedModel{responses: []scriptedModelResponse{{message: answer}}}
+	identity := CapabilityIdentity{Kind: "test.artifact-projection", Version: 1}
 	messages := []*Message{
 		UserMessage("Continue from the checkpoint"),
 		AssistantMessage("", []ToolCall{{ID: "saved", Type: "function", Function: FunctionCall{Name: "read", Arguments: `{}`}}}),
@@ -40,6 +43,7 @@ func TestPreparedCompactionFreezesArtifactPathsAndKeepsPortableLoopState(t *test
 	var validated []*Message
 	loop, err := newModelToolLoop(context.Background(), loopConfig{
 		Model: model, Artifacts: resolver, Middlewares: []Middleware{observer},
+		ModelIdentity: identity,
 		modelCallGate: func(_ context.Context, _ *ModelCall, metadata *ModelContext) (*preparedModelCall, error) {
 			replacement, err := metadata.prepareCompaction(messages, 0)
 			if err == nil {
@@ -70,5 +74,9 @@ func TestPreparedCompactionFreezesArtifactPathsAndKeepsPortableLoopState(t *test
 	}
 	if observer.messages[2].Content != "Read saved.txt" || observer.messages[2].ToolResult.Artifacts[0].ReadablePath != "saved.txt" {
 		t.Fatal("runtime artifact paths entered portable loop state")
+	}
+	meta := observer.messages[len(observer.messages)-1].ResponseMeta
+	if meta == nil || meta.InputEstimate == nil || meta.InputEstimate.Model != identity || meta.InputEstimate.Tokens != EstimateRequestTokens(validated, []*ToolInfo{}) {
+		t.Fatalf("input estimate did not use the frozen provider projection: %+v", meta)
 	}
 }

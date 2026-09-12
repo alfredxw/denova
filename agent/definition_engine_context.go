@@ -201,7 +201,8 @@ func newPreparedDefinitionLoop(
 	return newModelToolLoop(ctx, loopConfig{
 		Name: prepared.definition.Name, Description: prepared.definition.Description,
 		Instruction: prepared.definition.Instructions, Model: prepared.definition.Model,
-		Tools: prepared.tools, Middlewares: middlewares,
+		ModelIdentity: prepared.definition.ModelIdentity,
+		Tools:         prepared.tools, Middlewares: middlewares,
 		ResultProcessor: prepared.definition.ResultProcessor, Artifacts: prepared.definition.Artifacts,
 		Retry:            prepared.definition.Execution.Retry,
 		ModelMaxAttempts: prepared.definition.Execution.ModelMaxAttempts,

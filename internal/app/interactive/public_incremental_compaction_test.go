@@ -3,6 +3,7 @@ package interactiveapp
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"denova/internal/agents/canonicalstore"
 	agentchat "denova/internal/agents/chat"
 	agentcompaction "denova/internal/agents/context/compaction"
+	agentstructural "denova/internal/agents/context/structural"
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
@@ -30,9 +32,10 @@ type longProductModel struct {
 	step, summaries int
 	resume          bool
 	inputs          [][]*agent.Message
+	inputEstimates  []int
 }
 
-func (m *longProductModel) Generate(_ context.Context, messages []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+func (m *longProductModel) Generate(_ context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.Message, error) {
 	if strings.HasPrefix(messages[len(messages)-1].Content, "[Runtime context compaction request]") {
 		m.summaries++
 		if m.summaries > 1 && !containsMessageContent(messages, "Incremental evidence checkpoint") {
@@ -41,6 +44,8 @@ func (m *longProductModel) Generate(_ context.Context, messages []*agent.Message
 		return agent.AssistantMessage(fmt.Sprintf("Incremental evidence checkpoint %d. Goal: verify 24 sources. Budget corrected from 72591 to 72519. Evidence IDs: source-1 through source-%d. Completed sources remain verified. Pending: read remaining sources, then report.", m.summaries, m.step-1), nil), nil
 	}
 	m.inputs = append(m.inputs, messages)
+	estimate := agent.EstimateRequestTokens(messages, agent.GetCommonOptions(nil, options...).Tools)
+	m.inputEstimates = append(m.inputEstimates, estimate)
 	if !m.resume && !containsMessageContent(messages, incrementalIntent) {
 		m.t.Error("current input disappeared")
 	}
@@ -56,11 +61,15 @@ func (m *longProductModel) Generate(_ context.Context, messages []*agent.Message
 	if m.step > 0 && !m.resume && !containsMessageContent(messages, fmt.Sprintf("source-%d", m.step)) {
 		m.t.Errorf("latest source %d disappeared", m.step)
 	}
+	var response *agent.Message
 	if m.step == 24 || m.resume {
-		return agent.AssistantMessage("All evidence verified. Corrected budget 72519.", nil), nil
+		response = agent.AssistantMessage("All evidence verified. Corrected budget 72519.", nil)
+	} else {
+		m.step++
+		response = agent.AssistantMessage("Inspect the next source", []agent.ToolCall{{ID: fmt.Sprintf("evidence-%d", m.step), Type: "function", Function: agent.FunctionCall{Name: "evidence", Arguments: fmt.Sprintf(`{"step":%d}`, m.step)}}})
 	}
-	m.step++
-	return agent.AssistantMessage("Inspect the next source", []agent.ToolCall{{ID: fmt.Sprintf("evidence-%d", m.step), Type: "function", Function: agent.FunctionCall{Name: "evidence", Arguments: fmt.Sprintf(`{"step":%d}`, m.step)}}}), nil
+	response.ResponseMeta = &agent.ResponseMeta{Usage: &agent.TokenUsage{PromptTokens: estimate}}
+	return response, nil
 }
 func (m *longProductModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
 	result, err := m.Generate(ctx, messages, options...)
@@ -144,7 +153,9 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 				if kind == agentrun.AgentKindInteractiveStory {
 					game := NewConversation(stories, "", workspace, story.ID, "main", input, 800, cfg)
 					conversation = game
-					definition.Middlewares = []agent.Middleware{gameSubmissionForTest(t, game, input, input)}
+					if input != "" {
+						definition.Middlewares = []agent.Middleware{gameSubmissionForTest(t, game, input, input)}
+					}
 				}
 				return agentexecution.Cycle{Definition: definition, Conversation: conversation, Options: options, Request: agentchat.ChatRequest{CommandID: command, Message: input}}
 			}
@@ -167,8 +178,16 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 			if err != nil || status.Compaction == nil {
 				t.Fatalf("checkpoint missing: %+v %v", status.Compaction, err)
 			}
-			checkpointID := status.Compaction.ID
 			t.Logf("one Run generated %d checkpoints at raw boundary %d", model.summaries, status.Compaction.SourceMessageCount)
+			manual, err := runtime.ExecuteStructuralOperation(ctx, cycle("", "manual-calibration"), agentstructural.Spec{
+				CommandID: "manual-calibration", Action: agentstructural.Compact,
+				Ref: agentrun.ContextCompactionRef{Force: true},
+			})
+			if err != nil || !manual.Compaction.Triggered {
+				t.Fatalf("manual compaction before reopen: %+v %v", manual, err)
+			}
+			checkpointRevision := manual.Compaction.Revision
+			summariesBeforeReopen := model.summaries
 			if err := runtime.Close(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -185,8 +204,27 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 			if !containsMessageContent(latest, "Incremental evidence checkpoint") || !containsMessageContent(latest, "72519") {
 				t.Fatal("cold continuation lost checkpoint facts")
 			}
+			if model.summaries != summariesBeforeReopen {
+				t.Fatal("manual compaction caused another summary on cold continuation")
+			}
+			var previousUsage *agent.ResponseMeta
+			for index := len(latest) - 1; index >= 0; index-- {
+				if latest[index].ResponseMeta != nil && latest[index].ResponseMeta.Usage != nil {
+					previousUsage = latest[index].ResponseMeta
+					break
+				}
+			}
+			// Game materializes its final narrative separately, so the latest
+			// retained provider usage may belong to the preceding tool response.
+			previousEstimates := model.inputEstimates[:len(model.inputEstimates)-1]
+			if previousUsage == nil || previousUsage.InputEstimate == nil || previousUsage.InputEstimate.Model != identity || previousUsage.Usage.PromptTokens != previousUsage.InputEstimate.Tokens || !slices.Contains(previousEstimates, previousUsage.InputEstimate.Tokens) {
+				if previousUsage != nil {
+					t.Fatalf("product journal lost the original request/usage pair after compaction and reopen: usage=%+v estimate=%+v; original estimates=%v", previousUsage.Usage, previousUsage.InputEstimate, previousEstimates)
+				}
+				t.Fatal("product journal lost provider usage after compaction and reopen")
+			}
 			status, err = runtime.RuntimeStatusProjection(ctx, options)
-			if err != nil || status.Compaction == nil || status.Compaction.ID != checkpointID {
+			if err != nil || status.Compaction == nil || status.Compaction.Revision != checkpointRevision {
 				t.Fatalf("cold checkpoint changed: %+v %v", status.Compaction, err)
 			}
 		})

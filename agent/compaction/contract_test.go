@@ -39,23 +39,68 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 		TriggerBytes: 1024, KeepRecentBytes: 128, HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
 		ContextWindowTokens: 10_000, TriggerRatio: .85, RecoveryBand: .8,
 	})
-	previousPrompt := []*agent.Message{agent.UserMessage(strings.Repeat("previous input ", 120))}
-	answer := agent.AssistantMessage("previous answer", nil)
-	answer.ResponseMeta = &agent.ResponseMeta{Usage: &agent.TokenUsage{PromptTokens: 900}}
-	messages := append(previousPrompt, answer, agent.UserMessage(strings.Repeat("new input ", 30)))
-	snapshot := (&agent.ModelCall{Messages: messages}).Snapshot()
-	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: snapshot,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	metrics := plan.Metrics
-	if metrics.ObservedPromptTokens != 900 || metrics.ObservedEstimateTokens <= 0 ||
-		metrics.ProjectedTokensBefore != metrics.CalibratedTokens(metrics.EstimatedTokensBefore)+metrics.ReservedTokens {
-		t.Fatalf("calibrated Standard metrics=%#v", metrics)
+	identity := agent.CapabilityIdentity{Kind: "test.calibration", Version: 1}
+	for _, scenario := range []string{"original", "projected_history", "changed_tools", "legacy_usage", "invalid_estimate", "changed_model", "unidentified_model"} {
+		t.Run(scenario, func(t *testing.T) {
+			previousPrompt := []*agent.Message{agent.UserMessage(strings.Repeat("previous input ", 120))}
+			originalEstimate := agent.EstimateRequestTokens(previousPrompt, nil)
+			answer := agent.AssistantMessage("previous answer", nil)
+			answer.ResponseMeta = &agent.ResponseMeta{
+				Usage:         &agent.TokenUsage{PromptTokens: originalEstimate * 2},
+				InputEstimate: &agent.ModelInputEstimate{Tokens: originalEstimate, Model: identity},
+			}
+			modelIdentity := identity
+			var tools []*agent.ToolInfo
+			trusted := true
+			switch scenario {
+			case "projected_history":
+				previousPrompt = []*agent.Message{agent.SystemMessage("short checkpoint")}
+			case "changed_tools":
+				tools = []*agent.ToolInfo{{Name: "new_tool", Desc: strings.Repeat("new schema ", 100)}}
+			case "legacy_usage":
+				answer.ResponseMeta.InputEstimate = nil
+				trusted = false
+			case "invalid_estimate":
+				answer.ResponseMeta.InputEstimate.Tokens = 0
+				trusted = false
+			case "changed_model":
+				modelIdentity.Version++
+				trusted = false
+			case "unidentified_model":
+				modelIdentity = agent.CapabilityIdentity{}
+				trusted = false
+			}
+			messages := append(previousPrompt, answer, agent.UserMessage(strings.Repeat("new input ", 30)))
+			snapshot := (&agent.ModelCall{
+				Model: calibrationIdentityModel{identity: modelIdentity}, Messages: messages,
+				Options: []agent.ModelOption{agent.WithTools(tools)},
+			}).Snapshot()
+			plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
+				Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: snapshot,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			metrics := plan.Metrics
+			wantPrompt, wantEstimate := 0, 0
+			wantProjected := agent.EstimateRequestTokens(messages, snapshot.ResolvedOptions().Tools)
+			if trusted {
+				wantPrompt, wantEstimate = originalEstimate*2, originalEstimate
+				wantProjected *= 2
+			}
+			if metrics.ObservedPromptTokens != wantPrompt || metrics.ObservedEstimateTokens != wantEstimate || metrics.ProjectedTokensBefore != wantProjected {
+				t.Fatalf("calibration=%+v; want original pair %d/%d and projection %d", metrics, wantPrompt, wantEstimate, wantProjected)
+			}
+		})
 	}
 }
+
+type calibrationIdentityModel struct {
+	agent.BaseChatModel
+	identity agent.CapabilityIdentity
+}
+
+func (model calibrationIdentityModel) ModelIdentity() agent.CapabilityIdentity { return model.identity }
 
 func TestStandardIncludesLifecycleSideForkReserveInTriggerAndValidation(t *testing.T) {
 	manager := compaction.Standard(compaction.StandardConfig{

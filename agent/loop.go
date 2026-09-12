@@ -13,6 +13,7 @@ type loopConfig struct {
 	Description     string
 	Instruction     string
 	Model           BaseChatModel
+	ModelIdentity   CapabilityIdentity
 	Tools           []ToolDefinition
 	ResultProcessor ToolResultProcessor
 	Artifacts       ToolArtifactStorage
@@ -64,6 +65,7 @@ type modelToolLoop struct {
 	description      string
 	instruction      string
 	model            BaseChatModel
+	modelIdentity    CapabilityIdentity
 	tools            []ToolDefinition
 	middlewares      []Middleware
 	resultProcessor  ToolResultProcessor
@@ -129,6 +131,7 @@ func newModelToolLoop(ctx context.Context, config loopConfig) (*modelToolLoop, e
 		description:      config.Description,
 		instruction:      config.Instruction,
 		model:            config.Model,
+		modelIdentity:    config.ModelIdentity,
 		tools:            tools,
 		middlewares:      middlewares,
 		resultProcessor:  config.ResultProcessor,
