@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alfredxw/denova/agent/providers"
+
 	"denova/config"
 	"denova/internal/agents/canonicalstore"
 	agentchat "denova/internal/agents/chat"
@@ -33,7 +35,7 @@ type automaticGameCheckpointModel struct {
 }
 
 func (model *automaticGameCheckpointModel) Generate(_ context.Context, messages []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
-	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, messages, nil, 4<<20, 128_000); err != nil {
+	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, providers.ModelConfig{}, messages, nil, 4<<20, 128_000); err != nil {
 		return nil, err
 	}
 	if len(messages) > 0 && strings.HasPrefix(messages[len(messages)-1].Content, "[Runtime context compaction request]") {
@@ -41,7 +43,7 @@ func (model *automaticGameCheckpointModel) Generate(_ context.Context, messages 
 		return agent.AssistantMessage(automaticGameCheckpoint, nil), nil
 	}
 	response := model.history.response(messages)
-	promptTokens := agent.EstimateMessagesTokens(messages)
+	promptTokens := agent.EstimateMessagesTextTokens(messages)
 	response.ResponseMeta = &agent.ResponseMeta{
 		FinishReason: "stop", Usage: &agent.TokenUsage{PromptTokens: promptTokens, CompletionTokens: 100, TotalTokens: promptTokens + 100},
 	}

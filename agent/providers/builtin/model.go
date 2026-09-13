@@ -56,6 +56,13 @@ func (definition *modelDefinition) ModelIdentity() agent.CapabilityIdentity {
 	return definition.identity
 }
 
+func (definition *modelDefinition) InputEstimator() agent.InputEstimator {
+	if err := definition.InitializeDefinition(context.Background()); err != nil {
+		return agent.InputEstimator{}
+	}
+	return definition.config.InputEstimator()
+}
+
 func (definition *modelDefinition) Generate(
 	ctx context.Context,
 	input []*agent.Message,

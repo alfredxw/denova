@@ -44,7 +44,7 @@ func (m *longProductModel) Generate(_ context.Context, messages []*agent.Message
 		return agent.AssistantMessage(fmt.Sprintf("Incremental evidence checkpoint %d. Goal: verify 24 sources. Budget corrected from 72591 to 72519. Evidence IDs: source-1 through source-%d. Completed sources remain verified. Pending: read remaining sources, then report.", m.summaries, m.step-1), nil), nil
 	}
 	m.inputs = append(m.inputs, messages)
-	estimate := agent.EstimateRequestTokens(messages, agent.GetCommonOptions(nil, options...).Tools)
+	estimate := agent.EstimateRequestTextTokens(messages, agent.GetCommonOptions(nil, options...).Tools)
 	m.inputEstimates = append(m.inputEstimates, estimate)
 	if !m.resume && !containsMessageContent(messages, incrementalIntent) {
 		m.t.Error("current input disappeared")
@@ -217,7 +217,7 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 			// Game materializes its final narrative separately, so the latest
 			// retained provider usage may belong to the preceding tool response.
 			previousEstimates := model.inputEstimates[:len(model.inputEstimates)-1]
-			if previousUsage == nil || previousUsage.InputEstimate == nil || previousUsage.InputEstimate.Model != identity || previousUsage.Usage.PromptTokens != previousUsage.InputEstimate.Tokens || !slices.Contains(previousEstimates, previousUsage.InputEstimate.Tokens) {
+			if previousUsage == nil || previousUsage.InputEstimate == nil || previousUsage.InputEstimate.Version != agent.InputEstimateVersion || previousUsage.InputEstimate.Model != identity || previousUsage.Usage.PromptTokens != previousUsage.InputEstimate.Tokens || !slices.Contains(previousEstimates, previousUsage.InputEstimate.Tokens) {
 				if previousUsage != nil {
 					t.Fatalf("product journal lost the original request/usage pair after compaction and reopen: usage=%+v estimate=%+v; original estimates=%v", previousUsage.Usage, previousUsage.InputEstimate, previousEstimates)
 				}

@@ -38,7 +38,7 @@ func (model *calibrationModel) Generate(ctx context.Context, messages []*agent.M
 	model.inputs = append(model.inputs, messages)
 	answer := agent.AssistantMessage(strings.Repeat("a", 24_000), nil)
 	answer.ResponseMeta = &agent.ResponseMeta{Usage: &agent.TokenUsage{
-		PromptTokens: agent.EstimateRequestTokens(messages, agent.GetCommonOptions(nil, options...).Tools),
+		PromptTokens: agent.EstimateRequestTextTokens(messages, agent.GetCommonOptions(nil, options...).Tools),
 	}}
 	return answer, nil
 }
@@ -147,7 +147,7 @@ func TestManualCompactionDoesNotRecalibrateRetainedUsageFromShorterHistory(t *te
 					retained = message.ResponseMeta
 				}
 			}
-			if retained == nil || retained.InputEstimate == nil || retained.InputEstimate.Tokens != retained.Usage.PromptTokens || retained.InputEstimate.Model != definition.ModelIdentity {
+			if retained == nil || retained.InputEstimate == nil || retained.InputEstimate.Version != agent.InputEstimateVersion || retained.InputEstimate.Tokens != retained.Usage.PromptTokens || retained.InputEstimate.Model != definition.ModelIdentity {
 				t.Fatalf("retained response lost its original request estimate: %+v", retained)
 			}
 		})

@@ -88,7 +88,11 @@ func (s *modelSummarizer) Summarize(ctx context.Context, request SummaryRequest)
 		}
 		prompt := summaryRequestMarker + "\n" + instruction + "\nSelected source: provider messages " + sourceRanges(positions) + " (one-based). Other messages are retained separately."
 		fork := snapshot.Append(agent.UserMessage(prompt)).WithOptions(agent.WithMaxTokens(output))
-		if summaryCallFits(fork, request, output, safety) {
+		fits, err := summaryCallFits(fork, request, output, safety)
+		if err != nil {
+			return agent.CompactionCheckpoint{}, err
+		}
+		if fits {
 			return s.complete(ctx, fork, request, output)
 		}
 	} else {
@@ -100,13 +104,12 @@ func (s *modelSummarizer) Summarize(ctx context.Context, request SummaryRequest)
 	return s.cold(ctx, snapshot, request, instruction, output, safety)
 }
 
-func summaryCallFits(snapshot *agent.ModelRequestSnapshot, request SummaryRequest, output, safety int) bool {
-	options := snapshot.ResolvedOptions()
-	encoded, _ := json.Marshal(struct {
-		Messages []*agent.Message
-		Tools    []*agent.ToolInfo
-	}{snapshot.Messages(), options.Tools})
-	return len(encoded) <= request.HardLimitBytes && agent.EstimateRequestTokens(snapshot.Messages(), options.Tools)+output+safety <= request.ContextWindowTokens
+func summaryCallFits(snapshot *agent.ModelRequestSnapshot, request SummaryRequest, output, safety int) (bool, error) {
+	size, err := snapshot.EstimateInput()
+	if err != nil {
+		return false, err
+	}
+	return size.Bytes <= request.HardLimitBytes && size.Tokens+output+safety <= request.ContextWindowTokens, nil
 }
 func (s *modelSummarizer) complete(ctx context.Context, snapshot *agent.ModelRequestSnapshot, request SummaryRequest, output int) (agent.CompactionCheckpoint, error) {
 	message, err := snapshot.Complete(ctx, s.config.Execution)
@@ -158,7 +161,15 @@ func (s *modelSummarizer) cold(ctx context.Context, snapshot *agent.ModelRequest
 			for end > 0 && end < len(remaining) && !utf8.RuneStart(remaining[end]) {
 				end--
 			}
-			if end > 0 && summaryCallFits(callFor(remaining[:end]), request, output, safety) {
+			if end == 0 {
+				high = middle - 1
+				continue
+			}
+			fits, err := summaryCallFits(callFor(remaining[:end]), request, output, safety)
+			if err != nil {
+				return agent.CompactionCheckpoint{}, err
+			}
+			if fits {
 				best = end
 				low = middle + 1
 			} else {

@@ -1,13 +1,12 @@
 package modelio
 
 import (
-	"encoding/json"
 	"fmt"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
-	agentcontext "denova/internal/agents/context"
 )
 
 // ProviderInputLimitError is returned before a provider sees an input that
@@ -24,24 +23,20 @@ func (e *ProviderInputLimitError) Error() string {
 	return fmt.Sprintf("provider input exceeds hard context limit: agent=%s bytes=%d/%d estimated_tokens=%d/%d", e.AgentKind, e.Bytes, e.MaxBytes, e.Tokens, e.MaxTokens)
 }
 
-func ValidateInput(agentKind string, messages []*agent.Message, tools []*agent.ToolInfo, maxBytes, maxTokens int) error {
+func ValidateInput(agentKind string, model providers.ModelConfig, messages []*agent.Message, tools []*agent.ToolInfo, maxBytes, maxTokens int) error {
 	if maxBytes <= 0 {
 		maxBytes = config.DefaultAgentContextMaxProviderInputBytes
 	}
-	payload, err := json.Marshal(struct {
-		Messages []*agent.Message  `json:"messages"`
-		Tools    []*agent.ToolInfo `json:"tools,omitempty"`
-	}{Messages: messages, Tools: tools})
+	size, err := model.InputEstimator().Estimate(messages, tools)
 	if err != nil {
-		return fmt.Errorf("serialize provider input for hard-limit validation: %w", err)
+		return err
 	}
-	tokens := agentcontext.EstimateTokens(messages, tools)
-	if len(payload) <= maxBytes && (maxTokens <= 0 || tokens <= maxTokens) {
+	if size.Bytes <= maxBytes && (maxTokens <= 0 || size.Tokens <= maxTokens) {
 		return nil
 	}
 	return &ProviderInputLimitError{
-		AgentKind: agentKind, Bytes: len(payload), MaxBytes: maxBytes,
-		Tokens: tokens, MaxTokens: maxTokens,
+		AgentKind: agentKind, Bytes: size.Bytes, MaxBytes: maxBytes,
+		Tokens: size.Tokens, MaxTokens: maxTokens,
 	}
 }
 
@@ -52,5 +47,9 @@ func ValidateInput(agentKind string, messages []*agent.Message, tools []*agent.T
 func ValidateConfiguredInput(cfg *config.Config, agentKind string, messages []*agent.Message, tools []*agent.ToolInfo) error {
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
-	return ValidateInput(agentKind, messages, tools, contextSettings.MaxProviderInputBytes, modelSettings.ContextWindowTokens)
+	model, err := ConfigFromResolved(modelSettings)
+	if err != nil {
+		return err
+	}
+	return ValidateInput(agentKind, model, messages, tools, contextSettings.MaxProviderInputBytes, modelSettings.ContextWindowTokens)
 }

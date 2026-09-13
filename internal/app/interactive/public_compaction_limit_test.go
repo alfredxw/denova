@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alfredxw/denova/agent/providers"
+
 	"denova/config"
 	agentchat "denova/internal/agents/chat"
 	agentcompaction "denova/internal/agents/context/compaction"
@@ -21,7 +23,7 @@ import (
 type guardedGameCheckpointModel struct{ calls int }
 
 func (model *guardedGameCheckpointModel) Generate(_ context.Context, messages []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
-	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, messages, nil, 4<<20, 400_000); err != nil {
+	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, providers.ModelConfig{}, messages, nil, 4<<20, 400_000); err != nil {
 		return nil, err
 	}
 	model.calls++
@@ -58,7 +60,7 @@ func TestGameManualCompactionRecoversHistoryAboveProviderTokenLimit(t *testing.T
 		t.Fatal(err)
 	}
 	var limit *modelio.ProviderInputLimitError
-	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, history, nil, 4<<20, 400_000); !errors.As(err, &limit) ||
+	if err := modelio.ValidateInput(config.AgentKindInteractiveStory, providers.ModelConfig{}, history, nil, 4<<20, 400_000); !errors.As(err, &limit) ||
 		limit.Tokens <= limit.MaxTokens || limit.Bytes >= limit.MaxBytes {
 		t.Fatalf("expected token-only overflow like the reported game: %v", err)
 	}

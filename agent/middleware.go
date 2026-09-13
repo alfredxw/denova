@@ -128,6 +128,7 @@ type ModelCall struct {
 	Streaming bool
 
 	modelIdentity        CapabilityIdentity
+	inputEstimator       InputEstimator
 	stablePrefixMessages int
 	// providerMessages freezes runtime artifact paths for a validated replacement
 	// while Messages retains portable loop state.
@@ -145,6 +146,7 @@ type ModelCall struct {
 type ModelRequestSnapshot struct {
 	model                BaseChatModel
 	modelIdentity        CapabilityIdentity
+	inputEstimator       InputEstimator
 	messages             []*Message
 	options              []ModelOption
 	streaming            bool
@@ -164,11 +166,24 @@ func (call *ModelCall) Snapshot() *ModelRequestSnapshot {
 	if model, ok := call.Model.(DefinitionModel); ok {
 		identity = model.ModelIdentity()
 	}
+	estimator := call.inputEstimator
+	if model, ok := call.Model.(ModelInputEstimator); ok {
+		estimator = model.InputEstimator()
+	}
 	return &ModelRequestSnapshot{
-		model: call.Model, modelIdentity: identity, messages: cloneMessages(messages),
+		model: call.Model, modelIdentity: identity, inputEstimator: estimator, messages: cloneMessages(messages),
 		options: append([]ModelOption(nil), call.Options...), streaming: call.Streaming,
 		stablePrefixMessages: min(max(0, call.stablePrefixMessages), len(call.Messages)),
 	}
+}
+
+// EstimateInput applies the captured model's visual policy to this exact
+// request. Side forks and context maintenance share the same counting units.
+func (snapshot *ModelRequestSnapshot) EstimateInput() (InputSize, error) {
+	if snapshot == nil {
+		return InputSize{}, errors.New("model request snapshot is unavailable")
+	}
+	return snapshot.inputEstimator.Estimate(snapshot.messages, snapshot.ResolvedOptions().Tools)
 }
 
 // ModelIdentity is the stable identity of the captured Definition model.
@@ -218,7 +233,7 @@ func (snapshot *ModelRequestSnapshot) Append(messages ...*Message) *ModelRequest
 	appended := cloneMessages(snapshot.messages)
 	appended = append(appended, cloneMessages(messages)...)
 	return &ModelRequestSnapshot{
-		model: snapshot.model, modelIdentity: snapshot.modelIdentity,
+		model: snapshot.model, modelIdentity: snapshot.modelIdentity, inputEstimator: snapshot.inputEstimator,
 		messages: appended,
 		options:  append([]ModelOption(nil), snapshot.options...), streaming: snapshot.streaming,
 		stablePrefixMessages: snapshot.StablePrefixMessages(),
@@ -231,7 +246,7 @@ func (snapshot *ModelRequestSnapshot) WithMessages(messages []*Message) *ModelRe
 	if snapshot == nil {
 		return nil
 	}
-	return &ModelRequestSnapshot{model: snapshot.model, modelIdentity: snapshot.modelIdentity, messages: cloneMessages(messages),
+	return &ModelRequestSnapshot{model: snapshot.model, modelIdentity: snapshot.modelIdentity, inputEstimator: snapshot.inputEstimator, messages: cloneMessages(messages),
 		options: append([]ModelOption(nil), snapshot.options...), streaming: snapshot.streaming}
 }
 
@@ -243,7 +258,7 @@ func (snapshot *ModelRequestSnapshot) WithOptions(options ...ModelOption) *Model
 		return nil
 	}
 	return &ModelRequestSnapshot{
-		model: snapshot.model, modelIdentity: snapshot.modelIdentity, messages: cloneMessages(snapshot.messages),
+		model: snapshot.model, modelIdentity: snapshot.modelIdentity, inputEstimator: snapshot.inputEstimator, messages: cloneMessages(snapshot.messages),
 		options:   append(append([]ModelOption(nil), snapshot.options...), options...),
 		streaming: snapshot.streaming, stablePrefixMessages: snapshot.StablePrefixMessages(),
 	}

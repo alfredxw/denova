@@ -59,7 +59,7 @@ func (model *fullSeamRetryModel) next(input []*Message, options ...ModelOption) 
 	model.responses = model.responses[1:]
 	if model.reportUsage {
 		message.ResponseMeta = &ResponseMeta{
-			Usage: &TokenUsage{PromptTokens: EstimateRequestTokens(input, GetCommonOptions(nil, options...).Tools)},
+			Usage: &TokenUsage{PromptTokens: EstimateRequestTextTokens(input, GetCommonOptions(nil, options...).Tools)},
 			// Runtime request accounting must replace untrusted adapter metadata.
 			InputEstimate: &ModelInputEstimate{Tokens: 1, Model: CapabilityIdentity{Kind: "wrong", Version: 1}},
 		}
@@ -221,9 +221,9 @@ func testRetryReentersCompleteModelSeam(t *testing.T, streaming bool) {
 	}
 	for index, message := range published {
 		attempt := index + firstAccepted
-		want := EstimateRequestTokens(inputs[attempt], options[attempt].Tools)
+		want := EstimateRequestTextTokens(inputs[attempt], options[attempt].Tools)
 		meta := message.ResponseMeta
-		if meta == nil || meta.InputEstimate == nil || meta.InputEstimate.Model != identity || meta.InputEstimate.Tokens != want || meta.Usage.PromptTokens != want {
+		if meta == nil || meta.InputEstimate == nil || meta.InputEstimate.Version != InputEstimateVersion || meta.InputEstimate.Model != identity || meta.InputEstimate.Tokens != want || meta.Usage.PromptTokens != want {
 			t.Fatalf("response %d lost its exact request pair: %+v; want %d", index, meta, want)
 		}
 	}
@@ -231,7 +231,7 @@ func testRetryReentersCompleteModelSeam(t *testing.T, streaming bool) {
 	// though the following model input no longer contains ephemeral feedback.
 	for _, message := range inputs[2] {
 		if len(message.ToolCalls) > 0 {
-			want := EstimateRequestTokens(inputs[1], options[1].Tools)
+			want := EstimateRequestTextTokens(inputs[1], options[1].Tools)
 			if message.ResponseMeta == nil || message.ResponseMeta.InputEstimate == nil || message.ResponseMeta.InputEstimate.Tokens != want {
 				t.Fatalf("accepted retry estimate changed with history: %+v", message.ResponseMeta)
 			}

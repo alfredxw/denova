@@ -129,7 +129,7 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 
 func TestConcatMessagesInterleavedToolCallsAndUsageTail(t *testing.T) {
 	zero, one := 0, 1
-	estimate := ModelInputEstimate{Tokens: 16, Model: CapabilityIdentity{Kind: "test.model", Version: 1}}
+	estimate := ModelInputEstimate{Version: InputEstimateVersion, Tokens: 16, Model: CapabilityIdentity{Kind: "test.model", Version: 1}}
 	chunks := []*Message{
 		{
 			Role: Assistant, Content: "hel", ReasoningContent: "rea",

@@ -87,8 +87,9 @@ type ResponseMeta struct {
 // estimate or different model cannot calibrate a later request. It survives
 // history projection and restart in the same canonical response record.
 type ModelInputEstimate struct {
-	Tokens int                `json:"tokens"`
-	Model  CapabilityIdentity `json:"model"`
+	Version uint16             `json:"version,omitempty"`
+	Tokens  int                `json:"tokens"`
+	Model   CapabilityIdentity `json:"model"`
 }
 
 // AgentMessageMeta contains provider-independent execution identity needed to

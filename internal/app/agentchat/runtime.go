@@ -107,7 +107,7 @@ func (service *Service) AnalyzeContext(ctx context.Context, binding Binding, req
 	}
 	return chatagent.BuildInspectedContextAnalysis(
 		&runtime.Config, runtime.AgentKind, mode, inspected.Composition, inspected.Inspection,
-	), nil
+	)
 }
 
 func (service *Service) AnswerAsk(ctx context.Context, binding Binding, askID string, answers []agentconversation.HostAskAnswer) (agentconversation.HostAskResolution, error) {

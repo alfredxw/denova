@@ -20,12 +20,15 @@ func TestInspectedContextAnalysisUsesCapacityAwareProfileOutputReserve(t *testin
 		}},
 	}
 	messages := []*agent.Message{agent.UserMessage("short request")}
-	analysis := BuildInspectedContextAnalysis(cfg, config.AgentKindIDE, "ide", prompts.SystemPromptComposition{}, agent.Inspection{
+	analysis, err := BuildInspectedContextAnalysis(cfg, config.AgentKindIDE, "ide", prompts.SystemPromptComposition{}, agent.Inspection{
 		ModelRequest: agent.ModelRequestInspection{
 			Messages: messages,
 			Options:  agent.Options{MaxTokens: &maxOutput},
 		},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if analysis.ReservedCompletionTokens != 2500 || analysis.ReservedToolResultTokens != 0 {
 		t.Fatalf("analysis reserves = completion:%d tools:%d, want 2500/0",
 			analysis.ReservedCompletionTokens, analysis.ReservedToolResultTokens)
@@ -47,7 +50,10 @@ func TestLegacyContextAnalysisUsesCapacityAwareProfileOutputReserve(t *testing.T
 			ToolResultContextEnabled: &disableToolContext,
 		}},
 	}
-	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, "", []*agent.Message{agent.UserMessage("short request")}, 0)
+	usage, err := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, "", []*agent.Message{agent.UserMessage("short request")}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if usage.completionReserve != 2500 || usage.toolResultReserve != 0 {
 		t.Fatalf("legacy analysis reserves = completion:%d tools:%d, want 2500/0",
 			usage.completionReserve, usage.toolResultReserve)

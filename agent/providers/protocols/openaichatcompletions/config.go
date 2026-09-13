@@ -33,6 +33,10 @@ type ChatModel struct {
 	options       *agent.Options
 }
 
+func (model *ChatModel) InputEstimator() agent.InputEstimator {
+	return model.config.InputEstimator()
+}
+
 var (
 	_ providers.ProtocolAdapter  = (*Adapter)(nil)
 	_ agent.ToolCallingChatModel = (*ChatModel)(nil)

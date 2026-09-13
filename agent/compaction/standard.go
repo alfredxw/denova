@@ -221,8 +221,15 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 			)
 		}
 	}
-	bytes := messageBytes(request.ModelSnapshot.Messages())
-	metrics := compactionPlanMetrics(request)
+	size, err := request.ModelSnapshot.EstimateInput()
+	if err != nil {
+		return agent.CompactionPlan{}, err
+	}
+	bytes := size.Bytes
+	metrics, err := compactionPlanMetrics(request, size.Tokens)
+	if err != nil {
+		return agent.CompactionPlan{}, err
+	}
 	policy := agent.CompactionValidationPolicy{
 		ContextWindowTokens: manager.config.ContextWindowTokens,
 		ReservedTokens:      reservedTokens,
@@ -272,9 +279,8 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 	return agent.CompactionPlan{Action: agent.CompactionCreate, GroupCount: count, Validation: policy, Metrics: metrics}, nil
 }
 
-func compactionPlanMetrics(request agent.CompactionPlanRequest) agent.CompactionMetrics {
+func compactionPlanMetrics(request agent.CompactionPlanRequest, estimated int) (agent.CompactionMetrics, error) {
 	messages := request.ModelSnapshot.Messages()
-	estimated := estimateSnapshotTokens(messages, request.ModelSnapshot)
 	observed, observedEstimate, cached := latestPromptUsage(messages, request.ModelSnapshot)
 	metrics := agent.CompactionMetrics{
 		EstimatedTokensBefore: estimated, ObservedPromptTokens: observed, ObservedEstimateTokens: observedEstimate,
@@ -283,11 +289,15 @@ func compactionPlanMetrics(request agent.CompactionPlanRequest) agent.Compaction
 	metrics.ProjectedTokensBefore = metrics.CalibratedTokens(estimated)
 	if request.ModelSnapshot != nil {
 		boundary := min(request.ModelSnapshot.StablePrefixMessages(), len(messages))
-		metrics.StablePrefixTokens = estimateSnapshotTokens(messages[:boundary], request.ModelSnapshot)
+		prefix, err := request.ModelSnapshot.WithMessages(messages[:boundary]).EstimateInput()
+		if err != nil {
+			return metrics, err
+		}
+		metrics.StablePrefixTokens = prefix.Tokens
 		metrics.CacheExpectedPrefixTokens = metrics.StablePrefixTokens
 	}
 	metrics.CandidateFingerprint, metrics.CandidateGeneration = candidateIdentity(messages)
-	return metrics
+	return metrics, nil
 }
 
 func latestPromptUsage(messages []*agent.Message, snapshot *agent.ModelRequestSnapshot) (prompt, estimated, cached int) {
@@ -304,7 +314,7 @@ func latestPromptUsage(messages []*agent.Message, snapshot *agent.ModelRequestSn
 		// original request estimate is comparable to the provider usage. Older
 		// journals and other models safely fall back to the current local estimate.
 		estimate := message.ResponseMeta.InputEstimate
-		if estimate == nil || estimate.Tokens <= 0 || estimate.Model != identity {
+		if estimate == nil || estimate.Version != agent.InputEstimateVersion || estimate.Tokens <= 0 || estimate.Model != identity {
 			return 0, 0, 0
 		}
 		return message.ResponseMeta.Usage.PromptTokens,
@@ -397,11 +407,3 @@ func validateIdentity(identity agent.CapabilityIdentity) error {
 
 var _ agent.CompactionManager = (*standardManager)(nil)
 var _ agent.CompactionManager = (*disabledManager)(nil)
-
-func estimateSnapshotTokens(messages []*agent.Message, snapshot *agent.ModelRequestSnapshot) int {
-	var tools []*agent.ToolInfo
-	if snapshot != nil {
-		tools = snapshot.ResolvedOptions().Tools
-	}
-	return agent.EstimateRequestTokens(messages, tools)
-}

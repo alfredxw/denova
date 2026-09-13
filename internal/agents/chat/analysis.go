@@ -11,6 +11,7 @@ import (
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
 	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/modelio"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/book"
@@ -241,7 +242,10 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		}
 		contextMessages = append(contextMessages, part)
 	}
-	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, systemPrompt, messages, teller.ReplyTargetChars)
+	usage, err := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, systemPrompt, messages, teller.ReplyTargetChars)
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
 	return ContextAnalysis{
 		AgentKind:                config.AgentKindInteractiveStory,
 		Mode:                     "interactive",
@@ -295,7 +299,7 @@ type contextUsageAnalysis struct {
 	wouldCompact      bool
 }
 
-func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*agent.Message, expectedOutputChars int) contextUsageAnalysis {
+func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*agent.Message, expectedOutputChars int) (contextUsageAnalysis, error) {
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
 	estimatedMessages := make([]*agent.Message, 0, len(messages)+1)
@@ -303,7 +307,15 @@ func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, mes
 		estimatedMessages = append(estimatedMessages, agent.SystemMessage(systemPrompt))
 	}
 	estimatedMessages = append(estimatedMessages, messages...)
-	tokens := agentcontext.EstimateTokens(estimatedMessages, nil)
+	model, err := modelio.ConfigFromResolved(modelSettings)
+	if err != nil {
+		return contextUsageAnalysis{}, err
+	}
+	size, err := model.InputEstimator().Estimate(estimatedMessages, nil)
+	if err != nil {
+		return contextUsageAnalysis{}, err
+	}
+	tokens := size.Tokens
 	completionReserve, toolResultReserve := agentcompaction.EstimateProjectionReserves(cfg, agentKind, expectedOutputChars)
 	if maxTokens := modelSettings.MaxTokens; maxTokens != nil {
 		totalReserve := agent.CapacityAwareTokenReserve(
@@ -323,7 +335,7 @@ func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, mes
 		usage.ratio = float64(usage.projectedTokens) / float64(usage.window)
 		usage.wouldCompact = contextSettings.CompactionEnabled && usage.ratio >= contextSettings.CompactionThreshold
 	}
-	return usage
+	return usage, nil
 }
 
 func parseCompactionRevision(content string) uint64 {

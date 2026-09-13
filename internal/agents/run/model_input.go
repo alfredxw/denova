@@ -543,8 +543,12 @@ type modelInputLoggingChatModel struct {
 	systemSections        []modelInputLogSystemSectionFingerprint
 }
 
+func (m *modelInputLoggingChatModel) InputEstimator() agent.InputEstimator {
+	return m.config.InputEstimator()
+}
+
 func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
-	if err := modelio.ValidateInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
+	if err := modelio.ValidateInput(m.agentKind, m.config, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
 	ctx = contextWithModelInputSystemSections(ctx, m.systemSections)
@@ -556,7 +560,7 @@ func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*agen
 }
 
 func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	if err := modelio.ValidateInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
+	if err := modelio.ValidateInput(m.agentKind, m.config, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
 	ctx = contextWithModelInputSystemSections(ctx, m.systemSections)

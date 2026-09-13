@@ -40,14 +40,14 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 		ContextWindowTokens: 10_000, TriggerRatio: .85, RecoveryBand: .8,
 	})
 	identity := agent.CapabilityIdentity{Kind: "test.calibration", Version: 1}
-	for _, scenario := range []string{"original", "projected_history", "changed_tools", "legacy_usage", "invalid_estimate", "changed_model", "unidentified_model"} {
+	for _, scenario := range []string{"original", "projected_history", "changed_tools", "legacy_usage", "legacy_estimator", "future_estimator", "invalid_estimate", "changed_model", "unidentified_model"} {
 		t.Run(scenario, func(t *testing.T) {
 			previousPrompt := []*agent.Message{agent.UserMessage(strings.Repeat("previous input ", 120))}
-			originalEstimate := agent.EstimateRequestTokens(previousPrompt, nil)
+			originalEstimate := agent.EstimateRequestTextTokens(previousPrompt, nil)
 			answer := agent.AssistantMessage("previous answer", nil)
 			answer.ResponseMeta = &agent.ResponseMeta{
 				Usage:         &agent.TokenUsage{PromptTokens: originalEstimate * 2},
-				InputEstimate: &agent.ModelInputEstimate{Tokens: originalEstimate, Model: identity},
+				InputEstimate: &agent.ModelInputEstimate{Version: agent.InputEstimateVersion, Tokens: originalEstimate, Model: identity},
 			}
 			modelIdentity := identity
 			var tools []*agent.ToolInfo
@@ -59,6 +59,12 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 				tools = []*agent.ToolInfo{{Name: "new_tool", Desc: strings.Repeat("new schema ", 100)}}
 			case "legacy_usage":
 				answer.ResponseMeta.InputEstimate = nil
+				trusted = false
+			case "legacy_estimator":
+				answer.ResponseMeta.InputEstimate.Version = 0
+				trusted = false
+			case "future_estimator":
+				answer.ResponseMeta.InputEstimate.Version++
 				trusted = false
 			case "invalid_estimate":
 				answer.ResponseMeta.InputEstimate.Tokens = 0
@@ -83,7 +89,7 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 			}
 			metrics := plan.Metrics
 			wantPrompt, wantEstimate := 0, 0
-			wantProjected := agent.EstimateRequestTokens(messages, snapshot.ResolvedOptions().Tools)
+			wantProjected := agent.EstimateRequestTextTokens(messages, snapshot.ResolvedOptions().Tools)
 			if trusted {
 				wantPrompt, wantEstimate = originalEstimate*2, originalEstimate
 				wantProjected *= 2

@@ -49,8 +49,9 @@ func (agent *modelToolLoop) callModelWithRetry(
 	defer func() { cancel.bindModel(nil); stopModel() }()
 	currentCall := &ModelCall{
 		Model: initial.Model, Messages: cloneMessages(initial.Messages),
-		modelIdentity: initial.modelIdentity,
-		Options:       append([]ModelOption(nil), initial.Options...), Streaming: initial.Streaming,
+		modelIdentity:  initial.modelIdentity,
+		inputEstimator: initial.inputEstimator,
+		Options:        append([]ModelOption(nil), initial.Options...), Streaming: initial.Streaming,
 		stablePrefixMessages: initial.stablePrefixMessages, providerMessages: cloneMessages(initial.providerMessages),
 	}
 	acceptedMessages := cloneMessages(initial.Messages)
@@ -107,12 +108,17 @@ func (agent *modelToolLoop) callModelWithRetry(
 					return modelAttemptResult{}, projectionErr
 				}
 			}
+			size, estimateErr := currentCall.inputEstimator.Estimate(providerMessages, GetCommonOptions(nil, currentCall.Options...).Tools)
+			if estimateErr != nil {
+				return modelAttemptResult{}, estimateErr
+			}
+			inputEstimate := ModelInputEstimate{
+				Version: InputEstimateVersion,
+				Tokens:  size.Tokens,
+				Model:   currentCall.modelIdentity,
+			}
 			callCtx, stopCall := context.WithCancel(ctx)
 			stopPropagation := context.AfterFunc(modelCtx, stopCall)
-			inputEstimate := ModelInputEstimate{
-				Tokens: EstimateRequestTokens(providerMessages, GetCommonOptions(nil, currentCall.Options...).Tools),
-				Model:  currentCall.modelIdentity,
-			}
 			output, callErr, delivered := agent.callModel(callCtx, currentCall.Model, registry, providerMessages,
 				currentCall.Options, currentCall.Streaming, events, cancel, streamOutput, responseOrdinal, inputEstimate)
 			stopPropagation()

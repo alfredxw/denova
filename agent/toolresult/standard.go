@@ -87,7 +87,7 @@ func (processor *standardProcessor) Process(
 	batchSize := max(1, request.BatchSize)
 	limit = min(limit, max(1, processor.policy.MaxBytes/batchSize))
 	envelope := agent.ToolMessage(agent.TextToolResult(""), request.ProviderCallID, agent.WithToolName(request.ToolName))
-	tokenLimit := processor.policy.BatchTokenLimit()/batchSize - agent.EstimateMessageTokens(envelope)
+	tokenLimit := processor.policy.BatchTokenLimit()/batchSize - agent.EstimateMessageTextTokens(envelope)
 	descriptor.MaxResultBytes = limit
 	result := request.Result
 	result.ModelContent = strings.ToValidUTF8(result.ModelContent, "\uFFFD")

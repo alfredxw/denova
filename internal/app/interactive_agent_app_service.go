@@ -65,7 +65,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	}
 	return agentchat.BuildInteractiveInspectedContextAnalysis(
 		&cycle.runtimeCfg, cycle.systemPrompt, inspection,
-	), nil
+	)
 }
 
 func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agentcompaction.Result, error) {

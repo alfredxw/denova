@@ -150,7 +150,7 @@ func TestStandardBoundsAggregateBatchAndPersistsMultibyteEvidence(t *testing.T) 
 			t.Fatalf("invalid batch preview: %q", processed.ModelContent)
 		}
 		totalBytes += len(processed.ModelContent)
-		totalTokens += agent.EstimateMessageTokens(agent.ToolMessage(processed, "source", agent.WithToolName("read")))
+		totalTokens += agent.EstimateMessageTextTokens(agent.ToolMessage(processed, "source", agent.WithToolName("read")))
 	}
 	if totalBytes > policy.MaxBytes || totalTokens > policy.BatchTokenLimit() {
 		t.Fatalf("aggregate batch exceeds reserves: bytes=%d/%d tokens=%d/%d", totalBytes, policy.MaxBytes, totalTokens, policy.BatchTokenLimit())

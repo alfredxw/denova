@@ -76,7 +76,7 @@ func TestPreparedCompactionFreezesArtifactPathsAndKeepsPortableLoopState(t *test
 		t.Fatal("runtime artifact paths entered portable loop state")
 	}
 	meta := observer.messages[len(observer.messages)-1].ResponseMeta
-	if meta == nil || meta.InputEstimate == nil || meta.InputEstimate.Model != identity || meta.InputEstimate.Tokens != EstimateRequestTokens(validated, []*ToolInfo{}) {
+	if meta == nil || meta.InputEstimate == nil || meta.InputEstimate.Version != InputEstimateVersion || meta.InputEstimate.Model != identity || meta.InputEstimate.Tokens != EstimateRequestTextTokens(validated, []*ToolInfo{}) {
 		t.Fatalf("input estimate did not use the frozen provider projection: %+v", meta)
 	}
 }

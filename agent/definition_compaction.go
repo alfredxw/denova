@@ -377,8 +377,15 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan comp
 		return metrics, errors.New("Compaction validation policy contains negative limits")
 	}
 	beforeMessages, afterMessages := before.Messages(), after.Messages()
-	beforeTokens := EstimateRequestTokens(beforeMessages, before.ResolvedOptions().Tools)
-	afterTokens := EstimateRequestTokens(afterMessages, after.ResolvedOptions().Tools)
+	beforeSize, err := before.EstimateInput()
+	if err != nil {
+		return metrics, err
+	}
+	afterSize, err := after.EstimateInput()
+	if err != nil {
+		return metrics, err
+	}
+	beforeTokens, afterTokens := beforeSize.Tokens, afterSize.Tokens
 	metrics.EstimatedTokensBefore = beforeTokens
 	metrics.EstimatedTokensAfter = afterTokens
 	metrics.ReservedTokens = policy.ReservedTokens
@@ -390,10 +397,16 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan comp
 	metrics.MessageCountBefore = len(beforeMessages)
 	metrics.MessageCountAfter = len(afterMessages)
 	metrics.SourceMessageCount = plan.SourceTo - plan.SourceFrom
-	metrics.StablePrefixTokens = stableSnapshotTokens(after)
-	metrics.CacheExpectedPrefixTokens = stableSnapshotTokens(before)
+	metrics.StablePrefixTokens, err = stableSnapshotTokens(after)
+	if err != nil {
+		return metrics, err
+	}
+	metrics.CacheExpectedPrefixTokens, err = stableSnapshotTokens(before)
+	if err != nil {
+		return metrics, err
+	}
 	metrics.CandidateFingerprint, metrics.CandidateGeneration = compactionCandidateIdentity(afterMessages)
-	if policy.HardLimitBytes > 0 && compactionRequestBytes(after) > policy.HardLimitBytes {
+	if policy.HardLimitBytes > 0 && afterSize.Bytes > policy.HardLimitBytes {
 		return metrics, fmt.Errorf("%w: post-Compaction request exceeds the %d-byte provider input limit", ErrContextLimit, policy.HardLimitBytes)
 	}
 	progress := metrics.ProjectedTokensBefore - metrics.ProjectedTokensAfter
@@ -419,24 +432,14 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan comp
 	return metrics, nil
 }
 
-func stableSnapshotTokens(snapshot *ModelRequestSnapshot) int {
+func stableSnapshotTokens(snapshot *ModelRequestSnapshot) (int, error) {
 	if snapshot == nil {
-		return 0
+		return 0, nil
 	}
 	messages := snapshot.Messages()
 	boundary := min(snapshot.StablePrefixMessages(), len(messages))
-	return EstimateRequestTokens(messages[:boundary], snapshot.ResolvedOptions().Tools)
-}
-
-func compactionRequestBytes(snapshot *ModelRequestSnapshot) int {
-	if snapshot == nil {
-		return 0
-	}
-	encoded, _ := json.Marshal(struct {
-		Messages []*Message
-		Tools    []*ToolInfo
-	}{snapshot.Messages(), snapshot.ResolvedOptions().Tools})
-	return len(encoded)
+	size, err := snapshot.WithMessages(messages[:boundary]).EstimateInput()
+	return size.Tokens, err
 }
 
 func compactionCandidateIdentity(messages []*Message) (string, uint64) {

@@ -31,6 +31,12 @@ type ModelRequestInspection struct {
 	Options              Options
 	Streaming            bool
 	StablePrefixMessages int
+	inputEstimator       InputEstimator
+}
+
+// EstimateInput uses the same captured model policy as the inspected call.
+func (request ModelRequestInspection) EstimateInput() (InputSize, error) {
+	return request.inputEstimator.Estimate(request.Messages, request.Options.Tools)
 }
 
 // Inspection is a read-only preview of one prospective model step. The
@@ -66,5 +72,6 @@ func modelRequestInspection(snapshot *ModelRequestSnapshot) ModelRequestInspecti
 		Options:              *options,
 		Streaming:            snapshot.Streaming(),
 		StablePrefixMessages: snapshot.StablePrefixMessages(),
+		inputEstimator:       snapshot.inputEstimator,
 	}
 }
