@@ -45,12 +45,18 @@ func TestProjectsAndHistoryShareEveryProjectSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.GetOrCreate("platform-owned-npc"); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
 
 	service := NewService(activeViewTestHost{}, registry)
 	t.Cleanup(func() { service.Close(context.Background()) })
+	if _, err := service.ResolveBinding(Binding{ProjectID: record.ID, SessionID: "platform-owned-npc"}); err == nil {
+		t.Fatal("adopted a Platform Agent as a Project conversation")
+	}
 
 	projects := service.Projects()
 	assertProjectSessionIDs(t, projects, ordinary.ID, configured.ID)

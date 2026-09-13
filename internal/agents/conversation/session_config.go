@@ -20,6 +20,11 @@ func IsReservedSessionID(id string) bool {
 	if id == "" {
 		return false
 	}
+	// Platform consumers own their frozen definitions and canonical journals;
+	// ordinary Writing/Project conversations must not adopt those sessions.
+	if strings.HasPrefix(id, "platform-") {
+		return true
+	}
 	// Config Manager sessions remain on disk after the Agent's retirement, but
 	// must never appear as runnable Project Agent conversations.
 	if id == "config-manager-agent" || strings.HasPrefix(id, "config-manager-agent-") {
@@ -144,5 +149,6 @@ func ApplySession(sess *session.Session, runtime *config.Config, agentKind strin
 	if err := conversationconfig.Apply(runtime, snapshot.Config); err != nil {
 		return conversationconfig.Snapshot{}, fmt.Errorf("apply conversation runtime config: %w", err)
 	}
+	runtime.AgentPluginScope = config.AgentPluginScope{SessionID: sess.ID}
 	return snapshot, nil
 }

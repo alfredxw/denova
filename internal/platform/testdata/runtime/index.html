@@ -1,0 +1,34 @@
+<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Storage protocol probe</title><output id="value"></output><button disabled>Save test data</button><p role="status"></p>
+<script type="module">
+// Exercise the public handshake and storage contract without sample gameplay.
+const nonce = crypto.randomUUID(), origin = new URL(document.referrer).origin;
+const bootstrap = await new Promise(resolve => {
+  window.addEventListener('message', event => {
+    if (event.source === parent && event.origin === origin && event.data.type === 'denova:bootstrap' && event.data.nonce === nonce) resolve(event.data);
+  });
+  parent.postMessage({ type: 'denova:ready', nonce }, origin);
+});
+const { context, connection } = bootstrap;
+document.documentElement.lang = context.locale;
+document.documentElement.style.colorScheme = context.theme;
+const button = document.querySelector('button'), output = document.querySelector('output'), status = document.querySelector('[role=status]');
+button.textContent = context.locale === 'zh-CN' ? '保存测试数据' : 'Save test data';
+async function request(method, body) {
+  const response = await fetch(connection.baseUrl + '/game-data/file' + (method === 'GET' ? '?path=state.json' : ''), {
+    method, headers: { Authorization: `Bearer ${connection.token}`, 'Content-Type': 'application/json' }, body: body && JSON.stringify(body),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Storage probe failed: ${response.status}`);
+  return response.json();
+}
+const stored = await request('GET');
+let revision = stored?.revision ?? null, value = stored ? JSON.parse(stored.content).value : context.setup.initialValue;
+output.textContent = value; button.disabled = false;
+button.onclick = async () => {
+  button.disabled = true;
+  const result = await request('PUT', { path: 'state.json', content: JSON.stringify({ value: value + 1 }), expectedRevision: revision });
+  revision = result.revision; output.textContent = ++value;
+  status.textContent = context.locale === 'zh-CN' ? '测试数据已保存' : 'Test data saved'; button.disabled = false;
+};
+</script></html>

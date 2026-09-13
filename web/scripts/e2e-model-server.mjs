@@ -410,6 +410,28 @@ const server = createServer(async (request, response) => {
     writeChatCompletion(response, chatCompletionFrames())
     return
   }
+  if (requestIncludesMarker(body, 'E2E_PLUGIN_CHAIN')) {
+    const tool = body.tools?.find(item => item.function?.name?.startsWith('plugin_'))?.function?.name
+    if (!tool) {
+      writeChatCompletion(response, textCompletionFrames('No plugin tools are enabled.'))
+      return
+    }
+    const latestUser = body.messages.findLastIndex(message => message.role === 'user')
+    const results = toolResultMessages({ messages: body.messages.slice(latestUser) }, tool)
+    if (results.length === 0) {
+      writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify({ text: 'A🌷中' }), 'call-plugin-chain'))
+      return
+    }
+    const output = JSON.stringify(results)
+    const value = JSON.parse(results.at(-1).content.split('\n\nStructured result:\n').at(-1)).value
+    const content = typeof value === 'number' ? `Plugin result adopted: ${value}.` : `Unexpected plugin result: ${output}`
+    if (requestIncludesMarker(body, 'E2E_PLUGIN_WRITE') && toolResultMessages(body, 'write').length === 0) {
+      writeChatCompletion(response, toolCompletionFrames('write', JSON.stringify({ path: 'chapters/plugin-result.md', content: `# Plugin result\n\n${content}` }), 'call-plugin-chapter'))
+      return
+    }
+    writeChatCompletion(response, requestIncludesTool(body, 'submit_interactive_turn') ? chatCompletionFrames(content) : textCompletionFrames(content))
+    return
+  }
   if (requestIncludesTool(body, 'submit_interactive_turn')) {
     writeChatCompletion(response, chatCompletionFrames())
     return

@@ -58,5 +58,6 @@ func ApplyConversationConfig(store *interactive.Store, runtimeCfg *config.Config
 	if err := conversationconfig.Apply(runtimeCfg, snapshot.Config); err != nil {
 		return conversationconfig.Snapshot{}, fmt.Errorf("apply interactive conversation runtime config: %w", err)
 	}
+	runtimeCfg.AgentPluginScope = config.AgentPluginScope{StoryID: storyID, BranchID: branchID}
 	return snapshot, nil
 }

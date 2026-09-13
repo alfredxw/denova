@@ -245,6 +245,9 @@ func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 	if binding.SessionID == "" {
 		return Binding{}, fmt.Errorf("AgentChat session is required / AgentChat 会话不能为空")
 	}
+	if agentconversation.IsReservedSessionID(binding.SessionID) {
+		return Binding{}, fmt.Errorf("reserved Agent session cannot be opened as a Project conversation")
+	}
 	return binding, nil
 }
 

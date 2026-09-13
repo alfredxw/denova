@@ -1,0 +1,4 @@
+{
+  "settings.ignoreWhitespace": "忽略空白字符",
+  "settings.ignoreWhitespaceHelp": "统计时不计入空格、制表符和换行。"
+}

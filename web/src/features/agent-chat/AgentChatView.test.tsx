@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useEffect } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import {
@@ -101,6 +101,13 @@ describe('AgentChatView project workbenches', () => {
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     expect(await screen.findByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
+  })
+
+  it('retains source navigation across Strict Mode effect restarts', async () => {
+    requestAgentChatSessionNavigation({ projectId: 'project-a', sessionId: 'session-a', sourcePath: 'DEVELOPMENT.md' })
+    renderView(<StrictMode><AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} /></StrictMode>)
+    expect(await screen.findByTestId('conversation:/books/a:session-a')).toBeInTheDocument()
+    await waitFor(() => expect(readStoredWorkbenchState().projects['project-a'].tabs).toContainEqual(expect.objectContaining({ kind: 'files', selectedPath: 'DEVELOPMENT.md', group: 'secondary' })))
   })
 
   it('offers both Project entry paths before adding a selected folder', async () => {
@@ -476,21 +483,18 @@ describe('AgentChatView project workbenches', () => {
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     const hideButton = await screen.findByRole('button', { name: '隐藏右侧工作区' })
-    const fixedControlHost = hideButton.closest('[data-slot="agent-chat-secondary-pane-control-host"]')
-    expect(fixedControlHost).toBeInTheDocument()
-    expect(hideButton.closest('[data-agent-chat-group]')).toBeNull()
+    expect(hideButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'secondary')
     await user.click(hideButton)
     expect(screen.queryByRole('separator', { name: '调整分栏宽度' })).not.toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('hidden')
     await waitFor(() => expect(readStoredWorkbenchState().projects['project-a'].secondaryVisible).toBe(false))
 
     const showButton = screen.getByRole('button', { name: '显示右侧工作区' })
-    expect(showButton).toBe(hideButton)
-    expect(showButton.closest('[data-slot="agent-chat-secondary-pane-control-host"]')).toBe(fixedControlHost)
+    expect(showButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'primary')
     await user.click(showButton)
     expect(await screen.findByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('active')
-    expect(screen.getByRole('button', { name: '隐藏右侧工作区' })).toBe(hideButton)
+    expect(screen.getByRole('button', { name: '隐藏右侧工作区' }).closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'secondary')
   })
 
   it('lets the first secondary-pane click choose what to open there', async () => {

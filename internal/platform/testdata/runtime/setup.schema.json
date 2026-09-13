@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "initialValue": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "x-titleKey": "setup.initialValue"
+    }
+  },
+  "required": [
+    "initialValue"
+  ]
+}

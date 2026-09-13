@@ -119,6 +119,14 @@ verify_go_modules() {
 }
 
 write_release_notes() {
+  if [[ "${VERSION}" == "dev" ]]; then
+    cat > "${DIST_DIR}/RELEASE_NOTES.md" <<'EOF'
+# Denova development build
+
+Built from the current working tree for local validation. See the Unreleased section of CHANGELOG.md for changes. This archive has not been published as a release.
+EOF
+    return
+  fi
   local release_tag
   release_tag="v$(release_version_without_prefix)"
   {

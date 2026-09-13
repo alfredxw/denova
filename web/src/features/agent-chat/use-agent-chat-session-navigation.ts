@@ -2,14 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentChatProject, AgentChatSession } from './api'
 import {
   AGENT_CHAT_SESSION_NAVIGATION_EVENT,
-  consumeAgentChatSessionNavigation,
+  pendingAgentChatSessionNavigation,
+  completeAgentChatSessionNavigation,
   type AgentChatSessionNavigationTarget,
 } from './session-navigation'
 import { agentChatSessionBindingKey } from './sidebar-activity'
+import type { AgentChatPendingAction } from './AgentChatConversationTab'
 
 interface AgentChatSessionNavigationOptions {
   refreshProjects: () => Promise<AgentChatProject[] | null>
   openOrActivateSession: (project: AgentChatProject, session: AgentChatSession) => void
+  onOpenFile?: (project: AgentChatProject, path: string) => void
 }
 
 /**
@@ -21,10 +24,21 @@ interface AgentChatSessionNavigationOptions {
 export function useAgentChatSessionNavigation({
   refreshProjects,
   openOrActivateSession,
-}: AgentChatSessionNavigationOptions): ReadonlyMap<string, number> {
+  onOpenFile,
+}: AgentChatSessionNavigationOptions) {
   const [syncSignals, setSyncSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
+  const [pendingActions, setPendingActions] = useState<ReadonlyMap<string, AgentChatPendingAction>>(() => new Map())
+  const consumePendingAction = useCallback((key: string) => {
+    setPendingActions(current => {
+      const next = new Map(current)
+      next.delete(key)
+      return next
+    })
+  }, [])
   const openOrActivateSessionRef = useRef(openOrActivateSession)
   openOrActivateSessionRef.current = openOrActivateSession
+  const openFileRef = useRef(onOpenFile)
+  openFileRef.current = onOpenFile
 
   const requestConversationSync = useCallback((projectID: string, sessionID: string) => {
     const key = agentChatSessionBindingKey(projectID, sessionID)
@@ -40,7 +54,7 @@ export function useAgentChatSessionNavigation({
     const openTarget = async (target: AgentChatSessionNavigationTarget | null) => {
       if (!target?.projectId || !target.sessionId) return
       const snapshot = await refreshProjects()
-      if (cancelled || !snapshot) return
+      if (cancelled || !snapshot || pendingAgentChatSessionNavigation() !== target) return
       const project = snapshot.find((candidate) => candidate.id === target.projectId)
       const session = project?.sessions.find((candidate) => candidate.id === target.sessionId)
       if (!project || !session) {
@@ -50,20 +64,23 @@ export function useAgentChatSessionNavigation({
       // Refreshing Projects also reconciles the workbench. The ref prevents that state change from
       // cancelling navigation through a freshly-created navigator callback.
       openOrActivateSessionRef.current(project, session)
+      const message = target.initialInstruction?.trim()
+      if (message) {
+        const key = agentChatSessionBindingKey(project.id, session.id)
+        setPendingActions(current => new Map(current).set(key, { id: session.id, message, displayMessage: message }))
+      }
+      if (target.sourcePath) openFileRef.current?.(project, target.sourcePath)
       requestConversationSync(project.id, session.id)
+      completeAgentChatSessionNavigation(target)
     }
-    const receiveNavigation = (event: Event) => {
-      const queued = consumeAgentChatSessionNavigation()
-      const detail = (event as CustomEvent<AgentChatSessionNavigationTarget>).detail
-      void openTarget(queued || detail)
-    }
+    const receiveNavigation = () => { void openTarget(pendingAgentChatSessionNavigation()) }
     window.addEventListener(AGENT_CHAT_SESSION_NAVIGATION_EVENT, receiveNavigation)
-    void openTarget(consumeAgentChatSessionNavigation())
+    receiveNavigation()
     return () => {
       cancelled = true
       window.removeEventListener(AGENT_CHAT_SESSION_NAVIGATION_EVENT, receiveNavigation)
     }
   }, [refreshProjects, requestConversationSync])
 
-  return syncSignals
+  return { syncSignals, pendingActions, consumePendingAction }
 }

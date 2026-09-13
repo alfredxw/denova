@@ -6,6 +6,7 @@ import type { WorkbenchRouteId, WorkbenchRoutePresentation } from './WorkbenchRo
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const HomeView = memo(lazy(() => import('@/components/Home/HomeView').then((module) => ({ default: module.HomeView }))))
+const ExtensionsView = memo(lazy(() => import('@/features/platform/ExtensionsView').then((module) => ({ default: module.ExtensionsView }))))
 const AgentsView = memo(lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView }))))
 const AutomationsView = memo(lazy(() => import('@/features/automations/AutomationsView').then((module) => ({ default: module.AutomationsView }))))
 const SkillsView = memo(lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView }))))
@@ -34,6 +35,11 @@ export function SharedWorkbenchRoutes({
 }: SharedWorkbenchRoutesProps) {
   return (
     <>
+      {isMounted('extensions') && (
+        <WorkbenchRouteLayer visible={route === 'extensions'} loadingLabel={loadingLabel}>
+          <ExtensionsView visible={route === 'extensions'} />
+        </WorkbenchRouteLayer>
+      )}
       {isMounted('books') && (
         <WorkbenchRouteLayer visible={route === 'books'} loadingLabel={loadingLabel}>
           <HomeView {...home} />

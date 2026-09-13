@@ -9,6 +9,7 @@
 @source "../node_modules/streamdown/dist/*.js";
 @source "../node_modules/@streamdown/cjk/dist/*.js";
 @source "../node_modules/@streamdown/math/dist/*.js";
+@source "../node_modules/@rjsf/shadcn/lib/**/*.js";
 
 @custom-variant dark (&:is([data-theme="dark"] *));
 

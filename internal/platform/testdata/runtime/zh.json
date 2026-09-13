@@ -1,0 +1,10 @@
+{
+  "settings.display": "显示设置",
+  "settings.showLabel": "显示标签",
+  "settings.variant": "显示方式",
+  "settings.compact": "紧凑",
+  "settings.full": "完整",
+  "setup.initialValue": "初始数值",
+  "enabled": "启用测试行为",
+  "writer": "测试模型"
+}

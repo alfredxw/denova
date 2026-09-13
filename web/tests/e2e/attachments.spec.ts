@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '../support/fixtures'
 import { createAndOpenBook, createStartedStory } from '../support/api'
-import { openWritingAgent } from '../support/agent-chat'
+import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { createRequire } from 'node:module'
 
 test('uploads, previews, sends, and restores image attachments in Writing and Game', async ({ page, request }) => {
@@ -17,8 +17,7 @@ test('uploads, previews, sends, and restores image attachments in Writing and Ga
   let composer = await openWritingAgent(page)
   await attachImage(page, 'right', 'writing-e2e.png', image)
   await expect(page.getByTestId('right').getByRole('button', { name: '预览 writing-e2e.png' })).toBeVisible()
-  await composer.fill('Inspect this image. E2E_WRITING_IMAGE_ATTACHMENT')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Inspect this image. E2E_WRITING_IMAGE_ATTACHMENT')
   await expect(page.getByTestId('right').getByText('Writing image attachment reached the model.', { exact: true })).toBeVisible()
   await expect(page.getByTestId('right').getByTestId('sent-message-attachments')).toHaveCount(1)
   await previewImage(page, 'right', 'writing-e2e.png')

@@ -1,3 +1,4 @@
+import { ProjectDevelopmentTools } from '@/features/platform/ProjectDevelopmentTools'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -648,7 +649,7 @@ export function AgentChatView({
     activateTab,
     openSessionTab,
   })
-  const conversationSyncSignals = useAgentChatSessionNavigation({ refreshProjects, openOrActivateSession })
+  const { syncSignals: conversationSyncSignals, pendingActions, consumePendingAction } = useAgentChatSessionNavigation({ refreshProjects, openOrActivateSession, onOpenFile: (project, path) => openProjectFiles(project, 'secondary', path) })
 
   const openHistory = useCallback((project?: AgentChatProject) => {
     setHistoryProjectId(project?.id || activeProjectId)
@@ -742,9 +743,6 @@ export function AgentChatView({
     paneControls: AgentChatPaneControls,
   ) => {
     const secondaryTabs = tabsInGroup(state.tabs, 'secondary')
-    const secondaryBusy = (activitiesByProject.get(project.id) ?? []).some(
-      (activity) => activity.group === 'secondary' && ['running', 'connecting', 'ready'].includes(activity.status),
-    )
     const openInGroup = (action: () => void, target: AgentChatGroupId) => {
       action()
       if (target === 'secondary' && paneControls.isMobile) paneControls.openRight()
@@ -757,7 +755,6 @@ export function AgentChatView({
             : state.secondaryVisible
         )}
         hasTabs={secondaryTabs.length > 0}
-        busy={secondaryBusy}
         newChatDisabled={project.status !== 'available'}
         terminalCommands={terminalCommands}
         pageIds={agentChatPageIdsForProjectType(project.type)}
@@ -790,9 +787,7 @@ export function AgentChatView({
         mobileControls={mobileControls}
         mountedTabKeys={mountedTabKeys}
         terminalCommands={terminalCommands}
-        secondaryControl={mobileControls.isMobile
-          ? renderSecondaryControl(project, state, mobileControls)
-          : null}
+        secondaryControl={renderSecondaryControl(project, state, mobileControls)}
         tabTitle={tabTitle}
         renderTab={(tab, active) => {
           const conversation = tab.kind === 'agent'
@@ -826,6 +821,8 @@ export function AgentChatView({
               active={active}
               running={projectRunning}
               conversationSyncRevision={conversationSyncRevision}
+              pendingAction={tab.kind === 'agent' ? pendingActions.get(agentChatSessionBindingKey(project.id, tab.sessionId)) : undefined}
+              onPendingActionConsumed={() => { if (tab.kind === 'agent') consumePendingAction(agentChatSessionBindingKey(project.id, tab.sessionId)) }}
               conversationState={conversationState}
               activeSubAgentSession={activeSubAgentSession}
               composerSettings={composerSettings}
@@ -883,9 +880,6 @@ export function AgentChatView({
   }
 
   const activeProjectState = activeProject ? workbench.projects[activeProject.id] ?? emptyProjectTabState() : null
-  const desktopSecondaryControl = activeProject && activeProjectState
-    ? renderSecondaryControl(activeProject, activeProjectState, DESKTOP_SECONDARY_PANE_CONTROLS)
-    : null
   const secondaryVisible = Boolean(
     activeProjectState?.secondaryVisible && tabsInGroup(activeProjectState.tabs, 'secondary').length > 0,
   )
@@ -907,7 +901,6 @@ export function AgentChatView({
       >
         <AgentChatWorkspaceSurface
           sidebarProps={treeProps}
-          desktopSecondaryControl={desktopSecondaryControl}
           secondaryPane={{
             focused: activeProjectState?.focusedGroup === 'secondary',
             onFocus: (focused) => { if (activeProject) focusGroup(activeProject.id, focused ? 'secondary' : 'primary') },
@@ -933,7 +926,13 @@ export function AgentChatView({
               const visible = project.id === activeProjectId
               return (
                 <section key={project.id} hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
-                  {renderProjectGroup(project, state, 'primary', visible, controls)}
+                  <ProjectDevelopmentTools
+                    projectId={project.id} visible={visible}
+                    refreshSignal={filesEditorRefreshSignals.get(project.id) ?? 0}
+                    beforeAction={() => flushProjectDrafts(project.id)}
+                    onOpenFile={path => openProjectFiles(project, 'secondary', path)}
+                  />
+                  <div className="min-h-0 flex-1">{renderProjectGroup(project, state, 'primary', visible, controls)}</div>
                 </section>
               )
             })

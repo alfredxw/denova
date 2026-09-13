@@ -16,6 +16,7 @@ import (
 	appsvc "denova/internal/app"
 	agentchatapp "denova/internal/app/agentchat"
 	appagentruntime "denova/internal/app/agentruntime"
+	"denova/internal/project"
 )
 
 type agentChatSessionCreateRequest struct {
@@ -77,6 +78,21 @@ func (h *Handlers) HandleAgentChatProjectCreate(_ context.Context, c *app.Reques
 	record, err := h.app.AgentChat().AddProject(request.Path)
 	if err != nil {
 		writeAgentChatProjectError(c, consts.StatusBadRequest, "添加项目失败", "Failed to add project", err)
+		return
+	}
+	writeJSON(c, consts.StatusCreated, record)
+}
+
+func (h *Handlers) HandleAgentChatDirectoryCreate(_ context.Context, c *app.RequestContext) {
+	var request project.CreateDirectoryRequest
+	if err := decodeStrictJSONRequest(c.Request.Body(), &request); err != nil {
+		c.JSON(400, map[string]string{"messageKey": "platform.errors.INVALID_ARGUMENT"})
+		return
+	}
+	record, err := h.app.AgentChat().CreateDirectoryProject(request)
+	if err != nil {
+		slog.Warn("project_directory_create_failed", "error", err)
+		c.JSON(400, map[string]string{"messageKey": "platform.errors.PROJECT_CREATE_FAILED"})
 		return
 	}
 	writeJSON(c, consts.StatusCreated, record)

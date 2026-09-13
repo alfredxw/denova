@@ -1,0 +1,66 @@
+{
+  "writer": "Character model",
+  "eyebrow": "NIGHTFALL DETECTIVE AGENCY / CASE 01",
+  "title": "Moonlit Messages",
+  "intro": "The last train no longer runs, but someone is still waiting. Talk to the townspeople and uncover the story of an unsent letter.",
+  "contacts": "Contacts",
+  "history": "Chat history",
+  "label": "Message",
+  "placeholder": "Write a message…",
+  "hint": "Enter to send · Shift + Enter for a new line",
+  "send": "Send",
+  "cancel": "Stop reply",
+  "older": "Load earlier messages",
+  "retry": "Reconnect and recover",
+  "you": "You",
+  "loading": "Restoring your conversations…",
+  "ready": "Start with a hello. Your conversations are saved automatically.",
+  "waiting": "A reply is on its way…",
+  "saved": "Messages saved",
+  "failed": "Connection or save failed. Reconnect to recover.",
+  "conflict": "The save has changed. Reconnect to load the latest records.",
+  "runFailed": "This reply failed. Your history remains; you can send another message.",
+  "aborted": "Reply stopped. Your chat history is retained.",
+  "incomplete": "The previous reply was interrupted. Your history remains; send a new message to continue.",
+  "lamplighter": {
+    "name": "Lin",
+    "tagline": "Station lamplighter",
+    "bio": "Still lights the last lantern every evening at seven.",
+    "opening": "Lin has accepted your contact request.\nAsk why the lanterns still glow at a closed station."
+  },
+  "archivist": {
+    "name": "Xu",
+    "tagline": "Town archivist",
+    "bio": "Collects old timetables and unfinished conversations.",
+    "opening": "You found Xu's contact on the station noticeboard.\nPerhaps she knows who wrote the unsent letter."
+  },
+  "sceneTitle": "01 / The abandoned station",
+  "evidenceTitle": "02 / Evidence notebook",
+  "caseTitle": "03 / An unfinished delivery",
+  "objective": "Inspect the station. Ask Lin and Xu about the letter, then deliver it across the river.",
+  "closed": "Case closed. The letter is on its way to the bookshop. You can keep talking to the witnesses.",
+  "resolve": "Deliver the letter",
+  "noEvidence": "Your notebook is empty. Click the marked objects in the scene to investigate.",
+  "discovered": "Evidence recorded. Ask a witness what it means.",
+  "caseSaved": "Case closed and saved.",
+  "clues": {
+    "clock": {
+      "name": "Platform clock",
+      "detail": "The hands stopped at seven. A scratched arrow points below the clock."
+    },
+    "notice": {
+      "name": "Noticeboard",
+      "detail": "A bookshop across the river is run by the former stationmaster’s daughter. Xu has marked its address."
+    },
+    "letter": {
+      "name": "Hidden letter",
+      "detail": "Beneath the clock lies an unsent letter: “I regret our last argument.” The envelope is addressed to the stationmaster’s daughter."
+    }
+  },
+  "settings.showHints": "Input hints",
+  "settings.showHintsHelp": "Show send and line-break hints below the conversation input.",
+  "settings.textSize": "Conversation text size",
+  "settings.textSizeHelp": "Adjust the text size in conversations and the input box.",
+  "settings.standard": "Standard",
+  "settings.large": "Large"
+}

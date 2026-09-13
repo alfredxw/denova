@@ -5,6 +5,7 @@ go 1.26.6
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/alfredxw/denova/agent v0.0.0
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
@@ -26,11 +27,13 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/ncruces/zenity v0.10.14
 	github.com/pelletier/go-toml/v2 v2.4.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sergi/go-diff v1.4.0
 	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.45.0
 	golang.org/x/net v0.57.0
 	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.41.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -99,7 +102,6 @@ require (
 	github.com/ysmood/leakless v0.9.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/arch v0.28.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )

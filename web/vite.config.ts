@@ -49,6 +49,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Test workspaces contain their own HTML/JS packages. Their writes must not
+    // reload the host application in the middle of a browser interaction.
+    watch: { ignored: ['**/test-results/**', '**/playwright-report/**'] },
     proxy: {
       '/api': {
         target: `http://127.0.0.1:${backendPort}`,
@@ -60,6 +63,13 @@ export default defineConfig({
         // AgentChat terminals attach over /api/terminal/sessions/:id/attach, so the dev proxy
         // has to forward WebSocket upgrade requests as well.
         ws: true,
+        configure(proxy) {
+          // The proxy's WebSocket xfwd path omits Host. Preserve the actual
+          // browser endpoint so the backend can enforce the same origin rule.
+          proxy.on('proxyReqWs', (outgoing, incoming) => {
+            outgoing.setHeader('X-Forwarded-Host', incoming.headers.host ?? '')
+          })
+        },
       },
     },
   },

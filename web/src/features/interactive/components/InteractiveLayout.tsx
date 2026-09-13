@@ -1,3 +1,4 @@
+import { GameStories } from '@/features/platform/GameStories'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -501,6 +502,10 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     />
   )
   return (
+    <GameStories key={projectId || 'current'} projectId={projectId ?? ''} active={active} builtinPicker={{
+      stories, currentStoryId, onSelect: handleStorySelect, onCreate: () => undefined,
+      onDeleteStories: handleDeleteStories, onRenameStory: handleRenameStory,
+    }}>
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <div data-testid="interactive-shell" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-bg)]">
         <div className="flex min-h-0 flex-1">
@@ -546,6 +551,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
         onCreate={(source, title, customAgentId) => handleCreateBranch(source.turnId, title, customAgentId)}
       />
     </div>
+    </GameStories>
   )
 }
 

@@ -18,6 +18,10 @@ import (
 // shown. A running conversation is always retained outside the recent window.
 const ProjectSessionsLimit = 50
 
+func (service *Service) CreateDirectoryProject(request projectdomain.CreateDirectoryRequest) (projectdomain.Record, error) {
+	return service.registry.CreateDirectory(request)
+}
+
 // AddProject registers a directory without changing the foreground Writing
 // workspace. Existing project identity and custom naming are preserved.
 func (service *Service) AddProject(path string) (projectdomain.Record, error) {

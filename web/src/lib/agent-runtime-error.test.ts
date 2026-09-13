@@ -12,6 +12,11 @@ import {
 const t = (key: string) => key
 
 describe('agent runtime error localization', () => {
+  it('explains changed configuration in live and recovered paused tasks', () => {
+    const reason = 'agent Definition does not match the active transcript: behavior_key changed'
+    expect(localizeAgentRuntimeError({ message: reason }, 'fallback', t)).toBe('chat.runtime.configurationChanged')
+    expect(localizeAgentRuntimeReason(reason, 'fallback', t)).toBe('chat.runtime.configurationChanged')
+  })
   it('localizes truncated model output from both live and recovered terminals', () => {
     expect(localizeAgentRuntimeError({ code: MODEL_OUTPUT_TRUNCATED_CODE, message: 'internal' }, 'fallback', t))
       .toBe('common.modelOutputTruncated')

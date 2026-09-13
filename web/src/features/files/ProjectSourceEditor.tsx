@@ -194,9 +194,9 @@ export const ProjectTextEditor = forwardRef<ProjectTextEditorHandle, ProjectText
   return (
     <div
       className="h-full min-h-0 min-w-0 overflow-hidden"
-      // Monaco mutates line DOM while scrolling. Size/layout/style containment
-      // keeps those invalidations inside the editor without clipping widgets.
-      style={{ contain: 'size layout style' }}
+      // Layout containment would rebase Monaco's viewport-positioned fixed
+      // widgets onto this wrapper, offsetting hovers and completion popups.
+      style={{ contain: 'size style' }}
     >
       <DenovaMonacoEditor
         height="100%"

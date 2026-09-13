@@ -1,4 +1,5 @@
 const chat = {
+  'chat.runtime.configurationChanged': '工具或运行配置已变化，无法从原位置继续任务。历史内容已保留；请取消尚未结束的任务，再按当前配置继续。',
   'chat.verification.title': '核实中断的操作',
   'chat.verification.description': '以下操作可能已在连接中断前生效，请检查当前状态。任务会等待核实结果，你也可以取消任务。',
   'chat.verification.question': '这项操作是否已经生效？',
@@ -677,6 +678,7 @@ const chat = {
   'chat.quick.scope.writing': '写作',
   'chat.quick.scope.skills': 'Skills',
   'chat.quick.scope.agents': 'Agents',
+  'chat.quick.scope.extensions': '扩展开发',
   'chat.quick.scope.automation': '自动化',
   'chat.quick.scope.lore': '资料库',
   'chat.quick.scope.preset-teller': '叙事风格',

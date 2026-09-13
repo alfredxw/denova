@@ -1,4 +1,5 @@
 const chat = {
+  'chat.runtime.configurationChanged': 'Tools or runtime settings have changed, so this task cannot resume from its previous position. History is preserved. Cancel the task if it is still pending, then continue with the current settings.',
   'chat.verification.title': 'Verify an interrupted operation',
   'chat.verification.description': 'The operation below may have taken effect before the connection stopped. Check its current state. This task will wait for your answer; you can also cancel the task.',
   'chat.verification.question': 'Did this operation take effect?',
@@ -677,6 +678,7 @@ const chat = {
   'chat.quick.scope.writing': 'Writing',
   'chat.quick.scope.skills': 'Skills',
   'chat.quick.scope.agents': 'Agents',
+  'chat.quick.scope.extensions': 'Extension development',
   'chat.quick.scope.automation': 'Automations',
   'chat.quick.scope.lore': 'Lore',
   'chat.quick.scope.preset-teller': 'Narrative Styles',

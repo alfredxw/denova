@@ -20,7 +20,7 @@ for (const product of ['writing', 'game'] as const) {
     if (story) await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
     const original = `Preserve this original input. ${marker}`
     await composer.fill(original)
-    await composer.press('Enter')
+    await page.locator('[data-action="send"]').filter({ visible: true }).click()
     try {
       await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[marker] ?? 0).toBe(1)
       await expect.poll(() => activeURL).not.toBe('')

@@ -96,7 +96,7 @@ export function AgentChatProjectGroup({
   const tabBarEndActions = mobileControls.isMobile
     ? group === 'primary' ? secondaryControl : undefined
     : group === rightmostDesktopGroup
-      ? <span data-slot="secondary-pane-control-spacer" aria-hidden="true" className="block h-7 w-8" />
+      ? secondaryControl
       : undefined
 
   return (

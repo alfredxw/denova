@@ -37,7 +37,9 @@ test('generates usable LAN credentials in one save and preserves existing creden
   for (const destination of ['写作', '游戏', '设置']) {
     await sidebar.getByRole('button', { name: destination, exact: true }).click()
     await expect(sidebar.getByRole('button', { name: destination, exact: true })).toHaveAttribute('aria-current', 'page')
-    if (destination === '游戏') await expect(page.getByRole('heading', { name: '开始这条故事线', exact: true })).toBeVisible()
+    if (destination === '游戏') {
+      await expect(page.getByRole('heading', { name: '开始这条故事线', exact: true })).toBeVisible()
+    }
   }
   await page.getByRole('button', { name: '局域网访问', exact: true }).click()
   await expect(username).toHaveValue(generatedUsername)

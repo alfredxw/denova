@@ -1,3 +1,5 @@
+import { useGameStories } from '@/features/platform/game-story-context'
+import { GameStorySetup } from '@/features/platform/GameStorySetup'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { toast } from 'sonner'
@@ -50,7 +52,10 @@ const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
 export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], planningTemplates = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
-  const [creatingStory, setCreatingStory] = useState(false)
+  const gameStories = useGameStories()
+  const [localCreating, setLocalCreating] = useState(false)
+  const creatingStory = gameStories?.creating ?? localCreating
+  const setCreatingStory = gameStories?.setCreating ?? setLocalCreating
   const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
     mode: 'interactive', project_id: projectId, story_id: storyId,
     branch_id: branchId || snapshot?.branch_id || 'main',
@@ -624,7 +629,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const stageControls = (
     <StoryStageControls
       isMobile={isMobile}
-      picker={{
+      picker={gameStories?.picker ?? {
         stories, currentStoryId: storyId,
         onSelect: (id) => { setCreatingStory(false); setPendingOpeningStoryId(''); onStorySelect(id) },
         onCreate: () => { setPendingOpeningStoryId(''); setCreatingStory(true) },
@@ -635,7 +640,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
       onToggleDirectorPanel={onToggleDirectorPanel}
     />
   )
-  const waitingToStartOpening = pendingOpeningStoryId === storyId
+  const waitingToStartOpening = Boolean(pendingOpeningStoryId) && pendingOpeningStoryId === storyId
   const committedTurnCount = Math.max(story?.turn_count || 0, snapshot?.turn_count || 0, snapshot?.turns?.length || 0)
   const openingRuntimeActive = streaming
     || Boolean(stageRun.runtime.operationId)
@@ -665,6 +670,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
               </Button>
             ) : null}
             {storySetupVisible ? (
+              <GameStorySetup enabled={creatingStory || !story || (story.title_source === 'pending' && committedTurnCount === 0 && !openingRuntimeActive)}>
               <NewStorySetupPanel
                 key={creatingStory ? 'new-story' : story?.id || 'new-story'}
                 projectId={projectId}
@@ -701,6 +707,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                   setCreatingStory(false)
                 }}
               />
+              </GameStorySetup>
             ) : (snapshotLoading || waitingToStartOpening) && agentMessages.length === 0 && !streaming ? (
               <LoadingState
                 label={t('common.loading')}

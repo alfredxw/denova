@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type RightPanel = 'ai' | null
 type BottomPanel = 'versions' | 'problems' | null
-export type WorkspaceRoute = 'ide' | 'interactive' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
+export type WorkspaceRoute = 'ide' | 'interactive' | 'extensions' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
 /** Historical internal name retained while the persisted key stays stable. */
 export type WorkspaceMode = WorkspaceRoute
 
@@ -10,7 +10,7 @@ export type WorkspaceMode = WorkspaceRoute
  * Shared top-level destinations, alongside Writing and Game. The historical
  * `mode` name remains in persisted state, but navigation no longer has a global mode switch.
  */
-const SHARED_WORKSPACE_MODES = ['lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
+const SHARED_WORKSPACE_MODES = ['extensions', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
 
 export type SharedWorkspaceMode = (typeof SHARED_WORKSPACE_MODES)[number]
 
@@ -42,7 +42,7 @@ function readInitialRightPanel(): RightPanel {
 }
 
 function isWorkspaceMode(value: unknown): value is WorkspaceMode {
-  return value === 'ide' || value === 'interactive' || value === 'lore' || value === 'presets' || value === 'versions' || value === 'books' || value === 'skills' || value === 'agents' || value === 'automations' || value === 'agentchat' || value === 'trajectory'
+  return value === 'ide' || value === 'interactive' || SHARED_WORKSPACE_MODES.some(mode => mode === value)
 }
 
 function isRightPanel(value: unknown): value is RightPanel {

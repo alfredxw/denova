@@ -14,6 +14,11 @@ const modelIncompleteTranslationKeys: Record<string, string> = {
 
 export function localizeAgentRuntimeReason(reason: unknown, fallback: string, t: Translate) {
   const value = typeof reason === 'string' ? reason.trim() : ''
+  // The Agent's persisted terminal reason includes the concrete mismatch after
+  // this stable diagnostic. Keep that detail in logs rather than user copy.
+  if (value.startsWith('agent Definition does not match the active transcript')) {
+    return t('chat.runtime.configurationChanged')
+  }
   const translationKey = modelIncompleteTranslationKeys[value]
   if (translationKey) return t(translationKey)
   return value || fallback

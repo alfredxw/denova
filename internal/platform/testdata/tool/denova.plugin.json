@@ -1,0 +1,64 @@
+{
+  "manifestVersion": 1,
+  "id": "test.fixture",
+  "version": "1.0.0",
+  "apiMajor": 1,
+  "name": {
+    "zh-CN": "测试包",
+    "en-US": "Test package"
+  },
+  "description": {
+    "zh-CN": "平台协议测试",
+    "en-US": "Platform contract test"
+  },
+  "distribution": {
+    "files": [
+      "."
+    ]
+  },
+  "permissions": {
+    "required": [
+      "tools.invoke"
+    ],
+    "optional": []
+  },
+  "locales": {
+    "zh-CN": "zh.json",
+    "en-US": "en.json"
+  },
+  "runtime": {
+    "backend": {
+      "protocol": "denova-runtime-v1",
+      "launch": {
+        "kind": "runtime",
+        "runtime": "node",
+        "entry": "server.mjs",
+        "args": []
+      }
+    }
+  },
+  "contributes": {
+    "tools": [
+      {
+        "id": "probe",
+        "definition": "probe.json",
+        "endpoint": {
+          "method": "POST",
+          "path": "/tools/probe"
+        }
+      }
+    ],
+    "toolsets": [
+      {
+        "id": "probes",
+        "tools": [
+          "probe"
+        ]
+      }
+    ]
+  },
+  "settings": {
+    "schema": "plugin.schema.json",
+    "defaults": "plugin.toml"
+  }
+}

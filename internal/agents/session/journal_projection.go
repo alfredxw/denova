@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 23
+	sessionProjectionVersion      = 24
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -81,20 +81,21 @@ type assistantTargetCheckpoint struct {
 // conversation index. It deliberately stores locators and current state only;
 // the canonical JSONL remains the sole source of transcript and display text.
 type sessionJournalProjection struct {
-	Version               int                        `json:"version"`
-	SessionID             string                     `json:"session_id"`
-	Generation            string                     `json:"generation"`
-	Title                 string                     `json:"title"`
-	CreatedAt             time.Time                  `json:"created_at"`
-	UpdatedAt             time.Time                  `json:"updated_at"`
-	MessageCount          int                        `json:"message_count"`
-	VisibleMessageCount   int                        `json:"visible_message_count"`
-	HistoryCount          int                        `json:"history_count"`
-	ClearAfter            int                        `json:"clear_after"`
-	ClearCursor           conversationjournal.Cursor `json:"clear_cursor,omitempty"`
-	ContextRevision       uint64                     `json:"context_revision"`
-	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
-	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
+	Version               int                                   `json:"version"`
+	SessionID             string                                `json:"session_id"`
+	Generation            string                                `json:"generation"`
+	Title                 string                                `json:"title"`
+	CreatedAt             time.Time                             `json:"created_at"`
+	UpdatedAt             time.Time                             `json:"updated_at"`
+	MessageCount          int                                   `json:"message_count"`
+	VisibleMessageCount   int                                   `json:"visible_message_count"`
+	HistoryCount          int                                   `json:"history_count"`
+	ClearAfter            int                                   `json:"clear_after"`
+	ClearCursor           conversationjournal.Cursor            `json:"clear_cursor,omitempty"`
+	ContextRevision       uint64                                `json:"context_revision"`
+	RuntimeConfig         *conversationconfig.Config            `json:"runtime_config,omitempty"`
+	RuntimeConfigRevision uint64                                `json:"runtime_config_revision,omitempty"`
+	PlatformRecords       map[string]conversationjournal.Cursor `json:"platform_records,omitempty"`
 
 	RecentCursors              []conversationjournal.Cursor                   `json:"recent_cursors,omitempty"`
 	MessageLocators            []messageLocator                               `json:"message_locators,omitempty"`
@@ -205,6 +206,16 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		return projection.applyHeader(record.Payload)
 	}
 	switch typed.Type {
+	case platformRecordType:
+		value, err := decodePlatformRecord(record.Payload)
+		if err != nil {
+			return err
+		}
+		if projection.PlatformRecords == nil {
+			projection.PlatformRecords = map[string]conversationjournal.Cursor{}
+		}
+		projection.PlatformRecords[value.Key] = record.Location.Cursor
+		return nil
 	case "":
 		return projection.applyLegacyMessage(record)
 	case historyTypeMessage, historyTypeContextMessage:

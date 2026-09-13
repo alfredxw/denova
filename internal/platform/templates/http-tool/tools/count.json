@@ -1,0 +1,6 @@
+{
+  "description": "Count Unicode code points in text, including whitespace.",
+  "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"], "additionalProperties": false },
+  "outputSchema": { "type": "object", "properties": { "count": { "type": "integer", "minimum": 0 } }, "required": ["count"], "additionalProperties": false },
+  "effect": "pure"
+}

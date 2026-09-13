@@ -53,9 +53,11 @@ type Config struct {
 	Workspace                string                       `toml:"workspace"`
 	// ProjectID and ProjectStoreDir are runtime-owned bindings. They never
 	// persist into user configuration or enter the content workspacelayout.
-	ProjectID                   string                    `toml:"-"`
-	ProjectStoreDir             string                    `toml:"-"`
-	ActiveCustomAgentID         string                    `toml:"-"`
+	ProjectID           string `toml:"-"`
+	ProjectStoreDir     string `toml:"-"`
+	ActiveCustomAgentID string `toml:"-"`
+	// Plugin calls are scoped to the current conversation at runtime.
+	AgentPluginScope            AgentPluginScope          `toml:"-" json:"-"`
 	ActiveCustomAgentName       string                    `toml:"-"`
 	ActiveCustomAgentRevision   string                    `toml:"-"`
 	RuntimeWebPort              int                       `toml:"-"`

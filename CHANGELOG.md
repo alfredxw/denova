@@ -14,6 +14,13 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- 新增统一扩展管理与工作台开发流程：支持从 GitHub 或本地安装游戏和插件、按提交检查更新，以及启停、独有设置表单与 TOML 编辑、模板创建、构建、独立预览与导出。
+- Added unified extension management and workbench development: install games and plugins from GitHub or local files, check upstream updates, enable, configure through forms or TOML, create, build, preview and export.
+- 游戏页支持在新建故事线时选择已安装游戏、设置默认游戏，并按故事线保存和恢复各自的进度；游戏可使用工具插件与私有 NPC。
+- Games now supports installed game types and a default game during storyline creation, with separate persistent saves, shared tool plugins and private NPCs.
+- 扩展页统一管理插件工具，启用后自动供写作、工作台、内置游戏及委派 Agent 使用；后续任务采用当前安装版本与全局设置，沿用现有审批方式。
+- Manage plugin tools in Extensions and make enabled tools available to Writing, Workbench, built-in Game and delegated Agents. New tasks use the installed versions and shared settings with existing approval policies.
+
 - 写作与游戏支持暂停整个 Agent 任务，重启后继续原任务，保留已接收输入、子任务及游戏已接纳草稿；中断后结果不明的操作可核实或直接取消任务。
 - Pause an entire Writing or Game Agent task and continue it after restart, preserving accepted input, child tasks, and accepted Game drafts; verify uncertain interrupted operations or cancel the task directly.
 

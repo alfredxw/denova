@@ -1,0 +1,78 @@
+{
+  "manifestVersion": 1,
+  "id": "example.text-tools",
+  "version": "1.0.0",
+  "apiMajor": 1,
+  "name": {
+    "zh-CN": "文本工具",
+    "en-US": "Text Tools"
+  },
+  "description": {
+    "zh-CN": "启用后供写作与游戏 Agent 使用的文本统计工具。",
+    "en-US": "Text counting tools for writing and games."
+  },
+  "development": {
+    "build": {
+      "command": "node",
+      "args": [
+        "--check",
+        "server.mjs"
+      ]
+    }
+  },
+  "distribution": {
+    "files": [
+      "server.mjs",
+      "runtime.mjs",
+      "tools",
+      "settings.schema.json",
+      "defaults.toml",
+      "locales"
+    ]
+  },
+  "runtime": {
+    "backend": {
+      "protocol": "denova-runtime-v1",
+      "launch": {
+        "kind": "runtime",
+        "runtime": "node",
+        "entry": "server.mjs",
+        "args": []
+      }
+    }
+  },
+  "permissions": {
+    "required": [
+      "tools.invoke"
+    ],
+    "optional": []
+  },
+  "contributes": {
+    "tools": [
+      {
+        "id": "count-characters",
+        "definition": "tools/count.json",
+        "endpoint": {
+          "method": "POST",
+          "path": "/tools/count"
+        }
+      }
+    ],
+    "toolsets": [
+      {
+        "id": "text-utils",
+        "tools": [
+          "count-characters"
+        ]
+      }
+    ]
+  },
+  "settings": {
+    "schema": "settings.schema.json",
+    "defaults": "defaults.toml"
+  },
+  "locales": {
+    "zh-CN": "locales/zh-CN.json",
+    "en-US": "locales/en-US.json"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "manifestVersion": 1,
+  "id": "example.moonlit-town",
+  "version": "1.0.0",
+  "apiMajor": 1,
+  "name": {
+    "zh-CN": "月下来信",
+    "en-US": "Moonlit Messages"
+  },
+  "description": {
+    "zh-CN": "一封未寄出的信，把你带到月光下的小镇车站。调查停摆的时钟、褪色的告示和遗落的信件，收集线索，与守灯人和档案员交谈，拼出信件背后的故事。\n\n两位角色各自保留独立的对话记忆。你可以切换交谈对象、带着新线索追问；调查进度与对话会随故事线保存，下次回来继续。",
+    "en-US": "An unsent letter leads you to a small-town station under the moonlight. Investigate a stopped clock, a faded notice, and a forgotten letter. Gather clues and talk with the lamplighter and archivist to uncover the story behind it.\n\nEach character remembers your conversations independently. Switch between them and follow up with new evidence. Investigation progress and conversations are saved with your storyline so you can return and continue."
+  },
+  "distribution": {
+    "files": [
+      "index.html",
+      "client.mjs",
+      "characters",
+      "locales",
+      "game.mjs",
+      "style.css",
+      "stream.mjs",
+      "cover.png",
+      "settings.schema.json",
+      "defaults.toml"
+    ]
+  },
+  "views": [
+    {
+      "id": "stage",
+      "source": {
+        "kind": "static",
+        "path": "index.html"
+      }
+    }
+  ],
+  "game": {
+    "viewId": "stage",
+    "storage": {
+      "kind": "self",
+      "saveFormat": "moonlit-messages-v1"
+    },
+    "uses": {
+      "agents": [
+        "local:character",
+        "local:archivist"
+      ]
+    },
+    "cover": "cover.png"
+  },
+  "permissions": {
+    "required": [
+      "gameData",
+      "agents.run"
+    ],
+    "optional": []
+  },
+  "definitions": {
+    "agents": [
+      {
+        "id": "character",
+        "definition": "characters/lamplighter.json"
+      },
+      {
+        "definition": "characters/archivist.json",
+        "id": "archivist"
+      }
+    ]
+  },
+  "modelSlots": [
+    {
+      "id": "writer",
+      "titleKey": "writer",
+      "kind": "text",
+      "required": true
+    }
+  ],
+  "locales": {
+    "zh-CN": "locales/zh-CN.json",
+    "en-US": "locales/en-US.json"
+  },
+  "settings": {
+    "schema": "settings.schema.json",
+    "defaults": "defaults.toml"
+  }
+}

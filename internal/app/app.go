@@ -32,6 +32,7 @@ import (
 	"denova/internal/concurrency"
 	"denova/internal/interactive"
 	"denova/internal/localfs"
+	"denova/internal/platform"
 	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	"denova/internal/terminal"
@@ -95,6 +96,7 @@ type App struct {
 	projectBook        *projectbookapp.Service
 	projectFiles       *projectfilesapp.Service
 	servicesOnce       sync.Once
+	platform           *platform.Manager
 
 	mu sync.RWMutex
 	// Keep concurrent manual selections ordered across their conversation and
@@ -195,6 +197,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize canonical Agent Session Store: %w", err)
 	}
+	app.platform = platform.New(dataDir, registry)
+	app.platform.ConfigureAgents(canonicalSessions, app.platformModel)
 	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,
@@ -476,6 +480,11 @@ func (a *App) Close() {
 		}
 		if a.terminals != nil {
 			a.terminals.CloseAll()
+		}
+		if a.platform != nil {
+			if err := a.platform.Close(context.Background()); err != nil {
+				slog.Error("platform_close_failed", "error", err)
+			}
 		}
 		// Admission closes before cancellation so no task can slip between the
 		// final registry snapshot and the resource barrier.

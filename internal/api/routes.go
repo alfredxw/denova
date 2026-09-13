@@ -18,6 +18,7 @@ import (
 // registerRoutes 注册 HTTP API 和静态文件路由。
 func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 	apiHandlers := handlers.New(s.app)
+	h.Any("/api/platform/manage/*path", localHostEffectMiddleware, apiHandlers.HandlePlatformManagement)
 	api := h.Group("/api")
 	{
 		api.POST("/autosave-conflicts", apiHandlers.HandleAutosaveConflictCreate)
@@ -253,6 +254,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/agent-chat/projects", apiHandlers.HandleAgentChatProjects)
 		api.GET("/agent-chat/activity", apiHandlers.HandleAgentChatActivity)
 		api.POST("/agent-chat/projects", apiHandlers.HandleAgentChatProjectCreate)
+		api.POST("/agent-chat/projects/directory", apiHandlers.HandleAgentChatDirectoryCreate)
 		api.POST("/agent-chat/projects/reorder", apiHandlers.HandleAgentChatProjectReorder)
 		api.PATCH("/agent-chat/projects/:id", apiHandlers.HandleAgentChatProjectUpdate)
 		api.DELETE("/agent-chat/projects/:id", apiHandlers.HandleAgentChatProjectArchive)

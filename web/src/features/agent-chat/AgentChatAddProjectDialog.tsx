@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookPlus, ChevronRight, FolderOpen, Loader2 } from 'lucide-react'
+import { BookPlus, ChevronRight, FolderOpen, FolderPlus, Loader2 } from 'lucide-react'
+import { CreateProjectDirectoryDialog } from './CreateProjectDirectoryDialog'
 import { BookFormDialog } from '@/components/Home/BookFormDialog'
 import {
   Dialog,
@@ -37,7 +38,7 @@ export function AgentChatAddProjectDialog({
   onBooksChange,
 }: AgentChatAddProjectDialogProps) {
   const { t } = useTranslation()
-  const [step, setStep] = useState<'choose' | 'book'>('choose')
+  const [step, setStep] = useState<'choose' | 'book' | 'directory'>('choose')
   const [preparingBook, setPreparingBook] = useState(false)
   const [coverVersions, setCoverVersions] = useState<Record<string, string>>({})
   const presetOptions = useMemo(() => {
@@ -77,6 +78,13 @@ export function AgentChatAddProjectDialog({
           </DialogHeader>
           <div className="grid gap-2 p-3">
             <ProjectChoice
+              icon={FolderPlus}
+              title={t('platform.createDirectory')}
+              description={t('platform.createDirectoryChoice')}
+              disabled={preparingBook}
+              onClick={() => setStep('directory')}
+            />
+            <ProjectChoice
               icon={FolderOpen}
               title={t('agentChat.project.openDirectory')}
               description={t('agentChat.project.openDirectoryDescription')}
@@ -97,6 +105,7 @@ export function AgentChatAddProjectDialog({
           </div>
         </DialogContent>
       </Dialog>
+      <CreateProjectDirectoryDialog open={open && step === 'directory'} onOpenChange={onOpenChange} />
       <BookFormDialog
         open={open && step === 'book'}
         mode="create"
