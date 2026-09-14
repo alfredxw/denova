@@ -167,6 +167,18 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 		c.Data(200, "application/zip", output.Bytes())
 		return
 	}
+	if len(parts) == 4 && parts[0] == "packages" && parts[3] == "archive" && method == "GET" {
+		ref := platform.ReleaseRef{Package: platform.PackageRef{Kind: platform.Kind(parts[1]), ID: parts[2]}, ReleaseID: c.Query("releaseId")}
+		var output bytes.Buffer
+		if err := manager.ExportInstalled(ref, &output); err != nil {
+			platformManagementError(c, err)
+			return
+		}
+		c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, ref.Package.ID))
+		c.Header("Cache-Control", "no-store")
+		c.Data(200, "application/zip", output.Bytes())
+		return
+	}
 	if len(parts) == 2 && parts[0] == "candidates" && method == "DELETE" {
 		manager.DiscardCandidate(parts[1])
 		c.Status(204)

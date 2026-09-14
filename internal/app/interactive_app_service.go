@@ -48,7 +48,18 @@ func (s *InteractiveAppService) InteractiveStories() (interactive.Index, error) 
 	if store == nil {
 		return interactive.Index{}, ErrNoWorkspace
 	}
-	return store.Index()
+	index, err := store.Index()
+	if err != nil {
+		return interactive.Index{}, err
+	}
+	visible := make([]interactive.StorySummary, 0, len(index.Stories))
+	for _, story := range index.Stories {
+		if !story.Preview {
+			visible = append(visible, story)
+		}
+	}
+	index.Stories = visible
+	return index, nil
 }
 
 func (a *App) SelectInteractiveStory(storyID string) error {

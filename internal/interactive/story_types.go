@@ -11,6 +11,8 @@ import (
 )
 
 type CreateStoryRequest struct {
+	// Preview keeps development test Stories outside the normal Story picker.
+	Preview                   bool                              `json:"-"`
 	Title                     string                            `json:"title"`
 	CustomAgentID             *string                           `json:"custom_agent_id,omitempty"`
 	ProfileID                 string                            `json:"profile_id,omitempty"`
@@ -159,6 +161,7 @@ type Index struct {
 }
 
 type StorySummary struct {
+	Preview               bool                     `json:"preview,omitempty"`
 	ID                    string                   `json:"id"`
 	Title                 string                   `json:"title"`
 	TitleSource           string                   `json:"title_source"`
@@ -229,6 +232,7 @@ type BranchSummary struct {
 }
 
 type StoryMeta struct {
+	Preview                   bool                             `json:"preview,omitempty"`
 	V                         int                              `json:"v"`
 	Type                      string                           `json:"type"`
 	StoryID                   string                           `json:"story_id"`
@@ -267,15 +271,16 @@ type TurnEvent struct {
 	Attachments []agent.Attachment `json:"attachments,omitempty"`
 	// UserContextOnly keeps host-owned autonomous instructions available to
 	// future model turns while hiding them from the player-authored timeline.
-	UserContextOnly  bool   `json:"user_context_only,omitempty"`
-	Narrative        string `json:"narrative"`
-	Thinking         string `json:"thinking,omitempty"`
-	RunID            string `json:"run_id,omitempty"`
-	AgentKind        string `json:"agent_kind,omitempty"`
-	AgentCommandID   string `json:"agent_command_id,omitempty"`
-	AgentOperationID string `json:"agent_operation_id,omitempty"`
-	AgentCycle       int    `json:"agent_cycle,omitempty"`
-	AgentCommitHash  string `json:"agent_commit_hash,omitempty"`
+	UserContextOnly   bool   `json:"user_context_only,omitempty"`
+	Narrative         string `json:"narrative"`
+	NarrativeRevision string `json:"narrative_revision,omitempty"`
+	Thinking          string `json:"thinking,omitempty"`
+	RunID             string `json:"run_id,omitempty"`
+	AgentKind         string `json:"agent_kind,omitempty"`
+	AgentCommandID    string `json:"agent_command_id,omitempty"`
+	AgentOperationID  string `json:"agent_operation_id,omitempty"`
+	AgentCycle        int    `json:"agent_cycle,omitempty"`
+	AgentCommitHash   string `json:"agent_commit_hash,omitempty"`
 	// ProviderContinuation is hydrated from a private side event for model
 	// history only. It is deliberately absent from public Game JSON.
 	ProviderContinuation map[string]any `json:"-"`

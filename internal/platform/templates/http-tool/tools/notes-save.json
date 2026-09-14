@@ -1,0 +1,23 @@
+{
+  "description": "Append one creative note. Supply a stable requestId to recover an uncertain response without duplicating the note. Existing notes are never overwritten.",
+  "effect": "write",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "text": {
+        "type": "string",
+        "maxLength": 24000
+      }
+    },
+    "required": [
+      "requestId",
+      "text"
+    ],
+    "additionalProperties": false
+  }
+}

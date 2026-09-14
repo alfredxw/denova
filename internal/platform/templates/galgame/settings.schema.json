@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "textSize": { "type": "string", "x-titleKey": "settings.textSize", "oneOf": [{ "const": "standard", "x-titleKey": "settings.standard" }, { "const": "large", "x-titleKey": "settings.large" }] },
+    "autoSeconds": { "type": "integer", "minimum": 2, "maximum": 30, "x-titleKey": "settings.autoSeconds", "x-descriptionKey": "settings.autoHelp" }
+  }
+}

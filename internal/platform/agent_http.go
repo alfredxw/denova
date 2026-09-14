@@ -41,6 +41,9 @@ func (e *agentExecution) consume(event agent.Event) {
 	default:
 		return
 	}
+	if kind == "state" {
+		data = map[string]string{"status": e.receipt.Result.Status}
+	}
 	e.next++
 	e.events = append(e.events, streamEvent{sequence: e.next, Kind: kind, Data: data})
 	if len(e.events) > 256 {

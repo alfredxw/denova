@@ -151,7 +151,7 @@ func TestDisableKeepsCurrentGameAndBlocksNewStarts(t *testing.T) {
 
 func TestDevelopmentUsesProjectRoot(t *testing.T) {
 	m, projectID := testManager(t)
-	development, err := m.CreateDevelopment(CreateDevelopment{Kind: Game, ProjectID: projectID, RelativePath: ".", TemplateID: "npc-game", ID: "test.root", Name: LocalizedText{Chinese: "测试", English: "Test"}})
+	development, err := m.CreateDevelopment(CreateDevelopment{Kind: Game, ProjectID: projectID, RelativePath: ".", ID: "test.root", Name: LocalizedText{Chinese: "测试", English: "Test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestDevelopmentUsesProjectRoot(t *testing.T) {
 	if _, err := m.CheckDevelopment(development.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.CreateDevelopment(CreateDevelopment{Kind: Game, ProjectID: projectID, RelativePath: ".", TemplateID: "npc-game", ID: "test.overwrite", Name: LocalizedText{Chinese: "覆盖", English: "Overwrite"}}); err == nil {
+	if _, err := m.CreateDevelopment(CreateDevelopment{Kind: Game, ProjectID: projectID, RelativePath: ".", ID: "test.overwrite", Name: LocalizedText{Chinese: "覆盖", English: "Overwrite"}}); err == nil {
 		t.Fatal("template overwrote existing source")
 	}
 }

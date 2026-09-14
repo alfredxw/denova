@@ -122,7 +122,7 @@ export function GamePlayer({
         ref={frame}
         title={t('platform.gameFrame')}
         src={runtime.viewUrl}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts allow-same-origin allow-forms"
         referrerPolicy="origin"
         className="min-h-0 w-full flex-1 border-0"
       />

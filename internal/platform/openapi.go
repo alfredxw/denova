@@ -2,8 +2,8 @@ package platform
 
 import "strings"
 
-// OpenAPI describes only implemented A-release consumer routes. Management and
-// future contribution families are deliberately absent from scoped discovery.
+// OpenAPI describes implemented consumer routes. Management APIs and host
+// internals are deliberately absent from scoped discovery.
 func OpenAPI() map[string]any {
 	ref := func(name string) map[string]any { return map[string]any{"$ref": "#/components/schemas/" + name} }
 	str := map[string]any{"type": "string"}
@@ -16,7 +16,7 @@ func OpenAPI() map[string]any {
 		"Error":         object(map[string]any{"code": str, "messageKey": str, "diagnostic": str}, "code", "messageKey", "diagnostic"),
 		"PackageRef":    object(map[string]any{"kind": map[string]any{"enum": []string{"plugin", "game"}}, "id": str}, "kind", "id"),
 		"ReleaseRef":    object(map[string]any{"package": ref("PackageRef"), "releaseId": str}, "package", "releaseId"),
-		"Scope":         object(map[string]any{"kind": map[string]any{"enum": []string{"project", "session", "game-instance"}}, "projectId": str, "sessionId": str, "instanceId": str}, "kind"),
+		"Scope":         object(map[string]any{"kind": map[string]any{"enum": []string{"project", "session", "story", "game-instance"}}, "projectId": str, "sessionId": str, "instanceId": str, "storyId": str, "branchId": str}, "kind"),
 		"Context":       object(map[string]any{"source": ref("ReleaseRef"), "scope": ref("Scope"), "locale": str, "theme": str, "environment": str, "settings": jsonObject, "setup": jsonObject}, "source", "scope", "locale", "theme", "environment", "settings"),
 		"AgentRef":      object(map[string]any{"owner": object(map[string]any{"kind": str, "projectId": str, "sessionId": str}, "kind", "projectId", "sessionId"), "sessionId": str}, "owner", "sessionId"),
 		"AgentSession":  object(map[string]any{"ref": ref("AgentRef"), "definition": str, "key": str}, "ref", "definition", "key"),
@@ -29,6 +29,20 @@ func OpenAPI() map[string]any {
 		"ToolResult":    object(map[string]any{"content": str, "data": map[string]any{}}, "content"),
 		"History":       object(map[string]any{"items": array(object(map[string]any{"recordId": str, "role": str, "text": str, "createdAt": str}, "recordId", "role", "text", "createdAt")), "cursor": str}, "items", "cursor"),
 	}
+	integer := map[string]any{"type": "integer", "minimum": 0}
+	boolean := map[string]any{"type": "boolean"}
+	schemas["AssetRef"] = object(map[string]any{"kind": map[string]any{"enum": []string{"project", "generated"}}, "path": str}, "kind", "path")
+	schemas["LibraryItem"] = object(map[string]any{"id": str, "type": str, "name": str, "tags": array(str), "briefDescription": str, "updatedAt": str, "enabled": boolean, "keywords": array(str), "content": str, "image": ref("AssetRef")}, "id", "type", "name", "tags", "briefDescription", "updatedAt", "enabled")
+	schemas["LibraryPage"] = object(map[string]any{"items": array(ref("LibraryItem")), "total": integer, "nextOffset": integer}, "items", "total")
+	schemas["ImageRequest"] = object(map[string]any{"commandId": str, "modelSlot": str, "prompt": map[string]any{"type": "string", "description": "English image prompt; 1..65536 UTF-8 bytes"}, "size": str, "aspectRatio": str, "quality": str}, "commandId", "modelSlot", "prompt")
+	schemas["GeneratedImage"] = object(map[string]any{"asset": ref("AssetRef"), "mimeType": str, "sizeBytes": integer, "revisedPrompt": str}, "asset", "mimeType", "sizeBytes")
+	schemas["ImageResult"] = object(map[string]any{"commandId": str, "status": map[string]any{"enum": []string{"running", "completed", "failed", "cancelled", "interrupted"}}, "images": array(ref("GeneratedImage")), "error": ref("Error")}, "commandId", "status", "images")
+	schemas["StoryTurn"] = object(map[string]any{"id": str, "revision": str, "user": str, "narrative": str, "choices": array(str), "versions": array(str)}, "id", "revision", "user", "narrative", "choices", "versions")
+	schemas["StoryHistory"] = object(map[string]any{"turns": array(ref("StoryTurn")), "beforeCursor": str, "hasMore": boolean}, "turns", "hasMore")
+	schemas["StorySnapshot"] = object(map[string]any{"storyId": str, "branchId": str, "title": str, "turns": array(ref("StoryTurn")), "branches": array(object(map[string]any{"id": str, "title": str, "current": boolean}, "id", "title", "current")), "beforeCursor": str, "hasMore": boolean, "status": str, "operationId": str, "interruptionId": str}, "storyId", "branchId", "title", "turns", "branches", "hasMore", "status")
+	schemas["StoryCommand"] = object(map[string]any{"kind": map[string]any{"enum": []StoryCommandKind{StoryAdvance, StoryResume, StoryRegenerate, StoryStop, StoryFork, StorySwitchBranch, StorySwitchVersion}}, "commandId": str, "message": str, "locale": str, "operationId": str, "interruptionId": str, "branchId": str, "turnId": str, "versionTurnId": str, "title": str}, "kind", "commandId")
+	schemas["StoryRecord"] = object(map[string]any{"revision": integer, "schemaVersion": integer, "value": map[string]any{}}, "revision", "schemaVersion", "value")
+	schemas["StoryRecordRequest"] = object(map[string]any{"key": str, "branchId": str, "turnId": str, "sourceRevision": str, "expectedRevision": integer, "schemaVersion": integer, "value": map[string]any{}}, "key", "expectedRevision", "schemaVersion", "value")
 	paths := map[string]any{}
 	add := func(method, path, summary string, requestSchema, responseSchema any, success string, query []string) {
 		content := func(schema any) map[string]any {
@@ -82,6 +96,22 @@ func OpenAPI() map[string]any {
 	add("post", "/agents/runs/{runId}/cancel", "Request cancellation without deleting history", nil, ref("RunResult"), "200", nil)
 	add("post", "/agents/runs/{runId}/interactions/{interactionId}/responses", "Answer an ordinary question; permission approval is forbidden", jsonObject, nil, "204", nil)
 	add("post", "/tools/{providerId}/{toolId}/invoke", "Invoke a selected tool with its validated input", object(map[string]any{"input": map[string]any{}}, "input"), ref("ToolResult"), "200", nil)
+	add("get", "/library/items", "Read a page from the bound Project library", nil, ref("LibraryPage"), "200", []string{"query", "offset", "limit"})
+	add("get", "/library/items/{id}", "Read one library item including its full content", nil, ref("LibraryItem"), "200", nil)
+	add("get", "/assets/content", "Read authorized raster bytes using a portable asset reference", nil, nil, "200", []string{"kind", "path"})
+	paths["/assets/content"].(map[string]any)["get"].(map[string]any)["responses"].(map[string]any)["200"].(map[string]any)["content"] = map[string]any{"image/png": map[string]any{}, "image/jpeg": map[string]any{}, "image/webp": map[string]any{}, "image/gif": map[string]any{}}
+	add("post", "/images/generations", "Start or recover an image request without replaying a paid operation", ref("ImageRequest"), ref("ImageResult"), "202", nil)
+	paths["/images/generations"].(map[string]any)["post"].(map[string]any)["responses"].(map[string]any)["200"] = map[string]any{"description": "Previously settled request", "content": map[string]any{"application/json": map[string]any{"schema": ref("ImageResult")}}}
+	add("get", "/images/generations/{commandId}", "Find this scope's image request after reconnection", nil, ref("ImageResult"), "200", nil)
+	add("post", "/images/generations/{commandId}/cancel", "Cancel this scope's image request", nil, ref("ImageResult"), "200", nil)
+	add("get", "/story/events", "Follow provisional prose for the observed Story operation", nil, str, "200", []string{"operationId"})
+	paths["/story/events"].(map[string]any)["get"].(map[string]any)["description"] = "Data-only SSE frames contain kind reset, delta (with text), or settled. Reconnect replays current provisional prose from reset. Reload /story after settled or disconnect; only its turns are committed. No reasoning or tool events are exposed."
+	paths["/story/events"].(map[string]any)["get"].(map[string]any)["parameters"] = []map[string]any{{"name": "operationId", "in": "query", "required": true, "schema": str}}
+	add("get", "/story", "Read the linked Story's player-visible snapshot", nil, ref("StorySnapshot"), "200", nil)
+	add("get", "/story/history", "Read earlier turns in an authorized Story branch", nil, ref("StoryHistory"), "200", []string{"branchId", "beforeCursor", "limit"})
+	add("post", "/story/commands", "Perform an existing Story operation through its canonical command path", ref("StoryCommand"), ref("StorySnapshot"), "200", nil)
+	add("get", "/story/records", "Read extension JSON bound to a Story or exact turn revision", nil, ref("StoryRecord"), "200", []string{"key", "branchId", "turnId", "sourceRevision"})
+	add("put", "/story/records", "Commit extension JSON to the same Story journal with revision protection", ref("StoryRecordRequest"), ref("StoryRecord"), "200", nil)
 	for _, prefix := range []string{"/game-data", "/plugin-data"} {
 		add("get", prefix+"/files", "List this scope's portable files", nil, object(map[string]any{"items": array(jsonObject)}, "items"), "200", []string{"directory"})
 		add("get", prefix+"/file", "Read a UTF-8 file and its revision", nil, ref("File"), "200", []string{"path"})

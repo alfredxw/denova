@@ -199,6 +199,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	}
 	app.platform = platform.New(dataDir, registry)
 	app.platform.ConfigureAgents(canonicalSessions, app.platformModel)
+	app.platform.ConfigureResources(platformResourceHost{app: app})
+	app.platform.ConfigureStories(platformStoryHost{app: app})
 	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,

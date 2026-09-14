@@ -1,29 +1,29 @@
 # Denova 插件开发手册
 
-状态：第一版 A 已实现，尚未发布。最近用户数据保护基线为 v0.4.5。更新：2026-09-12。
+更新：2026-09-13。接口以当前代码和运行实例的 OpenAPI 为准。
 
-配套：[游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
+配套：[扩展能力开发手册](extension-development.md) · [游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
 
 扩展页使用二级目录管理已安装的插件与游戏；工作台统一承接源码开发。插件提供可复用工具、工具集与服务；游戏交付可玩的作品。Skills 与 Agents 继续由各自页面管理，插件清单不分发这两类资源。宿主模型调用 API 和游戏私有角色定义保留。
 
 ## 内置示例
 
-内置模板只提供一个插件示例和一个游戏示例，供开发参考，默认不安装、不启用。创建源码项目、检查打包和准备隔离预览均不会将示例加入已安装扩展，也不会改变默认游戏；只有用户明确安装后才成为可用扩展。
+完整示例源码供开发参考，不作为创建选项，默认不安装、不启用。创建源码项目、检查打包和准备隔离预览均不会将示例加入已安装扩展，也不会改变默认游戏；安装后才成为可用扩展。
 
-| 模板 | 示例 | 演示能力 |
+| 示例源码目录 | 示例 | 演示能力 |
 | --- | --- | --- |
-| `http-tool` | 文本工具 | Unicode 字符统计、工具集与扩展设置 |
-| `npc-game` | 月下来信 | 像素侦探游戏、双角色对话与独立记忆 |
+| `http-tool` | 创作工具箱 | 文本统计与批量整理、独立笔记、资料库、图像模型槽、工具集、设置与权限 |
+| `galgame` | 余光来信 | 流式对话、角色立绘与背景、CG、Story 恢复、资料库与图像生成 |
 
 ## 在 App 中开发
 
 1. 在「扩展 → 创建扩展」选择「开发插件」，填写名称和可选需求。创建后进入工作台，打开源码项目和普通开发会话；填写的需求会作为第一条开发消息发送。
-2. 默认在应用数据目录的 projects 下创建新目录，自动生成稳定包 ID。插件从文本工具示例起步，游戏从月下来信示例起步，无需再选择模板。高级选项可指定包 ID 或已有父目录。已有同名目录不会被覆盖。
-3. 模板在 Project 根生成 denova.plugin.json、源码和 DEVELOPMENT.md。ProjectID 是稳定身份；受管 location 持久化为规范相对路径。源码草稿只在工作台显示，安装不会创建新 Project；扩展页的「打开源码」可关联多个独立源码副本。
-4. 工作台「源码清单」直接编辑并自动保存清单，保留未编辑字段；文件和源码版本沿用项目编辑器与版本历史。含根清单的已有 Project 自动显示开发工具，损坏清单保留修复入口。同一项目可通过显式子目录绑定开发多个扩展。
+2. 默认在应用数据目录的 projects 下创建新目录，自动生成稳定包 ID。插件与游戏各自生成一个通用开发骨架，不选择模板；高级选项只用于指定包 ID 或父目录。已有同名目录不会被覆盖。
+3. 开发骨架在 Project 根生成 denova.plugin.json、源码和 DEVELOPMENT.md。ProjectID 是稳定身份；受管 location 持久化为规范相对路径。源码草稿只在工作台显示，安装不会创建新 Project；扩展页的「打开源码」可关联多个独立源码副本。
+4. 工作台「更多开发操作 → 源码清单」直接编辑并自动保存清单，保留未编辑字段；文件和源码版本沿用项目编辑器与版本历史。含根清单的已有 Project 自动显示开发工具，损坏清单保留修复入口。同一项目可通过显式子目录绑定开发多个扩展。
 5. 工作台普通 Agent 会自动关联 extension-development Skill、当前所选源码位置和最近构建/测试反馈。反馈仅附在后续消息中，最多保留 16,384 字符，超出时保留末尾并标记省略；完整构建输出仍在终端中。切换扩展来源不会混用反馈。
-6. 工作台提供构建、检查打包、权限选择、工具测试、ZIP 导出与安装。构建命令在可见终端展示、执行；关闭构建窗口停止该终端。检查只验证文件、清单、schema 和引用，不执行代码，结果是冻结快照。安装后可直接查看对应的已安装扩展。
-7. 预览使用开发 Project 及独立测试数据。后续源码修改需要重新检查并开启新预览；同版本号的源码变化也可安装。已安装快照和真实存档不会随源码编辑改变。模型选择属于运行实例，扩展通用设置由扩展页统一管理。
+6. 工作台主操作为「试运行」和「发布到本机」。发布只确认名称、说明和版本等基本信息，保存源码编辑器后检查并安装，启用声明的必需能力；模型、测试参数和逐项授权不进入发布表单。可选能力在扩展设置中管理。需要构建的项目通过「更多开发操作 → 构建」在可见终端执行；关闭构建窗口停止该终端。检查验证文件、清单、schema 和引用，不执行代码。发布完成后打开已安装扩展，详情页可导出其准确冻结版本；本机设置、测试存档和未发布源码不会进入安装包。对外分发由用户自行处理。
+7. 试运行使用开发 Project 及独立测试数据。后续源码修改需要重新检查并开启新预览；同版本号的源码变化也可安装。已安装快照和真实存档不会随源码编辑改变。模型选择属于运行实例，扩展通用设置由扩展页统一管理。
 
 ## 从 GitHub 安装与更新
 
@@ -35,28 +35,29 @@
 
 详情页显示当前版本、仓库、ref 和 commit，并提供「检查更新」「更新」。更新按上游提交判断，确认时固定该提交；更新过程中包身份变化或原安装已被替换会拒绝安装。同版本号可以包含新的源码快照，版本号由作者用于表达兼容性。已有游戏存档继续引用原发行；普通 Agent 会话的后续执行直接采用当前已安装插件。新依赖默认采用当前已安装插件并校验版本范围，不在历史发行中自动择优。旧快照仍用于恢复，界面不展示发行历史列表。
 
-模板初始化失败时保留已创建 Project 和文件，进入工作台检查，不删除用户工作。目录显示名和清单中英文名称可分别修改。Node 程序拥有当前系统账户权限；平台范围凭证不等于操作系统沙箱。
+源码初始化失败时保留已创建 Project 和文件，进入工作台检查，不删除用户工作。目录显示名和清单中英文名称可分别修改。Node 程序拥有当前系统账户权限；平台范围凭证不等于操作系统沙箱。
 
 扩展页「使用配置与授权」提供独有设置表单、TOML 编辑、恢复默认值和独立权限管理。同一扩展各发行共用一份 settings.toml；保存校验、并发保护、备份、预览隔离及运行快照规则见[扩展设置标准](extension-settings.md)。修改设置在下次启动生效，修改权限会停止受影响实例。卸载保留源码、会话、发行、设置和数据。
 
-## HTTP 工具模板
+## HTTP 工具参考示例
 
-模板包含：
+仓库中的 `internal/platform/templates/http-tool` 包含：
 
 ```text
 denova.plugin.json
 server.mjs
 runtime.mjs
-tools/count.json
+tools.mjs
+tools/*.json
 settings.schema.json
 defaults.toml
 locales/zh-CN.json
 locales/en-US.json
 ```
 
-开发目录还提供通用浏览器连接示例；只有 distribution.files 列出的文件和清单进入发布包。模板无需下载依赖，构建配方为 node --check server.mjs。
+开发目录还提供通用浏览器连接示例；只有 distribution.files 列出的文件和清单进入发布包。该示例无需下载依赖，构建配方为 node --check server.mjs。
 
-ID 为 example.text-tools 的模板公开 count-characters 工具和 text-utils 工具集。工具统计 Unicode 码点，默认包括空白；在扩展设置中启用「忽略空白字符」后，新启动会跳过空白。定义使用 JSON Schema 2020-12，声明英文模型描述、输入、可选结构化输出和 effect（pure、read、propose、write）。宿主在调用前后分别验证输入及结构化输出。Agent 工具适配器使用现有参数修复与执行引擎。
+ID 为 example.text-tools 的参考示例公开六个工具：count-characters、clean-text、read-notes、save-note、search-library、illustrate，分别归入 text-utils 和 creative-resources 工具集。笔记追加到宿主按会话或 Story 分支隔离的数据目录，相同 requestId 重试不重复写入；单作用域上限 1 MiB，超限明确报错。批量整理逐项报告错误。资料库、图像和写操作由可选权限控制；illustrate 需要调用方绑定本插件的 illustrator 图像模型槽，没有绑定时返回 NOT_CONFIGURED，普通文本工具仍可使用。工具统计 Unicode 码点，默认包括空白；在扩展设置中启用「忽略空白字符」后，新启动会跳过空白。定义使用 JSON Schema 2020-12，声明英文模型描述、输入、可选结构化输出和 effect（pure、read、propose、write）。宿主在调用前后分别验证输入及结构化输出。Agent 工具适配器使用现有参数修复与执行引擎。
 
 提供器收到 POST /tools/count，HTTP JSON body 直接是工具输入；成功返回：
 
@@ -72,7 +73,7 @@ ID 为 example.text-tools 的模板公开 count-characters 工具和 text-utils 
 
 - distribution.files 是文件或目录白名单；未列出的依赖、入口或定义会使检查失败。
 - runtime.backend 支持 protocol: denova-runtime-v1 与 launch.kind: runtime、runtime: node、entry、args。
-- modelSlots 当前支持 text；titleKey 必须存在于中英 locale 文件。
+- modelSlots 支持 text 与 image；titleKey 必须存在于中英 locale 文件。宿主分别提供文本和图像配置选择；扩展只能使用实际绑定的槽位。
 - settings 引用分发内的 JSON Schema 与 defaults TOML，可选 uiSchema 提供声明式布局；字段必须有中英文标题。详见[扩展设置标准](extension-settings.md)。
 - requires 声明插件 ID、语义版本范围和所需贡献。运行时使用准确发行，不按加载顺序替换。
 - 声明 agents.run、tools.invoke、pluginData 权限；消费者直接调用或游戏 NPC 使用 `effect: write/propose` 的工具还需显式授予 `tools.write`。尚未实现的能力会明确拒绝。
@@ -103,4 +104,4 @@ ID 为 example.text-tools 的模板公开 count-characters 工具和 text-utils 
 
 stdin 收到 shutdown 或关闭后停止服务。Windows 通过 Job Object 管理进程树；其他桌面系统使用进程组。当前变更在 Windows 原生验证；macOS 与 Linux/WSL 仍需目标平台验证。
 
-动态上下文、面板、编辑扩展、图像及更多运行环境留在 B；托管玩法和跨 NPC 分支恢复留在 C，见系统设计。
+需要组合资料库、资源、图像或现有 Story 时，使用[扩展能力开发手册](extension-development.md)中的授权接口。自定义游戏界面由游戏视图完整实现。

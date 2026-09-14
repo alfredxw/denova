@@ -40,6 +40,7 @@ const (
 // canonical story event rows. Envelope validation and the journal projection
 // both consult this table, so adding an event requires an explicit context decision.
 var persistedStoryEventModelContextChanges = map[string]bool{
+	StoryEventTypeExtensionRecord:   false,
 	StoryEventTypePlayerInput:       true,
 	StoryEventTypeTurnDraft:         false,
 	StoryEventTypeTurnInterrupted:   true,
@@ -111,6 +112,15 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 	}
 	if err := validateStoryEventEnvelope(envelope); err != nil {
 		return StoryEventRecord{}, err
+	}
+	if envelope.Type == StoryEventTypeExtensionRecord {
+		var event extensionRecordEvent
+		if err := mapToStruct(raw, &event); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if err := validateExtensionRecord(event.ExtensionRecord); err != nil {
+			return StoryEventRecord{}, err
+		}
 	}
 	if envelope.Type == StoryEventTypeTurn {
 		var turn TurnEvent

@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "id": "example.game",
+  "version": "0.1.0",
+  "apiMajor": 1,
+  "name": { "zh-CN": "游戏项目", "en-US": "Game project" },
+  "description": { "zh-CN": "从这里开发你的游戏。", "en-US": "Develop your game from here." },
+  "distribution": { "files": ["index.html", "game.mjs", "style.css", "client.mjs", "locales"] },
+  "views": [{ "id": "main", "source": { "kind": "static", "path": "index.html" } }],
+  "game": { "viewId": "main", "storage": { "kind": "self", "saveFormat": "1" } },
+  "permissions": { "required": [], "optional": [] },
+  "locales": { "zh-CN": "locales/zh-CN.json", "en-US": "locales/en-US.json" }
+}

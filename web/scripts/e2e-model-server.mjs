@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
 import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
+import { extensionImage, extensionOpening, extensionScene } from './e2e-extension-fixture.mjs'
 
 const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
@@ -335,6 +336,12 @@ const server = createServer(async (request, response) => {
     writeJSON(response, 200, { allowed: true })
     return
   }
+  if (request.method === 'POST' && request.url === '/v1/images/generations') {
+    const body = await readJSONBody(request)
+    recordRequest('E2E_EXTENSION_IMAGE')
+    writeJSON(response, 200, { data: [{ b64_json: extensionImage, revised_prompt: body.prompt }] })
+    return
+  }
   if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
     writeJSON(response, 404, { error: 'not found' })
     return
@@ -354,6 +361,13 @@ const server = createServer(async (request, response) => {
     }
   }
 
+  const scene = extensionScene(body)
+  if (scene) {
+    recordRequest('E2E_EXTENSION_PRESENTER')
+    if (body.stream === true) writeChatCompletion(response, textCompletionFrames(scene))
+    else writeGeneratedCompletion(response, scene)
+    return
+  }
   const compaction = compactionCompletion(body)
   if (compaction) {
     if (body.stream !== true) writeGeneratedCompletion(response, compaction.content)
@@ -376,6 +390,17 @@ const server = createServer(async (request, response) => {
     response.end('data: [DONE]\n\n')
     return
   }
+  if (requestIncludesMarker(body, 'E2E_EXTENSION_OPENING') && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest('E2E_EXTENSION_OPENING')
+    const opening = extensionOpening(
+      toolResultMessages(body, 'initialize_story_state_schema').map(parseToolResult),
+      toolResultMessages(body, 'submit_interactive_turn').map(parseToolResult),
+    )
+    if (opening.tool) writeChatCompletion(response, toolCompletionFrames(opening.tool, JSON.stringify(opening.input), 'call-extension-opening-schema'))
+    else writeChatCompletion(response, chatCompletionFrames(opening.content, JSON.stringify(opening.submission)))
+    return
+  }
+
   if (requestIncludesMarker(body, gameBranchPlanMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
     recordRequest(gameBranchPlanMarker)
     writeChatCompletion(response, chatCompletionFrames(gameBranchPlanNarrative, planningTurnSubmission))
@@ -438,6 +463,15 @@ const server = createServer(async (request, response) => {
       return
     }
     writeChatCompletion(response, requestIncludesTool(body, 'submit_interactive_turn') ? chatCompletionFrames(content) : textCompletionFrames(content))
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, 'E2E_GALGAME_STREAM') && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest('E2E_GALGAME_STREAM')
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+    response.write(`data: ${JSON.stringify(completionFrame({ role: 'assistant', content: '[lin|smile] The lamp' }))}\n\n`)
+    await waitForDelayedRelease('E2E_GALGAME_STREAM')
+    for (const frame of [completionFrame({ content: ' is still warm.\n[xu|neutral] Shall we read the letter?' }), ...toolCompletionFrames('submit_interactive_turn', turnSubmission, 'call-live-turn')]) response.write(`data: ${JSON.stringify(frame)}\n\n`)
+    response.end('data: [DONE]\n\n')
     return
   }
   if (requestIncludesTool(body, 'submit_interactive_turn')) {

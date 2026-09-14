@@ -113,12 +113,19 @@ type Uses struct {
 	Toolsets []string `json:"toolsets,omitempty"`
 }
 
+// StoryDeclaration selects an existing host capability for a game's execution.
+// The game owns its view and presentation data; the Story retains one journal.
+type StoryDeclaration struct {
+	ModelSlot string `json:"modelSlot"`
+}
+
 type GameDeclaration struct {
 	// Cover is an optional distributed raster image, relative to the package root.
 	Cover   string                    `json:"cover,omitempty"`
 	ViewID  string                    `json:"viewId"`
 	Setup   *ConfigurationDeclaration `json:"setup,omitempty"`
 	Uses    Uses                      `json:"uses,omitempty"`
+	Story   *StoryDeclaration         `json:"story,omitempty"`
 	Storage struct {
 		Kind string `json:"kind"`
 		// A stable saveFormat is an author's explicit compatibility declaration.
@@ -221,6 +228,9 @@ type Scope struct {
 }
 
 type Instance struct {
+	// StoryID identifies the canonical journal for a host-backed game. Such
+	// instances are projections of Story records, never a second instance file.
+	StoryID      string            `json:"storyId,omitempty"`
 	ID           string            `json:"instanceId"`
 	GameID       string            `json:"gameId"`
 	ReleaseID    string            `json:"releaseId"`

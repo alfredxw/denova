@@ -48,6 +48,8 @@ type Manager struct {
 	runtimeMu  sync.Mutex
 	runtimes   map[string]*Runtime
 	agents     *AgentService
+	resources  *ResourceService
+	stories    StoryHost
 	githubHTTP *http.Client
 }
 
@@ -81,12 +83,22 @@ func (m *Manager) PreviewDirectory(kind Kind, directory string) (Candidate, erro
 	if manifest.Distribution != nil {
 		paths = append(slices.Clone(manifest.Distribution.Files), kind.manifestFile())
 	}
+	files, err := readPackageFiles(root, paths)
+	if err != nil {
+		return Candidate{}, err
+	}
+	return m.freeze(kind, files)
+}
+
+// Source collection follows its distribution list; installed exports collect
+// every frozen file so their content identity survives an export/import roundtrip.
+func readPackageFiles(root *os.Root, paths []string) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	total := 0
 	for _, path := range paths {
 		if path != "." {
 			if err := portablepath.Validate(path); err != nil {
-				return Candidate{}, failure("INVALID_ARGUMENT", "%v", err)
+				return nil, failure("INVALID_ARGUMENT", "%v", err)
 			}
 		}
 		err := fs.WalkDir(root.FS(), path, func(name string, entry fs.DirEntry, walkErr error) error {
@@ -132,10 +144,10 @@ func (m *Manager) PreviewDirectory(kind Kind, directory string) (Candidate, erro
 			return nil
 		})
 		if err != nil {
-			return Candidate{}, err
+			return nil, err
 		}
 	}
-	return m.freeze(kind, files)
+	return files, nil
 }
 
 func (m *Manager) PreviewZIP(kind Kind, raw []byte) (Candidate, error) {
@@ -228,7 +240,7 @@ func packageFileNames(files map[string][]byte) ([]string, error) {
 	return names, nil
 }
 
-func (m *Manager) freeze(kind Kind, files map[string][]byte) (Candidate, error) {
+func checkPackage(kind Kind, files map[string][]byte) (Candidate, error) {
 	names, err := packageFileNames(files)
 	if err != nil {
 		return Candidate{}, err
@@ -244,20 +256,28 @@ func (m *Manager) freeze(kind Kind, files map[string][]byte) (Candidate, error) 
 		_, _ = digest.Write(files[name])
 		total += len(files[name])
 	}
-	candidate := &Candidate{ID: uuid.NewString(), Kind: kind, Manifest: manifest, Digest: hex.EncodeToString(digest.Sum(nil)), Files: names, Bytes: total, files: files}
+	return Candidate{Kind: kind, Manifest: manifest, Digest: hex.EncodeToString(digest.Sum(nil)), Files: names, Bytes: total, files: files}, nil
+}
+
+func (m *Manager) freeze(kind Kind, files map[string][]byte) (Candidate, error) {
+	candidate, err := checkPackage(kind, files)
+	if err != nil {
+		return Candidate{}, err
+	}
+	candidate.ID = uuid.NewString()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	// Bounded process-local previews are disposable. Refuse new ones rather than
 	// evicting bytes a user is currently reviewing for installation.
-	used := total
+	used := candidate.Bytes
 	for _, current := range m.candidates {
 		used += current.Bytes
 	}
 	if len(m.candidates) >= 32 || used > MaxPackageBytes {
 		return Candidate{}, failure("LIMIT_EXCEEDED", "Discard unused package previews before creating another")
 	}
-	m.candidates[candidate.ID] = candidate
-	return *candidate, nil
+	m.candidates[candidate.ID] = &candidate
+	return candidate, nil
 }
 
 func (m *Manager) DiscardCandidate(id string) {
@@ -273,6 +293,10 @@ func (m *Manager) ExportCandidate(id string, writer io.Writer) error {
 	if candidate == nil {
 		return failure("NOT_FOUND", "Candidate %s is unavailable", id)
 	}
+	return writePackageArchive(*candidate, writer)
+}
+
+func writePackageArchive(candidate Candidate, writer io.Writer) error {
 	archive := zip.NewWriter(writer)
 	for _, name := range candidate.Files {
 		entry, err := archive.Create(name)

@@ -125,7 +125,7 @@ func (s *Store) RecentRuntimeConfig(excludeStoryID string) (conversationconfig.C
 	stories := append([]StorySummary(nil), index.Stories...)
 	sort.SliceStable(stories, func(i, j int) bool { return stories[i].UpdatedAt > stories[j].UpdatedAt })
 	for _, story := range stories {
-		if strings.TrimSpace(story.ID) == strings.TrimSpace(excludeStoryID) {
+		if story.Preview || strings.TrimSpace(story.ID) == strings.TrimSpace(excludeStoryID) {
 			continue
 		}
 		meta, snapshot, readErr := s.boundedStorySnapshotWithLimitLocked(story.ID, "", 1)

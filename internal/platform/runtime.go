@@ -116,7 +116,7 @@ func (m *Manager) OpenInstance(ctx context.Context, id string, options OpenOptio
 	if !slices.Equal(pins, instance.Dependencies) {
 		return RuntimeSnapshot{}, failure("DEPENDENCY_UNAVAILABLE", "Saved dependency binding is incomplete")
 	}
-	runtime, err := m.startRuntime(id, release, Scope{Kind: "game-instance", InstanceID: id, ProjectID: instance.ProjectID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, instance.Preview, options)
+	runtime, err := m.startRuntime(id, release, Scope{Kind: "game-instance", InstanceID: id, ProjectID: instance.ProjectID, StoryID: instance.StoryID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, instance.Preview, options)
 	if err != nil {
 		return RuntimeSnapshot{}, err
 	}
@@ -272,6 +272,13 @@ func (m *Manager) startRuntime(id string, owner Release, scope Scope, pins []Dep
 				return nil, err
 			}
 			activation.dataDir = filepath.Join(m.instancePath(release.Manifest.ID, scope.InstanceID), "data")
+			if scope.StoryID != "" {
+				_, layout, err := m.registry.Resolve(scope.ProjectID, true)
+				if err != nil {
+					return nil, err
+				}
+				activation.dataDir = filepath.Join(layout.StoreRoot, "extensions", release.Manifest.ID, scope.StoryID, "data")
+			}
 		} else {
 			activation.dataDir = filepath.Join(m.packagePath(release.Ref.Package), "data", stableID(scope.Kind, scope.ProjectID, scope.InstanceID, scope.SessionID, scope.StoryID, scope.BranchID))
 		}
@@ -393,6 +400,16 @@ func (r *Runtime) close(ctx context.Context) error {
 	r.status = "stopping"
 	r.mu.Unlock()
 	r.cancel()
+	if r.manager.stories != nil && r.owner != nil && r.owner.context.Scope.StoryID != "" {
+		if err := r.manager.stories.StopRuntime(ctx, r.owner.context.Scope); err != nil {
+			return err
+		}
+	}
+	if r.manager.resources != nil {
+		if err := r.manager.resources.StopRuntime(ctx, r); err != nil {
+			return err
+		}
+	}
 	if r.manager.agents != nil {
 		if err := r.manager.agents.StopRuntime(ctx, r); err != nil {
 			return err

@@ -119,13 +119,15 @@ func contributionIDs(c Contributions) []string {
 }
 
 type CreateInstance struct {
-	GameID    string            `json:"gameId"`
-	ReleaseID string            `json:"releaseId"`
-	Title     string            `json:"title"`
-	ProjectID string            `json:"projectId,omitempty"`
-	Setup     map[string]any    `json:"setup"`
-	Models    map[string]string `json:"models"`
-	Preview   bool              `json:"preview"`
+	GameID      string            `json:"gameId"`
+	ReleaseID   string            `json:"releaseId"`
+	Title       string            `json:"title"`
+	ProjectID   string            `json:"projectId,omitempty"`
+	StoryID     string            `json:"storyId,omitempty"`
+	StoryOrigin string            `json:"storyOrigin,omitempty"`
+	Setup       map[string]any    `json:"setup"`
+	Models      map[string]string `json:"models"`
+	Preview     bool              `json:"preview"`
 }
 
 func (m *Manager) CreateInstance(request CreateInstance) (Instance, error) {
@@ -168,6 +170,25 @@ func (m *Manager) CreateInstance(request CreateInstance) (Instance, error) {
 	if instance.Models == nil {
 		instance.Models = map[string]string{}
 	}
+	if release.Manifest.Game.Storage.Kind == "story" {
+		if m.stories == nil {
+			return Instance{}, failure("UNSUPPORTED", "Story host is unavailable")
+		}
+		if request.ProjectID == "" {
+			return Instance{}, failure("NOT_CONFIGURED", "Select a Project for this Story")
+		}
+		instance.StoryID = request.StoryID
+		options := StoryBindingOptions{Origin: request.StoryOrigin, ModelProfile: request.Models["local:"+release.Manifest.Game.Story.ModelSlot]}
+		instance, err = m.stories.Bind(context.Background(), instance, options)
+		if err != nil {
+			return Instance{}, err
+		}
+		slog.Info("platform_story_instance_created", "game", instance.GameID, "instance", instance.ID, "story", instance.StoryID)
+		return instance, nil
+	}
+	if request.StoryID != "" {
+		return Instance{}, failure("INVALID_ARGUMENT", "Only Story games can bind an existing Story")
+	}
 	if err := os.MkdirAll(filepath.Join(m.instancePath(instance.GameID, instance.ID), "data"), 0o700); err != nil {
 		return Instance{}, err
 	}
@@ -191,6 +212,13 @@ func (m *Manager) RenameInstance(id, title string) (Instance, error) {
 		return Instance{}, err
 	}
 	instance.Title = title
+	if instance.StoryID != "" {
+		if err := m.stories.SaveBinding(context.Background(), instance); err != nil {
+			return Instance{}, err
+		}
+		slog.Info("platform_story_instance_renamed", "instance", id)
+		return instance, nil
+	}
 	if err := writeJSON(filepath.Join(m.instancePath(instance.GameID, id), "instance.json"), instance); err != nil {
 		return Instance{}, err
 	}
@@ -247,6 +275,9 @@ func (m *Manager) UpgradeInstance(ctx context.Context, id, releaseID string, pin
 	if next.Manifest.Game.Storage.SaveFormat == "" || next.Manifest.Game.Storage.SaveFormat != old.Manifest.Game.Storage.SaveFormat {
 		return Instance{}, failure("SAVE_INCOMPATIBLE", "Author must declare the same nonempty saveFormat for an instance upgrade")
 	}
+	if next.Manifest.Game.Storage.Kind != old.Manifest.Game.Storage.Kind {
+		return Instance{}, failure("SAVE_INCOMPATIBLE", "Storage ownership cannot change during an upgrade")
+	}
 	if next.Manifest.APIMajor != APIMajor {
 		return Instance{}, failure("API_INCOMPATIBLE", "Target game release requires API %d", next.Manifest.APIMajor)
 	}
@@ -276,6 +307,13 @@ func (m *Manager) UpgradeInstance(ctx context.Context, id, releaseID string, pin
 	}
 	instance.ReleaseID = releaseID
 	instance.Dependencies = dependencies
+	if instance.StoryID != "" {
+		if err := m.stories.SaveBinding(ctx, instance); err != nil {
+			return Instance{}, err
+		}
+		slog.Info("platform_story_instance_upgraded", "instance", id, "release", releaseID)
+		return instance, nil
+	}
 	if err := writeJSON(filepath.Join(m.instancePath(instance.GameID, id), "instance.json"), instance); err != nil {
 		return Instance{}, err
 	}
@@ -292,6 +330,9 @@ func (m *Manager) ExportInstance(ctx context.Context, id string, writer io.Write
 	instance, err := m.Instance(id)
 	if err != nil {
 		return err
+	}
+	if instance.StoryID != "" {
+		return m.stories.Export(ctx, instance, writer)
 	}
 	return zipDirectory(m.instancePath(instance.GameID, id), writer)
 }
@@ -312,6 +353,13 @@ func (m *Manager) RemoveInstance(ctx context.Context, id string) (string, error)
 	if err != nil {
 		return "", err
 	}
+	if instance.StoryID != "" {
+		if err := m.stories.RemoveBinding(ctx, instance); err != nil {
+			return "", err
+		}
+		slog.Info("platform_story_instance_removed", "instance", id, "backup", backup)
+		return backup, nil
+	}
 	if err := os.RemoveAll(m.instancePath(instance.GameID, id)); err != nil {
 		return "", err
 	}
@@ -329,7 +377,11 @@ func (m *Manager) backupInstance(instance Instance) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	err = zipDirectory(m.instancePath(instance.GameID, instance.ID), file)
+	if instance.StoryID != "" {
+		err = m.stories.Export(context.Background(), instance, file)
+	} else {
+		err = zipDirectory(m.instancePath(instance.GameID, instance.ID), file)
+	}
 	if err == nil {
 		err = file.Sync()
 	}

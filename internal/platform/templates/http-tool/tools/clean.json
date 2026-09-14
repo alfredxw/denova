@@ -1,0 +1,18 @@
+{
+  "description": "Normalize Unicode and trim trailing whitespace in each input independently. Returns item-level errors without discarding successful items.",
+  "effect": "pure",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "maxItems": 50,
+        "items": {}
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "additionalProperties": false
+  }
+}

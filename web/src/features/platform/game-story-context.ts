@@ -16,7 +16,7 @@ export interface GameStoryContextValue {
   setDefault: () => Promise<void>
   choices: GameChoice[]
   picker: StoryPickerProps
-  createInstalled: (title: string, setup: Setup) => Promise<void>
+  createInstalled: (title: string, setup: Setup, storyId?: string) => Promise<void>
 }
 export const GameStoryContext = createContext<GameStoryContextValue | null>(null)
 export const useGameStories = () => useContext(GameStoryContext)

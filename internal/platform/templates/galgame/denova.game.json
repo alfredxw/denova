@@ -1,0 +1,81 @@
+{
+  "manifestVersion": 1,
+  "id": "example.afterglow",
+  "version": "1.1.0",
+  "apiMajor": 1,
+  "name": {
+    "zh-CN": "余光来信",
+    "en-US": "Afterglow Letters"
+  },
+  "description": {
+    "zh-CN": "与角色实时交谈，决定自己的言语和行动。故事边生成边出现在视觉小说舞台上，支持角色立绘、背景、剧情 CG、自由输入、选项与回看。",
+    "en-US": "Talk with the cast and decide your own words and actions. Dialogue streams straight onto a visual novel stage with portraits, backgrounds, event illustrations, free input, choices, and a story log."
+  },
+  "distribution": {
+    "files": [
+      "index.html",
+      "client.mjs",
+      "game.mjs",
+      "scene.mjs",
+      "stage.mjs",
+      "host.mjs",
+      "style.css",
+      "locales",
+      "settings.schema.json",
+      "defaults.toml",
+      "art"
+    ]
+  },
+  "views": [
+    {
+      "id": "stage",
+      "source": {
+        "kind": "static",
+        "path": "index.html"
+      }
+    }
+  ],
+  "game": {
+    "viewId": "stage",
+    "storage": {
+      "kind": "story",
+      "saveFormat": "afterglow-v1"
+    },
+    "story": {
+      "modelSlot": "writer"
+    },
+    "cover": "art/station.png"
+  },
+  "permissions": {
+    "required": [
+      "stories.read",
+      "stories.write",
+      "library.read",
+      "assets.read",
+      "images.generate"
+    ],
+    "optional": []
+  },
+  "modelSlots": [
+    {
+      "id": "writer",
+      "titleKey": "writer",
+      "kind": "text",
+      "required": true
+    },
+    {
+      "id": "illustrator",
+      "titleKey": "illustrator",
+      "kind": "image",
+      "required": false
+    }
+  ],
+  "locales": {
+    "zh-CN": "locales/zh-CN.json",
+    "en-US": "locales/en-US.json"
+  },
+  "settings": {
+    "schema": "settings.schema.json",
+    "defaults": "defaults.toml"
+  }
+}

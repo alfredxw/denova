@@ -1,0 +1,10 @@
+{
+  "description": "Read this plugin scope's append-only creative notes. Writing and game scopes remain isolated.",
+  "effect": "read",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  }
+}

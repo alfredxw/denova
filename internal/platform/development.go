@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,8 +15,8 @@ import (
 	"github.com/google/uuid"
 )
 
-//go:embed templates
-var templateFiles embed.FS
+//go:embed starters templates/common
+var starterFiles embed.FS
 
 func validateDevelopmentPath(path string) error {
 	if path == "." {
@@ -42,11 +43,12 @@ type Development struct {
 	RelativePath string `json:"relativePath"`
 }
 
+// CreateDevelopment initializes one neutral source scaffold per product kind.
+// Concrete example applications are reference source, never initialization modes.
 type CreateDevelopment struct {
 	Kind         Kind          `json:"kind"`
 	ProjectID    string        `json:"projectId"`
 	RelativePath string        `json:"relativePath"`
-	TemplateID   string        `json:"templateId"`
 	ID           string        `json:"id"`
 	Name         LocalizedText `json:"name"`
 }
@@ -156,9 +158,8 @@ func (m *Manager) CreateDevelopment(request CreateDevelopment) (Development, err
 	if request.Name.Chinese == "" || request.Name.English == "" {
 		return Development{}, failure("INVALID_ARGUMENT", "Both localized names are required")
 	}
-	allowed := map[string]Kind{"http-tool": Plugin, "npc-game": Game}
-	if allowed[request.TemplateID] != request.Kind {
-		return Development{}, failure("INVALID_ARGUMENT", "Template does not match product kind")
+	if !request.Kind.valid() {
+		return Development{}, failure("INVALID_ARGUMENT", "Invalid development kind")
 	}
 	_, layout, err := m.registry.Resolve(request.ProjectID, true)
 	if err != nil {
@@ -187,16 +188,16 @@ func (m *Manager) CreateDevelopment(request CreateDevelopment) (Development, err
 	if len(entries) != 0 {
 		return Development{}, failure("DOCUMENT_CONFLICT", "Development directory must be empty")
 	}
-	templateRoot := "templates/" + request.TemplateID
-	err = fs.WalkDir(templateFiles, templateRoot, func(path string, entry fs.DirEntry, err error) error {
+	starterRoot := "starters/" + string(request.Kind)
+	err = fs.WalkDir(starterFiles, starterRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		relative := strings.TrimPrefix(path, templateRoot+"/")
-		data, err := templateFiles.ReadFile(path)
+		relative := strings.TrimPrefix(path, starterRoot+"/")
+		data, err := starterFiles.ReadFile(path)
 		if err != nil {
 			return err
 		}
@@ -233,8 +234,15 @@ func (m *Manager) CreateDevelopment(request CreateDevelopment) (Development, err
 	if err != nil {
 		return Development{}, err
 	}
-	for _, shared := range []string{"client.mjs", "runtime.mjs", "DEVELOPMENT.md"} {
-		data, err := templateFiles.ReadFile("templates/common/" + shared)
+	sharedFiles := []string{"DEVELOPMENT.md"}
+	switch request.Kind {
+	case Plugin:
+		sharedFiles = append(sharedFiles, "runtime.mjs")
+	case Game:
+		sharedFiles = append(sharedFiles, "client.mjs")
+	}
+	for _, shared := range sharedFiles {
+		data, err := starterFiles.ReadFile("templates/common/" + shared)
 		if err != nil {
 			return Development{}, err
 		}
@@ -251,7 +259,11 @@ func (m *Manager) CreateDevelopment(request CreateDevelopment) (Development, err
 			return Development{}, closeErr
 		}
 	}
-	return m.LinkDevelopment(request.Kind, request.ProjectID, request.RelativePath)
+	development, err := m.LinkDevelopment(request.Kind, request.ProjectID, request.RelativePath)
+	if err == nil {
+		slog.Info("platform_development_initialized", "kind", request.Kind, "project", request.ProjectID, "package", request.ID)
+	}
+	return development, err
 }
 
 // BuildRecipe is read-only. The UI displays and sends this recipe to the

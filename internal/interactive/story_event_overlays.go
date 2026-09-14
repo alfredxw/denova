@@ -46,6 +46,7 @@ func projectStoryEventOverlays(lines []StoryEventRecord) ([]StoryEventRecord, er
 				return nil, err
 			}
 			turn.Narrative = revision.Narrative
+			turn.NarrativeRevision = revision.ID
 			if turn.TerminalOutcome != nil && turn.TerminalOutcome.Terminal && turn.TerminalOutcome.CausedByTurnID == turn.ID {
 				outcome := *turn.TerminalOutcome
 				outcome.FinalNarrativeSummary = trimBytes(revision.Narrative, maxInteractiveTextBytes)

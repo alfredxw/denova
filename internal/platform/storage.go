@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -81,6 +82,17 @@ func (m *Manager) Instance(id string) (Instance, error) {
 	if _, err := uuid.Parse(id); err != nil {
 		return Instance{}, failure("INVALID_ARGUMENT", "Invalid instance ID")
 	}
+	if m.stories != nil {
+		items, err := m.stories.Instances(context.Background())
+		if err != nil {
+			return Instance{}, err
+		}
+		for _, item := range items {
+			if item.ID == id {
+				return item, nil
+			}
+		}
+	}
 	ids, err := m.packageIDs(Game)
 	if err != nil {
 		return Instance{}, err
@@ -108,6 +120,13 @@ func (m *Manager) Instances() ([]Instance, error) {
 		return nil, err
 	}
 	items := []Instance{}
+	if m.stories != nil {
+		managed, err := m.stories.Instances(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, managed...)
+	}
 	for _, gameID := range ids {
 		entries, err := os.ReadDir(filepath.Join(m.packagePath(PackageRef{Kind: Game, ID: gameID}), "instances"))
 		if os.IsNotExist(err) {

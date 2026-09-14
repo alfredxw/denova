@@ -16,6 +16,17 @@ func (m *Manager) checkUpgrade(ctx context.Context, instance Instance, release R
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Story-owned recovery data is immutable to a startup check. Backend startup
+	// receives an unbound disposable asset directory and cannot address the Story.
+	if instance.StoryID != "" {
+		id := ".upgrade-" + uuid.NewString()
+		defer os.RemoveAll(m.instancePath(instance.GameID, id))
+		runtime, err := m.startRuntime(id, release, Scope{Kind: "game-instance", InstanceID: id, ProjectID: instance.ProjectID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, true, OpenOptions{ParentOrigin: "http://127.0.0.1"})
+		if err != nil {
+			return err
+		}
+		return runtime.close(ctx)
+	}
 	id := ".upgrade-" + uuid.NewString()
 	directory := m.instancePath(instance.GameID, id)
 	defer os.RemoveAll(directory)

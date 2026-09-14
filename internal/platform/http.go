@@ -139,11 +139,19 @@ func (r *Runtime) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	case request.Method == "GET" && route == "/context":
 		writeResponse(w, 200, caller.context)
 	case request.Method == "GET" && route == "/capabilities":
-		writeResponse(w, 200, map[string]any{"permissions": caller.grants, "apiMajor": APIMajor, "limits": map[string]int{"requestBytes": MaxDefinitionBytes, "fileBytes": MaxFileBytes, "instructionsBytes": 256 << 10}, "schemaDialect": "https://json-schema.org/draft/2020-12/schema"})
+		writeResponse(w, 200, map[string]any{"permissions": caller.grants, "apiMajor": APIMajor, "limits": map[string]int{"requestBytes": MaxDefinitionBytes, "fileBytes": MaxFileBytes, "instructionsBytes": 256 << 10, "assetBytes": MaxAssetBytes, "libraryItemBytes": MaxLibraryItemBytes, "libraryPageItems": 100, "imagePromptBytes": 64 << 10}, "schemaDialect": "https://json-schema.org/draft/2020-12/schema"})
 	case request.Method == "GET" && route == "/openapi.json":
 		writeResponse(w, 200, OpenAPI())
 	case request.Method == "GET" && route == "/contributions":
 		writeResponse(w, 200, r.contributionCatalog(caller))
+	case route == "/story" || strings.HasPrefix(route, "/story/"):
+		r.serveStory(w, request, caller, route)
+	case strings.HasPrefix(route, "/library/") || strings.HasPrefix(route, "/assets/") || strings.HasPrefix(route, "/images/"):
+		if r.manager.resources == nil {
+			writeError(w, failure("NOT_CONFIGURED", "Resource service is unavailable"))
+			return
+		}
+		r.manager.resources.ServeHTTP(w, request, r, caller, route)
 	case strings.HasPrefix(route, "/game-data/") || strings.HasPrefix(route, "/plugin-data/"):
 		r.serveData(w, request, caller, route)
 	case strings.HasPrefix(route, "/tools/") && strings.HasSuffix(route, "/invoke") && request.Method == "POST":

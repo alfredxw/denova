@@ -1,14 +1,14 @@
 # Denova 游戏开发手册
 
-状态：第一版 A 已实现，尚未发布。更新：2026-09-12。
+更新：2026-09-13。接口以当前代码和运行实例的 OpenAPI 为准。
 
-配套：[插件开发手册](plugin-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
+配套：[扩展能力开发手册](extension-development.md) · [插件开发手册](plugin-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
 
-游戏是游戏页中独立的可玩作品。内置「互动故事」保留现有 Story 数据与运行方式；第三方游戏拥有独立前端、可选 Node 后端和每局单独的自管存档。
+游戏是游戏页中独立的可玩作品。第三方游戏拥有独立前端和可选 Node 后端，既可以自行管理状态，也可以复用内置「互动故事」的 Story 与生成、分支、版本机制。两种方式共用现有游戏安装、授权和运行容器。
 
 ## 开发与游玩
 
-在「扩展 → 创建扩展」选择「开发游戏」，填写名称和可选需求，创建独立 Project 后进入工作台。工作台统一提供普通 Agent 会话、源码清单、文件、版本、构建、检查、试玩、导出和安装。源码编辑不改变已安装发行。扩展页只管理已安装作品，通过「打开源码」继续原项目与会话；未安装的源码草稿只在工作台显示。
+在「扩展 → 创建扩展」选择「开发游戏」，填写名称和可选需求，创建独立 Project 后进入工作台。创建时直接生成通用游戏骨架，包含界面入口、宿主连接、双语资源和开发说明。工作台提供普通 Agent 会话、文件、版本、「试运行」和「发布到本机」；发布确认基本信息后安装，模型和测试参数只属于试运行。安装包从扩展详情页导出。源码编辑不改变已安装发行。扩展页只管理已安装作品，通过「打开源码」继续原项目与会话；未安装的源码草稿只在工作台显示。
 
 游戏页直接展示当前故事线与游戏内容。点击新建故事线时，内置互动故事与已启用且依赖可用的游戏一起出现在「游戏类型」中；只有一种可用游戏时隐藏选择器。用户可在这里设置默认游戏，默认失效时回退内置互动故事。偏好按用户保存在 games/preferences.json，只影响新建故事线。
 
@@ -18,9 +18,8 @@
 
 ## 游戏示例
 
-产品只提供一个游戏示例「月下来信」，默认不安装、不启用。静态游戏和 Node 后端游戏仍是支持的实现方式；存档与 Node 进程测试使用独立测试素材，不作为产品模板分发。
+仓库保留一个完整游戏参考「余光来信」，位于 internal/platform/templates/galgame/，默认不安装、不启用，也不作为创建选项。它演示实时对话式视觉小说：Story 正文直接流入舞台，角色立绘、背景和 CG 由作品呈现。复制示例目录及 common/client.mjs 到独立源码项目即可开发。详见[扩展能力开发手册](extension-development.md)。
 
-npc-game 模板是独立 HTML 侦探游戏「月下来信」。界面由游戏自己的 HTML/CSS 绘制像素车站，与宿主样式隔离；玩家调查旧钟后才能找到信件，收集三件证物后可送出信件结案。证物和结案状态由游戏程序确定并保存，不依赖模型回复判断。玩家分别与守灯人林灯、档案员许笺交谈，通过转述线索了解一封未寄出的信。两位角色有不同知识和性格，不会直接读取彼此的私聊。游戏使用 characters/lamplighter.json 和 characters/archivist.json，分别通过 local:character、local:archivist 调用，共用由玩家开局选择的 local:writer 模型槽，无需提供模型密钥或安装其他插件。
 
 index.html 与 style.css 决定界面，game.mjs 展示完整 API 调用，locales 中保存独立中英文文案。模板无需构建与 Node 后端。更换角色时同步修改私有定义、game.uses.agents、game.mjs 联系人与两份语言资源；改变已有角色定义应使用新的会话 key。聊天输入上限为 8000 个 UTF-16 代码单元，超出时输入框阻止继续输入；历史按 50 条分页，可继续加载更早记录。模型回复没有总运行时长限制，玩家可以停止回复。
 
@@ -54,7 +53,7 @@ const result = await client.request(`/agents/sessions/${session.ref.sessionId}/r
 
 游戏可在 `game.cover` 声明封面图片的源码相对路径，例如 `"cover": "cover.png"`，同时将该文件加入 `distribution.files`。支持 PNG、JPEG、WebP、GIF，最大 4 MiB，建议 3:4 竖版。宿主从已安装的冻结发行读取封面，不启动游戏、不加载远程图片或 SVG。未声明或加载失败时使用游戏图标；插件不展示封面。源码清单编辑器提供可选路径输入。
 
-「月下来信」示例包含封面及可用的游戏设置：`showHints`（默认 `true`）控制输入提示，`textSize`（默认 `standard`，可选 `large`）控制对话和输入文字。它们通过双语 schema 展示，保存在已有扩展设置文件中，运行时读取 `context.settings`；保存后下次启动游戏生效。
+「余光来信」提供对白文字大小和自动播放间隔设置，通过双语 schema 展示，保存在扩展设置中，运行时读取 context.settings；保存后下次启动生效。
 
 denova.game.json 至少声明 manifestVersion: 1、id、version、apiMajor: 1、中英文 name、permissions、views 和 game。不能包含公共 contributes；私有能力放在 definitions。
 
@@ -93,7 +92,7 @@ Node 后端直接管理自己的 dataDir；这类游戏不能同时用文件 API
 
 角色聊天示例先将角色 ID、稳定 commandId 和完整玩家输入保存到 messages.json，再提交 Agent 请求；请求结束后从平台读取聊天历史，再清除待处理请求。回答与完成收据留在平台 canonical journal，不在游戏文件另存一份聊天正文。刷新或重启后重用同一个 commandId 找回原请求。状态为 incomplete 时历史仍保留，不自动重做可能产生外部副作用的调用。保存冲突或网络错误会显示重新连接入口，重新读取最新 revision 后恢复请求；同一时间只发送一条消息，但仍可切换联系人查看历史。
 
-一个 Agent 会话只使用其 Product Session JSONL 保存正文、运行记录、配置与请求收据。索引可以删除后重建，runs 目录和浏览器存储不是恢复事实源。自管存档引用完成记录不等于支持任意回档或删除未来 NPC 记忆；这属于后续托管恢复能力。
+一个 Agent 会话只使用其 Product Session JSONL 保存正文、运行记录、配置与请求收据。索引可以删除后重建，runs 目录和浏览器存储不是恢复事实源。自管存档引用完成记录不等于支持任意回档或删除未来 NPC 记忆。复用 Story 时，使用与确切回合修订绑定的扩展记录；示例的呈现 Agent 按回合修订独立建会话，避免跨分支带入未来内容。
 
 ## 更换发行和备份
 
@@ -105,8 +104,8 @@ Node 后端直接管理自己的 dataDir；这类游戏不能同时用文件 API
 
 已有 Agent 会话保留原定义，不能用相同会话 key 偷换定义。需要改变角色定义或模型绑定时，作者应使用新的逻辑 key；存档格式转换与跨定义迁移不属于本版。
 
-备份位于 games/backups，可手动保留或导出。卸载游戏不级联卸载插件，受引用发行与存档不会自动清理。本版不提供任意数据库在线快照、云部署、多人同步或通用 Story flow；这些能力按系统设计后续阶段推进。
+备份位于各游戏的 backups 目录，可手动保留或导出。卸载游戏不级联卸载插件，受引用发行与存档不会自动清理。平台不承诺任意数据库在线快照、云部署、多人同步或多个独立 Agent 会话之间的原子回档。
 
 ## 游戏独有设置
 
-游戏与插件共用[扩展设置标准](extension-settings.md)。扩展页的 settings 应用于该游戏的所有故事线，在下次启动时生效；game.setup 在新建故事线时生成开局表单，并随 instance.json 保存。运行时分别读取 context.settings 和 context.setup。全局设置修改不会改写存档进度或开局参数。
+游戏与插件共用[扩展设置标准](extension-settings.md)。扩展页的 settings 应用于该游戏的所有故事线，在下次启动时生效；game.setup 在新建故事线时生成开局表单。自管游戏保存于 instance.json；复用 Story 的游戏随绑定记录写入该 Story journal。运行时分别读取 context.settings 和 context.setup。全局设置修改不会改写存档进度或开局参数。

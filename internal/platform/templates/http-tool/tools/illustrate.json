@@ -1,0 +1,24 @@
+{
+  "description": "Generate one illustration with the bound image model. Requires optional images.generate permission and illustrator model binding. Supply a stable commandId and reuse it on retries.",
+  "effect": "write",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "commandId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "prompt": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16000
+      }
+    },
+    "required": [
+      "commandId",
+      "prompt"
+    ],
+    "additionalProperties": false
+  }
+}

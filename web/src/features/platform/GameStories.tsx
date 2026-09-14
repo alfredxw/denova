@@ -92,10 +92,10 @@ export function GameStories({ projectId, active, builtinPicker, children }: {
   return <GameStoryContext.Provider value={{
     projectId, creating, setCreating, selectedGameId, chooseGame: setChoice, defaultGameId, choices, picker,
     setDefault: async () => { await management('/game-preferences', 'PATCH', { defaultGameId: selectedGameId }); await client.invalidateQueries({ queryKey: ['platform', 'game-preferences'] }) },
-    createInstalled: async (title, setup) => {
+    createInstalled: async (title, setup, storyId) => {
       const game = choices.find(item => item.id === selectedGameId)
       if (!game?.releaseId) throw new Error('Selected game is unavailable')
-      const instance = await management<Instance>('/instances', 'POST', { gameId: game.id, releaseId: game.releaseId, title: title.trim() || game.name, projectId, models: setup.models, setup: setup.configuration })
+      const instance = await management<Instance>('/instances', 'POST', { gameId: game.id, releaseId: game.releaseId, title: title.trim() || game.name, projectId, models: setup.models, setup: setup.configuration, ...(storyId ? { storyId } : {}) })
       client.setQueryData<Instance[]>(['platform', 'instances'], previous => [...(previous ?? []), instance])
       setSelectedId(instance.instanceId)
       setCreating(false)

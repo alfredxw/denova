@@ -145,8 +145,11 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 				return m, err
 			}
 		}
-		if !views[m.Game.ViewID] || m.Game.Storage.Kind != "self" {
-			return m, failure("INVALID_ARGUMENT", "Game requires a declared view and self storage")
+		if !views[m.Game.ViewID] || !slices.Contains([]string{"self", "story"}, m.Game.Storage.Kind) {
+			return m, failure("INVALID_ARGUMENT", "Game requires a declared view and supported storage")
+		}
+		if (m.Game.Storage.Kind == "story") != (m.Game.Story != nil) {
+			return m, failure("INVALID_ARGUMENT", "Story storage requires a Story declaration")
 		}
 	}
 	localeKeys := map[string]map[string]json.RawMessage{}
@@ -198,8 +201,8 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 		if err := validateID(slot.ID); err != nil {
 			return m, err
 		}
-		if slots[slot.ID] || slot.Kind != "text" {
-			return m, failure("INVALID_ARGUMENT", "Model slots must have unique IDs and text kind")
+		if slots[slot.ID] || !slices.Contains([]string{"text", "image"}, slot.Kind) {
+			return m, failure("INVALID_ARGUMENT", "Model slots must have unique IDs and text or image kind")
 		}
 		slots[slot.ID] = true
 		if slot.TitleKey == "" || localeKeys["zh-CN"][slot.TitleKey] == nil || localeKeys["en-US"][slot.TitleKey] == nil {
@@ -207,7 +210,7 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 		}
 	}
 	for _, permission := range append(slices.Clone(m.Permissions.Required), m.Permissions.Optional...) {
-		if !slices.Contains([]string{"agents.run", "tools.invoke", "tools.write", "gameData", "pluginData"}, permission) {
+		if !slices.Contains([]string{"agents.run", "tools.invoke", "tools.write", "gameData", "pluginData", "library.read", "assets.read", "images.generate", "stories.read", "stories.write"}, permission) {
 			return m, failure("UNSUPPORTED", "Unsupported permission %s", permission)
 		}
 		if permissions[permission] {
@@ -216,6 +219,16 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 		permissions[permission] = true
 		if kind == Plugin && permission == "gameData" || kind == Game && permission == "pluginData" {
 			return m, failure("INVALID_ARGUMENT", "Permission %s belongs to another product kind", permission)
+		}
+	}
+	if m.Game != nil && m.Game.Story != nil {
+		if !slices.ContainsFunc(m.ModelSlots, func(slot ModelSlot) bool { return slot.ID == m.Game.Story.ModelSlot && slot.Kind == "text" }) {
+			return m, failure("INVALID_ARGUMENT", "Story requires a declared text model slot")
+		}
+		for _, permission := range []string{"stories.read", "stories.write"} {
+			if !slices.Contains(m.Permissions.Required, permission) {
+				return m, failure("INVALID_ARGUMENT", "Story games require %s", permission)
+			}
 		}
 	}
 	deps := map[string]Dependency{}

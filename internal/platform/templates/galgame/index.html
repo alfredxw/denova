@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Afterglow Letters</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <main>
+    <header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true">✦</span><div><small data-text="eyebrow"></small><h1 data-text="title"></h1></div></div><nav><button id="castButton" data-text="cast"></button><button id="historyButton" data-text="history"></button><button id="artButton" data-text="art"></button></nav></header>
+    <section class="stage" aria-labelledby="sceneTitle">
+      <img id="background" class="background-art" alt="" hidden>
+      <div class="stage-shade" aria-hidden="true"></div>
+      <div class="scene-heading"><small id="chapter"></small><h2 id="sceneTitle"></h2></div>
+      <div id="portraits" class="portraits"></div>
+      <img id="cg" class="cg-art" alt="" hidden>
+      <div id="welcome" class="welcome"><small data-text="welcomeEyebrow"></small><h2 data-text="welcomeTitle"></h2><p data-text="welcomeText"></p><button id="begin" class="primary" data-text="begin" disabled></button><small class="welcome-note" data-text="welcomeNote"></small></div>
+      <div id="dialogue" class="dialogue" hidden>
+        <div class="dialogue-heading"><strong id="speaker"></strong><span id="expression"></span><small id="progress"></small></div>
+        <p id="line" aria-live="polite"></p>
+        <div class="reading-controls"><button id="previous" data-text="previous"></button><button id="auto" data-text="auto" aria-pressed="false"></button><button id="next" class="next" data-text="next"></button></div>
+      </div>
+    </section>
+    <section class="action-panel"><div class="status-row"><span class="status-dot" aria-hidden="true"></span><p id="status" role="status"></p><button id="cancel" data-text="cancel" hidden></button><button id="retry" data-text="retry" hidden></button></div><div id="choices" class="choices"></div><form id="composer" hidden><label for="input" class="sr-only" data-text="inputLabel"></label><textarea id="input" rows="1" maxlength="8000"></textarea><button id="send" class="primary" type="submit" data-text="send"></button></form><small id="actionHint" class="action-hint"></small></section>
+  </main>
+  <dialog id="castDialog"><div class="dialog-header"><div><small data-text="castEyebrow"></small><h2 data-text="castTitle"></h2></div><button type="button" data-close="castDialog" data-text="close"></button></div><p class="dialog-intro" data-text="castHelp"></p><div id="castList" class="cast-list"></div><details><summary data-text="library"></summary><form id="librarySearch"><label for="query" class="sr-only" data-text="searchLabel"></label><input id="query" maxlength="100"><button data-text="search"></button></form><p id="libraryStatus" role="status"></p><div id="libraryList" class="cast-list"></div><button id="libraryMore" data-text="more" hidden></button></details><label class="field-label" for="premise" data-text="premise"></label><textarea id="premise" rows="4" maxlength="12000"></textarea><p id="castStatus" class="dialog-intro" role="status"></p><div class="dialog-actions"><button id="saveCast" class="primary" data-text="saveCast"></button></div></dialog>
+  <dialog id="historyDialog"><div class="dialog-header"><div><small data-text="historyEyebrow"></small><h2 data-text="historyTitle"></h2></div><button type="button" data-close="historyDialog" data-text="close"></button></div><p class="dialog-intro" data-text="historyHelp"></p><div id="historyList" class="history-list"></div></dialog>
+  <dialog id="artDialog"><div class="dialog-header"><div><small data-text="artEyebrow"></small><h2 data-text="artTitle"></h2></div><button type="button" data-close="artDialog" data-text="close"></button></div><p class="dialog-intro" data-text="artHelp"></p><div id="artList" class="art-list"></div><p id="artStatus" role="status"></p></dialog>
+  <script type="module" src="game.mjs"></script>
+</body></html>

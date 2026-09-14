@@ -7,7 +7,7 @@ async function sourceCandidates(request: APIRequestContext, kind: 'plugin' | 'ga
   expect(created.ok(), await created.text()).toBe(true)
   const project = await created.json()
   const initialized = await request.post('/api/platform/manage/development', { data: {
-    projectId: project.id, relativePath: '.', kind, templateId: kind === 'plugin' ? 'http-tool' : 'npc-game', id,
+    projectId: project.id, relativePath: '.', kind, id,
     name: { 'zh-CN': `GitHub ${kind} 测试`, 'en-US': `GitHub ${kind} test` },
   } })
   expect(initialized.ok(), await initialized.text()).toBe(true)
@@ -148,8 +148,8 @@ test('opens imported GitHub source in the workbench without installing or buildi
   await dialog.locator('#package-github-path').fill('packages/plugin')
   await dialog.getByRole('button', { name: '导入源码到工作台', exact: true }).click()
   await expect(dialog).not.toBeVisible()
-  await expect(page.getByRole('button', { name: '源码清单', exact: true }).filter({ visible: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '检查并打包', exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '更多开发操作', exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '发布到本机', exact: true }).filter({ visible: true })).toBeVisible()
   await expect(page.getByPlaceholder('输入消息，/ 选择命令或 Skills').filter({ visible: true })).toBeVisible()
   await expect(page.getByText('denova.plugin.json', { exact: true }).filter({ visible: true }).first()).toBeVisible()
   expect(importedCount).toBe(1)

@@ -49,7 +49,7 @@ export function SourceManifestEditor({ source, refreshSignal, onSaved, onOpenFil
     editor.setDraft(JSON.stringify({ ...manifest, ...changes }, null, 2) + '\n')
   }
   if (editor.loading || !editor.document && !editor.error) return <p role="status" className="p-6 text-sm text-muted-foreground">{t('common.loading')}</p>
-  return <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-6">
+  return <div className="flex min-w-0 flex-col gap-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <AutosaveStatusIndicator status={editor.status} error={editor.autoSaveError ? t('platform.sourceSaveFailed') : null} onRetry={() => editor.retry()} />
     </div>
@@ -70,12 +70,19 @@ export function SourceManifestEditor({ source, refreshSignal, onSaved, onOpenFil
         <Input id={id + '-version'} value={manifest.version} onChange={event => updateManifest({ version: event.target.value })} />
         <FieldDescription>{t('platform.versionHelp')}</FieldDescription>
       </Field>
-      <Field><FieldLabel htmlFor={id + '-id'}>{t('platform.packageId')}</FieldLabel><Input id={id + '-id'} value={manifest.id} readOnly /><FieldDescription>{t('platform.identityHelp')}</FieldDescription></Field>
-      <Field><FieldLabel>{t('platform.capabilities')}</FieldLabel>
-        <div className="flex flex-wrap gap-2">{[...(manifest.permissions?.required ?? []), ...(manifest.permissions?.optional ?? [])].map(permission => <Badge key={permission} variant="secondary">{t('platform.permission.' + permission, { defaultValue: permission })}</Badge>)}</div>
-        <FieldDescription>{t('platform.capabilitiesHelp')}</FieldDescription>
-      </Field>
     </FieldGroup>}
-    <Button variant="outline" className="self-start" onClick={() => onOpenFile(path)}>{t('platform.openManifest')}</Button>
+    <details>
+      <summary className="cursor-pointer text-sm text-muted-foreground">{t('platform.packageDetails')}</summary>
+      <div className="mt-3 flex min-w-0 flex-col gap-4">
+        {manifest && <FieldGroup>
+          <Field><FieldLabel htmlFor={id + '-id'}>{t('platform.packageId')}</FieldLabel><Input id={id + '-id'} value={manifest.id} readOnly /><FieldDescription>{t('platform.identityHelp')}</FieldDescription></Field>
+          <Field><FieldLabel>{t('platform.capabilities')}</FieldLabel>
+            <div className="flex flex-wrap gap-2">{[...(manifest.permissions?.required ?? []), ...(manifest.permissions?.optional ?? [])].map(permission => <Badge key={permission} variant="secondary">{t('platform.permission.' + permission, { defaultValue: permission })}</Badge>)}</div>
+            <FieldDescription>{t('platform.capabilitiesHelp')}</FieldDescription>
+          </Field>
+        </FieldGroup>}
+        <Button variant="outline" className="self-start" onClick={() => onOpenFile(path)}>{t('platform.openManifest')}</Button>
+      </div>
+    </details>
   </div>
 }

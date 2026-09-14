@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, FolderOpen, Gamepad2, MoreHorizontal, Play, Puzzle, Square, Trash2 } from 'lucide-react'
+import { ChevronDown, Download, FolderOpen, Gamepad2, MoreHorizontal, Play, Puzzle, Square, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -86,6 +86,9 @@ export function ExtensionDetails({ entry, runtimes, active, dirty, onDirtyChange
             <DropdownMenuContent align="start" className="max-w-[min(22rem,90vw)]"><DropdownMenuGroup>{sources.map(source => <DropdownMenuItem key={source.developmentId} className="break-all" onSelect={() => void run(() => openExtensionSource(source))}>{source.projectName} · {source.relativePath}</DropdownMenuItem>)}</DropdownMenuGroup></DropdownMenuContent>
           </DropdownMenu>}
           {sources.length === 0 && <Button variant="outline" size="sm" title={t('platform.extensions.noSourceHelp')} onClick={() => useWorkspaceStore.getState().setMode('agentchat')}><FolderOpen data-icon="inline-start" />{t('platform.openWorkbench')}</Button>}
+          {current && <Button variant="outline" asChild>
+            <a href={`/api/platform/manage/packages/${item.kind}/${encodeURIComponent(item.id)}/archive?releaseId=${encodeURIComponent(current.ref.releaseId)}`}><Download data-icon="inline-start" />{t('platform.exportPackage')}</a>
+          </Button>}
         </div>
         {item.kind === 'game' && <p className="text-xs leading-relaxed text-muted-foreground @xl:col-span-2">{t('platform.extensions.startGameHelp')}</p>}
       </div>

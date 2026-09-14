@@ -38,7 +38,8 @@ export interface Manifest {
     cover?: string
     setup?: { schema: string; defaults: string; uiSchema?: string }
     viewId: string
-    storage: { kind: 'self'; saveFormat?: string }
+    storage: { kind: 'self' | 'story'; saveFormat?: string }
+    story?: { modelSlot: string }
     uses?: { agents?: string[]; toolsets?: string[] }
   }
 }
@@ -99,6 +100,7 @@ export interface DevelopmentSource extends Development {
   messageKey?: string
 }
 export interface Instance {
+  storyId?: string
   instanceId: string
   gameId: string
   releaseId: string
@@ -117,7 +119,7 @@ export interface RuntimeSnapshot {
   connection: { baseUrl: string; token: string }
   context: {
     source: ReleaseRef
-    scope: { kind: string; projectId?: string; instanceId?: string }
+    scope: { kind: string; projectId?: string; instanceId?: string; storyId?: string; branchId?: string }
     locale: string
     theme: string
     environment: string

@@ -15,18 +15,24 @@ its effect (`pure`, `read`, `propose`, `write`) and backend HTTP endpoint. The
 provider receives the tool input as its JSON request body and returns
 `{ content: "English model feedback", data: optionalStructuredResult }`.
 
-Games declare `views`, `game.viewId`, and `game.storage` with `kind: "self"` and
-an optional stable `saveFormat`. Private characters and tools live in `definitions`
+Games declare `views`, `game.viewId`, and `game.storage` with `kind: "self"` or
+`kind: "story"`, and an optional stable `saveFormat`. Story games also declare
+`game.story: { modelSlot: "writer" }` referencing a text slot. They reuse the
+existing Story engine; the game still owns its entire view and presentation.
+Private characters and tools live in `definitions`
 and are referenced as `local:id`. Public tool references are `pluginId/localId`;
 declare `requires` and `game.uses.toolsets` when using another package's tools.
 Public Agent definitions are limited to `builtin/assistant`; games can also use
-their own private characters. Model slots select host profiles, never credentials.
+their own private characters. Model slots use `kind: "text"` or `kind: "image"`
+and select host profiles, never credentials. A game's model binding uses
+`local:slotId`; an image generation request uses the bare declared `slotId`.
 
 ## Connection
 
-The source template's `client.mjs` exports `connect()`. It validates the parent
+The game scaffold's `client.mjs` exports `connect()`. It validates the parent
 window and origin plus a random nonce, then returns `{ context, request }`.
 Use `request(path, { method, body: JSON.stringify(value) })` for the paths below.
+Use `{ responseType: "stream" }` to obtain the Response for SSE or binary assets.
 The wrapper attaches the runtime's bearer token. Do not persist the token, print
 it, put it in a URL, or call trusted `/api/platform/manage` routes from a package.
 `context` contains source, scope, locale, theme, environment, settings and optional setup.
@@ -53,12 +59,118 @@ permissions. Scope credentials are not an OS sandbox.
 | GET /game-data/file?path=... | `{ content, revision }` |
 | PUT /game-data/file | `{ path, content, expectedRevision }` |
 | DELETE /game-data/file | `{ path, expectedRevision }` |
+| GET /library/items?offset=0&limit=50&query=... | Project library summaries; library.read |
+| GET /library/items/{id} | Complete selected library item; library.read |
+| GET /assets/content?kind=project&path=... | Authenticated raster bytes; assets.read |
+| POST /images/generations | Generate one image using a declared image slot; images.generate |
+| GET /images/generations/{commandId} | Image status and persistent result; images.generate |
+| POST /images/generations/{commandId}/cancel | Cancel the scoped generation; images.generate |
+| GET /story | Bound Story's player-visible snapshot; stories.read |
+| GET /story/events?operationId=... | Provisional root prose SSE: reset/delta/settled; stories.read |
+| GET /story/history?branchId=...&beforeCursor=...&limit=50 | Older turns; stories.read |
+| POST /story/commands | Existing Story actions; stories.write |
+| GET /story/records?key=... | Extension-owned JSON; stories.read |
+| PUT /story/records | Versioned extension JSON with concurrency guard; stories.write |
 
 Game data requires `gameData`; plugin data uses the corresponding `/plugin-data`
 paths and `pluginData`. All paths are portable `/`-separated relative paths.
 Use `expectedRevision: null` only when creating a new file, and the revision read
 from the server when changing one. On conflict, reread and reconcile. Backends
 that own their dataDir must not concurrently write it through these file APIs.
+For Story games, use Story records for all application recovery facts. dataDir
+contains separate assets, not a second canonical Story database.
+
+## Library and raster assets
+
+All resource APIs use the Project already bound to the credential. Library lists
+return `{ items, total, nextOffset? }`, with page limits 1..100. Items contain
+`id, type, name, tags, briefDescription, updatedAt, enabled, keywords?, image?`.
+Detail reads add `content`; content above 1 MiB is rejected, never truncated.
+Select relevant items and budget model input explicitly instead of injecting the
+entire library. Images use `{ kind: "project", path: "assets/.../image.png" }`.
+
+Generated images use `{ kind: "generated", path: "opaque-name.png" }`, visible
+only to the calling package and scope. Project images must be within `assets/`.
+Raster content is limited to PNG, JPEG, WebP or GIF and 32 MiB per file. Reject
+unsafe paths; do not store credentials, local runtime URLs or absolute paths.
+With the template client, resolve an asset as follows and revoke URLs when done:
+
+```javascript
+const response = await request(`/assets/content?${new URLSearchParams(asset)}`,
+  { responseType: 'stream' });
+const displayURL = URL.createObjectURL(await response.blob());
+// Display displayURL, persist only asset, then release it when no longer used.
+URL.revokeObjectURL(displayURL);
+```
+
+## Direct image generation
+
+POST `/images/generations` with
+`{ commandId, modelSlot: "illustrator", prompt, aspectRatio?: "16:9", size?, quality? }`.
+Use a 1..128-byte command ID without slashes or surrounding whitespace, and a
+nonempty prompt up to 64 KiB. The user selects the image profile; the caller
+cannot pass arbitrary profile IDs, credentials or endpoints.
+
+The response is `{ commandId, status, images, error? }`; each image contains
+`{ asset: {kind, path}, mimeType, sizeBytes, revisedPrompt? }`. Handle `running`,
+`completed`, `failed`, `cancelled`, and `interrupted`. POST returns 202 while
+running and 200 when replaying a settled operation. Poll the GET route and keep
+cancellation available. The same command and input return the same operation;
+changed input conflicts. A disconnected response does not cancel generation.
+
+Direct provider requests have scope-owned receipts and create no Agent Session.
+After an uncertain process interruption, a new command is required for an
+explicit retry; never automatically repeat a possibly paid request. Adopt the
+result into application data only after checking its original source revision.
+Generation does not change library image bindings automatically.
+
+## Story reuse and extension records
+
+Story APIs require an explicitly bound `game-instance` scope with StoryID and
+InstanceID. Dependencies need their own grants; ordinary host Agent tool scopes
+do not gain whole-Story authority. Management creates or adopts the Story; a
+package cannot switch to another Project or Story. Execution requires the bound
+Project to be open, while snapshots and records can be read independently.
+
+GET `/story` returns `storyId, branchId, title, turns, branches, beforeCursor?,
+hasMore, status, operationId?, interruptionId?`. Turns contain `id, revision,
+user, narrative, choices, versions`. Branches contain `id, title, current`.
+Hidden plans, model messages and tool arguments are absent. Subscribe to `/story/events?operationId=...` for provisional root prose. Events carry `kind` and delta `text`; reset retracts display and settled requires reloading the snapshot. On disconnect, reload and resubscribe to the same operation without repeating generation. Tool, reasoning and subagent events are excluded. History pages contain at most 200 turns.
+
+POST `/story/commands` uses `{ kind, commandId, branchId?, ... }`:
+
+| kind | Additional fields |
+| --- | --- |
+| advance | message, locale? |
+| resume | interruptionId, message?; default is the existing continue instruction |
+| regenerate | turnId, message?, locale?; latest turn only, otherwise fork first |
+| stop | operationId from the observed snapshot |
+| fork | turnId, title? |
+| switchBranch | branchId |
+| switchVersion | turnId, versionTurnId |
+
+Model advancement reuses the existing Story command and recovery mechanism.
+Rendering a line, playing a transition or moving the reading cursor must never
+call advance. Closing a game stops only the Story operation it owns. Removing
+its binding preserves the underlying Story for the built-in interface.
+
+Read records using `key, branchId?, turnId?, sourceRevision?` query fields.
+Write the same address with `{ expectedRevision, schemaVersion, value }`.
+Both return `{ revision, schemaVersion, value }`; missing is `0, 0, null`.
+Use expectedRevision 0 for creation, the returned revision for subsequent writes,
+and reconcile DOCUMENT_CONFLICT instead of overwriting. key is 1..256 bytes,
+schemaVersion is positive, and value is valid JSON. The whole request must fit
+within 1 MiB. Package ownership is assigned by the host, not by caller input.
+
+Use records without turn/source fields for application data or preferences.
+An omitted branchId always addresses main, not the current branch. Derived
+presentation must supply the exact branchId, turnId and sourceRevision from its
+snapshot. A changed revision or missing branch turn rejects stale writes.
+Records are opaque, do not enter model context, and live in the canonical Story
+journal. Never write the journal, Project Store or binding metadata directly.
+Each private Agent keeps its own journal; a Story branch change does not rewind
+that Agent automatically. For a derived transformation, use a session key scoped
+to the source revision or another explicit strategy that avoids future memory.
 
 ## Agent runs (agents.run permission)
 
@@ -78,7 +190,7 @@ POST `/agents/runs/{runId}/cancel` cancels without discarding history.
 Handle accepted, running, waiting, completed, failed, aborted, and incomplete.
 There is no fixed total time/iteration limit. After an interrupted process,
 incomplete requests must not automatically replay side effects. Save completed
-answers and completion references in game data as needed. Character journals
+answers and completion references in self-managed game data or Story records as needed. Character journals
 are not implicitly rewound when a game save is restored.
 
 Errors return `{ code, messageKey, diagnostic }`. Use localized user errors and

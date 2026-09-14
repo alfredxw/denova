@@ -15,6 +15,7 @@ import { ConfigurationForm } from './ConfigurationForm'
 import { getAgentChatProjects } from '@/features/agent-chat/api'
 import { fetchSettings } from '@/features/settings/api'
 import { modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
 import { management, platformError, type ConfigurationDocument, type Installed, type Manifest } from './api'
 
 export interface Setup {
@@ -76,6 +77,7 @@ export function RuntimeSetup({
   const slots = providers.flatMap((provider) =>
     (provider.modelSlots ?? []).map((slot) => ({
       required: slot.required,
+      kind: slot.kind,
       key:
         provider === manifest && manifest.game
           ? `local:${slot.id}`
@@ -85,8 +87,11 @@ export function RuntimeSetup({
   const profiles = modelProfilesWithDefault(settings.data?.effective).filter(
     (profile): profile is typeof profile & { id: string } => !!profile.id,
   )
+  const imageProfiles = imageAPIProfilesWithDefault(settings.data?.effective).filter(
+    (profile): profile is typeof profile & { id: string } => !!profile.id,
+  )
   if (manifest?.game?.uses?.agents?.includes('builtin/assistant')) {
-    slots.push({ key: 'builtin/assistant', required: true })
+    slots.push({ key: 'builtin/assistant', required: true, kind: 'text' })
   }
   return (
     <FieldGroup>
@@ -115,7 +120,7 @@ export function RuntimeSetup({
       {slots.map((slot, index) => (
         <Field key={slot.key}>
           <FieldLabel htmlFor={inputId + '-model-' + index}>
-            {t('platform.model')}{slots.length > 1 ? ` ${index + 1}` : ''}
+            {t(slot.kind === 'image' ? 'platform.imageModel' : 'platform.model')}{slots.length > 1 ? ` ${index + 1}` : ''}
             {slot.required ? ` (${t('platform.required')})` : ''}
           </FieldLabel>
           <Select
@@ -132,7 +137,7 @@ export function RuntimeSetup({
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                {profiles.map((profile) => (
+                {(slot.kind === 'image' ? imageProfiles : profiles).map((profile) => (
                   <SelectItem key={profile.id} value={profile.id}>
                     {profile.name || profile.id}
                   </SelectItem>

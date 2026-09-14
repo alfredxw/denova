@@ -1,15 +1,15 @@
 {
   "manifestVersion": 1,
   "id": "example.text-tools",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "apiMajor": 1,
   "name": {
-    "zh-CN": "文本工具",
-    "en-US": "Text Tools"
+    "zh-CN": "创作工具箱",
+    "en-US": "Creative Toolkit"
   },
   "description": {
-    "zh-CN": "启用后供写作与游戏 Agent 使用的文本统计工具。",
-    "en-US": "Text counting tools for writing and games."
+    "zh-CN": "写作与游戏共用的插件示例：文本统计、批量文本整理、资料库检索、独立笔记和插图生成。演示工具、工具集、设置、权限、模型槽位和按会话隔离的数据。",
+    "en-US": "A shared writing and game plugin: text statistics, batch cleanup, library search, private notes, and illustration generation. Demonstrates tools, toolsets, settings, permissions, model slots, and scoped data."
   },
   "development": {
     "build": {
@@ -27,7 +27,8 @@
       "tools",
       "settings.schema.json",
       "defaults.toml",
-      "locales"
+      "locales",
+      "tools.mjs"
     ]
   },
   "runtime": {
@@ -43,9 +44,14 @@
   },
   "permissions": {
     "required": [
-      "tools.invoke"
+      "tools.invoke",
+      "pluginData"
     ],
-    "optional": []
+    "optional": [
+      "library.read",
+      "images.generate",
+      "tools.write"
+    ]
   },
   "contributes": {
     "tools": [
@@ -56,13 +62,63 @@
           "method": "POST",
           "path": "/tools/count"
         }
+      },
+      {
+        "id": "clean-text",
+        "definition": "tools/clean.json",
+        "endpoint": {
+          "method": "POST",
+          "path": "/tools/clean"
+        }
+      },
+      {
+        "id": "read-notes",
+        "definition": "tools/notes-read.json",
+        "endpoint": {
+          "method": "POST",
+          "path": "/tools/notes-read"
+        }
+      },
+      {
+        "id": "save-note",
+        "definition": "tools/notes-save.json",
+        "endpoint": {
+          "method": "POST",
+          "path": "/tools/notes-save"
+        }
+      },
+      {
+        "id": "search-library",
+        "definition": "tools/library.json",
+        "endpoint": {
+          "method": "POST",
+          "path": "/tools/library"
+        }
+      },
+      {
+        "id": "illustrate",
+        "definition": "tools/illustrate.json",
+        "endpoint": {
+          "method": "POST",
+          "path": "/tools/illustrate"
+        }
       }
     ],
     "toolsets": [
       {
         "id": "text-utils",
         "tools": [
-          "count-characters"
+          "count-characters",
+          "clean-text"
+        ]
+      },
+      {
+        "id": "creative-resources",
+        "tools": [
+          "read-notes",
+          "save-note",
+          "search-library",
+          "illustrate"
         ]
       }
     ]
@@ -74,5 +130,13 @@
   "locales": {
     "zh-CN": "locales/zh-CN.json",
     "en-US": "locales/en-US.json"
-  }
+  },
+  "modelSlots": [
+    {
+      "id": "illustrator",
+      "titleKey": "illustrator",
+      "kind": "image",
+      "required": false
+    }
+  ]
 }

@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel, FieldGroup } from '@/components/ui/field'
@@ -20,64 +19,45 @@ import {
   platformError,
   type Candidate,
   type Release,
-  type Instance,
-  type RuntimeSnapshot,
 } from './api'
-import { RuntimeSetup, emptySetup } from './RuntimeSetup'
-import { ToolConsole } from './ToolConsole'
 import { openInstalledExtension } from './extension-navigation'
 import { PackageSourcePicker } from './PackageSourcePicker'
 
 export function InstallDialog({
-  projectId,
   open,
   candidate,
   onCandidate,
   onOpenChange,
   onInstalled,
-  onPlay,
-  onFeedback,
   updateGrants,
 }: {
-  projectId?: string
   open: boolean
   candidate: Candidate | null
   onCandidate: (candidate: Candidate | null) => void
   onOpenChange: (open: boolean) => void
   onInstalled: () => void
-  onPlay?: (runtime: RuntimeSnapshot) => void
-  onFeedback?: (feedback: string) => void
   updateGrants?: string[]
 }) {
   const { t, i18n } = useTranslation()
-  const { resolvedTheme } = useTheme()
-  const [setup, setSetup] = useState({ ...emptySetup, projectId: projectId ?? '' })
-  const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null)
   const [grants, setGrants] = useState<string[]>(() => {
     const permissions = [...(candidate?.manifest.permissions.required ?? []), ...(candidate?.manifest.permissions.optional ?? [])]
     return (updateGrants ?? []).filter(permission => permissions.includes(permission))
   })
   const [busy, setBusy] = useState(false)
-  useEffect(() => () => {
-    if (runtime) void management(`/runtimes/${runtime.id}/stop`, 'POST', {}).catch(error => console.error('[extensions] stop preview failed', error))
-  }, [runtime?.id])
   const run = async (action: () => Promise<void>) => {
     setBusy(true)
     try {
       await action()
     } catch (error) {
       console.error('[extensions] package operation failed', error)
-      onFeedback?.(`Package operation failed: ${error instanceof Error ? error.message : String(error)}`)
       toast.error(platformError(error))
     } finally {
       setBusy(false)
     }
   }
   const close = async () => {
-    if (runtime) await management(`/runtimes/${runtime.id}/stop`, 'POST', {})
     if (candidate)
       await management(`/candidates/${candidate.candidateId}`, 'DELETE')
-    setRuntime(null)
     onCandidate(null)
     onOpenChange(false)
   }
@@ -166,96 +146,7 @@ export function InstallDialog({
                 {dependency.versionRange}
               </p>
             ))}
-            {onPlay && <details open>
-              <summary className="cursor-pointer text-sm">
-                {t('platform.preview')}
-              </summary>
-              <div className="mt-3 flex flex-col gap-3">
-                <p className="text-sm text-muted-foreground">
-                  {t('platform.previewDescription')}
-                </p>
-                <RuntimeSetup
-                  projectLocked={!!projectId}
-                  manifest={candidate.manifest}
-                  configurationEndpoint={`/candidates/${candidate.candidateId}/${candidate.kind === 'game' ? 'setup' : 'settings'}`}
-                  value={setup}
-                  onChange={setSetup}
-                />
-                <Button
-                  variant="outline"
-                  disabled={
-                    busy ||
-                    ((candidate.kind === 'plugin' ||
-                      requiredPermissions.includes('agents.run')) &&
-                      !setup.projectId) ||
-                    missingPermissions
-                  }
-                  onClick={() =>
-                    void run(async () => {
-                      const release = await management<Release>(
-                        `/candidates/${candidate.candidateId}/prepare-preview`,
-                        'POST',
-                        { grants },
-                      )
-                      const options = {
-                        locale: i18n.language,
-                        theme: resolvedTheme,
-                      }
-                      if (candidate.kind === 'game') {
-                        const instance = await management<Instance>(
-                          '/instances',
-                          'POST',
-                          {
-                            gameId: release.manifest.id,
-                            releaseId: release.ref.releaseId,
-                            title: localized(
-                              release.manifest.name,
-                              i18n.language,
-                            ),
-                            projectId: setup.projectId,
-                            setup: setup.configuration,
-                            models: setup.models,
-                            preview: true,
-                          },
-                        )
-                        onPlay(
-                          await management(
-                            `/instances/${instance.instanceId}/open`,
-                            'POST',
-                            options,
-                          ),
-                        )
-                        await close()
-                      } else
-                        setRuntime(
-                          await management('/runtimes/plugin', 'POST', {
-                            pluginId: release.manifest.id,
-                            releaseId: release.ref.releaseId,
-                            scope: {
-                              kind: 'project',
-                              projectId: setup.projectId,
-                            },
-                            settings: setup.configuration,
-                            models: setup.models,
-                            preview: true,
-                            ...options,
-                          }),
-                        )
-                    })
-                  }
-                >
-                  {t('platform.startPreview')}
-                </Button>
-              </div>
-            </details>}
-            {runtime && (
-              <ToolConsole
-                runtime={runtime}
-                manifest={candidate.manifest}
-                onStop={() => setRuntime(null)}
-                onFeedback={onFeedback}
-              />
-            )}
+
           </div>
         )}
         <DialogFooter className="flex-wrap gap-2">
