@@ -23,7 +23,7 @@ func automationRunOutcomeError(outcome agentrun.Outcome) error {
 	}
 	reason := strings.TrimSpace(outcome.Reason)
 	if reason == "" {
-		reason = fmt.Sprintf("automation Agent did not complete: status=%s", outcome.Status)
+		reason = fmt.Sprintf("automation task did not complete: status=%s", outcome.Status)
 	}
 	return errors.New(reason)
 }

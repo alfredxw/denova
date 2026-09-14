@@ -780,14 +780,14 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         </div>
       </div>
       <StoryStageComposer
-        taskControls={(streaming || stageRun.runtime.phase === 'suspended') && <AgentTaskControls active={streaming} suspended={stageRun.runtime.phase === 'suspended'} pending={commandSubmitting || stageRun.runtime.abortPending} onSuspend={() => void suspend()} onResume={() => void resumeTask()} onAbort={() => void stop()} />}
+        taskControls={<AgentTaskControls suspended={stageRun.runtime.phase === 'suspended'} pending={commandSubmitting || stageRun.runtime.abortPending} onResume={() => void resumeTask()} onAbort={() => void stop()} />}
         layout={{ projectId, creatingStory: storySetupVisible || (waitingToStartOpening && (!isMobile || !streaming)), isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, pendingInterruptionId: stageRun.runtime.pendingInterruptionId, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}
         goal={{ value: conversationGoal.goal, mode: goalMode, pending: conversationGoal.saving, enter: enterGoalMode, exit: () => setGoalMode(false), edit: editGoal, pause: pauseGoal, clear: clearGoal }}
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
-        actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openContextAnalysis, removeContextCompaction, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
+        actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openContextAnalysis, removeContextCompaction, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop: stageRun.runtime.recoveryPaused || stageRun.runtime.connection !== 'connected' ? stop : suspend }}
       />
     </main>
   )

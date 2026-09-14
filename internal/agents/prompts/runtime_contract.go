@@ -114,8 +114,6 @@ func outputProtocolForAgent(agentKind string) string {
 		return "- Output only the JSON object required by the current call site. Do not output explanations, Markdown, code fences, or extra text."
 	case config.AgentKindImage:
 		return "- Call the image-generation tool to produce the image. The final response should briefly report the result without unrelated explanation or prose modifications."
-	case config.AgentKindAutomation:
-		return "- The final output must report what was actually completed, written paths, and items awaiting user confirmation. Writes remain subject to the task write policy and tool permissions."
 	case config.AgentKindIDE:
 		return "- Writing Agent has no fixed JSON output protocol. Perform all file changes through enabled tools. Book mutations must stay within the current Project; explicitly identified external references may be read subject to permission."
 	default:
@@ -146,12 +144,6 @@ func agentRuntimeContract(agentKind string) string {
 			"- Image Agent generates images only from the caller-provided purpose, source_context, System Prompt, and Skill.",
 			"- Image Agent may write image files and metadata only through image-generation tools. It must not modify prose, lore, configuration, versions, or story state.",
 			"- Image Agent must not read unbounded history, logs, large files, or complete conversations. Never invent caller-omitted facts as established story events.",
-		}, "\n")
-	case config.AgentKindAutomation:
-		return strings.Join([]string{
-			"- Automation Agent may use enabled tools to read files, lore, and Project state necessary for the task objective.",
-			"- File and lore writes require both the task write policy and Agent tool permission. If either disallows writing, do not write.",
-			"- Automation Agent must not read complete history, logs, large files, or an entire book without bounds. Locate the relevant scope first, then read only what is needed.",
 		}, "\n")
 	default:
 		return fmt.Sprintf("- The current Agent kind is %s. Follow the output protocol and backend validation for its call site.", strings.TrimSpace(agentKind))

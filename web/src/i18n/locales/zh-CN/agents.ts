@@ -160,7 +160,6 @@ const agents = {
   'agents.subAgents.parent.ide': '写作',
   'agents.subAgents.parent.general': '通用',
   'agents.subAgents.parent.interactive_story': '游戏',
-  'agents.subAgents.parent.automation': '自动化',
   'agents.subAgents.notAvailableForCurrent': '当前父 Agent 未启用这个 SubAgent。',
   'agents.subAgents.unavailableShort': '当前不可用',
   'agents.subAgents.tools': '工具限制',

@@ -54,7 +54,6 @@ type AgentContextSettings struct {
 	VersionSummary AgentContextOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent      AgentContextOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Image          AgentContextOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation     AgentContextOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
 type AgentContextOverride struct {
@@ -107,7 +106,6 @@ func MergeAgentContextSettings(parent, child AgentContextSettings) AgentContextS
 		VersionSummary:   mergeAgentContextOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:        mergeAgentContextOverride(parent.ToolAgent, child.ToolAgent),
 		Image:            mergeAgentContextOverride(parent.Image, child.Image),
-		Automation:       mergeAgentContextOverride(parent.Automation, child.Automation),
 	}
 }
 
@@ -200,7 +198,6 @@ func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSet
 	settings.VersionSummary = sanitizeAgentContextOverride(settings.VersionSummary)
 	settings.ToolAgent = sanitizeAgentContextOverride(settings.ToolAgent)
 	settings.Image = sanitizeAgentContextOverride(settings.Image)
-	settings.Automation = sanitizeAgentContextOverride(settings.Automation)
 	return settings
 }
 
@@ -242,7 +239,6 @@ func validateSettingsCheckpointGuidance(settings Settings) error {
 		{"version_summary", settings.AgentContexts.VersionSummary},
 		{"tool_agent", settings.AgentContexts.ToolAgent},
 		{"image", settings.AgentContexts.Image},
-		{"automation", settings.AgentContexts.Automation},
 	}
 	for _, override := range overrides {
 		if err := validateCheckpointGuidance(override.name, override.value.CheckpointGuidance); err != nil {

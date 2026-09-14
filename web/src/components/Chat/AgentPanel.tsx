@@ -626,7 +626,7 @@ function AgentPanelComponent({
     onResolveAsk: resolveAsk,
     activeRunId: runtimeProjection?.active_operation_id,
     afterContent: <>
-      <AgentTaskControls active={isExecutionActive} suspended={runtimeProjection?.phase === 'suspended'} pending={commandSubmitting || abortPending} onSuspend={onSuspend} onResume={onResumeTask} onAbort={onStop} />
+      <AgentTaskControls suspended={runtimeProjection?.phase === 'suspended'} pending={commandSubmitting || abortPending} onResume={onResumeTask} onAbort={onStop} />
       {lastRuntimeFailure ? (
       <div
         role="alert"
@@ -640,7 +640,8 @@ function AgentPanelComponent({
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
     attachmentsEnabled: true,
-    onStop,
+    // Pause live output from the composer, retaining abort for recovery flows.
+    onStop: runtimeRecovering || recoveryPaused ? onStop : onSuspend || onStop,
     disabled: sessionTransitionPending,
     sendBlocked: persistedSettings.loading || sessionTransitionPending,
     generationActive: isStreaming,

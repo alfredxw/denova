@@ -298,7 +298,6 @@ export interface AgentModelSettings {
   config_manager?: AgentModelOverride
   version_summary?: AgentModelOverride
   tool_agent?: AgentModelOverride
-  automation?: AgentModelOverride
 }
 
 export interface AgentModelOverride {
@@ -316,7 +315,6 @@ export interface AgentToolSettings {
   config_manager?: AgentToolOverride
   version_summary?: AgentToolOverride
   tool_agent?: AgentToolOverride
-  automation?: AgentToolOverride
 }
 
 export interface AgentSkillSettings {
@@ -328,7 +326,6 @@ export interface AgentSkillSettings {
   config_manager?: AgentSkillOverride
   version_summary?: AgentSkillOverride
   tool_agent?: AgentSkillOverride
-  automation?: AgentSkillOverride
 }
 
 export type AgentSkillOverride = Record<string, boolean>
@@ -342,7 +339,6 @@ interface AgentContextSettings {
   config_manager?: AgentContextOverride
   version_summary?: AgentContextOverride
   tool_agent?: AgentContextOverride
-  automation?: AgentContextOverride
 }
 
 export interface AgentContextOverride {
@@ -375,7 +371,6 @@ interface AgentGeneralSubAgentSettings {
   ide?: boolean | null
   interactive_story?: boolean | null
   config_manager?: boolean | null
-  automation?: boolean | null
 }
 
 export type AgentToolCapability =
@@ -517,7 +512,6 @@ interface AgentPromptSettings {
   config_manager?: AgentPromptOverride
   version_summary?: AgentPromptOverride
   tool_agent?: AgentPromptOverride
-  automation?: AgentPromptOverride
 }
 
 export interface AgentPromptOverride {
@@ -547,7 +541,6 @@ interface AgentPromptSourceSettings {
   config_manager?: AgentPromptSourceList
   version_summary?: AgentPromptSourceList
   tool_agent?: AgentPromptSourceList
-  automation?: AgentPromptSourceList
 }
 
 export interface AgentPromptBlocks {
@@ -565,7 +558,6 @@ interface AgentPromptBlockSettings {
   config_manager?: AgentPromptBlocks
   version_summary?: AgentPromptBlocks
   tool_agent?: AgentPromptBlocks
-  automation?: AgentPromptBlocks
 }
 
 interface SettingsPaths {

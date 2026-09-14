@@ -18,7 +18,7 @@ function row(item: AgentChatListItem, active: boolean, nextItem?: AgentChatListI
   return <AgentChatListRow projectId="project-a" item={item} nextItem={nextItem} executionTimings={new Map()} isStreaming={active} tailFollowActive={active} activeTraceDisplay="collapsed" subAgentPresentation="card" highlightDialogue={false} />
 }
 
-it.each(['ide', 'interactive_story'])('keeps one Run reference before and after the %s reply arrives', (agentKind) => {
+it.each(['ide', 'interactive_story'])('shows one Run reference only after the %s output stops', (agentKind) => {
   const open = vi.fn()
   const messages: AgentUIMessage[] = [{
     id: 'thinking', role: 'assistant', metadata: { run_id: 'current-run', agent_kind: agentKind },
@@ -30,13 +30,14 @@ it.each(['ide', 'interactive_story'])('keeps one Run reference before and after 
     </TrajectoryNavigationProvider>
   )
   const { rerender } = render(renderRun(true))
-  expect(screen.getAllByRole('button', { name: 'Copy Run ID' })).toHaveLength(1)
-  fireEvent.click(screen.getByRole('button', { name: 'Open in Trajectory' }))
-  expect(open).toHaveBeenCalledWith({ projectId: 'project-a', runId: 'current-run' })
+  expect(screen.queryByRole('button', { name: 'Copy Run ID' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Open in Trajectory' })).not.toBeInTheDocument()
 
   // Cancellation can leave a reasoning/tool-only run without terminal prose.
   rerender(renderRun(false))
   expect(screen.getAllByRole('button', { name: 'Copy Run ID' })).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Open in Trajectory' }))
+  expect(open).toHaveBeenCalledWith({ projectId: 'project-a', runId: 'current-run' })
 
   messages.push({
     id: 'reply', role: 'assistant', metadata: { run_id: 'current-run', agent_kind: agentKind, display_phase: 'final' },
@@ -62,7 +63,7 @@ it('leaves the reference on the error message when it follows a failed run', () 
   expect(screen.getAllByRole('button', { name: 'Copy Run ID' })).toHaveLength(1)
 })
 
-it('exposes the accepted Run before the model emits any content', () => {
+it('hides Run actions while waiting for the model to emit content', () => {
   render(row({ kind: 'activity', key: 'waiting', content: 'Waiting for the model', runId: 'accepted-run' }, true))
-  expect(screen.getByRole('button', { name: 'Copy Run ID' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Copy Run ID' })).not.toBeInTheDocument()
 })

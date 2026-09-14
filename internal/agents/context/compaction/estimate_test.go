@@ -15,7 +15,7 @@ func TestContextProjectionReserveUsesSingleToolResultBoundary(t *testing.T) {
 		t.Fatalf("tool result reserve = %d, want configured single-result boundary %d", toolTokens, want)
 	}
 
-	_, disabledTokens := EstimateProjectionReserves(cfg, config.AgentKindAutomation, 0)
+	_, disabledTokens := EstimateProjectionReserves(cfg, config.AgentKindToolAgent, 0)
 	if disabledTokens != 0 {
 		t.Fatalf("agent without cross-turn tool retention should reserve 0 tokens, got %d", disabledTokens)
 	}

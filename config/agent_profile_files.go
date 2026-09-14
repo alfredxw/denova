@@ -51,8 +51,8 @@ func AgentProfilePatchPaths(changes json.RawMessage) ([]string, error) {
 				}
 			}
 			for kind := range kinds {
-				// These retained settings are outside the physical Profile partitions.
-				if kind == "automation" || kind == "config_manager" {
+				// Retired Config Manager settings are outside the physical Profile partitions.
+				if kind == "config_manager" {
 					continue
 				}
 				path, err := AgentProfilePath(kind)

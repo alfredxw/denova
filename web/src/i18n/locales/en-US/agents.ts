@@ -162,7 +162,6 @@ const agents = {
   'agents.subAgents.parent.ide': 'Writing',
   'agents.subAgents.parent.general': 'General',
   'agents.subAgents.parent.interactive_story': 'Game',
-  'agents.subAgents.parent.automation': 'Automation',
   'agents.subAgents.notAvailableForCurrent': 'This SubAgent is not enabled for the current parent Agent.',
   'agents.subAgents.unavailableShort': 'Unavailable here',
   'agents.subAgents.tools': 'Tool Restrictions',

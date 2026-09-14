@@ -114,7 +114,7 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
   const formatted = formatMessageHoverTime(message.created_at)
   const runID = message.run_id?.trim()
   const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
-  const hasRunActions = Boolean(runID && (message.role === 'assistant' || message.role === 'error'))
+  const hasRunActions = !hideActions && Boolean(runID && (message.role === 'assistant' || message.role === 'error'))
   const hasMessageAction = hasRunActions || (!hideActions && Boolean(onEdit || onCreateBranch || onGenerateInteractiveImage || onRegenerate || canSwitchVersion))
   const showCopyAction = !hideActions && Boolean(content.trim())
   const metaTooltip = {

@@ -116,7 +116,6 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindImage:            "Image Agent",
 		config.AgentKindVersionSummary:   "Version Summary Agent",
 		config.AgentKindToolAgent:        "model-only",
-		config.AgentKindAutomation:       "Automation Agent",
 	}
 	for _, definition := range config.AgentKindDefinitions() {
 		required, ok := tests[definition.Kind]

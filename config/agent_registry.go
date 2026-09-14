@@ -16,9 +16,6 @@ const (
 	AgentKindVersionSummary = "version_summary"
 	AgentKindToolAgent      = "tool_agent"
 	AgentKindImage          = "image"
-	// AgentKindAutomation is retained only to decode Beta runtime journals.
-	// New automation turns always run as their owning Project Agent.
-	AgentKindAutomation = "automation"
 )
 
 // AgentKindDefinition is the registry entry for one runtime Agent kind.

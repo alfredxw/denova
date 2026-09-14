@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -159,12 +158,6 @@ func (a *App) gameCanonicalInput(
 func (a *App) sessionDirectoryForBinding(binding agentrun.RuntimeBinding) (string, error) {
 	if strings.TrimSpace(binding.SessionID) == "" {
 		return "", errors.New("Session canonical input binding has no session id")
-	}
-	if binding.AgentKind == agentrun.AgentKindAutomation && strings.TrimSpace(binding.ProjectID) == "" {
-		if a == nil || a.cfg == nil || strings.TrimSpace(a.cfg.DataDir()) == "" {
-			return "", ErrAgentDataDirRequired
-		}
-		return filepath.Join(a.cfg.DataDir(), "automations", "sessions"), nil
 	}
 	if a != nil && a.projectRegistry != nil {
 		if projectID := strings.TrimSpace(binding.ProjectID); projectID != "" {

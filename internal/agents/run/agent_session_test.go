@@ -15,7 +15,6 @@ func TestAgentSessionKeyRoundTripsEveryDenovaBinding(t *testing.T) {
 		{AgentKind: AgentKindGeneral, Mode: ModeAgentChat, ProjectID: "agents", Workspace: "/agents", SessionID: "agents-chat"},
 		{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "branch"},
 		{AgentKind: AgentKindImage, ProjectID: "project", Workspace: "/book", SessionID: "image"},
-		{AgentKind: AgentKindAutomation, ProjectID: "project", Workspace: "/book", SessionID: "automation", TaskID: "task"},
 	}
 	seen := make(map[string]RuntimeBinding, len(cases))
 	for _, original := range cases {
@@ -119,6 +118,48 @@ func TestProjectAgentSessionIdentitySurvivesWorkspaceRelink(t *testing.T) {
 	}
 	if _, exists := after.Attributes[bindingLabelWorkspace]; exists {
 		t.Fatalf("mutable workspace leaked into project Session attributes: %#v", after.Attributes)
+	}
+}
+
+func TestProjectSessionIdentityIsSharedByManualAndAutomationTurns(t *testing.T) {
+	for _, kind := range []string{AgentKindIDE, AgentKindGeneral} {
+		t.Run(kind, func(t *testing.T) {
+			options := Options{
+				AgentKind: kind, Mode: ModeAgentChat, ProjectID: "project",
+				SessionID: "conversation", TaskID: "manual-turn",
+			}
+			manual, err := AgentSessionKeyForOptions(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, runID := range []string{"first-run", "next-run"} {
+				options.TaskID = runID
+				options.AutomationTaskID = "scheduled-task"
+				automated, err := AgentSessionKeyForOptions(options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(automated, manual) {
+					t.Fatalf("automation forked the Project conversation: manual=%#v automated=%#v", manual, automated)
+				}
+				restored, err := RuntimeBindingFromAgentSessionKey(automated)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := RuntimeBinding{AgentKind: kind, Mode: ModeAgentChat, ProjectID: "project", SessionID: "conversation"}
+				if !reflect.DeepEqual(restored, want) {
+					t.Fatalf("restored automation owner = %#v, want %#v", restored, want)
+				}
+			}
+			options.SessionID = "next-conversation"
+			separate, err := AgentSessionKeyForOptions(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if reflect.DeepEqual(separate, manual) {
+				t.Fatal("distinct automation conversations shared a Session identity")
+			}
+		})
 	}
 }
 

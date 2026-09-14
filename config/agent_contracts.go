@@ -55,7 +55,7 @@ func AgentContractForRuntimeKind(kind string) (AgentContractDefinition, bool) {
 func IsReservedAgentID(id string) bool {
 	switch strings.TrimSpace(id) {
 	case AgentKindIDE, AgentKindGeneral, AgentKindInteractiveStory,
-		AgentKindConfigManager, AgentKindVersionSummary, AgentKindToolAgent, AgentKindImage, AgentKindAutomation:
+		AgentKindConfigManager, AgentKindVersionSummary, AgentKindToolAgent, AgentKindImage:
 		return true
 	default:
 		return false

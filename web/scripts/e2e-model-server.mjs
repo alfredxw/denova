@@ -368,6 +368,14 @@ const server = createServer(async (request, response) => {
     return
   }
 
+  if (requestIncludesMarker(body, 'E2E_COMPOSER_PAUSE')) {
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+    response.write(`data: ${JSON.stringify(completionFrame({ role: 'assistant', content: '正在检查门后的脚印，接下来会继续核对沿途留下的线索。'.repeat(8) }))}\n\n`)
+    await waitForDelayedRelease('E2E_COMPOSER_PAUSE')
+    response.write(`data: ${JSON.stringify(completionFrame({ content: '检查完成。' }, 'stop'))}\n\n`)
+    response.end('data: [DONE]\n\n')
+    return
+  }
   if (requestIncludesMarker(body, gameBranchPlanMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
     recordRequest(gameBranchPlanMarker)
     writeChatCompletion(response, chatCompletionFrames(gameBranchPlanNarrative, planningTurnSubmission))

@@ -36,10 +36,10 @@ describe('MessageInlineMeta trajectory navigation', () => {
     expect(open).toHaveBeenCalledWith({ projectId: 'project-a', runId: 'run-42' })
   })
 
-  it('copies the exact Run ID while the reply is streaming, independently of Developer Mode', async () => {
+  it('reveals Run ID and copy actions together after streaming stops', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    render(
+    const { rerender } = render(
       <MessageInlineMeta
         projectId="project-a"
         message={{ role: 'assistant', content: '', run_id: 'run-stream-42', streaming: true }}
@@ -49,10 +49,13 @@ describe('MessageInlineMeta trajectory navigation', () => {
       />,
     )
 
+    expect(screen.queryByRole('button', { name: 'Copy Run ID' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy message' })).not.toBeInTheDocument()
+    rerender(<MessageInlineMeta projectId="project-a" message={{ role: 'assistant', content: 'Partial reply', run_id: 'run-stream-42' }} content="Partial reply" align="left" />)
+    expect(screen.getByRole('button', { name: 'Copy message' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Copy Run ID' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('run-stream-42'))
     expect(await screen.findByRole('button', { name: 'Run ID copied' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Copy message' })).not.toBeInTheDocument()
   })
 
   it('reports clipboard failure and never substitutes a message ID for a missing Run ID', async () => {
