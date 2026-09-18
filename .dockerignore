@@ -1,0 +1,13 @@
+.git
+.denova
+.nova
+output
+log
+workspace
+docs
+img
+web/node_modules
+web/dist
+internal/webfs/dist
+**/.DS_Store
+**/*.log

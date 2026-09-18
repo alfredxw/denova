@@ -1,0 +1,23 @@
+services:
+  denova:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # Published ports reach the container from the Docker bridge, which the
+      # access gate treats as remote: LAN access and login credentials are
+      # required. Change the password before exposing the port.
+      DENOVA_ALLOW_LAN_ACCESS: "true"
+      DENOVA_REMOTE_ACCESS_USERNAME: admin
+      DENOVA_REMOTE_ACCESS_PASSWORD: change-me
+      DENOVA_WORKSPACE: /workspace
+      # OPENAI_API_KEY: sk-...
+      # OPENAI_BASE_URL: https://models.example.com/v1
+      # OPENAI_MODEL: my-model
+    volumes:
+      - denova-data:/data
+      - ./workspace:/workspace
+    restart: unless-stopped
+
+volumes:
+  denova-data:

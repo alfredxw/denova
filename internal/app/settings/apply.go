@@ -92,6 +92,7 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	}
 	cfg.RemoteAccessUsername = effective.RemoteAccessUsername
 	cfg.RemoteAccessPasswordHash = effective.RemoteAccessPasswordHash
+	config.ApplyRemoteAccessEnvironment(cfg)
 	if effective.Language != "" {
 		cfg.Language = effective.Language
 	}
@@ -229,6 +230,7 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	if settings.RemoteAccessPasswordHash != "" {
 		cfg.RemoteAccessPasswordHash = settings.RemoteAccessPasswordHash
 	}
+	config.ApplyRemoteAccessEnvironment(cfg)
 	if settings.Language != "" {
 		cfg.Language = settings.Language
 	}

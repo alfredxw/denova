@@ -607,6 +607,7 @@ func overrideFromEnv(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("DENOVA_SEARXNG_BASE_URL")); v != "" {
 		cfg.WebAccess.SearXNGBaseURL = strings.TrimRight(v, "/")
 	}
+	ApplyRemoteAccessEnvironment(cfg)
 }
 
 // ApplyModelEnvironment reapplies the released model environment variables

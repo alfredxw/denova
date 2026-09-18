@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,31 @@ func HTTPListenHost(allowLANAccess bool) string {
 		return LANHTTPHost
 	}
 	return LocalHTTPHost
+}
+
+// ApplyRemoteAccessEnvironment applies the remote-access environment overrides.
+// It runs at startup and after every persisted-settings refresh so environment
+// variables keep their highest-precedence, runtime-only contract: the plaintext
+// DENOVA_REMOTE_ACCESS_PASSWORD is hashed in memory and never written to disk.
+// Container deployments need these because published ports arrive from the
+// Docker bridge instead of loopback, which the access gate treats as remote.
+func ApplyRemoteAccessEnvironment(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_ALLOW_LAN_ACCESS")); v != "" {
+		if allow, err := strconv.ParseBool(v); err == nil {
+			cfg.AllowLANAccess = allow
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_REMOTE_ACCESS_USERNAME")); v != "" {
+		cfg.RemoteAccessUsername = v
+	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_REMOTE_ACCESS_PASSWORD")); v != "" {
+		if hash, err := HashRemoteAccessPassword(v); err == nil {
+			cfg.RemoteAccessPasswordHash = hash
+		}
+	}
 }
 
 func HTTPURL(host string, port int) string {
