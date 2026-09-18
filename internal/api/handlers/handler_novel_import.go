@@ -16,7 +16,7 @@ import (
 	"denova/internal/book"
 )
 
-// MaxNovelImportUploadBytes limits txt/md novel imports.
+// MaxNovelImportUploadBytes limits txt/md/chm novel imports.
 const MaxNovelImportUploadBytes int64 = 64 * 1024 * 1024
 
 type novelImportProgressEvent struct {
@@ -27,7 +27,7 @@ type novelImportErrorEvent struct {
 	Error string `json:"error"`
 }
 
-// HandlePreviewNovelImport POST /api/books/import-novel/preview — 预览 txt/md 小说章节，不写入 workspace。
+// HandlePreviewNovelImport POST /api/books/import-novel/preview — 预览 txt/md/chm 小说章节，不写入 workspace。
 func (h *Handlers) HandlePreviewNovelImport(ctx context.Context, c *app.RequestContext) {
 	filename, data, ok := readNovelImportUpload(c)
 	if !ok {
@@ -46,7 +46,7 @@ func (h *Handlers) HandlePreviewNovelImport(ctx context.Context, c *app.RequestC
 	writeJSON(c, consts.StatusOK, preview)
 }
 
-// HandlePreviewNovelImportStream POST /api/books/import-novel/preview/stream — 流式预览 txt/md 小说章节。
+// HandlePreviewNovelImportStream POST /api/books/import-novel/preview/stream — 流式预览 txt/md/chm 小说章节。
 func (h *Handlers) HandlePreviewNovelImportStream(ctx context.Context, c *app.RequestContext) {
 	filename, data, ok := readNovelImportUpload(c)
 	if !ok {
@@ -108,7 +108,7 @@ func (h *Handlers) HandlePreviewNovelImportStream(ctx context.Context, c *app.Re
 	c.Response.SetBodyStream(pr, -1)
 }
 
-// HandleNovelImport POST /api/books/import-novel — 导入 txt/md 小说为新书并写入章节。
+// HandleNovelImport POST /api/books/import-novel — 导入 txt/md/chm 小说为新书并写入章节。
 func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext) {
 	filename, data, ok := readNovelImportUpload(c)
 	if !ok {

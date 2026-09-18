@@ -22,6 +22,9 @@ const (
 	NovelImportSplitStrategyLocal   = "local_regex"
 	NovelImportSplitStrategyAgent   = "tool_agent_regex"
 	NovelImportSplitStrategyCustom  = "custom_regex"
+	// NovelImportSplitStrategyCHMTopic splits a CHM by its own table of
+	// contents: one chapter per topic, grouped by the sitemap nesting.
+	NovelImportSplitStrategyCHMTopic = "chm_toc"
 
 	NovelImportSingleChapterWarning       = "novel_import_single_chapter"
 	NovelImportAgentFallbackWarning       = "novel_import_agent_fallback"
@@ -184,19 +187,61 @@ func ImportNovelToWorkspace(workspace, filename string, data []byte, opts ...Nov
 func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (parsedNovel, error) {
 	name := strings.TrimSpace(filename)
 	ext := strings.ToLower(filepath.Ext(name))
-	if ext != ".txt" && ext != ".md" && ext != ".markdown" {
-		return parsedNovel{}, fmt.Errorf("只支持 txt/md 文件")
+	if ext != ".txt" && ext != ".md" && ext != ".markdown" && ext != ".chm" {
+		return parsedNovel{}, fmt.Errorf("只支持 txt/md/chm 文件")
 	}
 	if len(data) == 0 {
 		return parsedNovel{}, fmt.Errorf("文件为空")
 	}
-	decodedText, err := decodeNovelTextBytes(data)
-	if err != nil {
-		return parsedNovel{}, fmt.Errorf("只支持 UTF-8、UTF-16 或 GB18030 编码的 txt/md 文件")
-	}
-	text := normalizeNovelText(decodedText)
-	if strings.TrimSpace(text) == "" {
-		return parsedNovel{}, fmt.Errorf("文件内容为空")
+	slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] parse begin filename=%q bytes=%d sample_chars=%d requested_strategy=%q has_split_regex=%t", name, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != ""))
+	var chapters []parsedNovelChapter
+	var text, splitStrategy, splitRegex string
+	var warnings []string
+	if ext == ".chm" && strings.TrimSpace(opts.SplitRegex) == "" {
+		// A CHM carries its own structure: split by its table of contents, one
+		// chapter per topic, instead of prose title patterns.
+		var err error
+		chapters, err = extractCHMChapters(data)
+		if err != nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] parse failed filename=%q err=%v", name, err))
+			return parsedNovel{}, err
+		}
+		splitStrategy = NovelImportSplitStrategyCHMTopic
+		for _, chapter := range chapters {
+			text += chapter.Content
+			if utf8.RuneCountInString(text) >= 4000 {
+				break
+			}
+		}
+		text = normalizeNovelText(text)
+	} else {
+		if ext == ".chm" {
+			topicChapters, err := extractCHMChapters(data)
+			if err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] parse failed filename=%q err=%v", name, err))
+				return parsedNovel{}, err
+			}
+			parts := make([]string, 0, len(topicChapters))
+			for _, chapter := range topicChapters {
+				parts = append(parts, strings.TrimSpace(chapter.Content))
+			}
+			text = normalizeNovelText(strings.Join(parts, "\n\n"))
+		} else {
+			decodedText, err := decodeNovelTextBytes(data)
+			if err != nil {
+				return parsedNovel{}, fmt.Errorf("只支持 UTF-8、UTF-16 或 GB18030 编码的 txt/md 文件")
+			}
+			text = normalizeNovelText(decodedText)
+		}
+		if strings.TrimSpace(text) == "" {
+			return parsedNovel{}, fmt.Errorf("文件内容为空")
+		}
+		var err error
+		chapters, splitStrategy, splitRegex, warnings, err = splitNovelChaptersWithOptions(text, opts)
+		if err != nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] parse failed filename=%q err=%v", name, err))
+			return parsedNovel{}, err
+		}
 	}
 	opts.sourceExt = ext
 	language := detectNovelImportLanguage(text)
@@ -204,12 +249,6 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 	volumeDirFormat := volumeDirFormatForLanguage(language)
 
 	title := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
-	slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] parse begin filename=%q bytes=%d text_chars=%d sample_chars=%d requested_strategy=%q has_split_regex=%t", name, len(data), utf8.RuneCountInString(text), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != ""))
-	chapters, splitStrategy, splitRegex, warnings, err := splitNovelChaptersWithOptions(text, opts)
-	if err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] parse failed filename=%q err=%v", name, err))
-		return parsedNovel{}, err
-	}
 	totalChars := 0
 	volumePaths := assignVolumePaths(chapters)
 	for i := range chapters {
@@ -652,7 +691,7 @@ func novelImportLineTitle(line string, allowMarkdownHeading bool) (novelImportTi
 }
 
 func novelImportAllowMarkdownHeadings(sourceExt string) bool {
-	return sourceExt == ".md" || sourceExt == ".markdown"
+	return sourceExt == ".md" || sourceExt == ".markdown" || sourceExt == ".chm"
 }
 
 func classifyNovelImportTitle(title string) novelImportTitle {
