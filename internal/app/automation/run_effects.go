@@ -28,37 +28,7 @@ func automationCompletionMutationPaths(mutations []agenttool.Mutation) []string 
 	return paths
 }
 
-func stageAutomationTerminalEffects(run *automation.RunRecord, mutationPaths []string) {
-	if run == nil {
-		return
-	}
-	seen := make(map[string]struct{}, len(run.CompletionMutationPaths)+len(mutationPaths))
-	paths := make([]string, 0, len(run.CompletionMutationPaths)+len(mutationPaths))
-	for _, group := range [][]string{run.CompletionMutationPaths, mutationPaths} {
-		for _, path := range group {
-			path = strings.TrimSpace(path)
-			if path == "" {
-				continue
-			}
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			paths = append(paths, path)
-		}
-	}
-	run.CompletionMutationPaths = paths
-	run.CompletionEffectsOperationID = strings.TrimSpace(run.RuntimeOperationID)
-	if run.Status == automation.RunStatusSuccess {
-		run.CompletionEffectsPending = true
-		run.CompletionEffectsCompleted = false
-		return
-	}
-	run.CompletionEffectsPending = len(paths) > 0
-	run.CompletionEffectsCompleted = len(paths) == 0
-}
-
-// completeAutomationRunEffects drains the persisted terminal outbox. Every
+// completeAutomationRunEffects drains released legacy outboxes only. Every
 // downstream action has deterministic identity (write-confirmation inbox and
 // durable trigger evaluation), so a crash after the effect but before the
 // final AppendRun safely replays the same action.
@@ -68,19 +38,10 @@ func (s *Service) completeAutomationRunEffects(
 	task automation.Task,
 	run automation.RunRecord,
 ) (automation.RunRecord, error) {
-	// A tool HostEffect can transfer into the run ledger concurrently with the
-	// terminal writer. Always drain the authoritative merged record, never the
-	// caller's potentially pre-effect snapshot.
+	// A previous reconciliation may already have acknowledged these effects.
+	// Always drain the authoritative record instead of a stale scan snapshot.
 	if persistedTask, persistedRun, err := storeForSnapshot(snap).GetRunByID(run.ID); err != nil {
 		return run, fmt.Errorf("load automation completion-effects plan: %w", err)
-	} else if strings.TrimSpace(persistedRun.RuntimeOperationID) != strings.TrimSpace(run.RuntimeOperationID) {
-		return run, fmt.Errorf(
-			"%w: run_id=%s completion operation changed from %s to %s",
-			automation.ErrRunIdentityConflict,
-			run.ID,
-			run.RuntimeOperationID,
-			persistedRun.RuntimeOperationID,
-		)
 	} else {
 		task, run = persistedTask, persistedRun
 	}

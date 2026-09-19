@@ -81,6 +81,9 @@ func ProjectInteractiveContext(contexts ...agentinteractive.InteractiveStoryTool
 func agentWorkspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMetadata {
 	providerCallID := strings.TrimSpace(agent.ToolCallID(ctx))
 	executionID := agent.ToolExecutionID(ctx, providerCallID)
+	if identity, ok := ctx.Value(hostToolIdentityKey{}).(HostToolIdentity); ok {
+		executionID = identity.ExecutionID
+	}
 	scope := producttools.WorkspaceChangeScopeFromContext(ctx)
 	runID := scope.RunID
 	sessionID := scope.SessionID

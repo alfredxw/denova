@@ -69,11 +69,12 @@ func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOptio
 
 func requestInput(messages []*agent.Message, config providers.ModelConfig) (responses.ResponseInputParam, error) {
 	result := make(responses.ResponseInputParam, 0, len(messages))
+	imageCount := providers.NativeImageCount(messages)
 	for index, message := range messages {
 		if message == nil {
 			return nil, fmt.Errorf("openai responses input message %d: nil message", index)
 		}
-		items, err := requestMessage(message, config)
+		items, err := requestMessage(message, config, imageCount)
 		if err != nil {
 			return nil, fmt.Errorf("openai responses input message %d: %w", index, err)
 		}
@@ -82,7 +83,7 @@ func requestInput(messages []*agent.Message, config providers.ModelConfig) (resp
 	return result, nil
 }
 
-func requestMessage(message *agent.Message, config providers.ModelConfig) ([]responses.ResponseInputItemUnionParam, error) {
+func requestMessage(message *agent.Message, config providers.ModelConfig, imageCount int) ([]responses.ResponseInputItemUnionParam, error) {
 	switch message.Role {
 	case agent.System:
 		role := responses.EasyInputMessageRole(message.Role)
@@ -109,12 +110,12 @@ func requestMessage(message *agent.Message, config providers.ModelConfig) ([]res
 			if !agent.IsNativeImageMediaType(attachment.MediaType) {
 				continue
 			}
-			dataURL, err := agent.AttachmentDataURL(attachment)
+			prepared, err := config.PrepareImage(attachment, imageCount)
 			if err != nil {
 				return nil, err
 			}
 			image := responses.ResponseInputContentParamOfInputImage(responses.ResponseInputImageDetailAuto)
-			image.OfInputImage.ImageURL = sdk.String(dataURL)
+			image.OfInputImage.ImageURL = sdk.String(prepared.DataURL())
 			content = append(content, image)
 		}
 		return []responses.ResponseInputItemUnionParam{
@@ -145,6 +146,23 @@ func requestMessage(message *agent.Message, config providers.ModelConfig) ([]res
 	case agent.ToolRole:
 		if strings.TrimSpace(message.ToolCallID) == "" {
 			return nil, fmt.Errorf("tool result requires tool call id")
+		}
+		if len(message.Attachments) > 0 {
+			content := responses.ResponseFunctionCallOutputItemListParam{
+				responses.ResponseFunctionCallOutputItemParamOfInputText(message.Content),
+			}
+			for _, attachment := range message.Attachments {
+				prepared, err := config.PrepareImage(attachment, imageCount)
+				if err != nil {
+					return nil, err
+				}
+				content = append(content, responses.ResponseFunctionCallOutputItemUnionParam{
+					OfInputImage: &responses.ResponseInputImageContentParam{ImageURL: sdk.String(prepared.DataURL()), Detail: "auto"},
+				})
+			}
+			return []responses.ResponseInputItemUnionParam{
+				responses.ResponseInputItemParamOfFunctionCallOutput(message.ToolCallID, content),
+			}, nil
 		}
 		// A JSON-looking tool result deliberately remains a string. Changing it
 		// to an object would alter the durable transcript's model projection.

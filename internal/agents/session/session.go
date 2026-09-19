@@ -345,6 +345,9 @@ func (s *Session) History() []HistoryEntry {
 		if err := applyJournalAskAnswers(result, &s.projection.AgentSessions); err != nil {
 			slog.Error("Project Agent interaction answers failed", "session_id", s.ID, "error", err)
 		}
+		if err := s.applyExternalHistoryOutcomesLocked(context.Background(), result); err != nil {
+			slog.Error("Project external interaction answers failed", "session_id", s.ID, "error", err)
+		}
 	}
 	return normalizeCompletedToolDisplayEntries(result)
 }

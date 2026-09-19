@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"denova/config"
+	"denova/internal/agents/conversationconfig"
 	"errors"
 	"fmt"
 
@@ -46,6 +48,20 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
+	if runtime.cfg.ActiveAgentRuntime != nil && runtime.cfg.ActiveAgentRuntime.Kind != config.RuntimeNative {
+		if command.Kind != agentexecution.CommandAbort {
+			return agentrun.CommandReceipt{}, conversationconfig.ErrRuntimeCapabilityUnsupported
+		}
+		status, _, err := s.app.AgentEngines().Operations.Status(ctx, runtime.projectID, runtime.sess)
+		if err != nil {
+			return agentrun.CommandReceipt{}, err
+		}
+		if status.ActiveOperation != command.OperationID || task == nil || task.Finished() {
+			return agentrun.CommandReceipt{}, agentrun.ErrStaleOperation
+		}
+		task.Abort()
+		return agentrun.CommandReceipt{CommandID: agentrun.CommandID(command.CommandID), OperationID: status.ActiveOperation, Cursor: status.Cursor}, nil
+	}
 	taskID := ""
 	var emit func(agentrun.Event)
 	if task != nil {
@@ -84,6 +100,9 @@ func (s *ChatAppService) commandRuntime(ctx context.Context) (ideChatRuntime, *a
 	runtime = ideChatRuntime{app: a, projectID: a.cfg.ProjectID, projectStore: a.cfg.ProjectStoreDir,
 		workspace: a.workspace, sess: a.session, state: a.bookState, executionRuntime: a.executionRuntime}
 	a.mu.RUnlock()
+	if selection, ok := runtime.sess.RuntimeConfig(); ok && selection.Engine().Kind != config.RuntimeNative {
+		return ideChatRuntime{}, nil, conversationconfig.ErrRuntimeCapabilityUnsupported
+	}
 	status, err := runtime.executionRuntime.RuntimeStatusProjection(ctx, runtime.agentOptions(""))
 	if err != nil {
 		return ideChatRuntime{}, nil, err

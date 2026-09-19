@@ -22,6 +22,14 @@ Denova records only major user-visible features, important compatibility or data
 - Extensions can compose the library, Agents and image generation, and build custom interfaces for existing interactive stories. Includes the Afterglow Letters AI visual novel example and extension development handbook.
 - 扩展页统一管理插件工具，启用后自动供写作、工作台、内置游戏及委派 Agent 使用；后续任务采用当前安装版本与全局设置，沿用现有审批方式。
 - Manage plugin tools in Extensions and make enabled tools available to Writing, Workbench, built-in Game and delegated Agents. New tasks use the installed versions and shared settings with existing approval policies.
+- 写作、General 及对应自定义 Agent 可在 Agents 页选择 Native、Codex 或 Claude Code 执行引擎，分别保留专属配置；外部引擎可复用本机登录或选择 Denova 中兼容的 API 模型，无需修改 CLI 配置，支持提问、领域工具和会话历史续接。
+- Writing, General, and their custom Agents can select Native, Codex, or Claude Code on the Agents page and retain separate engine settings. External engines can use local sign-in or compatible API models configured in Denova without editing CLI configuration, while supporting questions, domain tools, and conversation history.
+
+- 首次将已有会话切换到外部引擎时保存 journal 备份；启用后的会话和 Agent Profile 使用新格式，v0.4.5 无法读取，切回 Native 不会降级格式。
+- Existing conversations are backed up before their first external-engine switch. Enabled conversations and Agent Profiles use a new format unreadable by v0.4.5; switching back to Native does not downgrade it.
+
+- Agent 可通过 `read` 查看本地图片与生成图；写作和游戏保留读取时的图片副本，重启后仍可继续分析。
+- Agents can inspect local and generated images with `read`; Writing and Game retain captured image copies for continued analysis after restart.
 
 - 写作与游戏支持暂停整个 Agent 任务，重启后继续原任务，保留已接收输入、子任务及游戏已接纳草稿；中断后结果不明的操作可核实或直接取消任务。
 - Pause an entire Writing or Game Agent task and continue it after restart, preserving accepted input, child tasks, and accepted Game drafts; verify uncertain interrupted operations or cancel the task directly.
@@ -31,8 +39,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
-- 修复写作与游戏将图片编码体积误算为文本 token、导致正常参考图被拒绝的问题；图片上下文预算与上传传输体积分别校验。
-- Fix Writing and Game rejecting valid reference images by counting encoded image bytes as text tokens; visual context and encoded payload limits are checked separately.
+- 修复写作与游戏的图片容量计量及压缩：图片上下文预算与实际发送大小分别校验，不再误触发通用 4 MB 上限；多图会话按视觉 token 选择压缩范围，分批摘要保留原生图片输入，必要时仅缩小发送副本。
+- Fix image budgeting and compaction in Writing and Game: check visual context separately from payload size, avoid false generic 4 MB rejections, select enough history under visual-token pressure, and preserve native images in summary batches; resize only sending copies when needed.
 
 - 写作与游戏的长任务可在同一个请求内反复压缩已完成步骤，保留当前要求与最近工具结果；超大工具输出可回读完整文件，重启后继续使用摘要。修正压缩后的 token 校准，避免多余压缩与误报容量不足。
 - Writing and Game long tasks can compact completed steps repeatedly within one request while preserving current instructions and recent tool results; complete oversized output remains readable from artifacts, and checkpoints survive restart. Correct post-compaction token calibration to avoid redundant summaries and false capacity failures.

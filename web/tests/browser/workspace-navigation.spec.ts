@@ -3,12 +3,15 @@ import { createAndOpenBook } from '../support/api'
 
 for (const theme of ['dark', 'light']) {
   test(`primary navigation responds without background trailing in ${theme} mode`, async ({ page, request }) => {
+    // This journey hydrates six destinations on slower CI runners.
+    test.setTimeout(60_000)
     await createAndOpenBook(request, `Navigation Feedback Book ${theme}`)
-    await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, async (route) => {
-      const response = await route.fetch()
-      const settings = await response.json()
-      await route.fulfill({ response, json: { ...settings, effective: { ...settings.effective, theme } } })
-    })
+    const settings = await (await request.get('/api/settings')).json()
+    // Navigation can abort a settings request before route.fetch returns.
+    // This journey only needs a fixed theme, so serve its snapshot directly.
+    await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
+      json: { ...settings, effective: { ...settings.effective, theme } },
+    }))
     await page.goto('/')
     const sidebar = page.getByLabel('工作台侧边栏')
     await expect(sidebar).toBeVisible()
@@ -44,11 +47,10 @@ for (const theme of ['dark', 'light']) {
 
 test('keeps exactly one primary destination active across the normal workbench routes', async ({ page, request }) => {
   await createAndOpenBook(request, 'Browser Navigation Book')
-  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, async (route) => {
-    const response = await route.fetch()
-    const settings = await response.json()
-    await route.fulfill({ response, json: { ...settings, effective: { ...settings.effective, labs: { ...settings.effective?.labs, developer_mode: true } } } })
-  })
+  const settings = await (await request.get('/api/settings')).json()
+  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
+    json: { ...settings, effective: { ...settings.effective, labs: { ...settings.effective?.labs, developer_mode: true } } },
+  }))
   // Exercise the developer destination's empty state without enabling trace collection in the test backend.
   await page.route(/\/api\/agent-runs(?:\?|$)/, (route) => route.fulfill({ json: { runs: [], issues: [] } }))
   await page.goto('/')
@@ -70,14 +72,10 @@ test('exposes the same primary destinations in English on a narrow viewport', as
   await page.addInitScript(() => {
     window.localStorage.setItem('nova.locale.configured', 'en-US')
   })
-  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, async (route) => {
-    const response = await route.fetch()
-    const settings = await response.json() as { effective?: Record<string, unknown> }
-    await route.fulfill({
-      response,
-      json: { ...settings, effective: { ...settings.effective, language: 'en-US' } },
-    })
-  })
+  const settings = await (await request.get('/api/settings')).json()
+  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
+    json: { ...settings, effective: { ...settings.effective, language: 'en-US' } },
+  }))
   await page.goto('/')
 
   await page.getByRole('button', { name: 'Navigation', exact: true }).click()

@@ -303,7 +303,7 @@ func (s *Service) reconcileDurableTriggerAction(
 		if startedRun.ID == "" {
 			return visibleItem, automation.RunResult{}, false, fmt.Errorf("%w: %w", errDurableTriggerActionRetry, startErr)
 		}
-		if receiptErr := validateAutomationRunRootReceipt(startedRun); receiptErr == nil && !startedRun.RuntimeRecoveryRequired {
+		if receiptErr := validateAutomationRunRootReceipt(startedRun); receiptErr == nil {
 			// The action crossed the durable runtime boundary. Caller transport or
 			// bookkeeping failure cannot make the trigger submit it again.
 		} else if startedRun.Status == automation.RunStatusFailed {
@@ -324,9 +324,7 @@ func (s *Service) reconcileDurableTriggerAction(
 	if receiptErr := validateAutomationRunRootReceipt(startedRun); receiptErr != nil {
 		return visibleItem, automation.RunResult{}, false, fmt.Errorf("%w: automation run %s has no valid durable root receipt: %v", errDurableTriggerActionRetry, startedRun.ID, receiptErr)
 	}
-	if startedRun.RuntimeRecoveryRequired {
-		return visibleItem, automation.RunResult{Task: task, Run: startedRun}, false, fmt.Errorf("%w: automation run %s requires explicit runtime recovery", errDurableTriggerActionRetry, startedRun.ID)
-	}
+
 	if item.ID != "" {
 		updated, attachErr := store.AttachInboxRun(item.ID, startedRun.ID)
 		if attachErr != nil {

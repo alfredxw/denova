@@ -31,6 +31,10 @@ function SelectValue({
   return <SelectPrimitive.Value data-slot="select-value" {...props} />
 }
 
+function SelectLabel({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.Label>) {
+  return <SelectPrimitive.Label data-slot="select-label" className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)} {...props} />
+}
+
 function SelectTrigger({
   className,
   size = "default",
@@ -157,6 +161,7 @@ export {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SELECT_TRIGGER_CLASS_NAME,
   SelectTrigger,
   SelectValue,

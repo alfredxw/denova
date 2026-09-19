@@ -2,12 +2,14 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/conversationjournal"
+	externaljournal "denova/internal/agents/external/journal"
 )
 
 // ReadCanonicalMessages rebuilds the complete model-visible lane after the
@@ -47,6 +49,7 @@ func (s *Session) ReadCanonicalMessages(ctx context.Context) ([]*agent.Message, 
 		return nil, fmt.Errorf("read canonical message range: %w", err)
 	}
 	messages := make([]*agent.Message, 0)
+	starts := map[string]externaljournal.StartedTool{}
 	for _, record := range records {
 		var typed struct {
 			Type string `json:"type"`
@@ -77,6 +80,45 @@ func (s *Session) ReadCanonicalMessages(ctx context.Context) ([]*agent.Message, 
 			}
 		case historyTypeClear:
 			messages = messages[:0]
+			clear(starts)
+		case externaljournal.RecordType:
+			var event externaljournal.Record
+			if err := json.Unmarshal(record.Payload, &event); err != nil {
+				return nil, err
+			}
+			if event.Kind == externaljournal.ToolStarted {
+				var started externaljournal.StartedTool
+				if err := json.Unmarshal(event.Data, &started); err != nil {
+					return nil, err
+				}
+				starts[event.OperationID+"\x00"+started.ExecutionID] = started
+				continue
+			}
+			if event.Kind != externaljournal.ToolFinished {
+				continue
+			}
+			var finished externaljournal.FinishedTool
+			if err := json.Unmarshal(event.Data, &finished); err != nil {
+				return nil, err
+			}
+			key := event.OperationID + "\x00" + finished.ExecutionID
+			started, ok := starts[key]
+			if !ok {
+				return nil, fmt.Errorf("external tool start is missing")
+			}
+			delete(starts, key)
+			// Completed host facts become a matched observation pair for Native.
+			// IDs derive from durable host identity, never a vendor continuation.
+			id := fmt.Sprintf("external-%x", sha256.Sum256([]byte(finished.ExecutionID)))[:41]
+			call := agent.AssistantMessage("", []agent.ToolCall{{ID: id, Type: "function", Function: agent.FunctionCall{Name: started.Tool, Arguments: string(started.Arguments)}}})
+			result := agent.TextToolResult(finished.Result)
+			if !finished.Success {
+				result = agent.ToolErrorResult(finished.Result, finished.Result)
+			}
+			if finished.Receipt != nil {
+				result.Attachments, result.Artifacts = finished.Receipt.Attachments, finished.Receipt.Artifacts
+			}
+			messages = append(messages, call, agent.ToolMessage(result, id, agent.WithToolName(started.Tool)))
 		}
 	}
 	return messages, nil

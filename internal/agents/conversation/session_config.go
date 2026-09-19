@@ -51,21 +51,33 @@ func RecentSessionSeed(store *session.Store, runtime *config.Config, agentKind, 
 			return conversationconfig.Config{}, err
 		}
 		if ok {
-			if agentKind == config.AgentKindIDE {
+			// New conversations use the current Agent's engine default, never
+			// the engine last used by a different conversation.
+			defaults, err := conversationconfig.DefaultWithCustomAgent(runtime, agentKind, recent.CustomAgentID)
+			if err == nil {
+				recent.Runtime = defaults.Runtime
+			}
+			if err == nil && agentKind == config.AgentKindIDE {
 				// Model preferences belong to the user. Activity in an older
 				// Project conversation must not replace the latest manual choice.
-				defaults := conversationconfig.Default(runtime, agentKind)
-				recent.ProfileID = defaults.ProfileID
-				recent.ThinkingLevel = defaults.ThinkingLevel
+				nativeDefaults := conversationconfig.LegacyDefault(runtime, agentKind)
+				recent.ProfileID = nativeDefaults.ProfileID
+				recent.ThinkingLevel = nativeDefaults.ThinkingLevel
 			}
-			if err := conversationconfig.Validate(runtime, recent, agentKind); err == nil {
+			if err == nil {
+				err = conversationconfig.Validate(runtime, recent, agentKind)
+			}
+			if err == nil {
 				return recent, nil
 			} else {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[conversation-config] recent selection is unavailable agent_kind=%s profile_id=%s err=%v; using Settings default", agentKind, recent.ProfileID, err))
 			}
 		}
 	}
-	seed := conversationconfig.Default(runtime, agentKind)
+	seed, err := conversationconfig.DefaultWithCustomAgent(runtime, agentKind, "")
+	if err != nil {
+		return conversationconfig.Config{}, err
+	}
 	if err := conversationconfig.Validate(runtime, seed, agentKind); err != nil {
 		return conversationconfig.Config{}, fmt.Errorf("resolve default conversation config: %w", err)
 	}
@@ -82,9 +94,11 @@ func EnsureSession(sess *session.Session, runtime *config.Config, agentKind stri
 		if snapshot.AgentKind != agentKind {
 			return conversationconfig.Snapshot{}, fmt.Errorf("conversation Agent kind is %q, expected %q", snapshot.AgentKind, agentKind)
 		}
-		return snapshot, nil
+		// Writing and AgentChat can hold separate Store instances for the same
+		// journal. Refresh under its lease before returning a revision to edit.
+		return sess.EnsureRuntimeConfig(snapshot.Config)
 	}
-	seed := conversationconfig.Default(runtime, agentKind)
+	seed := conversationconfig.LegacyDefault(runtime, agentKind)
 	if err := conversationconfig.Validate(runtime, seed, agentKind); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}

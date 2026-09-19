@@ -52,6 +52,7 @@ type Run struct {
 	resuming             bool
 	treeResumeID         string
 	startedAt            time.Time
+	finishedAt           time.Time
 	abortReason          string
 	suspendReason        string
 	cycle                int

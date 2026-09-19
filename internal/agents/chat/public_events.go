@@ -868,7 +868,7 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 		projector.emitEvent(agentrun.Event{Type: "suspended", Data: map[string]string{"reason": reason}})
 	default:
 		data := map[string]string{"message": reason}
-		if agent.IsModelIncompleteTerminalReason(reason) {
+		if agent.IsModelIncompleteTerminalReason(reason) || reason == agent.ModelImageInputRejectedReason || reason == agent.ModelRequestTooLargeReason {
 			data["code"] = reason
 		}
 		projector.emitEvent(agentrun.Event{Type: "error", Data: data})

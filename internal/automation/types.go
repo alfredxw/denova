@@ -242,13 +242,29 @@ type Schedule struct {
 	Cron       string `json:"cron"`
 }
 
-// RunRecord is a persisted, bounded execution summary.
+const (
+	DeliveryPending  = "pending"
+	DeliveryAccepted = "accepted"
+)
+
+// RunInput freezes a trigger's accepted intent while delivery is retried.
+type RunInput struct {
+	Message        string `json:"message"`
+	ModelProfileID string `json:"model_profile_id,omitempty"`
+	SessionTitle   string `json:"session_title,omitempty"`
+}
+
+// RunRecord records trigger delivery and its immutable Project Agent receipt.
+// Execution fields are read projections; records without DeliveryStatus are
+// released legacy history, retained for reading and draining pending effects.
 type RunRecord struct {
-	ID              string `json:"id"`
-	TaskID          string `json:"task_id"`
-	TaskRevision    string `json:"task_revision,omitempty"`
-	SessionID       string `json:"session_id,omitempty"`
-	SessionStrategy string `json:"session_strategy,omitempty"`
+	DeliveryStatus  string    `json:"delivery_status,omitempty"`
+	Input           *RunInput `json:"input,omitempty"`
+	ID              string    `json:"id"`
+	TaskID          string    `json:"task_id"`
+	TaskRevision    string    `json:"task_revision,omitempty"`
+	SessionID       string    `json:"session_id,omitempty"`
+	SessionStrategy string    `json:"session_strategy,omitempty"`
 	// TurnID is the immutable root AgentChat command anchor. SessionID locates
 	// the conversation; TurnID locates this exact run inside a reused session.
 	TurnID          string            `json:"turn_id,omitempty"`
@@ -258,39 +274,26 @@ type RunRecord struct {
 	Trigger         string            `json:"trigger"`
 	SourceRunID     string            `json:"source_run_id,omitempty"`
 	TriggerEvidence []TriggerEvidence `json:"trigger_evidence,omitempty"`
-	// RootRuntime* is the immutable StartTurn receipt. Runtime* is the current
-	// operation receipt exposed to clients and advances when a follow-up is
-	// accepted, so Stop always targets the live operation without erasing the
-	// root admission proof used by trigger/inbox coordinators.
-	RootRuntimeCommandID      string `json:"root_runtime_command_id,omitempty"`
-	RootRuntimeOperationID    string `json:"root_runtime_operation_id,omitempty"`
-	RootRuntimeReceiptCursor  uint64 `json:"root_runtime_receipt_cursor,omitempty"`
+	// RootRuntime* is the immutable Project Agent acceptance receipt.
+	RootRuntimeCommandID     string `json:"root_runtime_command_id,omitempty"`
+	RootRuntimeOperationID   string `json:"root_runtime_operation_id,omitempty"`
+	RootRuntimeReceiptCursor uint64 `json:"root_runtime_receipt_cursor,omitempty"`
+	// Runtime* is projected for API clients and read from released history only.
 	RuntimeCommandID          string `json:"runtime_command_id,omitempty"`
 	RuntimeOperationID        string `json:"runtime_operation_id,omitempty"`
 	RuntimeReceiptCursor      uint64 `json:"runtime_receipt_cursor,omitempty"`
 	RuntimeCommandFingerprint string `json:"runtime_command_fingerprint,omitempty"`
 	RuntimeIntentHash         string `json:"runtime_intent_hash,omitempty"`
-	// PendingRuntime* is the write-ahead successor intent. It closes the crash
-	// window between persisting a follow-up command identity and receiving its
-	// durable runtime receipt; startup reconciliation promotes the matching
-	// operation into Runtime* without ever changing RootRuntime*.
+	// Legacy execution fields below are decoded only to adopt released
+	// records safely. No current execution or recovery code writes them.
 	PendingRuntimeCommandID          string `json:"pending_runtime_command_id,omitempty"`
 	PendingRuntimeIntentHash         string `json:"pending_runtime_intent_hash,omitempty"`
 	PendingRuntimeCommandFingerprint string `json:"pending_runtime_command_fingerprint,omitempty"`
-	// RuntimeSuccessorConflict records why a pending successor was discarded
-	// without promotion. It lets the run ledger distinguish a verified runtime
-	// rejection from an unsafe caller clearing accepted work.
-	RuntimeSuccessorConflict string `json:"runtime_successor_conflict,omitempty"`
-	// RuntimeAdmissionPending is the write-ahead side of the initial StartTurn
-	// boundary. It is persisted before Runtime acceptance and cleared only by an
-	// exact receipt or by recovery proving that no command was accepted.
-	RuntimeAdmissionPending bool `json:"runtime_admission_pending,omitempty"`
-	// RuntimeRecoveryRequired is a durable obligation, not a display hint. A
-	// cold accepted StartTurn remains pending until an owned recovery observer
-	// sees an explicit control action or terminal runtime reconciliation.
-	RuntimeRecoveryRequired bool `json:"runtime_recovery_required,omitempty"`
-	// CompletionEffectsPending makes terminal post-effects restartable. Those
-	// effects use deterministic downstream identities before this flag clears.
+	RuntimeSuccessorConflict         string `json:"runtime_successor_conflict,omitempty"`
+	RuntimeAdmissionPending          bool   `json:"runtime_admission_pending,omitempty"`
+	RuntimeRecoveryRequired          bool   `json:"runtime_recovery_required,omitempty"`
+	// Released completion effects are drained once using their original
+	// identities. New mutations use the common Agent host-effect outbox.
 	CompletionEffectsPending     bool     `json:"completion_effects_pending,omitempty"`
 	CompletionEffectsCompleted   bool     `json:"completion_effects_completed,omitempty"`
 	CompletionEffectsOperationID string   `json:"completion_effects_operation_id,omitempty"`
@@ -299,13 +302,13 @@ type RunRecord struct {
 	// transferred ownership of mutation-trigger work into this run ledger.
 	// They are never inferred from display history or tool result previews.
 	CompletionMutationEffectIDs []string           `json:"completion_mutation_effect_ids,omitempty"`
-	Status                      string             `json:"status"`
+	Status                      string             `json:"status,omitempty"`
 	StartedAt                   time.Time          `json:"started_at"`
-	FinishedAt                  time.Time          `json:"finished_at,omitempty"`
-	Summary                     string             `json:"summary"`
+	FinishedAt                  time.Time          `json:"finished_at,omitzero"`
+	Summary                     string             `json:"summary,omitempty"`
 	Error                       string             `json:"error,omitempty"`
 	OutputPath                  string             `json:"output_path,omitempty"`
-	ToolManifest                []ToolManifestItem `json:"tool_manifest"`
+	ToolManifest                []ToolManifestItem `json:"tool_manifest,omitempty"`
 }
 
 type TriggerEvidence struct {

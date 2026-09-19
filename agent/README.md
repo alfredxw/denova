@@ -305,6 +305,13 @@ Compaction: myCompactionManager
 
 `Standard` 默认保留最近的完整交互，使用当前模型快照生成摘要；容量不足时按顺序分批处理，模型失败不会偷偷切换执行方式。`Prompt` 可增加领域侧重点；`ModelSummarizer` 可指定替代模型，替代模型需声明稳定的 Identity。
 
-自定义 Manager 的 `Plan` 接收完整交互组和最终模型快照，返回需要覆盖的前缀 `GroupCount`。`Compact` 只接收旧 checkpoint 与新选材料。两级扩展都返回 `CompactionCheckpoint{Summary, ContextData}`；ContextData 为可选的类型化、版本化 JSON（最多 8 MiB），随摘要原子保存，不自动注入模型。
+自定义 Manager 的 `Plan` 接收完整交互组和最终模型快照，返回需要覆盖的前缀 `GroupCount`。`EstimateAfter(GroupCount)` 可估算替换后的完整请求（包含受保护输入、工具 Schema 和图片，尚未计入新摘要），仅在当前 `Plan` 调用内使用；规划器需另外预留摘要预算。内置策略按 token 恢复目标选取范围，分批摘要仍传递原生图片；最终请求在写入 checkpoint 前重新校验。`Compact` 只接收旧 checkpoint 与新选材料。两级扩展都返回 `CompactionCheckpoint{Summary, ContextData}`；ContextData 为可选的类型化、版本化 JSON（最多 8 MiB），随摘要原子保存，不自动注入模型。
 
 Agent 统一保护当前用户要求、最近完整工具组及未完成步骤，检查最终请求容量和实际压缩进展，并负责 journal、revision、取消和恢复。应用通过 `Session.Snapshot().Compaction` 读取摘要视图，详细数据位于 `Inspect().CompactionMetrics` 和压缩事件。运行时返回的视图可调用 `Project` 检查有效历史；序列化后的展示数据不携带历史覆盖权限。
+
+
+原生图片通过 [`Attachment`](attachment.go) 进入用户消息或 `ToolResult.Attachments`。`InputSize.Tokens` 包含文本和视觉 token，`InputSize.Bytes` 只统计消息、工具 Schema 与附件描述的 JSON，不包含图片 Base64；这些上下文预算同时用于压缩与最终输入检查。自定义模型可实现 `ModelInputEstimator` 提供视觉计数规则，未知模型默认每张图片预留 32K token。
+
+`tools.Workspace` 的 `read` 可读取 UTF-8 文本和 PNG、JPEG、GIF、WebP 图片（每图最多 20 MiB）。图片读取需要 `Definition.Artifacts` 提供本地路径解析，先将读取的字节保存为不可变产物，再返回原生图片；用户附件路径相对于 `AttachmentRoot`，工具图片路径相对于其产物存储边界。journal 只保留相对引用与 SHA256，运行时绝对路径不持久化。Responses 和 Anthropic 把图片放入工具结果，Chat Completions 在整批工具结果之后投影图片消息，保持调用配对。
+
+内置协议在发送前校验原图 SHA256，并按已知模型的尺寸规则生成内存副本；无需缩小时保留原始字节。JPEG 缩放保留显示方向，GIF 使用首帧，本地转换最多接收 64 百万像素的原图以约束解码内存。原始文件、附件路径和 journal 不变。官方端点的图片及实际 HTTP 请求限制在发送层检查，自定义网关以其返回的限制为准；图片不合要求和请求过大分别返回稳定错误码，产品负责本地化展示。

@@ -17,6 +17,8 @@ const common = {
   'common.model': '模型',
   'common.notSet': '未设置',
   'common.modelOutputTruncated': '回复已达到输出上限，内容可能不完整。',
+  'common.modelImageInputRejected': '附件图片无法发送给当前模型，请缩小图片或减少图片数量。原始文件已保留。',
+  'common.modelRequestTooLarge': '请求超过供应商的传输大小限制，请减少或缩小附件，或新建会话。',
   'common.modelContextWindowExceeded': '回复已达到模型上下文上限，内容可能不完整。',
   'common.modelOutputFiltered': '回复被内容过滤中断，内容可能不完整。',
   'common.modelOutputIncomplete': '模型返回了不完整的回复。',

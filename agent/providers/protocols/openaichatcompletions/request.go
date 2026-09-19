@@ -14,7 +14,7 @@ import (
 )
 
 func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...agent.ModelOption) (sdk.ChatCompletionNewParams, []option.RequestOption, error) {
-	messages, err := requestMessages(input, model.compatibility, model.config.ThinkingLevel)
+	messages, err := requestMessages(input, model.compatibility, model.config)
 	if err != nil {
 		return sdk.ChatCompletionNewParams{}, nil, err
 	}
@@ -60,22 +60,42 @@ func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...age
 	return params, model.requestOptions(common.SessionKey), nil
 }
 
-func requestMessages(messages []*agent.Message, compatibility Compatibility, thinkingLevel providers.ThinkingLevel) ([]sdk.ChatCompletionMessageParamUnion, error) {
+func requestMessages(messages []*agent.Message, compatibility Compatibility, config providers.ModelConfig) ([]sdk.ChatCompletionMessageParamUnion, error) {
 	result := make([]sdk.ChatCompletionMessageParamUnion, 0, len(messages))
+	imageCount := providers.NativeImageCount(messages)
+	var toolImages []sdk.ChatCompletionContentPartUnionParam
 	for index, message := range messages {
 		if message == nil {
 			return nil, fmt.Errorf("openai request message %d: nil message", index)
 		}
-		mapped, err := requestMessage(message, compatibility, thinkingLevel)
+		mapped, err := requestMessage(message, compatibility, config, imageCount)
 		if err != nil {
 			return nil, fmt.Errorf("openai request message %d: %w", index, err)
 		}
 		result = append(result, mapped)
+		if message.Role == agent.ToolRole {
+			for _, attachment := range message.Attachments {
+				prepared, err := config.PrepareImage(attachment, imageCount)
+				if err != nil {
+					return nil, fmt.Errorf("openai request tool image %d: %w", index, err)
+				}
+				toolImages = append(toolImages,
+					sdk.TextContentPart(fmt.Sprintf("Image from tool call %q (%s).", message.ToolCallID, attachment.Name)),
+					sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{URL: prepared.DataURL(), Detail: "auto"}),
+				)
+			}
+		}
+		// Chat Completions only accepts text in tool messages. Project images
+		// after the complete result batch so no user message splits call pairing.
+		if len(toolImages) > 0 && (index+1 == len(messages) || messages[index+1] == nil || messages[index+1].Role != agent.ToolRole) {
+			result = append(result, sdk.UserMessage(toolImages))
+			toolImages = nil
+		}
 	}
 	return result, nil
 }
 
-func requestMessage(message *agent.Message, compatibility Compatibility, thinkingLevel providers.ThinkingLevel) (sdk.ChatCompletionMessageParamUnion, error) {
+func requestMessage(message *agent.Message, compatibility Compatibility, config providers.ModelConfig, imageCount int) (sdk.ChatCompletionMessageParamUnion, error) {
 	switch message.Role {
 	case agent.System:
 		result := sdk.SystemMessage(message.Content)
@@ -101,11 +121,11 @@ func requestMessage(message *agent.Message, compatibility Compatibility, thinkin
 				if !agent.IsNativeImageMediaType(attachment.MediaType) {
 					continue
 				}
-				dataURL, err := agent.AttachmentDataURL(attachment)
+				image, err := config.PrepareImage(attachment, imageCount)
 				if err != nil {
 					return sdk.ChatCompletionMessageParamUnion{}, err
 				}
-				parts = append(parts, sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{URL: dataURL, Detail: "auto"}))
+				parts = append(parts, sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{URL: image.DataURL(), Detail: "auto"}))
 			}
 			result = sdk.UserMessage(parts)
 		}
@@ -121,7 +141,7 @@ func requestMessage(message *agent.Message, compatibility Compatibility, thinkin
 		if message.Name != "" {
 			assistant.Name = sdk.String(message.Name)
 		}
-		if compatibility.shouldReplayReasoning(message, thinkingLevel) && message.ReasoningContent != "" {
+		if compatibility.shouldReplayReasoning(message, config.ThinkingLevel) && message.ReasoningContent != "" {
 			assistant.SetExtraFields(map[string]any{compatibility.ReasoningContentField: message.ReasoningContent})
 		}
 		for callIndex, call := range message.ToolCalls {

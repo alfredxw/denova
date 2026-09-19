@@ -10,7 +10,8 @@ import (
 )
 
 // ProviderInputLimitError is returned before a provider sees an input that
-// exceeds the non-disableable complete-context safety boundary.
+// exceeds the non-disableable text/vision context safety boundary. Native
+// media bytes are admitted by the adapter after preparing its wire request.
 type ProviderInputLimitError struct {
 	AgentKind string
 	Bytes     int
@@ -42,7 +43,7 @@ func ValidateInput(agentKind string, model providers.ModelConfig, messages []*ag
 
 // ValidateConfiguredInput applies the same final provider boundary to
 // standalone model-only agents that do not pass through Agent middleware. Every
-// provider call must validate the complete serialized request at its last host
+// provider call must validate the complete text/vision context at its last host
 // boundary; upstream prompt builders being bounded is useful but insufficient.
 func ValidateConfiguredInput(cfg *config.Config, agentKind string, messages []*agent.Message, tools []*agent.ToolInfo) error {
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)

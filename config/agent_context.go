@@ -30,8 +30,8 @@ const (
 	DefaultAgentContextMaxFragments          = 256
 	DefaultAgentContextMaxMetadataFieldBytes = 4 * 1024
 	// Provider input is a non-disableable safety boundary over the complete
-	// serialized prompt (history, tools, and injected context), not a semantic
-	// compaction preference.
+	// text envelope (history, tools, attachment descriptors, and injections).
+	// Native media bytes belong to adapter wire limits, not semantic compaction.
 	DefaultAgentContextMaxProviderInputBytes = 4 * 1024 * 1024
 
 	MaxAgentContextFragmentBytes      = 16 * 1024 * 1024

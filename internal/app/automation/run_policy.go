@@ -41,42 +41,12 @@ func projectAgentKind(snap *automationWorkspaceSnapshot) string {
 	}
 }
 
-// automationInvocationManifest captures the Project Agent's effective tools in
-// the run ledger. Automation adds no capability layer: its Prompt uses exactly
-// the tools enabled for the owning Project Agent.
-func automationInvocationManifest(snap *automationWorkspaceSnapshot) ([]automation.ToolManifestItem, error) {
-	agentKind := projectAgentKind(snap)
-	if agentKind == "" || snap == nil || strings.TrimSpace(snap.projectID) == "" {
-		return nil, fmt.Errorf("automation execution requires a target Project Agent")
-	}
-	projectTools := config.ResolveAgentTools(&snap.cfg, agentKind)
-	manifest := config.ResolveAgentToolManifest(projectTools)
-	result := make([]automation.ToolManifestItem, 0, len(manifest))
-	for _, capability := range manifest {
-		result = append(result, automation.ToolManifestItem{Source: capability.Capability, Allowed: capability.Allowed})
-	}
-	return result, nil
-}
-
 func normalizeAutomationTrigger(trigger string) string {
 	switch trigger {
 	case automation.TriggerSchedule, automation.TriggerCondition, automation.TriggerInboxConfirmation, automation.TriggerWriteConfirmation:
 		return trigger
 	default:
 		return automation.TriggerManual
-	}
-}
-
-func eventMessage(data interface{}) string {
-	switch typed := data.(type) {
-	case map[string]string:
-		return strings.TrimSpace(typed["message"])
-	case map[string]interface{}:
-		return strings.TrimSpace(fmt.Sprint(typed["message"]))
-	case string:
-		return strings.TrimSpace(typed)
-	default:
-		return strings.TrimSpace(fmt.Sprint(data))
 	}
 }
 

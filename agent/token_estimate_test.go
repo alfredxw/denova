@@ -35,8 +35,8 @@ func TestImageEstimateDoesNotDependOnLosslessCompression(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if size.Bytes < (encoded.Len()+2)/3*4 {
-			t.Fatalf("encoded image bytes are missing from transport budget: %+v", size)
+		if size.Bytes >= encoded.Len() {
+			t.Fatalf("encoded image bytes leaked into context budget: %+v", size)
 		}
 		estimates = append(estimates, size.Tokens)
 	}

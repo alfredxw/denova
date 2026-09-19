@@ -12,13 +12,13 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-// InputEstimateVersion changes when the local counting units change. A stored
+// InputEstimateVersion changes when the local token-counting units change. A stored
 // response may calibrate a later request only when both use this version.
 const InputEstimateVersion uint16 = 2
 
-// InputSize keeps context tokens separate from transport bytes. Bytes includes
-// the provider-neutral JSON envelope and encoded native images; it is a budget
-// estimate, not a claim to reproduce an adapter's entire HTTP serialization.
+// InputSize measures context capacity. Tokens includes text and native vision.
+// Bytes measures the provider-neutral JSON envelope (including attachment
+// descriptors), never encoded image data. Adapters own actual wire limits.
 type InputSize struct {
 	Tokens int
 	Bytes  int
@@ -54,14 +54,14 @@ func (estimator InputEstimator) Estimate(messages []*Message, tools []*ToolInfo)
 	}
 	size := InputSize{Tokens: EstimateRequestTextTokens(messages, tools), Bytes: len(encoded)}
 	for _, message := range messages {
-		if message == nil || message.Role != User {
+		if message == nil || (message.Role != User && message.Role != ToolRole) {
 			continue
 		}
 		for _, attachment := range message.Attachments {
 			if !IsNativeImageMediaType(attachment.MediaType) {
 				continue
 			}
-			config, bytes, err := attachmentImageSize(attachment)
+			config, err := attachmentImageSize(attachment)
 			if err != nil {
 				return InputSize{}, err
 			}
@@ -73,35 +73,32 @@ func (estimator InputEstimator) Estimate(messages []*Message, tools []*ToolInfo)
 				return InputSize{}, fmt.Errorf("image token estimator returned %d for %q", tokens, attachment.Name)
 			}
 			size.Tokens += tokens
-			// Base64 expands each three bytes into four ASCII bytes. These
-			// bytes belong only to the transport budget, not the token budget.
-			size.Bytes += int((bytes+2)/3*4) + len("data:"+attachment.MediaType+";base64,")
 		}
 	}
 	return size, nil
 }
 
-func attachmentImageSize(attachment Attachment) (image.Config, int64, error) {
+func attachmentImageSize(attachment Attachment) (image.Config, error) {
 	file, err := os.Open(attachmentFilePath(attachment))
 	if err != nil {
-		return image.Config{}, 0, fmt.Errorf("inspect attached image %q: %w", attachment.Name, err)
+		return image.Config{}, fmt.Errorf("inspect attached image %q: %w", attachment.Name, err)
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return image.Config{}, 0, fmt.Errorf("stat attached image %q: %w", attachment.Name, err)
+		return image.Config{}, fmt.Errorf("stat attached image %q: %w", attachment.Name, err)
 	}
 	if !info.Mode().IsRegular() {
-		return image.Config{}, 0, fmt.Errorf("attached image %q is not a regular file", attachment.Name)
+		return image.Config{}, fmt.Errorf("attached image %q is not a regular file", attachment.Name)
 	}
 	config, _, err := image.DecodeConfig(file)
 	if err != nil {
-		return image.Config{}, 0, fmt.Errorf("decode attached image %q dimensions: %w", attachment.Name, err)
+		return image.Config{}, fmt.Errorf("decode attached image %q dimensions: %w", attachment.Name, err)
 	}
 	if config.Width <= 0 || config.Height <= 0 {
-		return image.Config{}, 0, fmt.Errorf("attached image %q has invalid dimensions", attachment.Name)
+		return image.Config{}, fmt.Errorf("attached image %q has invalid dimensions", attachment.Name)
 	}
-	return config, info.Size(), nil
+	return config, nil
 }
 
 func inputEstimatorForModel(model BaseChatModel) InputEstimator {

@@ -46,6 +46,7 @@ func TestAgentManagerForModelSeparatesPolicyKindFromConcreteModelWindow(t *testi
 	messages := []*agent.Message{agent.UserMessage(strings.Repeat("history ", 200)), agent.AssistantMessage("answer", nil), agent.UserMessage("continue")}
 	plan, err := small.Plan(context.Background(), agent.CompactionPlanRequest{
 		Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), Force: true,
+		EstimateAfter: func(int) (agent.InputSize, error) { return (agent.InputEstimator{}).Estimate(messages[2:], nil) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -94,6 +95,9 @@ func TestAgentManagerAdvancesBeforeCacheSafeForkCapacityIsExhausted(t *testing.T
 	}
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
 		Groups: []agent.CompactionGroup{{Messages: source[:2]}}, ModelSnapshot: call.Snapshot(),
+		EstimateAfter: func(int) (agent.InputSize, error) {
+			return call.Snapshot().WithMessages(append(primary[:1:1], source[2:]...)).EstimateInput()
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

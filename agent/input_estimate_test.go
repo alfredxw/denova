@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/gif"
@@ -46,7 +47,7 @@ func TestInputEstimatorDecodesEveryNativeImageFormat(t *testing.T) {
 			message := UserMessageWithAttachments("Inspect", []Attachment{{
 				Name: "input." + format, MediaType: "image/" + format,
 				Path: "attachments/original." + format, RuntimePath: path,
-				// Deliberately stale descriptor: actual file bytes own transport size.
+				// Descriptor size does not determine visual tokens.
 				Size: 1,
 			}})
 			estimator := InputEstimator{ImageTokens: func(w, h int) int {
@@ -60,7 +61,10 @@ func TestInputEstimatorDecodesEveryNativeImageFormat(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := EstimateRequestTextTokens([]*Message{message}, nil)
-			if size.Tokens != text+width*height || size.Bytes < base64.StdEncoding.EncodedLen(encoded.Len()) {
+			envelope, _ := json.Marshal(struct {
+				Messages []*Message `json:"messages"`
+			}{[]*Message{message}})
+			if size.Tokens != text+width*height || size.Bytes != len(envelope) {
 				t.Fatalf("image accounting = %+v, text tokens = %d", size, text)
 			}
 			if message.Attachments[0].Size != 1 || message.Attachments[0].Path != "attachments/original."+format {

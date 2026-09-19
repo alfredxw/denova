@@ -204,7 +204,7 @@ function AutomationRunList({ task, activeRunId, onOpenRun }: { task: AutomationT
       {runs.slice(0, 5).map((run) => (
         <div key={run.id} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
           <div className="flex items-center gap-2">
-            <span className="font-medium">{run.status}</span>
+            <span className="font-medium">{t(`automations.runs.status.${run.status}`)}</span>
             <span className="text-[11px] text-[var(--nova-text-faint)]">{new Date(run.started_at).toLocaleString()}</span>
             {run.output_path && <span className="ml-auto truncate text-[11px] text-[var(--nova-text-faint)]">{run.output_path}</span>}
             {run.session_id && (

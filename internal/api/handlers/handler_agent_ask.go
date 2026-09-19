@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/agents/external"
 	appsvc "denova/internal/app"
 )
 
@@ -91,6 +92,8 @@ func (h *Handlers) HandleSessionAskCancel(ctx context.Context, c *app.RequestCon
 
 func writeAskResolutionError(c *app.RequestContext, err error) {
 	switch {
+	case errors.Is(err, external.ErrAskConflict):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.ask_conflict", "Ask interaction was resolved differently", nil)
 	case errors.Is(err, appsvc.ErrAgentAskNotFound):
 		writeAgentRuntimeError(c, consts.StatusNotFound, "agent_runtime.ask_not_found", "Ask interaction not found", nil)
 	case errors.Is(err, appsvc.ErrNoWorkspace):

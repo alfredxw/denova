@@ -3,6 +3,7 @@ package agentchat
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -24,19 +25,32 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	runtime, projected := appagentruntime.RuntimeProjection(ctx, executionRuntime, runtimeOptions(binding, ""))
 	active := service.activeRun(binding)
 	var taskSnapshot *apptask.Snapshot
-	var pendingAsk *session.AskInteraction
+	var pendingAsks []*session.AskInteraction
 	streamAttached := false
 	if active != nil && active.task != nil {
 		snapshot := active.task.Snapshot()
 		taskSnapshot = &snapshot
 		streamAttached = !snapshot.Finished
 	}
-	if projected && len(runtime.PendingInteractions) > 0 {
-		pendingAsk = chatagent.ProjectPendingInteraction(runtime.PendingInteractions[0], runtime)
+	if projected {
+		for _, request := range runtime.PendingInteractions {
+			pendingAsks = append(pendingAsks, chatagent.ProjectPendingInteraction(request, runtime))
+		}
 	}
 	pendingInterruptionID := ""
 	if project, projectErr := service.projectRuntime(ctx, binding.ProjectID); projectErr == nil {
 		if conversation, sessionErr := project.store.Get(binding.SessionID); sessionErr == nil {
+			if engines := service.host.AgentEngines(); engines != nil {
+				if view, owned, err := engines.Operations.Status(ctx, binding.ProjectID, conversation); owned {
+					runtime, projected = view, err == nil
+					var askErr error
+					pendingAsks, askErr = conversation.PendingExternalAsks(ctx)
+					if askErr != nil {
+						projected = false
+						slog.ErrorContext(ctx, "Read external pending questions failed", "session_id", binding.SessionID, "error", askErr)
+					}
+				}
+			}
 			if pending := conversation.PendingInterruption(); pending != nil {
 				pendingInterruptionID = strings.TrimSpace(pending.ID)
 			}
@@ -44,7 +58,7 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	}
 	return ActiveView{
 		Task: taskSnapshot, Runtime: runtime, RuntimeProjectionOK: projected,
-		StreamAttached: streamAttached, PendingAsk: pendingAsk, PendingInterruptionID: pendingInterruptionID,
+		StreamAttached: streamAttached, PendingAsks: pendingAsks, PendingInterruptionID: pendingInterruptionID,
 	}
 }
 
@@ -132,6 +146,15 @@ func (service *Service) resolveAsk(
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
+	}
+	sess, err := project.store.Get(binding.SessionID)
+	if err != nil {
+		return agentconversation.HostAskResolution{}, err
+	}
+	if engines := service.host.AgentEngines(); engines != nil {
+		if result, owned, err := engines.Operations.ResolveAsk(ctx, binding.ProjectID, sess, askID, status, answers, cancelReason); owned {
+			return result, err
+		}
 	}
 	return project.executionRuntime.ResolveAsk(ctx, runtimeOptions(binding, ""), askID, status, answers, cancelReason)
 }

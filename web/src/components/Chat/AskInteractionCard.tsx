@@ -185,7 +185,7 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
                               name={`ask-${interaction.id}-${question.id}`}
                               checked={checked}
                               onChange={(event) => chooseOption(option.id, event.target.checked)}
-                              className="mt-0.5 accent-[var(--nova-accent)]"
+                              className="mt-0.5 size-4 shrink-0 accent-[var(--nova-accent)]"
                             />
                             <span className="min-w-0 flex-1">
                               <span className="flex flex-wrap items-center gap-1.5 text-[var(--nova-text)]">

@@ -5,6 +5,7 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
+	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
@@ -124,15 +125,12 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	if err != nil {
 		return nil, err
 	}
-	builtAgent, err := appagentruntime.BuildConversationAgent(
-		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
-		agentHost,
-	)
+	executor, err := conversationapp.BuildExecution(ctx, sharedConversationRuntime(runtime), agentHost, a.AgentEngines(), "")
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] failed to refresh Agent runtime workspace=%s err=%v", runtime.workspace, err))
 		return nil, err
 	}
-	systemPrompt := builtAgent.Composition
+	systemPrompt := executor.Composition
 	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.state, req.IDEContext)
 	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess,
@@ -150,12 +148,12 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		runtime.versionService,
 		versionAutoSettingsForConfig(&runtime.cfg),
 	)
-	var accepted *agentexecution.Operation
+	var accepted *conversationapp.Operation
 	runAccepted := func(ctx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run begin id=%s session_id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), runtime.sess.ID, len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill))
 		accepted.Wait(ctx)
-		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput)
+		outputCommitted := accepted.OutputCommitted()
 		postSettlementCtx := ctx
 		if outputCommitted {
 			// A durable domain receipt outlives a late caller cancellation. Keep
@@ -168,7 +166,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		// App projections therefore follow the receipt instead of compensating
 		// with a second, potentially divergent outcome-status check.
 		cycleCommitted := outputCommitted
-		if cycleCommitted && len(verifiedMutations) > 0 {
+		if (cycleCommitted || accepted.IsExternal()) && len(verifiedMutations) > 0 {
 			mutationCallback(postSettlementCtx, verifiedMutations, postRunVerification)
 		}
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run end id=%s session_id=%s status=%s", task.ID(), runtime.sess.ID, task.Status()))
@@ -206,16 +204,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		postRunVerification = verification
 	}
 	startOptions = s.bindReviewFeedbackInputCommit(startOptions, runtime, req)
-	accepted, err = runtime.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
-		Cycle: agentexecution.Cycle{
-			Definition:   builtAgent.Definition,
-			Conversation: conversation,
-			BookService:  runtime.bookService,
-			Request:      req,
-			Options:      startOptions,
-		},
-		Emit: task.Emit,
-	})
+	accepted, err = executor.Start(acceptCtx, req, conversation, startOptions, task.Emit)
 	releaseAcceptance()
 	if err != nil {
 		task.RejectStart(err)

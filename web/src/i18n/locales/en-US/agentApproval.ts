@@ -1,4 +1,11 @@
 const agentApproval = {
+  'agentApproval.codex.ask.label': 'Read-only',
+  'agentApproval.codex.ask.description': 'Read project files and run read-only tools. Changes and commands with side effects are blocked.',
+  'agentApproval.codex.write.label': 'Workspace write',
+  'agentApproval.codex.write.description': 'Read and edit project files and run permitted development commands. Operations outside this scope are blocked.',
+  'agentApproval.codex.full_access.label': 'Full access',
+  'agentApproval.codex.full_access.description': 'Allow host tools beyond the project boundary, subject to critical-operation checks. Engine sandbox restrictions are disabled.',
+  'agentApproval.codex.runActive': 'Stop the current run before changing permissions.',
   'agentApproval.mode.ask.label': 'Ask',
   'agentApproval.mode.ask.description': 'Project edits and common read-only commands run automatically. External file reads, network access, external writes, and unlisted shell commands ask first.',
   'agentApproval.mode.write.label': 'Write',

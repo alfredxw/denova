@@ -14,15 +14,19 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-const readToolContractVersion = 3
+const readToolContractVersion = 4
 
 // ReadResult is the provider-neutral result returned by every ReadAdapter.
 // Offset is one-based when Content should be rendered with source line numbers;
 // leave it zero for already-structured content such as directories or JSON.
 type ReadResult struct {
-	Path           string
-	Kind           string
-	Content        string
+	Path    string
+	Kind    string
+	Content string
+	// Native images use immutable copies; Artifacts retain their reread paths
+	// when older tool messages are compacted out of model context.
+	Attachments    []agent.Attachment
+	Artifacts      []agent.ToolArtifactRef
 	Offset         int
 	ByteOffset     int
 	Limit          int
@@ -331,6 +335,7 @@ func projectReadResult(result ReadResult, maxResultBytes int) (agent.ToolResult,
 		}
 		return agent.ToolResult{
 			ModelContent: modelContent, DisplayContent: modelContent, Details: encoded,
+			Attachments: result.Attachments, Artifacts: result.Artifacts,
 			Status: agent.ToolResultSuccess,
 		}, projected, nil
 	}
@@ -390,6 +395,7 @@ func projectReadLineFragment(result ReadResult, line string, maxResultBytes int)
 		}
 		return agent.ToolResult{
 			ModelContent: modelContent, DisplayContent: modelContent, Details: encoded,
+			Attachments: result.Attachments, Artifacts: result.Artifacts,
 			Status: agent.ToolResultSuccess,
 		}, nil
 	}

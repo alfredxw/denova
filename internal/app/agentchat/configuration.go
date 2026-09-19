@@ -3,6 +3,7 @@ package agentchat
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
@@ -32,6 +33,9 @@ func (service *Service) PatchConversationConfig(
 		return conversationconfig.Snapshot{}, err
 	}
 	if !project.store.Exists(resolved.SessionID) {
+		if patch.Runtime != nil {
+			return conversationconfig.Snapshot{}, fmt.Errorf("%w: runtime can only be applied to an existing conversation", conversationconfig.ErrRevisionConflict)
+		}
 		current, err := agentconversation.PreviewSession(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)
 		if err != nil {
 			return conversationconfig.Snapshot{}, err
@@ -48,7 +52,7 @@ func (service *Service) PatchConversationConfig(
 			return conversationconfig.Snapshot{}, err
 		}
 		created, ok := sess.RuntimeConfig()
-		if !ok || created.Config != next || created.Revision != 1 {
+		if !ok || !reflect.DeepEqual(created.Config, next) || created.Revision != 1 {
 			return conversationconfig.Snapshot{}, fmt.Errorf("%w: conversation was initialized concurrently", conversationconfig.ErrRevisionConflict)
 		}
 		return created, nil
@@ -60,6 +64,12 @@ func (service *Service) PatchConversationConfig(
 	next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
+	}
+	if patch.Runtime != nil {
+		if err := service.requireIdle(resolved); err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+		return service.host.AgentEngines().ApplyEngineSelection(ctx, project.executionRuntime, sess, runtimeOptions(resolved, ""), next, baseRevision, runtimeCfg)
 	}
 	return sess.SetRuntimeConfig(next, baseRevision)
 }

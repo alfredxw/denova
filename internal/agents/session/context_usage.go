@@ -36,7 +36,7 @@ func (s *Session) LatestModelPromptUsage(agentKind string) (promptTokens, cached
 		}
 		// Older journals may only contain aggregate usage. It is comparable to
 		// one request only when the run made at most one model call.
-		if usage.PromptTokens > 0 && usage.ModelCalls <= 1 {
+		if usage.PromptTokens > 0 && usage.ModelCalls == 1 {
 			return usage.PromptTokens, min(usage.PromptTokens, max(0, usage.CachedPromptTokens)), true
 		}
 		return 0, 0, false

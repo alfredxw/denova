@@ -4,6 +4,7 @@ import type { ToolPresentationKind } from '@/lib/api-client/types'
 export type { AgentApprovalMode } from '@/features/agent-approval/modes'
 
 export interface Settings {
+  agent_runtimes?: Partial<Record<'ide' | 'general', import('@/features/agent-runtime/types').RuntimePreferences>>
   openai_api_key?: string
   openai_base_url?: string
   openai_model?: string
@@ -441,6 +442,7 @@ export interface SubAgentConfig {
 
 /** Complete user-owned Agent definition inside one stable runtime contract. */
 export interface CustomAgentConfig {
+  runtime?: import('@/features/agent-runtime/types').RuntimePreferences
   id?: string
   name?: string
   description?: string
@@ -583,6 +585,7 @@ interface SettingsRevisions {
 }
 
 export interface LayeredSettings {
+  agent_configuration?: Record<string, import('@/features/agent-runtime/types').AgentConfiguration>
   default: Settings
   global: Settings
   user: Settings

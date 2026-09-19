@@ -76,7 +76,7 @@ func buildWorkspace(config WorkspaceConfig) (agent.Toolset, error) {
 	if err != nil {
 		return nil, err
 	}
-	localText, err := LocalTextAdapter(workspace)
+	localText, err := LocalFileAdapter(workspace)
 	if err != nil {
 		return nil, err
 	}

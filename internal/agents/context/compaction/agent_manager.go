@@ -125,14 +125,10 @@ func NewAgentManagerForModel(
 	if trigger <= 0 || trigger >= hardLimit {
 		trigger = int(float64(hardLimit) * settings.CompactionThreshold)
 	}
-	keepRecent := max(64<<10, trigger/5)
-	if keepRecent >= trigger {
-		keepRecent = trigger / 2
-	}
 	manager := publiccompaction.Standard(publiccompaction.StandardConfig{
 		Prompt:       compactionDomainRequirements(policyKind) + "\n" + agentcontext.CompactionCheckpointSchema() + "\n" + settings.CheckpointGuidance,
 		Execution:    modelio.ModelExecutionPolicy(cfg),
-		TriggerBytes: trigger, KeepRecentBytes: keepRecent, HardLimitBytes: hardLimit,
+		TriggerBytes: trigger, HardLimitBytes: hardLimit,
 		SummaryLimitBytes:   summaryLimit,
 		ContextWindowTokens: contextWindowTokens,
 		ReservedTokens:      completionReserve + toolReserve,

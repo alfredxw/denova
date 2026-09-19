@@ -1,9 +1,10 @@
 import { createContext, useContext, type ReactNode } from 'react'
+import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 
 export type ToolNavigationTarget =
   | { kind: 'workspace_file'; path: string }
   | { kind: 'lore_item'; id?: string; name?: string }
-  | { kind: 'config_resource'; resource: string; id?: string; scope?: string }
+  | { kind: 'config_resource'; resource: string; id?: string; scope?: string; section?: 'runtime'; conversation?: ConversationConfigBinding }
 
 export interface ToolNavigationIntent {
   target: Exclude<ToolNavigationTarget, { kind: 'workspace_file' }>

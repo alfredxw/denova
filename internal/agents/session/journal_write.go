@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/config"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
 	"denova/internal/localfs"
@@ -42,6 +43,20 @@ func createSessionWithRuntimeConfig(id, filePath, title string, runtimeConfig *c
 	data, err := marshalJSONLine(header)
 	if err != nil {
 		return nil, err
+	}
+	if runtimeConfig != nil && runtimeConfig.Engine().Kind != config.RuntimeNative {
+		// Keep the immutable header vocabulary stable, then introduce the new
+		// snapshot in a record that released readers cannot silently ignore.
+		header.RuntimeConfig, header.RuntimeConfigRevision = nil, 0
+		data, err = marshalJSONLine(header)
+		if err != nil {
+			return nil, err
+		}
+		patch, err := marshalJSONLine(sessionPatchRecord{Type: historyTypeRuntimePatch, RuntimeConfig: runtimeConfig, RuntimeConfigRevision: 1, UpdatedAt: now})
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, patch...)
 	}
 	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
@@ -79,6 +94,10 @@ func (s *Session) appendJournalRecordLocked(record any) error {
 // appendJournalRecordsLocked publishes one canonical transaction and returns
 // exact record locations for references stored by later domain records.
 func (s *Session) appendJournalRecordsLocked(records ...any) (conversationjournal.Commit, error) {
+	return s.appendJournalRecordsWithUpgradeLocked("", records...)
+}
+
+func (s *Session) appendJournalRecordsWithUpgradeLocked(upgrade string, records ...any) (conversationjournal.Commit, error) {
 	if s.journal == nil {
 		return conversationjournal.Commit{}, fmt.Errorf("会话 journal 未打开")
 	}
@@ -91,7 +110,7 @@ func (s *Session) appendJournalRecordsLocked(records ...any) (conversationjourna
 		payloads[index] = data
 	}
 	head := s.journal.Head()
-	commit, err := s.journal.Append(context.Background(), conversationjournal.Guard{Cursor: s.materializedCursor, RecordSHA256: head.RecordSHA256}, payloads...)
+	commit, err := s.journal.AppendWithBackup(context.Background(), conversationjournal.Guard{Cursor: s.materializedCursor, RecordSHA256: head.RecordSHA256}, upgrade, payloads...)
 	if err != nil {
 		return conversationjournal.Commit{}, err
 	}

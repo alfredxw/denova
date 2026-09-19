@@ -29,7 +29,7 @@ func AgentProfilePath(kind string) (string, error) {
 // unchanged when the file is invalid. Collection edits are identified by the
 // planner's stable-ID diff, preserving invalid unmentioned collection files.
 func AgentProfilePatchPaths(changes json.RawMessage) ([]string, error) {
-	if err := validateSettingsPatchObject(changes); err != nil {
+	if _, err := decodeSettingsPatchObject(changes); err != nil {
 		return nil, err
 	}
 	var fields map[string]json.RawMessage
@@ -39,12 +39,16 @@ func AgentProfilePatchPaths(changes json.RawMessage) ([]string, error) {
 	paths := map[string]bool{}
 	for field, value := range fields {
 		switch field {
-		case "agent_models", "agent_tools", "agent_prompts", "agent_skills", "agent_context", "general_sub_agents":
+		case "agent_runtimes", "agent_models", "agent_tools", "agent_prompts", "agent_skills", "agent_context", "general_sub_agents":
 			var kinds map[string]json.RawMessage
 			if err := json.Unmarshal(value, &kinds); err != nil {
 				return nil, err
 			}
 			if kinds == nil {
+				if field == "agent_runtimes" {
+					paths["main/writing.toml"], paths["main/general.toml"] = true, true
+					continue
+				}
 				paths["main/defaults.toml"] = true
 				for _, profile := range fixedAgentProfiles {
 					paths["main/"+profile.Filename] = true

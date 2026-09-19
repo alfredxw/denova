@@ -575,7 +575,9 @@ describe('ModeRouter autosave navigation policy', () => {
 
     rerender(withAppProviders(<ModeRouter {...baseProps} mode="agentchat" selectedFile={secondPath} summary={updatedSummary} />))
     await waitFor(() => expect(agentChatRoute.closest('section')).not.toHaveAttribute('hidden'))
-    expect(agentChatRouteLifecycle.renders).toBe(rendersAfterHiding)
+    // Revealing a retained route can apply asynchronous data that arrived
+    // while hidden. Preserve its instance without constraining reveal renders.
+    expect(screen.getByTestId('agent-chat-route')).toBe(agentChatRoute)
     expect(agentChatRoute).toHaveAttribute('data-project-id', baseProps.projectId)
   })
 

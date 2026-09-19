@@ -10,13 +10,21 @@ export function compactionControl(requestURL, response, writeJSON) {
 
 export function compactionCompletion(body) {
   const serialized = JSON.stringify(body.messages ?? [])
-  const marker = ['E2E_COMPACTION_WRITING', 'E2E_COMPACTION_GAME'].find(value => serialized.includes(value))
+  const marker = ['E2E_COMPACTION_WRITING', 'E2E_COMPACTION_GAME', 'E2E_IMAGE_COMPACTION_WRITING', 'E2E_IMAGE_COMPACTION_GAME'].find(value => serialized.includes(value))
   if (!marker) return null
   const captured = runs.get(marker) ?? []
   captured.push(body)
   runs.set(marker, captured)
   const lastUser = [...(body.messages ?? [])].reverse().find(message => message.role === 'user')
   const input = JSON.stringify(lastUser?.content ?? '')
+  if (marker.startsWith('E2E_IMAGE_COMPACTION')) {
+    if (serialized.includes('[Runtime context compaction request]') || body.stream !== true) {
+      return { content: `${marker} checkpoint: The reference shows a blue station and a red door. Preserve the latest reference.`, summary: true }
+    }
+    const images = body.messages.flatMap(message => Array.isArray(message.content) ? message.content : []).filter(part => part.type === 'image_url')
+    const turn = input.match(/TURN_(\d+)/)?.[1] ?? 'continue'
+    return { content: images.length > 0 ? `${marker} ${turn} accepted.` : `${marker} native images missing.` }
+  }
   if (input.includes('[Runtime context compaction request]') || body.stream !== true) {
     return { content: `${marker} checkpoint: Preserve the archive facts and continue the current task using live evidence.`, summary: true }
   }

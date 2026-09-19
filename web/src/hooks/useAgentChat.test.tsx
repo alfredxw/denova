@@ -113,6 +113,22 @@ describe('useAgentChat', () => {
     })
   })
 
+  it('restores every pending external question from the active projection', async () => {
+    const questions = ['tone', 'length'].map((id) => ({
+      schema: 'ask.pending.v1', id, tool_call_id: `original-${id}`, agent_kind: 'ide', status: 'pending' as const,
+      questions: [{ id, question: `Choose ${id}`, options: [] }],
+    }))
+    vi.mocked(getActiveChatTask).mockResolvedValue({ active: false, pending_asks: questions })
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => result.current.resumeActiveChat())
+    const restored = chatMock.setMessages.mock.calls.reduce<Array<{ parts?: Array<{ type?: string; data?: unknown }> }>>(
+      (messages, [update]) => typeof update === 'function' ? update(messages) : update, [],
+    )
+    const pending = restored.flatMap((message) => message.parts ?? []).filter((part) => part.type === 'data-agent-ask')
+    expect(pending.map((part) => part.data)).toEqual(questions)
+    expect(chatMock.resumeStream).not.toHaveBeenCalled()
+  })
+
   it('keeps the confirmed session selected and blocks sends while a switch is pending', async () => {
     writingAgentChatClient.fixedSessionId = ''
     chatMock.status = 'streaming'
@@ -1716,6 +1732,18 @@ describe('useAgentChat', () => {
     expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction, 'session-test')
     expect(chatMock.resumeStream).not.toHaveBeenCalled()
     expect(result.current.abortPending).toBe(true)
+  })
+
+  it('shares a pending stream attachment across repeated inspections', async () => {
+    const attachment = deferred<void>()
+    chatMock.resumeStream.mockReturnValue(attachment.promise)
+    vi.mocked(getActiveChatTask).mockResolvedValue({ active: true, task_id: 'same-task', active_operation_id: 'same-operation', phase: 'running' })
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => result.current.resumeActiveChat())
+    await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(1))
+    await act(async () => result.current.resumeActiveChat())
+    expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
+    await act(async () => attachment.resolve())
   })
 
   it('immediately reprojects a second paused recovery after AI SDK resolves the failed observation', async () => {

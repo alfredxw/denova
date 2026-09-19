@@ -240,10 +240,14 @@ func (s *Store) listDurableRuns(obligationsOnly bool) ([]DurableRun, error) {
 }
 
 func (s *Store) AppendRun(id string, run RunRecord) (Task, error) {
-	return s.appendRun(context.Background(), id, run, false)
+	return s.appendRun(context.Background(), id, run)
 }
 
-func (s *Store) appendRun(ctx context.Context, id string, run RunRecord, allowCompletionReopen bool) (Task, error) {
+func (s *Store) appendRun(ctx context.Context, id string, run RunRecord) (Task, error) {
+	run = deliveryRecord(run)
+	if err := validateDeliveryRecord(run); err != nil {
+		return Task{}, err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -284,8 +288,23 @@ func (s *Store) appendRun(ctx context.Context, id string, run RunRecord, allowCo
 					if !durableRunMatchesTask(entry, task) {
 						return Task{}, fmt.Errorf("%w: run_id=%s belongs to task %s", ErrRunIdentityConflict, run.ID, entry.TaskCatalogID)
 					}
-					run = preserveMonotonicRunReceipt(entry.Run, run, allowCompletionReopen)
-					if transitionErr := validateRunAppendTransition(entry.Run, run, allowCompletionReopen); transitionErr != nil {
+
+					if entry.Run.DeliveryStatus == "" && run.DeliveryStatus != "" {
+						backupPath, err := location.store.durableRunPath(location.scope, run.ID)
+						if err != nil {
+							return Task{}, err
+						}
+						backupPath += ".v1.bak"
+						if _, err := os.Stat(backupPath); errors.Is(err, os.ErrNotExist) {
+							if err := writeDurableRunFile(backupPath, entry, nil); err != nil {
+								return Task{}, err
+							}
+						} else if err != nil {
+							return Task{}, err
+						}
+					}
+					run = preserveLegacyEffects(entry.Run, run)
+					if transitionErr := validateRunAppendTransition(entry.Run, run); transitionErr != nil {
 						return Task{}, transitionErr
 					}
 				}

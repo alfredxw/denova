@@ -319,7 +319,7 @@ func workspaceToolsFactory(workspace, projectStoreRoot string, metadata Workspac
 		// primary receipt and otherwise use the first enabled URI capability.
 		readCapability := ""
 		if readEnabled {
-			textAdapter, err := agenttools.LocalTextAdapter(backend)
+			textAdapter, err := agenttools.LocalFileAdapter(backend)
 			if err != nil {
 				return nil, fmt.Errorf("create local text read adapter: %w", err)
 			}

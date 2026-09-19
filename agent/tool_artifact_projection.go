@@ -10,15 +10,25 @@ import (
 // detached provider request. Canonical loop state keeps owner-relative paths.
 func projectToolArtifactPaths(ctx context.Context, storage ToolArtifactStorage, messages []*Message) ([]*Message, error) {
 	result := cloneMessages(messages)
-	if storage == nil {
-		return result, nil
-	}
-	resolver, ok := storage.(ToolArtifactPathResolver)
-	if !ok {
-		return result, nil
-	}
+	resolver, hasResolver := storage.(ToolArtifactPathResolver)
 	for _, message := range result {
-		if message == nil || message.ToolResult == nil {
+		if message == nil {
+			continue
+		}
+		if message.Role == ToolRole {
+			for index := range message.Attachments {
+				if !hasResolver {
+					return nil, fmt.Errorf("tool image requires artifact path resolution")
+				}
+				attachment := &message.Attachments[index]
+				resolved, err := resolver.ResolveToolArtifactPath(ctx, attachment.Path)
+				if err != nil {
+					return nil, fmt.Errorf("resolve tool image %q: %w", attachment.Name, err)
+				}
+				attachment.RuntimePath = resolved
+			}
+		}
+		if !hasResolver || message.ToolResult == nil {
 			continue
 		}
 		paths := make(map[string]string)

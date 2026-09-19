@@ -8,6 +8,7 @@ import (
 	agents "denova/internal/agents"
 	agentexecution "denova/internal/agents/execution"
 	agenttool "denova/internal/agents/tool"
+	appagentruntime "denova/internal/app/agentruntime"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
@@ -18,6 +19,8 @@ import (
 type agentChatHost struct {
 	app *App
 }
+
+func (host agentChatHost) AgentEngines() *appagentruntime.Engines { return host.app.AgentEngines() }
 
 func (host agentChatHost) BaseRuntime() (config.Config, *agentexecution.Runtime) {
 	if host.app == nil {

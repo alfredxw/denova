@@ -74,7 +74,14 @@ type CompactionPlanRequest struct {
 	Run     RunView
 	Groups  []CompactionGroup
 	// RetainedBytes measures the protected suffix, for policies retaining more history.
-	RetainedBytes           int
+	RetainedBytes int
+	// EstimateAfter projects replacing a nonempty prefix of Groups through the
+	// active request preparation pipeline, including protected user inputs,
+	// context, tool visibility and schemas. The generated summary is excluded;
+	// policies must reserve its budget. This callback is valid only during Plan
+	// and does not call the model or publish journal state. Final validation
+	// rebuilds the request again with the actual checkpoint.
+	EstimateAfter           func(groupCount int) (InputSize, error)
 	ModelSnapshot           *ModelRequestSnapshot
 	LifecycleReservedTokens int
 	Force                   bool

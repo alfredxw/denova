@@ -83,6 +83,7 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 			}).Snapshot()
 			plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
 				Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: snapshot,
+				EstimateAfter: func(int) (agent.InputSize, error) { return snapshot.WithMessages(messages[2:]).EstimateInput() },
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -128,6 +129,7 @@ func TestStandardIncludesLifecycleSideForkReserveInTriggerAndValidation(t *testi
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
 		Groups:        []agent.CompactionGroup{{Messages: messages[:2]}},
 		ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), LifecycleReservedTokens: 1_600,
+		EstimateAfter: func(int) (agent.InputSize, error) { return (agent.InputEstimator{}).Estimate(messages[2:], nil) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -157,6 +159,7 @@ func TestStandardUsesCapacityAwareModelOutputReserve(t *testing.T) {
 	call := &agent.ModelCall{Messages: messages, Options: []agent.ModelOption{agent.WithMaxTokens(4000)}}
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
 		Groups: []agent.CompactionGroup{{Messages: messages[:2]}}, ModelSnapshot: call.Snapshot(), Force: true,
+		EstimateAfter: func(int) (agent.InputSize, error) { return call.Snapshot().WithMessages(messages[2:]).EstimateInput() },
 	})
 	if err != nil {
 		t.Fatal(err)

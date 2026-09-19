@@ -14,8 +14,19 @@ import (
 // Model names also work through compatible endpoints. Unidentified models use
 // Agent's conservative visual reserve; encoded bytes never stand in for pixels.
 func (config ModelConfig) InputEstimator() agent.InputEstimator {
+	return agent.InputEstimator{ImageTokens: config.imagePolicy().tokens}
+}
+
+// imagePolicy keeps sending dimensions and context estimation on the same tier.
+type imagePolicy struct {
+	patchSize  int
+	tokens     func(int, int) int
+	dimensions func(int, int) (int, int)
+}
+
+func (config ModelConfig) imagePolicy() imagePolicy {
 	model := strings.ToLower(path.Base(strings.TrimSpace(config.Model)))
-	var imageTokens func(int, int) int
+	var policy imagePolicy
 	switch {
 	case strings.HasPrefix(model, "claude-"):
 		edge, patches := 1568, 1568
@@ -33,59 +44,62 @@ func (config ModelConfig) InputEstimator() agent.InputEstimator {
 				edge, patches = 2576, 4784
 			}
 		}
-		imageTokens = func(w, h int) int { return imagePatches(w, h, 28, edge, patches) }
+		policy = patchImagePolicy(28, edge, patches, 1)
 	case hasModelPrefix(model, "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
-		imageTokens = patchImageTokens(65535, 0, 1.2)
+		policy = patchImagePolicy(32, 65535, 0, 1.2)
 	case hasModelPrefix(model, "gpt-5.5"):
-		imageTokens = patchImageTokens(6000, 10000, 1.2)
+		policy = patchImagePolicy(32, 6000, 10000, 1.2)
 	case hasModelPrefix(model, "gpt-5.4"):
-		imageTokens = patchImageTokens(2048, 2500, 1.2)
+		policy = patchImagePolicy(32, 2048, 2500, 1.2)
 	case hasModelPrefix(model, "gpt-5.2"):
-		imageTokens = patchImageTokens(2048, 6144, 1.2)
+		policy = patchImagePolicy(32, 2048, 6144, 1.2)
 	case hasModelPrefix(model, "gpt-4.1-mini"):
-		imageTokens = patchImageTokens(2048, 6144, 1.62)
+		policy = patchImagePolicy(32, 2048, 6144, 1.62)
 	case hasModelPrefix(model, "gpt-4.1-nano"):
-		imageTokens = patchImageTokens(2048, 1536, 2.46)
+		policy = patchImagePolicy(32, 2048, 1536, 2.46)
 	case hasModelPrefix(model, "o4-mini"):
-		imageTokens = patchImageTokens(2048, 1536, 1.72)
+		policy = patchImagePolicy(32, 2048, 1536, 1.72)
 	case hasModelPrefix(model, "gpt-5-mini"):
-		imageTokens = patchImageTokens(2048, 1536, 1.2)
+		policy = patchImagePolicy(32, 2048, 1536, 1.2)
 	case hasModelPrefix(model, "gpt-5-nano"):
-		imageTokens = patchImageTokens(2048, 1536, 1.5)
+		policy = patchImagePolicy(32, 2048, 1536, 1.5)
 	case hasModelPrefix(model, "gpt-4o-mini"):
-		imageTokens = tileImageTokens(2833, 5667)
+		policy = tileImagePolicy(2833, 5667)
 	case hasModelPrefix(model, "gpt-4o", "gpt-4.1"):
-		imageTokens = tileImageTokens(85, 170)
+		policy = tileImagePolicy(85, 170)
 	case hasModelPrefix(model, "gpt-5.1") || model == "gpt-5" || strings.HasPrefix(model, "gpt-5-20"):
-		imageTokens = tileImageTokens(70, 140)
+		policy = tileImagePolicy(70, 140)
 	case hasModelPrefix(model, "o1", "o3"):
-		imageTokens = tileImageTokens(75, 150)
+		policy = tileImagePolicy(75, 150)
 	}
-	return agent.InputEstimator{ImageTokens: imageTokens}
+	return policy
 }
 
 // https://developers.openai.com/api/docs/guides/images-vision#calculating-costs
-func patchImageTokens(edge, patches int, multiplier float64) func(int, int) int {
-	return func(w, h int) int {
-		return int(math.Ceil(float64(imagePatches(w, h, 32, edge, patches)) * multiplier))
-	}
+func patchImagePolicy(patch, edge, patches int, multiplier float64) imagePolicy {
+	dimensions := func(w, h int) (int, int) { return imageDimensions(w, h, patch, edge, patches) }
+	return imagePolicy{patchSize: patch, dimensions: dimensions, tokens: func(w, h int) int {
+		w, h = dimensions(w, h)
+		return int(math.Ceil(float64(((w+patch-1)/patch)*((h+patch-1)/patch)) * multiplier))
+	}}
 }
 
-func tileImageTokens(base, tile int) func(int, int) int {
-	return func(w, h int) int {
+func tileImagePolicy(base, tile int) imagePolicy {
+	dimensions := func(w, h int) (int, int) { return imageDimensions(w, h, 1, 2048, 0) }
+	return imagePolicy{dimensions: dimensions, tokens: func(w, h int) int {
 		width, height := float64(w), float64(h)
 		scale := min(1, 2048/max(width, height), 768/min(width, height))
 		columns := int(math.Ceil(max(1, math.Floor(width*scale)) / 512))
 		rows := int(math.Ceil(max(1, math.Floor(height*scale)) / 512))
 		return base + tile*columns*rows
-	}
+	}}
 }
 
 // Find the largest aspect-preserving image that fits whole visual patches.
 // Working in decoded pixel dimensions makes this independent of file encoding.
 // Integer resizing can differ slightly from provider billing; this is a
 // context-budget estimate, not a billing calculator.
-func imagePatches(w, h, patch, edge, limit int) int {
+func imageDimensions(w, h, patch, edge, limit int) (int, int) {
 	width, height := float64(w), float64(h)
 	scale := min(1, float64(edge)/max(width, height))
 	count := func(scale float64) int {
@@ -94,7 +108,7 @@ func imagePatches(w, h, patch, edge, limit int) int {
 		return int(columns * rows)
 	}
 	if limit == 0 || count(scale) <= limit {
-		return count(scale)
+		return max(1, int(math.Floor(width*scale))), max(1, int(math.Floor(height*scale)))
 	}
 	low, high := 0.0, scale
 	for range 48 {
@@ -105,5 +119,5 @@ func imagePatches(w, h, patch, edge, limit int) int {
 			high = middle
 		}
 	}
-	return count(low)
+	return max(1, int(math.Floor(width*low))), max(1, int(math.Floor(height*low)))
 }

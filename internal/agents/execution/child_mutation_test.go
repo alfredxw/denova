@@ -193,6 +193,17 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 		t.Fatal("delegated Session is missing")
 	}
 	childRunID := string(committed[0].RuntimeOperation)
+	assertMutationSettlement := func(runtime *Runtime) {
+		t.Helper()
+		view, found, err := runtime.OperationProjection(ctx, agentrun.Options{
+			AgentKind: agentrun.AgentKindIDE, ProjectID: projectRecord.ID, SessionID: sess.ID,
+			Workspace: workspace, StateRoot: layout.StoreRoot,
+		}, childRunID)
+		if err != nil || !found || view.Outcome == nil || view.Outcome.Status != agentrun.OutcomeCompleted {
+			t.Fatalf("delegated mutation settlement = %#v, found = %v, error = %v", view, found, err)
+		}
+	}
+	assertMutationSettlement(runtime)
 	waitForChildTrace(t, runtime, childRunID)
 	location := agentrun.TraceLocation{Workspace: workspace, StateRoot: layout.StoreRoot}
 	childTrace, err := agentrun.ReadRunTrace(location, childRunID)
@@ -222,6 +233,7 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer reopened.Close(ctx)
+	assertMutationSettlement(reopened)
 	childSession, err := reopened.public.agent.Session(ctx, childKey)
 	if err != nil {
 		t.Fatal(err)

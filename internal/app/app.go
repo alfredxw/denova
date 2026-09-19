@@ -50,6 +50,7 @@ type App struct {
 	sessionStore                    *session.Store
 	session                         *session.Session
 	executionRuntime                *agentexecution.Runtime
+	agentEngines                    *appagentruntime.Engines
 	projectRegistry                 *projectdomain.Registry
 	bookMetaStore                   *book.MetaStore
 	versionService                  *book.VersionService
@@ -305,6 +306,7 @@ var ErrAgentContextChanged = appagentruntime.ErrContextChanged
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {
+		a.agentEngines = appagentruntime.NewEngines()
 		a.workspaceApp = &workspaceService{app: a}
 		a.chatApp = &ChatAppService{
 			app: a, starts: apptask.NewStartRegistry(apptask.StartRegistryOptions{Label: "Writing"}),
@@ -351,6 +353,13 @@ func (a *App) chat() *ChatAppService {
 func (a *App) AgentChat() *agentchatapp.Service {
 	a.ensureServices()
 	return a.agentChatApp
+}
+
+// AgentEngines exposes host-local optional runtimes. Access is lazy and does
+// not discover executables or start a connection until an explicit operation.
+func (a *App) AgentEngines() *appagentruntime.Engines {
+	a.ensureServices()
+	return a.agentEngines
 }
 
 // ProjectBook exposes Book resources through stable Project identity without
@@ -526,6 +535,11 @@ func (a *App) Close() {
 		if a.executionRuntime != nil {
 			if err := a.executionRuntime.Close(context.Background()); err != nil {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close durable agent runtime failed: %v", err))
+			}
+		}
+		if a.agentEngines != nil {
+			if err := a.agentEngines.Close(); err != nil {
+				slog.Error("Close external Agent connections failed", "error", err)
 			}
 		}
 	})

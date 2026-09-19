@@ -105,7 +105,7 @@ const agents = {
   'agents.field.maxInjectedKB': '本轮注入总上限 (KB)',
   'agents.field.maxContextFragments': '本轮片段数量上限',
   'agents.field.maxContextMetadataKB': '来源元数据上限 (KB)',
-  'agents.field.maxProviderInputKB': '供应商输入硬上限 (KB)',
+  'agents.field.maxProviderInputKB': '文本上下文硬上限 (KB)',
   'agents.field.systemPrompt': 'System Prompt',
   'agents.field.editablePrompt': '流程与自定义规则',
   'agents.prompt.placeholder': '默认展示内置系统提示；编辑后会保存为当前层覆盖。',
@@ -190,7 +190,7 @@ const agents = {
   'agents.context.toolResultContextNote':
     '开启后，可恢复的工具结果会保持模型可见；达到后端管理的压力水位时，符合条件的旧正文才会替换成可追踪收据，不影响可见工具卡片。',
   'agents.context.assemblyBudgetNote':
-    '片段预算只约束本轮额外注入，不会裁剪展示历史；供应商输入硬上限覆盖完整消息与工具 Schema，默认 4 MB 且不可通过关闭语义压缩绕过，超限会在发送前失败。内部 checkpoint fallback 会在当前 Agent 的限制内分层处理超长来源。',
+    '片段预算只约束本轮额外注入，不会裁剪展示历史；文本硬上限覆盖消息、工具 Schema 和附件描述，默认 4 MB，不含原生图片数据（由供应商适配器单独校验），且不可通过关闭语义压缩绕过，超限会在发送前失败。内部 checkpoint fallback 会在当前 Agent 的限制内分层处理超长来源。',
   'agents.context.storyState': '故事状态',
   'agents.context.teller': '叙事',
   'agents.context.currentStoryTeller': '当前叙事',

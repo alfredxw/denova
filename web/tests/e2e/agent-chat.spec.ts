@@ -100,6 +100,9 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
 })
 
 test('keeps three interleaved SubAgent streams responsive, isolated, and restorable', async ({ page, request }) => {
+  // Inspect all three children live, after reload, and after completion. Nine
+  // detail visits plus two full hydrations need a larger total CI budget.
+  test.setTimeout(180_000)
   const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'multi-agent-display-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Multi-Agent Display Session')

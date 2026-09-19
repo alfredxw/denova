@@ -33,6 +33,7 @@ import { DEFAULT_IMAGE_API_PROFILE_ID, imageAPIEndpointID, imageAPIEndpointsWith
 import { ImageAPIProfilesEditor } from './ImageAPIProfilesEditor'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
+import { TerminalShellField } from './TerminalShellField'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
@@ -451,9 +452,9 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
           <BoolTri label={t('settings.terminal.enabled')} value={draft.terminal_enabled ?? null}
                    inherited={inherited.terminal_enabled}
                    onChange={(v) => setField('terminal_enabled', v)} />
-          <Text label={t('settings.terminal.shell')} value={draft.terminal_shell}
-                placeholder={placeholderFor('terminal_shell')}
-                onChange={(v) => setField('terminal_shell', v)} />
+          <TerminalShellField value={draft.terminal_shell} inherited={inherited.terminal_shell}
+                              windows={layered?.runtime?.goos === 'windows'}
+                              onChange={(v) => setField('terminal_shell', v)} />
           <TerminalCommandsEditor
             commands={terminalCommandsForEditor(draft, effective)}
             onChange={(commands) => setField('terminal_commands', commands)}

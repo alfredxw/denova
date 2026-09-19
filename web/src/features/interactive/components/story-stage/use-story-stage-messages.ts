@@ -18,7 +18,6 @@ import {
   readInteractiveImage,
   readInteractiveImageError,
 } from './interactive-images'
-import { publicRuleRollFromResolution } from './rule-roll'
 import { buildTokenUsageMessage, mergeTokenUsageMessages } from './token-usage'
 import { normalizeMessageContent } from './utils'
 
@@ -30,7 +29,6 @@ interface UseStoryStageMessagesOptions {
   streaming: boolean
   stageKey: string
   liveTurnNavigationAnchorId: string
-  publicRuleRollVisible: boolean
   optimisticInteractiveImages: Record<string, import('@/lib/api').InteractiveImage[]>
   belongsToStage: (stageKey: string) => boolean
   renderKeyFor: (turnId: string, role: 'user' | 'assistant') => string | undefined
@@ -47,7 +45,6 @@ export function useStoryStageMessages({
   streaming,
   stageKey,
   liveTurnNavigationAnchorId,
-  publicRuleRollVisible,
   optimisticInteractiveImages,
   belongsToStage,
   renderKeyFor,
@@ -79,10 +76,9 @@ export function useStoryStageMessages({
   const historyMessages = useMemo(
     () => storyPathTurns.flatMap((turn) => projectPersistedTurn(turn, {
       optimisticImages: optimisticInteractiveImages[turn.id],
-      publicRuleRollVisible,
       renderKeyFor,
     })),
-    [optimisticInteractiveImages, publicRuleRollVisible, renderKeyFor, storyPathTurns],
+    [optimisticInteractiveImages, renderKeyFor, storyPathTurns],
   )
 
   const agentMessages = useMemo(
@@ -129,7 +125,6 @@ export function useStoryStageMessages({
 
 function projectPersistedTurn(turn: TurnEvent, options: {
   optimisticImages?: import('@/lib/api').InteractiveImage[]
-  publicRuleRollVisible: boolean
   renderKeyFor: (turnId: string, role: 'user' | 'assistant') => string | undefined
 }) {
   const messages: AgentUIMessage[] = turn.user_context_only ? [] : [createAgentTextMessage({
@@ -201,16 +196,6 @@ function projectPersistedTurn(turn: TurnEvent, options: {
     }
   }
   messages.push(...beforeNarrative)
-  const ruleRoll = options.publicRuleRollVisible ? publicRuleRollFromResolution(turn.rule_resolution) : null
-  if (ruleRoll) {
-    const id = `${turn.id}-rule-roll`
-    messages.push(createAgentDataMessage({
-      id,
-      type: 'agent-rule-roll',
-      metadata: { display_role: 'rule_roll', turn_id: turn.id, navigation_turn_id: turn.id },
-      data: { id, role: 'rule_roll', rule_roll: ruleRoll },
-    }))
-  }
   messages.push(projectNarrativeMessage(turn, deferredImageEvents, options))
   messages.push(...afterNarrative)
   return messages

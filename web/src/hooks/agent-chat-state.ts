@@ -68,15 +68,25 @@ export function appendDataMessage(
   type: `data-agent-${string}`,
   data: Record<string, unknown>,
 ) {
-	const dataID = typeof data.id === 'string' && data.id.trim() ? data.id.trim() : `${type}-${Date.now()}`
-  setUIMessages(messages => [
-    ...messages,
-    {
-      id: `${type}-${Date.now()}-${messages.length}`,
-      role: 'assistant',
-      parts: [{ type, data, id: dataID } as AgentUIMessage['parts'][number]],
-    } as AgentUIMessage,
-  ])
+  const dataID = typeof data.id === 'string' && data.id.trim() ? data.id.trim() : `${type}-${Date.now()}`
+  setUIMessages(messages => {
+    // Recovery may rediscover a question already delivered by the live stream.
+    // The canonical question ID identifies one card across both transports.
+    const existing = typeof data.id === 'string' && data.id.trim() ? messages.findIndex(message => message.parts.some(part => part.type === type && 'id' in part && part.id === dataID)) : -1
+    if (existing >= 0) {
+      return messages.map((message, index) => index !== existing ? message : {
+        ...message, parts: message.parts.map(part => part.type === type && 'id' in part && part.id === dataID ? { ...part, data } as AgentUIMessage['parts'][number] : part),
+      })
+    }
+    return [
+      ...messages,
+      {
+        id: `${type}-${Date.now()}-${messages.length}`,
+        role: 'assistant',
+        parts: [{ type, data, id: dataID } as AgentUIMessage['parts'][number]],
+      } as AgentUIMessage,
+    ]
+  })
 }
 
 export function agentBypassCommand(input: string): string | null {

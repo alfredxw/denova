@@ -216,7 +216,8 @@ type Definition struct {
 	ModelIdentity CapabilityIdentity
 	Instructions  string
 	// AttachmentRoot is the current host's absolute owner root for durable
-	// slash-relative Attachment paths. It is runtime routing, not behavior
+	// slash-relative user Attachment paths. Tool images use Artifacts' resolver.
+	// It is runtime routing, not behavior
 	// identity, and is therefore excluded from Definition fingerprints.
 	AttachmentRoot string
 

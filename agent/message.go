@@ -197,10 +197,11 @@ func ToolMessage(result ToolResult, toolCallID string, opts ...ToolMessageOption
 		}
 	}
 	return &Message{
-		Role:       ToolRole,
-		Content:    result.ModelContent,
-		ToolCallID: toolCallID,
-		ToolName:   options.toolName,
+		Role:        ToolRole,
+		Content:     result.ModelContent,
+		Attachments: cloneAttachments(result.Attachments),
+		ToolCallID:  toolCallID,
+		ToolName:    options.toolName,
 		ToolResult: &ToolResultSummary{
 			Status: result.Status, SyntheticReason: result.SyntheticReason,
 			ModelTruncated:      result.Metadata.ModelTruncated,
@@ -221,6 +222,7 @@ func (m *Message) EffectiveToolResult() ToolResult {
 		return ToolResult{}
 	}
 	result := TextToolResult(m.Content)
+	result.Attachments = cloneAttachments(m.Attachments)
 	if m.ToolResult != nil {
 		if m.ToolResult.Status != "" {
 			result.Status = m.ToolResult.Status

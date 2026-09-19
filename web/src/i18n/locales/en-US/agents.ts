@@ -105,7 +105,7 @@ const agents = {
   'agents.field.maxInjectedKB': 'Turn Injection Limit (KB)',
   'agents.field.maxContextFragments': 'Fragments per Turn',
   'agents.field.maxContextMetadataKB': 'Provenance Metadata (KB)',
-  'agents.field.maxProviderInputKB': 'Provider Hard Input Limit (KB)',
+  'agents.field.maxProviderInputKB': 'Text Context Hard Limit (KB)',
   'agents.field.systemPrompt': 'System Prompt',
   'agents.field.editablePrompt': 'Flow and Custom Rules',
   'agents.prompt.placeholder': 'The built-in system prompt is shown by default. Edit it to save an override in this layer.',
@@ -195,7 +195,7 @@ const agents = {
   'agents.context.toolResultContextNote':
     'When enabled, recoverable tool results remain model-visible until backend-managed pressure cleanup replaces eligible old bodies with traceable receipts. Visible tool cards are unchanged.',
   'agents.context.assemblyBudgetNote':
-    'Fragment budgets cover only turn injections and never trim display history. The provider hard limit covers complete messages and tool schemas, defaults to 4 MB, cannot be bypassed by disabling semantic compaction, and fails before send; the internal checkpoint fallback layers oversized sources within this Agent\'s limits.',
+    'Fragment budgets cover only turn injections and never trim display history. The text hard limit covers messages, tool schemas, and attachment descriptors, defaults to 4 MB, and excludes native image data (validated separately by the provider adapter). It cannot be bypassed by disabling semantic compaction, and fails before send; the internal checkpoint fallback layers oversized sources within this Agent\'s limits.',
   'agents.context.storyState': 'Story State',
   'agents.context.teller': 'Narrative',
   'agents.context.currentStoryTeller': 'Current narrative',

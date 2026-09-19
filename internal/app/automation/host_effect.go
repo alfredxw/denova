@@ -47,20 +47,12 @@ func (s *Service) ApplyToolMutation(ctx context.Context, committed agenttoolrunt
 		return fmt.Errorf("resolve automation catalog for host effect: %w", err)
 	}
 	store := automation.NewStore(catalog.DataDir, "")
-	admitted, err := store.AdmitHostEffect(ctx, automation.HostEffectObligation{
+	_, err = store.AdmitHostEffect(ctx, automation.HostEffectObligation{
 		ID: string(committed.EffectID), Kind: agentrun.HostEffectToolMutationCommitted,
 		ProjectID: projectID, Workspace: workspace, Payload: payload,
 	})
 	if err != nil {
 		return fmt.Errorf("admit agent host effect %q: %w", committed.EffectID, err)
-	}
-	// Automation mutations can usually transfer into their run ledger without
-	// waiting for the scheduler. Failure is safe: the admitted generic outbox is
-	// still authoritative and the wake-up retries after run admission/restart.
-	if automationMutationOrigin(committed.Origin) {
-		if _, reconcileErr := s.reconcilePersistedHostEffect(context.WithoutCancel(ctx), admitted); reconcileErr != nil {
-			slog.WarnContext(ctx, fmt.Sprintf("[automation-host-effect] immediate transfer deferred effect_id=%s run_id=%s operation_id=%s err=%v", committed.EffectID, committed.Origin.TaskID, committed.RuntimeOperation, reconcileErr))
-		}
 	}
 	s.SignalReconciliation()
 	return nil
@@ -118,8 +110,8 @@ func (s *Service) reconcilePersistedHostEffects(ctx context.Context) {
 	}
 }
 
-// reconcilePersistedHostEffect transfers one application obligation either to
-// an Automation run outbox or to the workspace trigger coordinator. The bool
+// reconcilePersistedHostEffect transfers every Agent mutation through the same
+// workspace trigger coordinator after Agent settlement. The bool
 // reports successful admission/acknowledgement; false with nil means an async
 // trigger pass now owns completion.
 func (s *Service) reconcilePersistedHostEffect(ctx context.Context, effect automation.HostEffectObligation) (bool, error) {
@@ -127,11 +119,19 @@ func (s *Service) reconcilePersistedHostEffect(ctx context.Context, effect autom
 	if err != nil {
 		return false, err
 	}
-	if automationMutationOrigin(payload.Origin) {
-		if s.hostEffectTransfer != nil {
-			return s.hostEffectTransfer(ctx, effect, payload)
+
+	// A released build could crash between transfer into its old outbox and
+	// global acknowledgement. Preserve that single owner while draining it.
+	if payload.Origin.AutomationTaskID != "" {
+		_, legacy, lookupErr := s.storeAllWorkspaces().GetRunByID(payload.Origin.TaskID)
+		if lookupErr != nil && !errors.Is(lookupErr, automation.ErrRunNotFound) {
+			return false, lookupErr
 		}
-		return s.transferAutomationHostEffect(ctx, effect, payload)
+		for _, transferredID := range legacy.CompletionMutationEffectIDs {
+			if transferredID == effect.ID {
+				return true, s.storeAllWorkspaces().AcknowledgeHostEffect(ctx, effect)
+			}
+		}
 	}
 	if s.hostEffectOperationActive(ctx, payload) {
 		return false, fmt.Errorf("agent operation %s is still active", payload.RuntimeOperation)
@@ -178,72 +178,6 @@ func (s *Service) reconcilePersistedHostEffect(ctx context.Context, effect autom
 	return false, nil
 }
 
-// drainAutomationRunHostEffects transfers every global obligation owned by a
-// run, regardless of whether it names the current or a historical operation.
-// The final scan is the admission fence: a transfer error or any remaining
-// obligation rejects a successor before its write-ahead command intent exists.
-func (s *Service) drainAutomationRunHostEffects(ctx context.Context, runID string) error {
-	runID = strings.TrimSpace(runID)
-	if runID == "" {
-		return fmt.Errorf("automation host-effect drain requires a run identity")
-	}
-	store := s.storeAllWorkspaces()
-	effects, err := store.ListHostEffects()
-	if err != nil {
-		return fmt.Errorf("list Automation HostEffect obligations for run %s: %w", runID, err)
-	}
-	for _, effect := range effects {
-		owned, classifyErr := automationHostEffectOwnedByRun(effect, runID)
-		if classifyErr != nil {
-			return classifyErr
-		}
-		if !owned {
-			continue
-		}
-		transferred, transferErr := s.reconcilePersistedHostEffect(ctx, effect)
-		if transferErr != nil {
-			return fmt.Errorf("transfer Automation HostEffect %s for run %s: %w", effect.ID, runID, transferErr)
-		}
-		if !transferred {
-			return fmt.Errorf("Automation HostEffect %s for run %s remains pending", effect.ID, runID)
-		}
-	}
-	remaining, err := store.ListHostEffects()
-	if err != nil {
-		return fmt.Errorf("verify Automation HostEffect drain for run %s: %w", runID, err)
-	}
-	for _, effect := range remaining {
-		owned, classifyErr := automationHostEffectOwnedByRun(effect, runID)
-		if classifyErr != nil {
-			return classifyErr
-		}
-		if owned {
-			return fmt.Errorf("Automation HostEffect %s for run %s remains after transfer", effect.ID, runID)
-		}
-	}
-	return nil
-}
-
-func automationHostEffectOwnedByRun(effect automation.HostEffectObligation, runID string) (bool, error) {
-	if effect.Kind != agentrun.HostEffectToolMutationCommitted {
-		return false, nil
-	}
-	var owner struct {
-		Origin agenttoolruntime.ToolMutationOrigin `json:"origin"`
-	}
-	if err := json.Unmarshal(effect.Payload, &owner); err != nil {
-		return false, fmt.Errorf("classify admitted host effect %q: %w", effect.ID, err)
-	}
-	if !automationMutationOrigin(owner.Origin) {
-		return false, nil
-	}
-	return strings.TrimSpace(owner.Origin.TaskID) == strings.TrimSpace(runID), nil
-}
-
-func automationMutationOrigin(origin agenttoolruntime.ToolMutationOrigin) bool {
-	return strings.TrimSpace(origin.AutomationTaskID) != ""
-}
-
 func (s *Service) hostEffectOperationActive(ctx context.Context, payload admittedToolMutationPayload) bool {
 	if s == nil || s.host == nil {
 		return true
@@ -252,7 +186,7 @@ func (s *Service) hostEffectOperationActive(ctx context.Context, payload admitte
 	if executionRuntime == nil {
 		return true
 	}
-	status, err := executionRuntime.RuntimeStatusProjection(ctx, agentrun.Options{
+	status, found, err := executionRuntime.OperationProjection(ctx, agentrun.Options{
 		AgentKind: payload.Origin.AgentKind, ProjectID: payload.Origin.ProjectID,
 		TaskID:           payload.Origin.TaskID,
 		AutomationTaskID: payload.Origin.AutomationTaskID, SessionID: payload.Origin.SessionID,
@@ -260,34 +194,12 @@ func (s *Service) hostEffectOperationActive(ctx context.Context, payload admitte
 		BranchID: payload.Origin.BranchID, TurnID: payload.Origin.TurnID,
 		MaintenanceTask: payload.Origin.MaintenanceTask, Workspace: payload.Origin.Workspace,
 		Mode: payload.Origin.Mode,
-	})
+	}, string(payload.RuntimeOperation))
 	if err != nil {
 		slog.WarnContext(ctx, fmt.Sprintf("[automation-host-effect] runtime projection unavailable effect_operation=%s err=%v", payload.RuntimeOperation, err))
 		return true
 	}
-	return status.ActiveOperation == payload.RuntimeOperation
-}
-
-func (s *Service) transferAutomationHostEffect(
-	ctx context.Context,
-	effect automation.HostEffectObligation,
-	payload admittedToolMutationPayload,
-) (bool, error) {
-	runID := strings.TrimSpace(payload.Origin.TaskID)
-	operationID := strings.TrimSpace(string(payload.RuntimeOperation))
-	paths := automationCompletionMutationPaths([]agenttool.Mutation{payload.Mutation})
-	store := s.storeAllWorkspaces()
-	_, _, err := store.MergeRunMutationEffect(ctx, runID, operationID, effect.ID, paths)
-	if err != nil {
-		if errors.Is(err, automation.ErrRunNotFound) {
-			return false, fmt.Errorf("automation run has not materialized yet: %w", err)
-		}
-		return false, err
-	}
-	if err := s.storeAllWorkspaces().AcknowledgeHostEffect(ctx, effect); err != nil {
-		return false, err
-	}
-	return true, nil
+	return !found || status.Outcome == nil
 }
 
 func decodeAdmittedToolMutation(effect automation.HostEffectObligation) (admittedToolMutationPayload, error) {

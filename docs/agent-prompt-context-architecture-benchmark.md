@@ -1,6 +1,6 @@
 # Denova 提示词与上下文架构对标审计
 
-> Historical audit: Cleanup references below describe the earlier implementation. Current context lifecycle: [incremental checkpoints](tool-result-context-optimization-plan.md).
+> Historical audit: Cleanup references below describe the earlier implementation. Current context lifecycle is defined by the [incremental checkpoint implementation](../agent/compaction.go) and [regression tests](../agent/session_compaction_incremental_test.go).
 
 > 日期：2026-08-13
 >

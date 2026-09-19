@@ -413,7 +413,7 @@ for (const destination of ['Skills', 'Agents', '资料库', '方案预设', '自
     await page.goto('/')
     await navigate(page, destination)
     const header = page.locator('.nova-mobile-topbar')
-    await expect(header.locator('[data-mobile-header-content]')).toHaveCount(1)
+    await expect(header.getByRole('tablist')).toHaveCount(1)
     const directoryButton = header.getByRole('button', { name: /目录$/ })
     const bounds = (await directoryButton.boundingBox())!
     expect(bounds.x).toBeGreaterThan(318)

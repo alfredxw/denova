@@ -21,7 +21,7 @@ type WritingAgentActiveView struct {
 	Task                  *apptask.Snapshot
 	Runtime               agentrun.RuntimeStatus
 	RuntimeProjectionOK   bool
-	PendingAsk            *session.AskInteraction
+	PendingAsks           []*session.AskInteraction
 	PendingInterruptionID string
 	// RecoveryActions can contain a process-local projection refresh action
 	// after the durable runtime has already settled to Idle.
@@ -83,9 +83,20 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 		})
 	}
 	recoveryActions := agentexecution.RuntimeRecoveryActions(runtimeSnapshot)
-	var pendingAsk *session.AskInteraction
-	if projected && len(runtimeSnapshot.PendingInteractions) > 0 {
-		pendingAsk = agentchat.ProjectPendingInteraction(runtimeSnapshot.PendingInteractions[0], runtimeSnapshot)
+	var pendingAsks []*session.AskInteraction
+	if projected {
+		for _, request := range runtimeSnapshot.PendingInteractions {
+			pendingAsks = append(pendingAsks, agentchat.ProjectPendingInteraction(request, runtimeSnapshot))
+		}
+	}
+	if view, owned, err := a.AgentEngines().Operations.Status(ctx, projectID, selectedSession); owned {
+		runtimeSnapshot, projected, recoveryActions = view, err == nil, nil
+		var askErr error
+		pendingAsks, askErr = selectedSession.PendingExternalAsks(ctx)
+		if askErr != nil {
+			projected = false
+			slog.ErrorContext(ctx, "Read external pending questions failed", "session_id", sessionID, "error", askErr)
+		}
 	}
 	pendingInterruptionID := ""
 	if selectedSession != nil {
@@ -107,7 +118,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	a.mu.RUnlock()
 	return WritingAgentActiveView{
 		SessionID: sessionID, Task: taskSnapshot, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected,
-		RecoveryActions: recoveryActions, PendingAsk: pendingAsk, PendingInterruptionID: pendingInterruptionID,
+		RecoveryActions: recoveryActions, PendingAsks: pendingAsks, PendingInterruptionID: pendingInterruptionID,
 	}
 }
 

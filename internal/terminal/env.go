@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -71,8 +72,10 @@ func environmentKey(entry string) string {
 // platformDefaultShell infers the platform's interactive shell when none is configured.
 func platformDefaultShell() string {
 	if runtime.GOOS == "windows" {
-		if comspec := strings.TrimSpace(os.Getenv("COMSPEC")); comspec != "" {
-			return comspec
+		// COMSPEC selects cmd, not the user's interactive shell. Prefer modern
+		// PowerShell, keeping Windows PowerShell available on hosts without pwsh.
+		if _, err := exec.LookPath("pwsh.exe"); err == nil {
+			return "pwsh.exe"
 		}
 		return "powershell.exe"
 	}

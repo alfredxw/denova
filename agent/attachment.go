@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -12,9 +13,10 @@ import (
 	"strings"
 )
 
-// Attachment is a durable, provider-neutral copy of a file supplied with one
-// user message. Path is relative to Definition.AttachmentRoot. RuntimePath is
-// reconstructed for the current host and is deliberately never persisted.
+// Attachment is a durable, provider-neutral copy supplied by a user or a tool.
+// User paths are relative to Definition.AttachmentRoot; tool image paths are
+// relative to Definition.Artifacts' boundary. RuntimePath is reconstructed for
+// the current host and is deliberately never persisted.
 type Attachment struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -22,12 +24,12 @@ type Attachment struct {
 	Size        int64  `json:"size"`
 	Path        string `json:"path,omitempty"`
 	RuntimePath string `json:"-"`
-	// SHA256 binds provider input to the immutable bytes accepted from the user.
+	// SHA256 binds provider input to the immutable bytes originally observed.
 	SHA256 string `json:"sha256,omitempty"`
 }
 
 // IsNativeImageMediaType reports whether every built-in multimodal protocol
-// can safely represent the image as an inline user-input part.
+// can safely represent the image as a native input part.
 func IsNativeImageMediaType(mediaType string) bool {
 	switch strings.ToLower(strings.TrimSpace(mediaType)) {
 	case "image/jpeg", "image/png", "image/gif", "image/webp":
@@ -90,22 +92,51 @@ func AttachmentDataURL(attachment Attachment) (string, error) {
 // AttachmentBase64 loads one native image for protocols whose source schema
 // carries media type and base64 data separately.
 func AttachmentBase64(attachment Attachment) (string, error) {
-	if !IsNativeImageMediaType(attachment.MediaType) {
-		return "", fmt.Errorf("attachment %q is not a supported native image", attachment.Name)
-	}
-	data, err := os.ReadFile(attachmentFilePath(attachment))
+	data, err := ReadAttachmentImage(attachment)
 	if err != nil {
-		return "", fmt.Errorf("read attached image %q: %w", attachment.Name, err)
-	}
-	digest := sha256.Sum256(data)
-	if !strings.EqualFold(hex.EncodeToString(digest[:]), strings.TrimSpace(attachment.SHA256)) {
-		return "", fmt.Errorf("attached image %q immutable copy changed", attachment.Name)
+		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
+// ReadAttachmentImage reads and verifies the immutable native image. Providers
+// may derive an in-memory sending copy, but must never overwrite this input.
+func ReadAttachmentImage(attachment Attachment) ([]byte, error) {
+	if !IsNativeImageMediaType(attachment.MediaType) {
+		return nil, fmt.Errorf("attachment %q is not a supported native image", attachment.Name)
+	}
+	data, err := os.ReadFile(attachmentFilePath(attachment))
+	if err != nil {
+		return nil, fmt.Errorf("read attached image %q: %w", attachment.Name, err)
+	}
+	digest := sha256.Sum256(data)
+	if !strings.EqualFold(hex.EncodeToString(digest[:]), strings.TrimSpace(attachment.SHA256)) {
+		return nil, fmt.Errorf("attached image %q immutable copy changed", attachment.Name)
+	}
+	return data, nil
+}
+
 func cloneAttachments(values []Attachment) []Attachment {
 	return append([]Attachment(nil), values...)
+}
+
+func validateToolAttachments(attachments []Attachment) error {
+	if len(attachments) > maxToolResultArtifacts {
+		return fmt.Errorf("tool result has %d images; maximum is %d", len(attachments), maxToolResultArtifacts)
+	}
+	for index, attachment := range attachments {
+		digest, err := hex.DecodeString(attachment.SHA256)
+		if attachment.ID == "" || attachment.Name == "" || attachment.Size <= 0 ||
+			!IsNativeImageMediaType(attachment.MediaType) || err != nil || len(digest) != sha256.Size ||
+			!fs.ValidPath(attachment.Path) || attachment.Path == "." || strings.ContainsAny(attachment.Path, "\\:\x00") {
+			return fmt.Errorf("tool image %d requires a native image type, SHA-256, and an owner-relative immutable copy", index)
+		}
+	}
+	encoded, err := json.Marshal(attachments)
+	if err != nil || len(encoded) > maxToolResultArtifactMetadataBytes {
+		return fmt.Errorf("tool image metadata exceeds %d bytes", maxToolResultArtifactMetadataBytes)
+	}
+	return nil
 }
 
 func attachmentsFromMessages(messages []*Message) []Attachment {
@@ -143,7 +174,7 @@ func resolveMessageAttachmentPaths(root string, messages []*Message) ([]*Message
 	root = strings.TrimSpace(root)
 	result := cloneMessages(messages)
 	for _, message := range result {
-		if message == nil {
+		if message == nil || message.Role == ToolRole {
 			continue
 		}
 		for index := range message.Attachments {

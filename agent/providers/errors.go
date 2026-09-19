@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 // APIError is the protocol-neutral HTTP error exposed by adapters. Product
@@ -96,4 +98,19 @@ func (err *APIError) Unwrap() error {
 		return nil
 	}
 	return err.Cause
+}
+
+// ModelErrorReason supplies a stable terminal reason for live and recovered
+// runs. The original Error remains available to provider diagnostics.
+func (err *APIError) ModelErrorReason() string {
+	if err == nil {
+		return ""
+	}
+	if err.Kind == "image_input_error" {
+		return agent.ModelImageInputRejectedReason
+	}
+	if err.StatusCode == http.StatusRequestEntityTooLarge {
+		return agent.ModelRequestTooLargeReason
+	}
+	return ""
 }

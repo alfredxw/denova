@@ -1,7 +1,7 @@
 import type { ContextAnalysis } from '../../src/lib/api'
 import { expect, test, type APIRequestContext, type Page } from '../support/fixtures'
 import { createAndOpenBook, createStartedStory } from '../support/api'
-import { openWritingAgent } from '../support/agent-chat'
+import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { getCapturedModelRequest, type E2EModelRequest } from '../support/model'
 
 const contextAnalysisProbe = '[Denova context analysis probe]'
@@ -32,8 +32,7 @@ test('keeps Agents prompts, context analysis, and real model input aligned for W
   const writingComposer = await openWritingAgent(page)
   const writingAnalysis = await openContextAnalysis(page, '/agent-chat/chat/context-analysis')
   await page.keyboard.press('Escape')
-  await writingComposer.fill(contextAnalysisProbe)
-  await writingComposer.press('Enter')
+  await submitAgentChatMessage(page, writingComposer, contextAnalysisProbe)
   await expect(page.getByText('Deterministic E2E response completed.', { exact: true }).filter({ visible: true })).toBeVisible()
   const writingRequest = await waitForCapturedRequest(request, writingContextMarker)
   expectPromptContextParity(writingAnalysis, writingRequest, writingPrompt)
@@ -43,8 +42,7 @@ test('keeps Agents prompts, context analysis, and real model input aligned for W
   await expect(gameComposer).toBeVisible()
   const gameAnalysis = await openContextAnalysis(page, '/api/interactive/chat/context-analysis')
   await page.keyboard.press('Escape')
-  await gameComposer.fill(contextAnalysisProbe)
-  await gameComposer.press('Enter')
+  await submitAgentChatMessage(page, gameComposer, contextAnalysisProbe)
   await expect(page.getByText('石门缓缓开启，暖色灯光照亮了前方的旧车站。', { exact: true })).toBeVisible()
   const gameRequest = await waitForCapturedRequest(request, gameContextMarker)
   expectPromptContextParity(gameAnalysis, gameRequest, gamePrompt)

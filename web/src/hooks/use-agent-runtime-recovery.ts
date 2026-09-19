@@ -59,6 +59,7 @@ export function useWritingAgentRuntimeRecovery({
   const runtimeProjectionRef = useRef<ActiveChatTask | null>(null)
   const streamCycleProjectionVersionRef = useRef(0)
   const recoveryActionInFlightRef = useRef(false)
+  const attachmentInFlightRef = useRef<{ key: string; promise: Promise<boolean> } | null>(null)
   const checkInFlightRef = useRef<{ sessionID: string; promise: Promise<void> } | null>(null)
   const attachedRecoveryRetryNeededRef = useRef(false)
   const retryNeededRef = useRef(false)
@@ -115,35 +116,53 @@ export function useWritingAgentRuntimeRecovery({
   }, [])
 
   const attachDisplayStream = useCallback(
-    async (failureContext: string, sessionID: string, beforeResume?: () => void): Promise<boolean> => {
-      const statusAtStart = transportStatusRef.current
-      const errorAtStart = transportErrorRef.current
-      const projectionAtStart = writingRecoveryProjectionFingerprint(runtimeProjectionRef.current)
+    async (failureContext: string, sessionID: string, taskID: string, beforeResume?: () => void): Promise<boolean> => {
+      const key = `${sessionID}:${taskID}`
+      // resumeStream owns one AI SDK response until it settles. Repeated
+      // inspections may arrive before React reports streaming; share that
+      // attachment instead of racing two readers on the same Chat instance.
+      while (attachmentInFlightRef.current) {
+        if (attachmentInFlightRef.current.key === key) return attachmentInFlightRef.current.promise
+        await attachmentInFlightRef.current.promise
+      }
+      if (activeSessionIdRef.current !== sessionID) return false
+      const attachment = (async () => {
+        const statusAtStart = transportStatusRef.current
+        const errorAtStart = transportErrorRef.current
+        const projectionAtStart = writingRecoveryProjectionFingerprint(runtimeProjectionRef.current)
+        try {
+          // Every explicit reconnect replaces provisional text/reasoning/tool args
+          // with authoritative history first. AI SDK reconnect streams append new
+          // parts; without this reset, partial `hel` followed by replayed `hello`
+          // renders as `helhello` and tool arguments can be duplicated as well.
+          await loadHistoryAuthoritative(sessionID)
+          if (activeSessionIdRef.current !== sessionID) return false
+          if (displayOmissionActiveRef.current) onDisplayRehydrated()
+          prepareStreamResumeBoundary()
+          beforeResume?.()
+          await Promise.resolve(resumeStream())
+          // AI SDK resolves resumeStream on an HTTP/reconnect failure and reports
+          // the failure through ChatStatus. Preserve the durable projection and
+          // wait for an explicit retry opportunity instead of spinning here.
+          if (transportStatusRef.current !== 'error') return true
+          if (statusAtStart === 'error' && transportErrorRef.current === errorAtStart) return false
+          markRecoveryRetry(true, projectionAtStart)
+          return false
+        } catch (error) {
+          if (activeSessionIdRef.current !== sessionID) return false
+          if (isAbortError(error)) return false
+          console.warn(`[use-agent-runtime-recovery.ts] ${failureContext}`, error)
+          markRecoveryRetry(false)
+          if (isRehydrateRequired(error)) setRecoveryAttempt((current) => current + 1)
+          return false
+        }
+      })()
+      const tracked = { key, promise: attachment }
+      attachmentInFlightRef.current = tracked
       try {
-        // Every explicit reconnect replaces provisional text/reasoning/tool args
-        // with authoritative history first. AI SDK reconnect streams append new
-        // parts; without this reset, partial `hel` followed by replayed `hello`
-        // renders as `helhello` and tool arguments can be duplicated as well.
-        await loadHistoryAuthoritative(sessionID)
-        if (activeSessionIdRef.current !== sessionID) return false
-        if (displayOmissionActiveRef.current) onDisplayRehydrated()
-        prepareStreamResumeBoundary()
-        beforeResume?.()
-        await Promise.resolve(resumeStream())
-        // AI SDK resolves resumeStream on an HTTP/reconnect failure and reports
-        // the failure through ChatStatus. Preserve the durable projection and
-        // wait for an explicit retry opportunity instead of spinning here.
-        if (transportStatusRef.current !== 'error') return true
-        if (statusAtStart === 'error' && transportErrorRef.current === errorAtStart) return false
-        markRecoveryRetry(true, projectionAtStart)
-        return false
-      } catch (error) {
-        if (activeSessionIdRef.current !== sessionID) return false
-        if (isAbortError(error)) return false
-        console.warn(`[use-agent-runtime-recovery.ts] ${failureContext}`, error)
-        markRecoveryRetry(false)
-        if (isRehydrateRequired(error)) setRecoveryAttempt((current) => current + 1)
-        return false
+        return await attachment
+      } finally {
+        if (attachmentInFlightRef.current === tracked) attachmentInFlightRef.current = null
       }
     },
     [loadHistoryAuthoritative, markRecoveryRetry, onDisplayRehydrated, prepareStreamResumeBoundary, resumeStream],
@@ -191,7 +210,7 @@ export function useWritingAgentRuntimeRecovery({
             retryNeededRef.current = false
             if (attachStream) {
               transport.setActiveStreamTarget(recovered.taskID, undefined, { session_id: sessionID })
-              void attachDisplayStream('failed to attach writing Agent stream; preserving recovery state', sessionID)
+              void attachDisplayStream('failed to attach writing Agent stream; preserving recovery state', sessionID, recovered.taskID)
             } else {
               attachedRecoveryRetryNeededRef.current = false
               setRecoveryPending(false)
@@ -288,7 +307,7 @@ export function useWritingAgentRuntimeRecovery({
     }
 
     const sessionID = activeSessionIdRef.current.trim()
-    void attachDisplayStream('failed to canonically rehydrate and resume the same Writing Task', sessionID, () => {
+    void attachDisplayStream('failed to canonically rehydrate and resume the same Writing Task', sessionID, request.taskID, () => {
       transport.setActiveStreamTarget(request.taskID, request.cursor, { session_id: sessionID })
     }).then(finish)
   }, [
@@ -493,7 +512,7 @@ export function useWritingAgentRuntimeRecovery({
       // resume subscription here races the current reader and duplicates UI.
       if (!transportStreaming) {
         transport.setActiveStreamTarget(taskID, undefined, { session_id: sessionID })
-        void attachDisplayStream('failed to attach recovered writing Agent abort stream', sessionID)
+        void attachDisplayStream('failed to attach recovered writing Agent stream', sessionID, taskID)
       }
       return true
     } finally {

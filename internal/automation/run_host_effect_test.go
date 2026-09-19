@@ -1,173 +1,115 @@
 package automation
 
 import (
-	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestMergeRunMutationEffectReopensOnlyExactTerminalOperation(t *testing.T) {
+func TestDeliveryReceiptDoesNotPersistExecutionOrOwnRecovery(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Late host effect", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Delivery", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := RunRecord{
-		ID: "late-host-effect-run", TaskID: task.ID, Scope: task.Scope, Workspace: task.Target.Workspace,
-		Trigger: TriggerManual, Status: RunStatusSuccess,
-		RuntimeCommandID: "automation-run:late-host-effect-run", RuntimeOperationID: "operation-1", RuntimeReceiptCursor: 1,
-		CompletionEffectsOperationID: "operation-1", CompletionEffectsCompleted: true,
-	}
-	if _, err := store.AppendRun(task.CatalogID, run); err != nil {
+	pending := RunRecord{ID: "delivery", TaskID: task.ID, SessionID: "conversation", TurnID: "command", Scope: task.Scope, Workspace: task.Target.Workspace, Trigger: TriggerManual, DeliveryStatus: DeliveryPending,
+		Input: &RunInput{Message: "original task"}}
+	if _, err := store.AppendRun(task.CatalogID, pending); err != nil {
 		t.Fatal(err)
 	}
+	stale, found, err := store.readDurableRunObligation(task.Scope, pending.ID)
+	if err != nil || !found {
+		t.Fatalf("pending obligation: %v %v", found, err)
+	}
+	accepted := pending
+	accepted.DeliveryStatus = DeliveryAccepted
+	accepted.RootRuntimeCommandID, accepted.RootRuntimeOperationID, accepted.RootRuntimeReceiptCursor = "command", "operation", 1
+	accepted.Status, accepted.Summary, accepted.Error = RunStatusFailed, "display only", "display only"
+	accepted.RuntimeRecoveryRequired = true
+	if _, err := store.AppendRun(task.CatalogID, accepted); err != nil {
+		t.Fatal(err)
+	}
+	_, persisted, err := store.GetRunByID(pending.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.DeliveryStatus != DeliveryAccepted || persisted.Status != "" || persisted.Summary != "" || persisted.Error != "" || RunHasDurableObligation(persisted) {
+		t.Fatalf("execution leaked into trigger storage: %+v", persisted)
+	}
+	if _, err := store.AppendRun(task.CatalogID, pending); !errors.Is(err, ErrRunIdentityConflict) {
+		t.Fatalf("accepted delivery regressed: %v", err)
+	}
+	changed := accepted
+	changed.RootRuntimeOperationID = "other"
+	if _, err := store.AppendRun(task.CatalogID, changed); !errors.Is(err, ErrRunIdentityConflict) {
+		t.Fatalf("receipt replaced: %v", err)
+	}
+	changed = accepted
+	changed.Input = &RunInput{Message: "changed task"}
+	if _, err := store.AppendRun(task.CatalogID, changed); !errors.Is(err, ErrRunIdentityConflict) {
+		t.Fatalf("input replaced: %v", err)
+	}
+	// Crash after accepted history is committed but before the hot copy clears.
+	if err := store.writeDurableRunObligation(task.Scope, stale); err != nil {
+		t.Fatal(err)
+	}
+	obligations, err := store.ListDurableObligations()
+	if err != nil || len(obligations) != 0 {
+		t.Fatalf("stale pending copy resurrected delivery: %+v %v", obligations, err)
+	}
+	if err := store.Delete(task.CatalogID); err != nil {
+		t.Fatalf("accepted trigger still controls Agent lifecycle: %v", err)
+	}
+}
 
-	merged, changed, err := store.MergeRunMutationEffect(
-		context.Background(), run.ID, "operation-1", "effect-1", []string{" chapters/late.md ", "chapters/late.md"},
-	)
+func TestAdoptingLegacyRunBacksUpAndRetainsPendingEffects(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Legacy delivery", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !changed || !merged.Run.CompletionEffectsPending || merged.Run.CompletionEffectsCompleted ||
-		len(merged.Run.CompletionMutationPaths) != 1 || merged.Run.CompletionMutationPaths[0] != "chapters/late.md" ||
-		len(merged.Run.CompletionMutationEffectIDs) != 1 || merged.Run.CompletionMutationEffectIDs[0] != "effect-1" {
-		t.Fatalf("late effect was not transferred exactly: %#v changed=%t", merged.Run, changed)
+	legacy := RunRecord{ID: "legacy", TaskID: task.ID, Scope: task.Scope, Workspace: task.Target.Workspace, Trigger: TriggerManual, Status: RunStatusRunning,
+		RuntimeCommandID: "command", RuntimeOperationID: "operation", RuntimeReceiptCursor: 1,
+		CompletionEffectsPending: true, CompletionEffectsOperationID: "operation", CompletionMutationPaths: []string{"chapters/one.md"}, CompletionMutationEffectIDs: []string{"effect-one"}}
+	if _, err := store.AppendRun(task.CatalogID, legacy); err != nil {
+		t.Fatal(err)
 	}
-	replayed, changed, err := store.MergeRunMutationEffect(
-		context.Background(), run.ID, "operation-1", "effect-1", []string{"chapters/different.md"},
-	)
+	adopted := legacy
+	adopted.DeliveryStatus = DeliveryAccepted
+	adopted.RootRuntimeCommandID, adopted.RootRuntimeOperationID, adopted.RootRuntimeReceiptCursor = "command", "operation", 1
+	if _, err := store.AppendRun(task.CatalogID, adopted); err != nil {
+		t.Fatal(err)
+	}
+	path, err := store.durableRunPath(task.Scope, legacy.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed || len(replayed.Run.CompletionMutationPaths) != 1 || replayed.Run.CompletionMutationPaths[0] != "chapters/late.md" {
-		t.Fatalf("same effect replay changed the durable plan: %#v changed=%t", replayed.Run, changed)
+	data, err := os.ReadFile(path + ".v1.bak")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, _, err := store.MergeRunMutationEffect(context.Background(), run.ID, "operation-2", "effect-wrong-op", []string{"chapters/wrong.md"}); !errors.Is(err, ErrRunIdentityConflict) {
-		t.Fatalf("wrong operation merge error = %v, want ErrRunIdentityConflict", err)
+	backup, err := decodeDurableRun(path, data)
+	if err != nil || backup.Run.Status != RunStatusRunning || backup.Run.RuntimeOperationID != "operation" {
+		t.Fatalf("legacy backup: %+v %v", backup, err)
 	}
-
-	settled := merged.Run
+	obligations, err := store.ListDurableObligations()
+	if err != nil || len(obligations) != 1 || len(obligations[0].Run.CompletionMutationEffectIDs) != 1 {
+		t.Fatalf("legacy effects lost: %+v %v", obligations, err)
+	}
+	settled := obligations[0].Run
 	settled.CompletionEffectsPending = false
 	settled.CompletionEffectsCompleted = true
 	if _, err := store.AppendRun(task.CatalogID, settled); err != nil {
 		t.Fatal(err)
 	}
-	staleDirectMutation := settled
-	staleDirectMutation.CompletionMutationPaths = append(staleDirectMutation.CompletionMutationPaths, "chapters/not-admitted.md")
-	if _, err := store.AppendRun(task.CatalogID, staleDirectMutation); !errors.Is(err, ErrRunIdentityConflict) {
-		t.Fatalf("ordinary append reopened effects: %v", err)
-	}
-	reopened, changed, err := store.MergeRunMutationEffect(
-		context.Background(), run.ID, "operation-1", "effect-2", []string{"chapters/second.md"},
-	)
-	if err != nil {
+	if _, err := store.AppendRun(task.CatalogID, adopted); err != nil {
 		t.Fatal(err)
 	}
-	if !changed || !reopened.Run.CompletionEffectsPending || reopened.Run.CompletionEffectsCompleted ||
-		len(reopened.Run.CompletionMutationEffectIDs) != 2 || len(reopened.Run.CompletionMutationPaths) != 2 {
-		t.Fatalf("second exact effect did not reopen terminal outbox: %#v", reopened.Run)
-	}
-}
-
-func TestDurableRunRevisionOrdersStaleCleanupAndNewWriteAheadObligation(t *testing.T) {
-	root := t.TempDir()
-	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Revision ordering", Template: TemplateReview})
-	if err != nil {
-		t.Fatal(err)
-	}
-	pending := RunRecord{
-		ID: "revision-ordered-run", TaskID: task.ID, Scope: task.Scope, Workspace: task.Target.Workspace,
-		Trigger: TriggerManual, Status: RunStatusRunning,
-		RuntimeCommandID: "automation-run:revision-ordered-run", RuntimeOperationID: "operation-1", RuntimeReceiptCursor: 1,
-		RuntimeRecoveryRequired: true,
-	}
-	if _, err := store.AppendRun(task.CatalogID, pending); err != nil {
-		t.Fatal(err)
-	}
-	staleObligation, found, err := store.readDurableRunObligation(task.Scope, pending.ID)
-	if err != nil || !found {
-		t.Fatalf("read first obligation: found=%t err=%v", found, err)
-	}
-
-	settled := pending
-	settled.Status = RunStatusFailed
-	settled.RuntimeRecoveryRequired = false
-	settled.CompletionEffectsCompleted = true
-	if _, err := store.AppendRun(task.CatalogID, settled); err != nil {
-		t.Fatal(err)
-	}
-	settledHistory, found, err := store.readDurableRun(task.Scope, pending.ID)
-	if err != nil || !found || settledHistory.Revision <= staleObligation.Revision {
-		t.Fatalf("settled history revision = %d stale=%d found=%t err=%v", settledHistory.Revision, staleObligation.Revision, found, err)
-	}
-
-	// Crash after full-history commit but before hot-file removal: the older hot
-	// copy must not resurrect accepted work.
-	if err := store.writeDurableRunObligation(task.Scope, staleObligation); err != nil {
-		t.Fatal(err)
-	}
-	_, recovered, err := store.GetRunByID(pending.ID)
-	if err != nil || recovered.Status != RunStatusFailed || recovered.RuntimeRecoveryRequired {
-		t.Fatalf("stale hot copy won over settled history: run=%#v err=%v", recovered, err)
-	}
-	if obligations, err := store.ListDurableObligations(); err != nil || len(obligations) != 0 {
-		t.Fatalf("stale hot copy entered recovery scan: %#v err=%v", obligations, err)
-	}
-
-	// Crash after a valid successor intent reaches the write-ahead file but
-	// before full history: the newer revision must remain recoverable.
-	newerObligation := settledHistory
-	newerObligation.Revision++
-	newerObligation.Run.PendingRuntimeCommandID = "follow-up-2"
-	newerObligation.Run.PendingRuntimeIntentHash = "follow-up-2-intent"
-	if err := store.writeDurableRunObligation(task.Scope, newerObligation); err != nil {
-		t.Fatal(err)
-	}
-	_, recovered, err = store.GetRunByID(pending.ID)
-	if err != nil || recovered.PendingRuntimeCommandID != "follow-up-2" {
-		t.Fatalf("new write-ahead obligation lost: run=%#v err=%v", recovered, err)
-	}
-	obligations, err := store.ListDurableObligations()
-	if err != nil || len(obligations) != 1 || obligations[0].Run.PendingRuntimeCommandID != "follow-up-2" {
-		t.Fatalf("new write-ahead recovery scan = %#v err=%v", obligations, err)
-	}
-}
-
-func TestFailedReceiptlessRunAllowsOnlyExplicitAdmissionRetry(t *testing.T) {
-	root := t.TempDir()
-	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Admission retry", Template: TemplateReview})
-	if err != nil {
-		t.Fatal(err)
-	}
-	failed := RunRecord{
-		ID: "receiptless-retry", TaskID: task.ID, Scope: task.Scope, Workspace: task.Target.Workspace,
-		Trigger: TriggerManual, Status: RunStatusFailed, Error: "not accepted", CompletionEffectsCompleted: true,
-	}
-	if _, err := store.AppendRun(task.CatalogID, failed); err != nil {
-		t.Fatal(err)
-	}
-	unsafe := failed
-	unsafe.Status = RunStatusRunning
-	unsafe.Error = ""
-	if _, err := store.AppendRun(task.CatalogID, unsafe); !errors.Is(err, ErrRunIdentityConflict) {
-		t.Fatalf("receiptless terminal run restarted without admission intent: %v", err)
-	}
-	retry := unsafe
-	retry.RuntimeAdmissionPending = true
-	updated, err := store.AppendRun(task.CatalogID, retry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.LastRun == nil || updated.LastRun.Status != RunStatusRunning || !updated.LastRun.RuntimeAdmissionPending {
-		t.Fatalf("explicit admission retry = %#v", updated.LastRun)
-	}
-	clearedWithoutProof := *updated.LastRun
-	clearedWithoutProof.RuntimeAdmissionPending = false
-	if _, err := store.AppendRun(task.CatalogID, clearedWithoutProof); !errors.Is(err, ErrRunIdentityConflict) {
-		t.Fatalf("admission intent cleared without receipt or terminal proof: %v", err)
+	obligations, err = store.ListDurableObligations()
+	if err != nil || len(obligations) != 0 {
+		t.Fatalf("stale writer reopened legacy effects: %+v %v", obligations, err)
 	}
 }

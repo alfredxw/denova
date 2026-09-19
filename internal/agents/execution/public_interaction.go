@@ -36,18 +36,7 @@ func (runtime *Runtime) ResolveAsk(
 			return agentconversation.HostAskResolution{}, agent.ErrInteractionStale
 		}
 	} else if !response.Cancelled {
-		response.Answers = make([]agent.InteractionAnswer, len(answers))
-		for index, answer := range answers {
-			values := make([]string, 0, len(answer.SelectedOptionIDs))
-			for _, value := range answer.SelectedOptionIDs {
-				if value = strings.TrimSpace(value); value != "" && value != "other" {
-					values = append(values, value)
-				}
-			}
-			response.Answers[index] = agent.InteractionAnswer{
-				QuestionID: answer.QuestionID, Values: values, Text: answer.CustomInput,
-			}
-		}
+		response.Answers = agentconversation.InteractionAnswers(answers)
 	}
 	request, resolution, err := runtime.ResolveInteraction(ctx, options, askID, response)
 	if err != nil {
@@ -72,36 +61,7 @@ func (runtime *Runtime) ResolveAsk(
 		result.Status = session.AskPending
 		return result, nil
 	}
-	if resolution.Cancelled {
-		result.Status, result.CancelReason = session.AskCancelled, strings.TrimSpace(cancelReason)
-		return result, nil
-	}
-	result.Status = session.AskAnswered
-	if request.Kind == agent.InteractionPermission {
-		return result, nil
-	}
-	questions := make(map[string]agent.InteractionQuestion, len(request.Questions))
-	for _, question := range request.Questions {
-		questions[question.ID] = question
-	}
-	for _, answer := range resolution.Answers {
-		question := questions[answer.QuestionID]
-		projected := agentconversation.HostAskAnswerResult{
-			QuestionID: answer.QuestionID, Question: strings.TrimSpace(question.Prompt), CustomInput: answer.Text,
-		}
-		byValue := make(map[string]agent.InteractionOption, len(question.Options))
-		for _, option := range question.Options {
-			byValue[option.Value] = option
-		}
-		for _, value := range answer.Values {
-			option := byValue[value]
-			projected.SelectedOptions = append(projected.SelectedOptions, agentconversation.HostAskSelectedOption{
-				ID: value, Label: strings.TrimSpace(option.Label),
-			})
-		}
-		result.Answers = append(result.Answers, projected)
-	}
-	return result, nil
+	return agentconversation.ProjectAskResolution(request, resolution, cancelReason), nil
 }
 
 // ResolvePermission maps the existing tool-approval action IDs to the public

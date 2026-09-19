@@ -127,7 +127,9 @@ export function useConversationConfig(binding?: ConversationConfigBinding): Conv
       try {
         next = await patchConversationConfig(normalizedBinding, changes, base.revision)
       } catch (reason) {
-        if (!(reason instanceof APIError) || reason.status !== 409) throw reason
+        // Applying an engine is an explicit review of one exact revision.
+        // A conflict must be shown, never silently retried against new state.
+        if (changes.runtime || !(reason instanceof APIError) || reason.status !== 409) throw reason
         const latest = await fetchConversationConfig(normalizedBinding)
         next = await patchConversationConfig(normalizedBinding, changes, latest.revision)
       }
@@ -161,6 +163,7 @@ export function useConversationConfig(binding?: ConversationConfigBinding): Conv
   }, [bindingKey, normalizedBinding, reload, snapshot, source])
 
   return {
+    binding: normalizedBinding,
     snapshot,
     initialized: snapshot !== null,
     loading: Boolean(normalizedBinding) && (loading || (snapshot === null && error === null)),
@@ -173,7 +176,9 @@ export function useConversationConfig(binding?: ConversationConfigBinding): Conv
 
 export function conversationConfigBindingKey(binding: ConversationConfigBinding) {
   return [
-    binding.mode,
+    // Writing and AgentChat address the same product Session journal. Applying
+    // its runtime on Agents must also refresh an already open Writing composer.
+    binding.mode === 'writing' || binding.mode === 'agent_chat' ? 'project_conversation' : binding.mode,
     binding.project_id ?? '',
     binding.session_id ?? '',
     binding.story_id ?? '',

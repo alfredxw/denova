@@ -37,6 +37,7 @@ type Settings struct {
 	ImageAPIEndpoints        []ImageAPIEndpointSettings   `toml:"image_api_endpoints,omitempty" json:"image_api_endpoints,omitempty"`
 	ImageAPIProfiles         []ImageAPIProfileSettings    `toml:"image_api_profiles,omitempty" json:"image_api_profiles,omitempty"`
 	AgentModels              AgentModelSettings           `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
+	AgentRuntimes            AgentRuntimeSettings         `toml:"agent_runtimes,omitempty" json:"agent_runtimes,omitzero"`
 	AgentTools               AgentToolSettings            `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
 	AgentPrompts             AgentPromptSettings          `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
 	AgentSkills              AgentSkillSettings           `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
@@ -262,6 +263,7 @@ func Merge(parent, child Settings) Settings {
 	out.ImageAPIEndpoints = mergeImageAPIEndpoints(out.ImageAPIEndpoints, child.ImageAPIEndpoints)
 	out.ImageAPIProfiles = mergeImageAPIProfiles(out.ImageAPIProfiles, child.ImageAPIProfiles)
 	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
+	out.AgentRuntimes = MergeAgentRuntimeSettings(out.AgentRuntimes, child.AgentRuntimes)
 	out.AgentTools = MergeAgentToolSettings(out.AgentTools, child.AgentTools)
 	out.AgentPrompts = MergeAgentPromptSettings(out.AgentPrompts, child.AgentPrompts)
 	out.AgentSkills = MergeAgentSkillSettings(out.AgentSkills, child.AgentSkills)
@@ -587,6 +589,9 @@ func decodeSettingsFileWithMigration(path string, data []byte) (Settings, bool, 
 		return Settings{}, false, fmt.Errorf("解析 %s 失败: %w", path, err)
 	}
 	migrated := hasLegacyImageSettings(s) || hasEmbeddedModelEndpointSettings(s) || hasEmbeddedImageAPIEndpointSettings(s)
+	if err := validateSettingsRuntimes(s); err != nil {
+		return Settings{}, false, fmt.Errorf("validate settings %s: %w", path, err)
+	}
 	return sanitizeEditableSettings(s), migrated, nil
 }
 
@@ -597,6 +602,9 @@ func WriteSettingsFile(path string, s Settings) error {
 
 // WriteSettingsFileIfRevision 写入配置；expectedRevision 非空时要求磁盘文件未被外部改动。
 func WriteSettingsFileIfRevision(path string, s Settings, expectedRevision string) error {
+	if err := validateSettingsRuntimes(s); err != nil {
+		return err
+	}
 	data, err := toml.Marshal(sanitizeEditableSettings(s))
 	if err != nil {
 		return fmt.Errorf("序列化失败: %w", err)
@@ -654,6 +662,9 @@ func MutateSettingsFile(
 			next, mutateErr := mutate(current)
 			if mutateErr != nil {
 				return nil, mutateErr
+			}
+			if err := validateSettingsRuntimes(next); err != nil {
+				return nil, err
 			}
 			data, marshalErr := toml.Marshal(sanitizeEditableSettings(next))
 			if marshalErr != nil {
@@ -763,7 +774,8 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	}
 	catalogConfig := &Config{
 		AgentModels: eff.AgentModels, AgentTools: eff.AgentTools, AgentPrompts: eff.AgentPrompts,
-		AgentSkills: eff.AgentSkills, AgentContexts: eff.AgentContexts, CustomAgents: eff.CustomAgents,
+		AgentRuntimes: eff.AgentRuntimes,
+		AgentSkills:   eff.AgentSkills, AgentContexts: eff.AgentContexts, CustomAgents: eff.CustomAgents,
 	}
 	resolvedToolManifests := ResolveAgentToolManifestsForGOOS(catalogConfig, runtime.GOOS)
 	resolvedContexts := ResolveAgentContexts(catalogConfig)
@@ -836,6 +848,7 @@ func withResolvedLabs(settings Settings) Settings {
 // the transition is reversible, but LoadLayered no longer applies them.
 func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings {
 	scoped := workspaceAgentSettings(incoming)
+	existing.AgentRuntimes = scoped.AgentRuntimes
 	existing.AgentTools = scoped.AgentTools
 	existing.AgentPrompts = scoped.AgentPrompts
 	existing.AgentSkills = scoped.AgentSkills
@@ -849,9 +862,11 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 }
 
 // workspaceAgentSettings defines the narrow workspace configuration boundary.
-// Model selection and every setting shown on the Settings page are user-scoped.
+// Native model selection and general Settings remain user-scoped. External
+// runtime preferences are Agent configuration and may have workspace overrides.
 func workspaceAgentSettings(settings Settings) Settings {
 	return Settings{
+		AgentRuntimes:            settings.AgentRuntimes,
 		AgentTools:               settings.AgentTools,
 		AgentPrompts:             settings.AgentPrompts,
 		AgentSkills:              settings.AgentSkills,

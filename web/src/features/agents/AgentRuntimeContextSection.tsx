@@ -4,7 +4,9 @@ import { Input } from '@/components/ui/input'
 import type { AgentContextOverride, ResolvedAgentContextSettings } from '@/features/settings/types'
 import { Field, SectionTitle, SwitchWithInheritance } from './agent-form-controls'
 
-export function AgentRuntimeContextSection({ value, resolved, onChange }: {
+export function AgentRuntimeContextSection({ value, resolved, onChange, contextPolicy = true, inputBudget = true }: {
+  contextPolicy?: boolean
+  inputBudget?: boolean
   value: AgentContextOverride
   resolved: ResolvedAgentContextSettings
   onChange: (patch: Partial<AgentContextOverride>) => void
@@ -31,7 +33,7 @@ export function AgentRuntimeContextSection({ value, resolved, onChange }: {
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={FolderOpen} title={t('agents.section.runtimeContext')} />
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label={t('agents.field.compactionEnabled')}>
+        {contextPolicy && <><Field label={t('agents.field.compactionEnabled')}>
           <SwitchWithInheritance
             checked={compactionEnabled}
             onChange={(checked) => onChange({ compaction_enabled: checked })}
@@ -67,7 +69,8 @@ export function AgentRuntimeContextSection({ value, resolved, onChange }: {
             onReset={hasToolResultContext ? () => onChange({ tool_result_context_enabled: null }) : undefined}
           />
         </Field>
-        <Field
+        </>}
+        {inputBudget && <><Field
           label={t('agents.field.maxFragmentKB')}
           inherited={!hasMaxFragmentBytes}
           onReset={hasMaxFragmentBytes ? () => onChange({ max_fragment_bytes: null }) : undefined}
@@ -147,11 +150,12 @@ export function AgentRuntimeContextSection({ value, resolved, onChange }: {
             className="h-7 flex-1 text-xs"
           />
         </Field>
+        </>}
       </div>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        {t('agents.context.compactionNote')}
-        <div className="mt-1">{t('agents.context.toolResultContextNote')}</div>
-        <div className="mt-1">{t('agents.context.assemblyBudgetNote')}</div>
+        {contextPolicy && <>{t('agents.context.compactionNote')}
+        <div className="mt-1">{t('agents.context.toolResultContextNote')}</div></>}
+        {inputBudget && <div className="mt-1">{t('agents.context.assemblyBudgetNote')}</div>}
       </div>
     </section>
   )

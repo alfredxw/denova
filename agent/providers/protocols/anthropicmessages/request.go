@@ -61,6 +61,7 @@ func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOptio
 func requestMessages(input []*agent.Message, config providers.ModelConfig) ([]anthropic.TextBlockParam, []anthropic.MessageParam, error) {
 	system := make([]anthropic.TextBlockParam, 0)
 	messages := make([]anthropic.MessageParam, 0, len(input))
+	imageCount := providers.NativeImageCount(input)
 	for index, message := range input {
 		if message == nil {
 			return nil, nil, fmt.Errorf("anthropic messages input %d: nil message", index)
@@ -74,12 +75,11 @@ func requestMessages(input []*agent.Message, config providers.ModelConfig) ([]an
 				if !agent.IsNativeImageMediaType(attachment.MediaType) {
 					continue
 				}
-				mediaType := strings.ToLower(strings.TrimSpace(attachment.MediaType))
-				encoded, err := agent.AttachmentBase64(attachment)
+				prepared, err := config.PrepareImage(attachment, imageCount)
 				if err != nil {
 					return nil, nil, fmt.Errorf("anthropic messages input %d: %w", index, err)
 				}
-				blocks = append(blocks, anthropic.NewImageBlockBase64(mediaType, encoded))
+				blocks = append(blocks, anthropic.NewImageBlockBase64(prepared.MediaType, prepared.Base64))
 			}
 			messages = append(messages, anthropic.NewUserMessage(blocks...))
 		case agent.Assistant:
@@ -93,7 +93,16 @@ func requestMessages(input []*agent.Message, config providers.ModelConfig) ([]an
 				return nil, nil, fmt.Errorf("anthropic messages input %d: tool result requires tool call id", index)
 			}
 			isError := message.ToolResult != nil && message.ToolResult.Status == agent.ToolResultError
-			messages = append(messages, anthropic.NewUserMessage(anthropic.NewToolResultBlock(message.ToolCallID, message.Content, isError)))
+			result := anthropic.NewToolResultBlock(message.ToolCallID, message.Content, isError)
+			for _, attachment := range message.Attachments {
+				prepared, err := config.PrepareImage(attachment, imageCount)
+				if err != nil {
+					return nil, nil, fmt.Errorf("anthropic messages input %d: %w", index, err)
+				}
+				image := anthropic.NewImageBlockBase64(prepared.MediaType, prepared.Base64)
+				result.OfToolResult.Content = append(result.OfToolResult.Content, anthropic.ToolResultBlockParamContentUnion{OfImage: image.OfImage})
+			}
+			messages = append(messages, anthropic.NewUserMessage(result))
 		default:
 			return nil, nil, fmt.Errorf("anthropic messages input %d: unsupported role %q", index, message.Role)
 		}

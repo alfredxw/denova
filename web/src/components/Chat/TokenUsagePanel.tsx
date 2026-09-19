@@ -19,7 +19,7 @@ type TokenUsageSummary = {
   completionTokens: number
   reasoningTokens: number
   totalTokens: number
-  modelCalls: number
+  modelCalls: number | undefined
   cacheHitRate: number
 }
 
@@ -96,7 +96,7 @@ export function TokenUsageDialog({ projectId, open, messages, onOpenChange }: {
                 <div className="flex items-center justify-between gap-3 border-b border-[var(--nova-border)] px-3 py-2">
                   <h3 className="text-xs font-medium text-[var(--nova-text)]">{t('chat.tokenUsage.requestList')}</h3>
                   <span className="text-[11px] text-[var(--nova-text-faint)]">
-                    {t('chat.tokenUsage.requestAndCallCount', { requests: usageMessages.length, calls: usageRows.length })}
+                    {t('chat.tokenUsage.requestAndCallCount', { requests: usageMessages.length, calls: stats.modelCalls === undefined ? t('chat.tokenUsage.unavailable') : stats.modelCalls })}
                   </span>
                 </div>
                 <div className="space-y-3 p-2">
@@ -165,7 +165,7 @@ function TokenUsageSummaryGrid({ stats }: { stats: TokenUsageSummary }) {
     { label: t('chat.tokenUsage.summary.requests'), value: formatNumber(stats.count) },
     { label: t('chat.tokenUsage.cacheHit'), value: formatPercent(stats.cacheHitRate) },
     { label: t('chat.tokenUsage.totalTokens'), value: formatNumber(stats.totalTokens) },
-    { label: t('chat.tokenUsage.modelCalls'), value: formatNumber(stats.modelCalls) },
+    { label: t('chat.tokenUsage.modelCalls'), value: stats.modelCalls === undefined ? t('chat.tokenUsage.unavailable') : formatNumber(stats.modelCalls) },
     { label: t('chat.tokenUsage.summary.prompt'), value: formatNumber(stats.promptTokens) },
     { label: t('chat.tokenUsage.summary.cached'), value: formatNumber(stats.cachedPromptTokens) },
     { label: t('chat.tokenUsage.summary.uncached'), value: formatNumber(stats.uncachedPromptTokens) },
@@ -202,7 +202,7 @@ function TokenUsageRequestGroup({ group, requestIndex, onOpenTrajectory }: { gro
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[var(--nova-text-muted)]">
-          <span>{t('chat.tokenUsage.modelCalls')}: {formatNumber(numberOrZero(message.model_calls))}</span>
+          <span>{t('chat.tokenUsage.modelCalls')}: {numberOrZero(message.model_calls) > 0 ? formatNumber(message.model_calls!) : t('chat.tokenUsage.unavailable')}</span>
           <span>{t('chat.tokenUsage.totalTokens')}: {formatNumber(numberOrZero(message.total_tokens))}</span>
           <span>{t('chat.tokenUsage.uncachedTokens')}: {formatNumber(messageUncachedPromptTokens(message))}</span>
           <span>{t('chat.tokenUsage.cacheHit')}: {formatPercent(numberOrZero(message.cache_hit_rate))}</span>
@@ -229,6 +229,9 @@ function TokenUsageRequestGroup({ group, requestIndex, onOpenTrajectory }: { gro
 
 function TokenUsageCallCard({ row }: { row: TokenUsageRow }) {
   const { t } = useTranslation()
+  if (row.callIndex === 0) {
+    return <div className="space-y-2 p-3 text-xs"><div className="text-[var(--nova-text-faint)]">{t('chat.tokenUsage.aggregateOnly')}</div><TokenBreakdown row={row} /></div>
+  }
   return (
     <div className="grid gap-2 p-2.5 text-xs md:grid-cols-[92px_minmax(250px,1.15fr)_minmax(210px,1fr)_minmax(210px,1fr)_minmax(170px,0.8fr)_92px] md:items-center md:gap-3">
       <div className="min-w-0">
@@ -298,7 +301,7 @@ function summarizeTokenUsage(messages: TokenUsageRecord[]): TokenUsageSummary {
     acc.completionTokens += numberOrZero(message.completion_tokens)
     acc.reasoningTokens += numberOrZero(message.reasoning_tokens)
     acc.totalTokens += numberOrZero(message.total_tokens)
-    acc.modelCalls += numberOrZero(message.model_calls)
+    acc.modelCalls = acc.modelCalls !== undefined && numberOrZero(message.model_calls) > 0 ? acc.modelCalls + message.model_calls! : undefined
     return acc
   }, {
     count: 0,
@@ -318,7 +321,7 @@ function summarizeTokenUsage(messages: TokenUsageRecord[]): TokenUsageSummary {
 
 function normalizeTokenUsageMessages(messages: TokenUsageRecord[]) {
   return messages
-    .filter((message) => (!message.role || message.role === 'token_usage') && numberOrZero(message.model_calls) > 0)
+    .filter((message) => (!message.role || message.role === 'token_usage') && (numberOrZero(message.model_calls) > 0 || numberOrZero(message.total_tokens) > 0))
     .slice()
     .sort((a, b) => timestampValue(a.created_at) - timestampValue(b.created_at))
     .slice(-MAX_TOKEN_USAGE_MESSAGES)
@@ -344,7 +347,7 @@ function buildTokenUsageGroups(messages: TokenUsageRecord[]): TokenUsageGroup[] 
           finishReason: '',
           requestedTools: [],
           afterTools: [],
-          callIndex: 1,
+          callIndex: message.model_calls === 1 ? 1 : 0,
           promptTokens: numberOrZero(message.prompt_tokens),
           cachedPromptTokens: numberOrZero(message.cached_prompt_tokens),
           uncachedPromptTokens: messageUncachedPromptTokens(message),

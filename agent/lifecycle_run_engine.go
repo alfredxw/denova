@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -63,7 +64,16 @@ func (run *Run) execute() {
 			if errors.Is(err, context.Canceled) && run.ctx.Err() != nil {
 				run.finish(Result{Status: ResultAborted, Reason: "Agent Run cancelled"}, nil)
 			} else {
-				run.finish(Result{Status: ResultFailed, Reason: err.Error()}, &RunError{Result: Result{Status: ResultFailed, Reason: err.Error()}})
+				reason := err.Error()
+				// Adapters may supply a stable localized reason; persist that
+				// code while retaining the detailed failure in diagnostics.
+				var coded interface{ ModelErrorReason() string }
+				if errors.As(err, &coded) && coded.ModelErrorReason() != "" {
+					reason = coded.ModelErrorReason()
+					slog.ErrorContext(run.ctx, "Agent model input rejected", "reason", reason, "error", err)
+				}
+				result := Result{Status: ResultFailed, Reason: reason}
+				run.finish(result, &RunError{Result: result})
 			}
 			return
 		}

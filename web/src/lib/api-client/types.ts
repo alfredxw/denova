@@ -995,13 +995,14 @@ export interface AutomationRunRecord {
   runtime_command_id?: string
   runtime_operation_id?: string
   runtime_receipt_cursor?: number
-  status: 'running' | 'success' | 'failed' | 'aborted'
+  delivery_status?: 'pending' | 'accepted'
+  status: 'pending' | 'accepted' | 'queued' | 'running' | 'suspended' | 'success' | 'failed' | 'aborted'
   started_at: string
   finished_at?: string
-  summary: string
+  summary?: string
   error?: string
   output_path?: string
-  tool_manifest: Array<{ source: string; allowed: boolean }>
+  tool_manifest?: Array<{ source: string; allowed: boolean }>
 }
 
 export interface AutomationTask {

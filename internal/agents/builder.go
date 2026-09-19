@@ -23,8 +23,6 @@ import (
 	"denova/internal/agents/modelio"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/scripttools"
-	"denova/internal/agents/skillassembly"
 	"denova/internal/agents/toolresult"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	producttools "denova/internal/agents/tools"
@@ -461,13 +459,16 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
-	toolCatalog := agenttoolruntime.NewCatalogWithContext(ctx, cfg)
-	settings := spec.ToolSettings
-	skills, err := skillassembly.Build(ctx, cfg, spec.Kind, spec.EnableSkills, settings, spec.SystemPrompt)
+	assembly, err := buildAgentTools(ctx, cfg, agentToolsSpec{
+		Kind: spec.Kind, SystemPrompt: spec.SystemPrompt, Settings: spec.ToolSettings,
+		EnableSkills: spec.EnableSkills, ExtraTools: spec.ExtraTools,
+		ReadAdapters: spec.ReadAdapters, ReadAdaptersFactory: spec.ReadAdaptersFactory,
+		ExtraToolsFactory: spec.ExtraToolsFactory,
+	})
 	if err != nil {
 		return chatModelAgentAssembly{}, err
 	}
-	systemPrompt := skills.SystemPrompt
+	systemPrompt := assembly.SystemPrompt
 	middlewares := append([]agent.Middleware(nil), spec.ExtraMiddlewares...)
 	middlewares = append(middlewares,
 		agenttoolruntime.NewOrchestratorMiddleware(agenttoolruntime.OrchestratorConfig{
@@ -489,51 +490,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if maxOutputTokens := spec.ModelCfg.MaxOutputTokens; maxOutputTokens != nil && *maxOutputTokens > 0 {
 		middlewares = append(middlewares, agentchat.NewDefaultMaxTokensMiddleware(*maxOutputTokens))
 	}
-	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
-	skillTools := skills.Tools
-	readAdapters := skills.ReadAdapters
-	readAdapters = append(readAdapters, spec.ReadAdapters...)
-	if spec.ReadAdaptersFactory != nil {
-		extraReadAdapters, err := spec.ReadAdaptersFactory(settings)
-		if err != nil {
-			return chatModelAgentAssembly{}, err
-		}
-		readAdapters = append(readAdapters, extraReadAdapters...)
-	}
-	workspaceTools, err := toolCatalog.Workspace(settings, readAdapters...)
-	if err != nil {
-		return chatModelAgentAssembly{}, err
-	}
-	tools = append(tools, workspaceTools...)
-	tools = append(tools, skillTools...)
-	if spec.ExtraToolsFactory != nil {
-		extraTools, err := spec.ExtraToolsFactory(settings)
-		if err != nil {
-			return chatModelAgentAssembly{}, err
-		}
-		tools = append(tools, extraTools...)
-	}
-	webTools, err := toolCatalog.WebAccess(settings)
-	if err != nil {
-		return chatModelAgentAssembly{}, err
-	}
-	tools = append(tools, webTools...)
-	browserTools, err := toolCatalog.Browser(ctx, settings)
-	if err != nil {
-		return chatModelAgentAssembly{}, err
-	}
-	tools = append(tools, browserTools...)
-	if settings.Allows(config.AgentToolScript) {
-		scriptDefinition, err := scripttools.Immediate(cfg)
-		if err != nil {
-			return chatModelAgentAssembly{}, err
-		}
-		tools = append(tools, scriptDefinition)
-	}
-	if err := producttools.Validate(ctx, tools); err != nil {
-		return chatModelAgentAssembly{}, err
-	}
-	return chatModelAgentAssembly{SystemPrompt: systemPrompt, Tools: tools, Middlewares: middlewares}, nil
+	return chatModelAgentAssembly{SystemPrompt: systemPrompt, Tools: assembly.Tools, Middlewares: middlewares}, nil
 }
 
 func buildConfiguredSubAgents(

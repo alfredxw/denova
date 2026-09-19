@@ -2,12 +2,17 @@ package handlers
 
 import (
 	"context"
+	"denova/config"
 	"errors"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/external/codex"
+	externaljournal "denova/internal/agents/external/journal"
 	appsvc "denova/internal/app"
+	"denova/internal/app/agentruntime"
 )
 
 func (h *Handlers) HandleConversationConfigGet(ctx context.Context, c *app.RequestContext) {
@@ -20,7 +25,7 @@ func (h *Handlers) HandleConversationConfigGet(ctx context.Context, c *app.Reque
 		writeConversationConfigError(c, err)
 		return
 	}
-	writeJSON(c, consts.StatusOK, snapshot)
+	h.writeConversationConfigSnapshot(c, snapshot)
 }
 
 func (h *Handlers) HandleConversationConfigPatch(ctx context.Context, c *app.RequestContext) {
@@ -41,7 +46,26 @@ func (h *Handlers) HandleConversationConfigPatch(ctx context.Context, c *app.Req
 		writeConversationConfigError(c, err)
 		return
 	}
-	writeJSON(c, consts.StatusOK, snapshot)
+	h.writeConversationConfigSnapshot(c, snapshot)
+}
+
+// Runtime health and capabilities are read-only host projections. They never
+// enter the durable configuration or trigger an external process on GET.
+func (h *Handlers) writeConversationConfigSnapshot(c *app.RequestContext, snapshot conversationconfig.Snapshot) {
+	selection := snapshot.Engine()
+	snapshot.Runtime = &selection
+	for _, descriptor := range h.app.AgentEngines().Catalog() {
+		if descriptor.ID != selection.Kind {
+			continue
+		}
+		writeJSON(c, consts.StatusOK, struct {
+			conversationconfig.Snapshot
+			Capabilities agentruntime.EngineCapabilities `json:"runtime_capabilities"`
+			Status       string                          `json:"runtime_status"`
+		}{snapshot, descriptor.Capabilities, descriptor.Status})
+		return
+	}
+	writeErrorKey(c, consts.StatusNotFound, "agentRuntime.notFound")
 }
 
 func conversationConfigBindingFromQuery(c *app.RequestContext) (appsvc.ConversationConfigBinding, bool) {
@@ -68,6 +92,22 @@ func bindConversationConfigProject(c *app.RequestContext, binding *appsvc.Conver
 
 func writeConversationConfigError(c *app.RequestContext, err error) {
 	switch {
+	case errors.Is(err, config.ErrRuntimeModelProfile):
+		writeErrorKey(c, consts.StatusUnprocessableEntity, "agentRuntime.apiProfileUnavailable")
+	case errors.Is(err, agentruntime.ErrEngineNotFound):
+		writeErrorKey(c, consts.StatusNotFound, "agentRuntime.notFound")
+	case errors.Is(err, agentruntime.ErrEngineNotInstalled):
+		writeErrorKey(c, consts.StatusServiceUnavailable, "agentRuntime.notInstalled")
+	case errors.Is(err, codex.ErrVersionUnsupported):
+		writeErrorKey(c, consts.StatusServiceUnavailable, "agentRuntime.incompatibleVersion")
+	case errors.Is(err, agentruntime.ErrOperationActive), errors.Is(err, externaljournal.ErrBusy):
+		writeErrorKey(c, consts.StatusConflict, "agentRuntime.busy")
+	case errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported):
+		writeErrorKey(c, consts.StatusBadRequest, "agentRuntime.capabilityUnsupported")
+	case errors.Is(err, agentruntime.ErrEngineNotReady):
+		writeErrorKey(c, consts.StatusConflict, "agentRuntime.notReady")
+	case errors.Is(err, agentruntime.ErrEngineModelUnavailable):
+		writeErrorKey(c, consts.StatusUnprocessableEntity, "agentRuntime.modelUnavailable")
 	case errors.Is(err, appsvc.ErrConversationModelDefaultsNotSaved):
 		writeErrorKey(c, consts.StatusInternalServerError, "api.conversationConfig.rememberModelFailed")
 	case appsvc.IsConversationConfigRevisionConflict(err):

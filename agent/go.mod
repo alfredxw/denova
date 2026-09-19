@@ -6,6 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.61.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/x/xpty v0.1.3
+	github.com/disintegration/imaging v1.6.2
 	github.com/dop251/goja v0.0.0-20260806115107-493f22071ef6
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/gofrs/flock v0.13.0

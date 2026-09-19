@@ -38,6 +38,20 @@ describe('layered settings partial saves', () => {
     vi.useRealTimers()
   })
 
+  it('retains consecutive draft edits while a settings refresh is applied', async () => {
+    const loadSettings = vi.fn(async () => snapshot(initial, 'r1'))
+    const { result } = renderHook(() => useLayeredSettingsDraft({
+      target: { kind: 'global' }, layer: 'user', sourcePrefix: 'concurrent-edits', loadSettings,
+    }))
+    await waitFor(() => expect(result.current.layered?.revisions?.user).toBe('r1'))
+    await act(async () => {
+      result.current.setDraft({ ...initial, theme: 'dark' })
+      result.current.setDraft(current => ({ ...current, ui_font_size: 18 }))
+      await result.current.reload()
+    })
+    expect(result.current.draft).toEqual({ ...initial, theme: 'dark', ui_font_size: 18 })
+  })
+
   for (const [name, target, url] of [
     ['global writing settings', { kind: 'global' }, '/api/settings'],
     ['project game settings', { kind: 'project', projectId: 'game' }, '/api/projects/game/settings'],

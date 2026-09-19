@@ -58,6 +58,15 @@ func TestSuspendReopenResumesSameRunWithoutRepeatingInput(t *testing.T) {
 	if len(model.calls()) != 0 {
 		t.Fatal("open executed the Run")
 	}
+	inspected, found, err := session.CommandRun(ctx, "start")
+	if err != nil || !found {
+		t.Fatalf("cold command lookup: %v %v", found, err)
+	}
+	snapshot := inspected.Snapshot()
+	if snapshot.Receipt != run.Receipt() || !snapshot.Suspended || snapshot.Result != nil {
+		t.Fatalf("pause became terminal: %+v", snapshot)
+	}
+
 	if _, err := session.Run(ctx, Text("new task")); !errors.Is(err, ErrSessionBusy) {
 		t.Fatalf("new Run error=%v", err)
 	}
@@ -80,6 +89,15 @@ func TestSuspendReopenResumesSameRunWithoutRepeatingInput(t *testing.T) {
 	calls := model.calls()
 	if len(calls) != 2 || len(calls[0]) != 1 || calls[0][0].Content != "original task" {
 		t.Fatalf("resumed model messages=%#v", calls)
+	}
+
+	inspected, found, err = session.CommandRun(ctx, "start")
+	if err != nil || !found {
+		t.Fatalf("resumed command lookup: %v %v", found, err)
+	}
+	snapshot = inspected.Snapshot()
+	if snapshot.Receipt != run.Receipt() || snapshot.Suspended || snapshot.Result == nil || snapshot.Result.Status != ResultCompleted {
+		t.Fatalf("resumed snapshot: %+v", snapshot)
 	}
 	if store.count(turnFinishedRecord) != 1 {
 		t.Fatalf("settlements=%d", store.count(turnFinishedRecord))

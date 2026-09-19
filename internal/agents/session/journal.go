@@ -9,8 +9,11 @@ import (
 )
 
 const (
-	journalFormatVersion         = 2
-	historyTypeSessionPatch      = "session_patch"
+	journalFormatVersion    = 2
+	historyTypeSessionPatch = "session_patch"
+	// Released readers ignore unknown config fields. The explicit record type
+	// makes them reject an external selection instead of executing it as Native.
+	historyTypeRuntimePatch      = "session_patch_v2"
 	historyTypeDisplayPatch      = "display_patch"
 	historyTypeInterruptionPatch = "interruption_patch"
 	historyTypeContextBatch      = "context_batch"

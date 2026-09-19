@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"denova/config"
 	"denova/internal/agents/conversationconfig"
 )
 
@@ -34,10 +35,12 @@ func (s *Session) EnsureRuntimeConfig(seed conversationconfig.Config) (conversat
 			snapshot = existing
 			return nil
 		}
+		seed = seed.Clone()
 		now := time.Now().UTC()
 		revision := uint64(1)
-		if err := s.appendJournalRecordLocked(sessionPatchRecord{
-			Type: historyTypeSessionPatch, RuntimeConfig: &seed,
+		kind, upgrade := runtimeConfigStorage(seed)
+		if _, err := s.appendJournalRecordsWithUpgradeLocked(upgrade, sessionPatchRecord{
+			Type: kind, RuntimeConfig: &seed,
 			RuntimeConfigRevision: revision, UpdatedAt: now,
 		}); err != nil {
 			return err
@@ -46,7 +49,7 @@ func (s *Session) EnsureRuntimeConfig(seed conversationconfig.Config) (conversat
 		s.runtimeConfig = &value
 		s.runtimeConfigRevision = revision
 		advanceUpdatedAt(s, now)
-		snapshot = conversationconfig.Snapshot{Config: value, Revision: revision}
+		snapshot = conversationconfig.Snapshot{Config: value.Clone(), Revision: revision}
 		return nil
 	})
 	return snapshot, err
@@ -72,10 +75,15 @@ func (s *Session) SetRuntimeConfig(next conversationconfig.Config, expectedRevis
 		if expectedRevision == 0 || s.runtimeConfigRevision != expectedRevision {
 			return fmt.Errorf("%w: have=%d want=%d", conversationconfig.ErrRevisionConflict, s.runtimeConfigRevision, expectedRevision)
 		}
+		if err := s.projection.External.RequireIdle(); err != nil {
+			return err
+		}
+		next = next.Clone()
 		revision := s.runtimeConfigRevision + 1
 		now := time.Now().UTC()
-		if err := s.appendJournalRecordLocked(sessionPatchRecord{
-			Type: historyTypeSessionPatch, RuntimeConfig: &next,
+		kind, upgrade := runtimeConfigStorage(next)
+		if _, err := s.appendJournalRecordsWithUpgradeLocked(upgrade, sessionPatchRecord{
+			Type: kind, RuntimeConfig: &next,
 			RuntimeConfigRevision: revision, UpdatedAt: now,
 		}); err != nil {
 			return err
@@ -84,7 +92,7 @@ func (s *Session) SetRuntimeConfig(next conversationconfig.Config, expectedRevis
 		s.runtimeConfig = &value
 		s.runtimeConfigRevision = revision
 		advanceUpdatedAt(s, now)
-		snapshot = conversationconfig.Snapshot{Config: value, Revision: revision}
+		snapshot = conversationconfig.Snapshot{Config: value.Clone(), Revision: revision}
 		return nil
 	})
 	return snapshot, err
@@ -113,5 +121,12 @@ func (s *Session) runtimeConfigLocked() (conversationconfig.Snapshot, bool) {
 	if s.runtimeConfig == nil || s.runtimeConfigRevision == 0 {
 		return conversationconfig.Snapshot{}, false
 	}
-	return conversationconfig.Snapshot{Config: *s.runtimeConfig, Revision: s.runtimeConfigRevision}, true
+	return conversationconfig.Snapshot{Config: s.runtimeConfig.Clone(), Revision: s.runtimeConfigRevision}, true
+}
+
+func runtimeConfigStorage(selection conversationconfig.Config) (string, string) {
+	if selection.Engine().Kind != config.RuntimeNative {
+		return historyTypeRuntimePatch, "external-runtime-v1"
+	}
+	return historyTypeSessionPatch, ""
 }

@@ -6,26 +6,30 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
-type localTextReadInput struct {
-	Path       string `json:"path" jsonschema_description:"Project-relative or absolute local path of the UTF-8 text file to read. External paths remain subject to permission."`
+type localFileReadInput struct {
+	Path       string `json:"path" jsonschema_description:"Project-relative or absolute local file path. Reads UTF-8 text or views PNG, JPEG, GIF, and WebP images (up to 20 MiB). Image bytes are sent to the model; line parameters apply only to text. External paths remain subject to permission."`
 	Offset     int    `json:"offset,omitempty" jsonschema:"minimum=1" jsonschema_description:"One-based first line to return; defaults to 1."`
 	ByteOffset int    `json:"byte_offset,omitempty" jsonschema:"minimum=0" jsonschema_description:"Zero-based UTF-8 byte offset within the selected first line, used only with an exact next_byte_offset continuation."`
 	Limit      int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum selected lines to return; defaults to 2000."`
 }
 
-// LocalTextAdapter reads bounded UTF-8 source windows.
-func LocalTextAdapter(workspace *LocalWorkspace) (ReadAdapter, error) {
+// LocalFileAdapter reads bounded UTF-8 windows or native images. Images require
+// the run's artifact store and are captured before entering model history.
+func LocalFileAdapter(workspace *LocalWorkspace) (ReadAdapter, error) {
 	if workspace == nil {
-		return nil, errors.New("local text adapter workspace is nil")
+		return nil, errors.New("local file adapter workspace is nil")
 	}
-	return NewReadAdapter(toolsetIdentity("tools.read.local_text", workspace.Identity()), "local_text", func(ctx context.Context, input string) (bool, error) {
+	return NewReadAdapter(toolsetIdentity("tools.read.local_file", workspace.Identity()), "local_file", func(ctx context.Context, input string) (bool, error) {
 		if err := contextError(ctx); err != nil {
 			return false, err
 		}
@@ -37,18 +41,18 @@ func LocalTextAdapter(workspace *LocalWorkspace) (ReadAdapter, error) {
 			return false, err
 		}
 		return target.info.Mode().IsRegular(), nil
-	}, func(ctx context.Context, input localTextReadInput) (ReadResult, error) {
-		return workspace.readText(ctx, input)
+	}, func(ctx context.Context, input localFileReadInput) (ReadResult, error) {
+		return workspace.readFile(ctx, input)
 	})
 }
 
-func (workspace *LocalWorkspace) readText(ctx context.Context, input localTextReadInput) (ReadResult, error) {
+func (workspace *LocalWorkspace) readFile(ctx context.Context, input localFileReadInput) (ReadResult, error) {
 	target, err := workspace.resolveReadPath(input.Path, false)
 	if err != nil {
 		return ReadResult{}, err
 	}
 	if !target.info.Mode().IsRegular() {
-		return ReadResult{}, fmt.Errorf("read local_text only supports regular files: %s", target.display)
+		return ReadResult{}, fmt.Errorf("read local_file only supports regular files: %s", target.display)
 	}
 	limits := workspace.Limits()
 	offset, limit := normalizeReadWindow(input.Offset, input.Limit, limits.DefaultReadLines)
@@ -57,6 +61,14 @@ func (workspace *LocalWorkspace) readText(ctx context.Context, input localTextRe
 		return ReadResult{}, fmt.Errorf("open filesystem file %s: %w", target.display, err)
 	}
 	defer file.Close()
+	var header [512]byte
+	count, err := file.ReadAt(header[:], 0)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return ReadResult{}, fmt.Errorf("inspect filesystem file %s: %w", target.display, err)
+	}
+	if agent.IsNativeImageMediaType(http.DetectContentType(header[:count])) {
+		return readLocalImage(ctx, target, file)
+	}
 	selection, err := selectReadWindow(ctx, file, offset, input.ByteOffset, limit, limits.MaxResultBytes)
 	if err != nil {
 		return ReadResult{}, err

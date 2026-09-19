@@ -23,6 +23,9 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 	{
 		api.POST("/autosave-conflicts", apiHandlers.HandleAutosaveConflictCreate)
 		api.GET("/agent-runs", apiHandlers.HandleGlobalAgentRunTraces)
+		api.GET("/agent-runtimes", apiHandlers.HandleAgentEngines)
+		api.POST("/agent-runtimes/:id/check", apiHandlers.HandleAgentEngineCheck)
+		api.GET("/agent-runtimes/:id/models", apiHandlers.HandleAgentEngineModels)
 		trajectory := api.Group("/trajectory")
 		trajectory.GET("/outcomes", apiHandlers.HandleTrajectoryOutcomes)
 		trajectory.POST("/outcomes", apiHandlers.HandleTrajectoryOutcomeCreate)

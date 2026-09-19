@@ -402,6 +402,10 @@ func (ContextLimitReached) eventPayload() {}
 type ResultStatus string
 
 const (
+	// Model input failures are distinct from text/vision context exhaustion.
+	ModelImageInputRejectedReason = "agent_runtime.model_image_input_rejected"
+	ModelRequestTooLargeReason    = "agent_runtime.model_request_too_large"
+
 	// Model incomplete reasons are stable terminal codes for partial responses;
 	// clients localize them without discarding the provider's raw finish reason.
 	ModelOutputTruncatedReason       = "agent_runtime.model_output_truncated"

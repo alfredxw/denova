@@ -22,7 +22,7 @@ import { InputCommandMenu, type InputCommandOption } from './InputCommandMenu'
 import { useInputCommands, type SkillCommand, type CommandScope, type BuiltinCommand } from './use-input-commands'
 import type { AgentQuickPromptSettings } from '@/features/settings/types'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
-import type { ConversationConfigBinding } from '@/features/conversation-config/types'
+import { supportsRuntimeOperation, type ConversationConfigBinding } from '@/features/conversation-config/types'
 import { cn } from '@/lib/utils'
 import type { ConversationGoal } from '@/features/agent-goal/types'
 import { ComposerModeChip } from './ComposerModeChip'
@@ -129,12 +129,12 @@ export function InputArea({
   commandSubmitting = false,
   activeControlsDisabled = false,
   activeStopDisabled,
-  sendBlocked = false,
-  planMode = false,
-  onTogglePlanMode,
-  goal,
+  sendBlocked: configuredSendBlocked = false,
+  planMode: configuredPlanMode = false,
+  onTogglePlanMode: configuredOnTogglePlanMode,
+  goal: configuredGoal,
   goalPending = false,
-  onGoalSubmit,
+  onGoalSubmit: configuredOnGoalSubmit,
   onGoalPause,
   onGoalClear,
   draftKey,
@@ -164,7 +164,7 @@ export function InputArea({
   builtinCommands,
   placeholder,
   disabledPlaceholder,
-  onContextAnalyze,
+  onContextAnalyze: configuredOnContextAnalyze,
   tokenUsageMessages = [],
   agentKey,
   workspace,
@@ -179,6 +179,16 @@ export function InputArea({
   const { t } = useTranslation()
   const defaultApproval = useAgentApprovalMode()
   const conversationConfig = useConversationConfig(conversationBinding)
+  const externalEngine = Boolean(conversationConfig.snapshot?.runtime && conversationConfig.snapshot.runtime.kind !== 'native')
+  const planMode = externalEngine ? false : configuredPlanMode
+  const onTogglePlanMode = externalEngine ? undefined : configuredOnTogglePlanMode
+  useEffect(() => {
+    if (externalEngine && configuredPlanMode) configuredOnTogglePlanMode?.()
+  }, [externalEngine, configuredPlanMode, configuredOnTogglePlanMode])
+  const onGoalSubmit = supportsRuntimeOperation(conversationConfig.snapshot, 'goal') ? configuredOnGoalSubmit : undefined
+  const onContextAnalyze = externalEngine ? undefined : configuredOnContextAnalyze
+  const goal = supportsRuntimeOperation(conversationConfig.snapshot, 'goal') ? configuredGoal : undefined
+  const sendBlocked = configuredSendBlocked || (!supportsRuntimeOperation(conversationConfig.snapshot, 'queue') && generationActive)
   const approvalReady = conversationBinding
     ? conversationConfig.initialized && !conversationConfig.saving
     : defaultApproval.initialized && !defaultApproval.saving
@@ -233,7 +243,7 @@ export function InputArea({
     ...styleScenes.map((scene) => ({ kind: 'style' as const, value: scene, label: scene })),
   ], [knownLoreTokens, loreReferenceLabels, loreReferences, referencedFiles, styleScenes])
   const tokenUsageCount = useMemo(
-    () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => (!message.role || message.role === 'token_usage') && Number(message.model_calls || 0) > 0).length),
+    () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => (!message.role || message.role === 'token_usage') && (Number(message.model_calls || 0) > 0 || Number(message.total_tokens || 0) > 0)).length),
     [tokenUsageMessages],
   )
   useEffect(() => {
@@ -425,7 +435,7 @@ export function InputArea({
   /** 发送消息 */
   const handleSend = () => {
     const trimmed = value.trim()
-    if ((!trimmed && !hasReviewFeedback && attachments.files.length === 0 && !canResume) || disabled || !approvalReady || submittingRef.current) return
+    if ((!trimmed && !hasReviewFeedback && attachments.files.length === 0 && !canResume) || disabled || sendBlocked || !approvalReady || submittingRef.current) return
     const submittedValue = value
     const submittedAttachments = attachments.files
     submittingRef.current = true
@@ -726,7 +736,7 @@ export function InputArea({
                     <ComposerMenuItem
                       icon={ScrollText}
                       label={t('chat.contextAnalysis.action')}
-                      disabled={disabled || generationActive}
+                      disabled={disabled || generationActive || !onContextAnalyze}
                       onSelect={handleContextAnalyze}
                     />
                   </DropdownMenuGroup>

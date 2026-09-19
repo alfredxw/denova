@@ -312,8 +312,8 @@ func (h *Handlers) HandleAgentChatActive(ctx context.Context, c *app.RequestCont
 		response["task_id"] = view.Task.ID
 		response["stream_cursor"] = view.Task.Cursor
 	}
-	if view.PendingAsk != nil {
-		response["pending_ask"] = view.PendingAsk
+	if len(view.PendingAsks) > 0 {
+		response["pending_asks"] = view.PendingAsks
 	}
 	if view.PendingInterruptionID != "" {
 		response["pending_interruption_id"] = view.PendingInterruptionID
@@ -364,7 +364,7 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 		Reason:          body.Reason, Input: body.Input,
 	})
 	if err != nil {
-		h.writeAgentCommandError(c, err, body.TargetOperationID)
+		h.writeAgentCommandError(ctx, c, err, body.TargetOperationID)
 		return
 	}
 	c.JSON(consts.StatusAccepted, agentCommandReceiptResponse{

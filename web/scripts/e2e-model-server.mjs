@@ -202,7 +202,12 @@ function remainingMultiAgentTaskRefs(body) {
 
 function requestIncludesImageAttachment(body, name) {
   const messages = JSON.stringify(body.messages ?? [])
-  return messages.includes(name) && messages.includes('data:image/png;base64,')
+  const images = (body.messages ?? []).flatMap(message => Array.isArray(message.content) ? message.content : [])
+    .filter(part => part.type === 'image_url' && part.image_url?.url?.startsWith('data:image/png;base64,'))
+  const expected = messages.includes('E2E_TWO_IMAGES') ? 2 : 1
+  return messages.includes(name) && images.length === expected
+    && new Set(images.map(part => part.image_url.url)).size === expected
+    && (expected === 1 || JSON.stringify(body).length > 4 * 1024 * 1024)
 }
 
 function recordRequest(marker) {
@@ -382,6 +387,28 @@ const server = createServer(async (request, response) => {
     return
   }
 
+  if (requestIncludesMarker(body, 'E2E_IMAGE_TRANSPORT_LIMIT')) {
+    response.writeHead(413, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ error: { type: 'request_too_large', message: 'image request exceeds gateway transfer limit' } }))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_TOOL_IMAGE_READ')) {
+    const callID = 'call-read-image-e2e'
+    const hasResult = (body.messages ?? []).some(message => message.role === 'tool' && message.tool_call_id === callID)
+    if (!hasResult) {
+      writeChatCompletion(response, toolCompletionFrames('read', JSON.stringify({ path: 'e2e-tool-image.png' }), callID))
+      return
+    }
+    const hasImage = (body.messages ?? []).some(message => message.role === 'user' && Array.isArray(message.content)
+      && message.content.some(part => part.type === 'text' && part.text.includes(`Image from tool call "${callID}"`))
+      && message.content.some(part => part.type === 'image_url' && part.image_url?.url?.startsWith('data:image/png;base64,')))
+    const game = requestIncludesTool(body, 'submit_interactive_turn')
+    const content = hasImage
+      ? (game ? '工具读取的图片已呈现，旧车站地图上的路线清晰可见。' : 'Tool image reached the model.')
+      : 'Tool image was not delivered to the model.'
+    writeChatCompletion(response, game ? chatCompletionFrames(content) : textCompletionFrames(content))
+    return
+  }
   if (requestIncludesMarker(body, 'E2E_COMPOSER_PAUSE')) {
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
     response.write(`data: ${JSON.stringify(completionFrame({ role: 'assistant', content: '正在检查门后的脚印，接下来会继续核对沿途留下的线索。'.repeat(8) }))}\n\n`)

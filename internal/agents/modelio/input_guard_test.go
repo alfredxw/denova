@@ -38,13 +38,12 @@ func TestNativeImageAdmissionSeparatesVisualTokensFromEncodedBytes(t *testing.T)
 			if err != nil || size.Tokens-agent.EstimateRequestTextTokens(messages, nil) != 784 {
 				t.Fatalf("visual budget = %+v, error %v", size, err)
 			}
-			// A false small descriptor cannot bypass the encoded payload limit.
-			messages[0].Attachments[0].Size = 1
-			err = ValidateInput(kind, model, messages, nil, encoded.Len(), 400000)
-			var limit *ProviderInputLimitError
-			if !errors.As(err, &limit) || limit.Bytes <= limit.MaxBytes || limit.Tokens >= limit.MaxTokens {
-				t.Fatalf("actual transport bytes did not enforce the independent limit: %v", err)
+			// The native parts alone exceed 4 MiB, but still fit the visual window.
+			twoImages := append(append([]*agent.Message(nil), messages...), messages[0])
+			if err := ValidateInput(kind, model, twoImages, nil, 4<<20, 400000); err != nil {
+				t.Fatalf("two valid native images were rejected as context bytes: %v", err)
 			}
+			var limit *ProviderInputLimitError
 			err = ValidateInput(kind, model, messages, nil, 4<<20, 500)
 			if !errors.As(err, &limit) || limit.Tokens <= limit.MaxTokens || limit.Bytes >= limit.MaxBytes {
 				t.Fatalf("actual visual token pressure did not enforce the context limit: %v", err)

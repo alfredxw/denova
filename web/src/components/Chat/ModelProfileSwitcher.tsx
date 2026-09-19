@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { runtimeModel, runtimeModelKey, runtimeModelFromKey } from '@/features/agent-runtime/types'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -16,6 +18,10 @@ import type { LayeredSettings } from '@/features/settings/types'
 import { normalizeThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import type { ConversationConfigController } from '@/features/conversation-config/types'
+import { fetchEngineModels } from '@/features/agent-runtime/api'
+import { useRuntimeProfiles } from '@/features/agent-runtime/api-profiles'
+import type { EngineModels } from '@/features/agent-runtime/types'
+import { useToolNavigation } from './tool-navigation'
 
 interface ModelProfileSwitcherProps {
   agentKey?: VisibleAgentKey
@@ -35,8 +41,10 @@ interface SavingSelection {
 const MODEL_LABEL_OVERFLOW_CLASS = 'min-w-0 overflow-x-clip overflow-y-visible text-ellipsis whitespace-nowrap'
 
 export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false, runActive = false }: ModelProfileSwitcherProps) {
-  const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled })
+  const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled, runActive })
   const [open, setOpen] = useState(false)
+  const navigation = useToolNavigation()
+  const runtimeName = selector.t(`agentRuntime.${conversationConfig?.snapshot?.runtime?.kind ?? 'native'}`)
 
   if (!selector.enabled) return null
 
@@ -45,14 +53,14 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled || !selector.settings || !conversationConfig?.initialized || selector.saving}
+          disabled={disabled || !selector.ready || !conversationConfig?.initialized || selector.saving}
           className="group flex h-8 min-w-0 max-w-44 flex-[0_1_auto] items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
           aria-label={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           data-model-profile-trigger="true"
           data-current-model={selector.currentModelLabel}
           data-current-thinking-level={selector.currentThinkingLevel}
         >
-          <span className={MODEL_LABEL_OVERFLOW_CLASS}>{selector.settings ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
+          <span className={MODEL_LABEL_OVERFLOW_CLASS}>{selector.ready ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
           {selector.currentThinkingLevelLabel ? (
             <span className="shrink-0 font-normal text-[var(--nova-text-faint)]">{selector.currentThinkingLevelLabel}</span>
           ) : null}
@@ -65,15 +73,19 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
         aria-label={selector.t('chat.modelProfile.action')}
         className="w-60 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)]"
       >
-        {agentKey === 'ide' || agentKey === 'interactive_story' ? (
-          <div className="px-1.5 py-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
-            {selector.t('chat.modelProfile.rememberSelection')}
-          </div>
-        ) : null}
+        <DropdownMenuGroup>
+          <DropdownMenuItem disabled={!navigation} className="cursor-pointer text-xs text-muted-foreground"
+            onSelect={() => navigation?.open({ kind: 'config_resource', resource: 'agent_profile',
+              id: conversationConfig?.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime',
+              conversation: conversationConfig?.binding })}>
+            {selector.t('agentRuntime.currentRuntime', { runtime: runtimeName })}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
         {runActive ? (
           <>
             <div role="note" className="px-1.5 py-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
-              {selector.t('chat.input.changesApplyNextTurn')}
+              {selector.t(selector.external ? 'agentRuntime.modelChangeIdle' : 'chat.input.changesApplyNextTurn')}
             </div>
             <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
           </>
@@ -94,73 +106,100 @@ interface ModelProfileSelectorInput extends ModelProfileSwitcherProps {}
 interface ModelProfileSelector {
   t: (key: string, options?: Record<string, unknown>) => string
   enabled: boolean
-  settings: LayeredSettings | null
+  ready: boolean
+  external: boolean
+  selectionDisabled: boolean
   options: ModelProfileOption[]
   currentProfile: string
   currentModelLabel: string
-  currentThinkingLevel: ThinkingLevel | ''
+  currentThinkingLevel: string
+  thinkingOptions: { value: string; label: string }[]
   currentThinkingLevelLabel: string
   currentSelectionLabel: string
   savingSelection: SavingSelection | null
   error: string | null
   selectProfile: (profileID: string) => Promise<void>
   saving: boolean
-  selectThinkingLevel: (level: ThinkingLevel) => Promise<void>
+  selectThinkingLevel: (level: string) => Promise<void>
 }
 
-function useModelProfileSelector({ agentKey, conversationConfig, disabled = false }: ModelProfileSelectorInput): ModelProfileSelector {
+function useModelProfileSelector({ agentKey, conversationConfig, disabled = false, runActive = false }: ModelProfileSelectorInput): ModelProfileSelector {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<LayeredSettings | null>(null)
   const [savingSelection, setSavingSelection] = useState<SavingSelection | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [engineModels, setEngineModels] = useState<EngineModels | null>(null)
+  const runtime = conversationConfig?.snapshot?.runtime
+  const engineKind = runtime?.kind ?? 'native'
+  const engineSettings = runtimeModel(runtime)
+  const external = Boolean(engineSettings)
+  const { profiles, loaded: profilesLoaded, failed: profilesFailed } = useRuntimeProfiles(engineSettings?.profile_id ? engineKind : 'native')
   // Model profiles are user-scoped. Global conversations (notably user-wide
   // automations) therefore remain configurable without a workspace path.
   const enabled = Boolean(agentKey && conversationConfig)
 
-  const load = useCallback(() => {
-    if (!enabled) {
-      setSettings(null)
-      return
-    }
-    fetchSettings()
-      .then((next) => {
-        setSettings(next)
-        setCatalogError(null)
-      })
-      .catch((err) => {
-        setCatalogError(err instanceof Error ? err.message : t('chat.modelProfile.loadFailed'))
-      })
-  }, [enabled, t])
-
   useEffect(() => {
-    load()
-  }, [load])
-
-  useEffect(() => {
-    if (!enabled) return
+    if (!enabled || external) return
     return subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, (snapshot) => {
       setSettings(snapshot)
       setCatalogError(null)
     })
-  }, [enabled])
+  }, [enabled, external])
+
+  useEffect(() => {
+    if (!enabled) return
+    let active = true
+    setSettings(null)
+    setEngineModels(null)
+    setCatalogError(null)
+    const load = async () => {
+      try {
+        if (external && !engineSettings?.profile_id) {
+          const catalog = await fetchEngineModels(engineKind)
+          if (active) setEngineModels(catalog)
+        } else if (!external) {
+          const next = await fetchSettings()
+          if (active) setSettings(next)
+        }
+      } catch (reason) {
+        console.warn('[conversation-config] load model catalog failed', { external, reason })
+        if (active) setCatalogError(t(external ? 'agentRuntime.connectionFailed' : 'chat.modelProfile.loadFailed'))
+      }
+    }
+    void load()
+    return () => { active = false }
+  }, [enabled, external, engineKind, engineSettings?.profile_id, t])
 
   const options = useMemo(
-    () => buildModelProfileOptions(settings, t),
-    [settings, t],
+    () => external
+      ? engineSettings?.profile_id
+        ? profiles.map(profile => ({ ...profile, label: t('agentRuntime.apiModelLabel', { name: profile.label }) }))
+        : (engineModels?.items ?? []).map((model) => ({ id: `cli:${model.id}`, label: model.display_name, modelLabel: model.display_name }))
+      : buildModelProfileOptions(settings, t),
+    [settings, engineModels, profiles, external, engineSettings?.profile_id, t],
   )
-  const currentProfile = conversationConfig?.snapshot?.profile_id || 'default'
-  const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || currentProfile
-  const currentThinkingLevel = normalizeThinkingLevel(conversationConfig?.snapshot?.thinking_level) ?? ''
+  const currentProfile = engineSettings ? runtimeModelKey(engineSettings) : (conversationConfig?.snapshot?.profile_id || 'default')
+  const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || engineSettings?.profile_id || engineSettings?.model || currentProfile
+  const currentThinkingLevel = engineSettings ? engineSettings.profile_id ? '' : engineSettings.effort || 'default' : normalizeThinkingLevel(conversationConfig?.snapshot?.thinking_level) ?? ''
+  const engineModel = engineModels?.items.find((model) => model.id === engineSettings?.model)
+  const thinkingLevels: readonly string[] = engineSettings
+    ? (engineModel ? ['default', ...engineModel.efforts] : [])
+    : THINKING_LEVELS
+  const thinkingOptions = thinkingLevels.map((value) => ({ value, label: t(`chat.modelProfile.thinking.${value}`, { defaultValue: value }) }))
   const currentThinkingLevelLabel = currentThinkingLevel
-    ? t(`chat.modelProfile.thinking.${currentThinkingLevel}`)
+    ? t(`chat.modelProfile.thinking.${currentThinkingLevel}`, { defaultValue: currentThinkingLevel })
     : ''
   const currentSelectionLabel = [currentModelLabel, currentThinkingLevelLabel].filter(Boolean).join(' ')
 
   const saveConversationSelection = async (selection: SavingSelection) => {
-    if (!conversationConfig || disabled || conversationConfig.saving) return
+    if (!conversationConfig || disabled || conversationConfig.saving || savingSelection || (external && runActive)) return
     setSavingSelection(selection)
     try {
-      const saved = await conversationConfig.patch(selection.kind === 'profile'
+      const saved = await conversationConfig.patch(engineSettings
+        ? { [engineKind]: { ...(runtime?.kind === 'codex' && runtime.codex.sandbox ? { sandbox: runtime.codex.sandbox } : {}), ...(selection.kind === 'profile'
+          ? runtimeModelFromKey(selection.value)
+          : { model: engineSettings.model, ...(selection.value === 'default' ? {} : { effort: selection.value }) }) } }
+        : selection.kind === 'profile'
         ? { profile_id: selection.value }
         : { thinking_level: selection.value as ThinkingLevel })
       if (!saved) toast.error(t('chat.modelProfile.saveFailed'))
@@ -170,11 +209,11 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   }
 
   const selectProfile = async (profileID: string) => {
-    if (!conversationConfig) return
+    if (!conversationConfig || (engineSettings && profileID === runtimeModelKey(engineSettings))) return
     await saveConversationSelection({ kind: 'profile', value: profileID })
   }
 
-  const selectThinkingLevel = async (level: ThinkingLevel) => {
+  const selectThinkingLevel = async (level: string) => {
     if (!conversationConfig) return
     await saveConversationSelection({ kind: 'thinking', value: level })
   }
@@ -182,16 +221,19 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   return {
     t,
     enabled,
-    settings,
+    ready: external || settings !== null,
+    external,
+    selectionDisabled: disabled || Boolean(savingSelection) || Boolean(conversationConfig?.saving) || (external && (runActive || (!engineModels && !profilesLoaded))),
     options,
     currentProfile,
     currentModelLabel,
     currentThinkingLevel,
+    thinkingOptions,
     currentThinkingLevelLabel,
     currentSelectionLabel,
     savingSelection,
-    error: catalogError || conversationConfig?.error || null,
-    saving: conversationConfig?.saving ?? false,
+    error: (engineSettings?.profile_id && profilesFailed ? t('agentRuntime.profilesFailed') : null) || (engineSettings?.profile_id ? null : catalogError) || conversationConfig?.error || null,
+    saving: Boolean(conversationConfig?.saving) || Boolean(savingSelection),
     selectProfile,
     selectThinkingLevel,
   }
@@ -202,13 +244,14 @@ function ModelProfileOptions({
   onThinkingLevelSelect,
 }: {
   selector: ModelProfileSelector
-  onThinkingLevelSelect: (level: ThinkingLevel) => void
+  onThinkingLevelSelect: (level: string) => void
 }) {
   const {
     t,
     options,
     currentProfile,
     currentThinkingLevel,
+    thinkingOptions,
     savingSelection,
     error,
     selectProfile,
@@ -218,10 +261,10 @@ function ModelProfileOptions({
       <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium text-[var(--nova-text-faint)]">
         {t('chat.modelProfile.modelSection')}
       </div>
-      {options.map((option) => (
+      <DropdownMenuGroup>{options.map((option) => (
         <DropdownMenuItem
           key={option.id}
-          disabled={Boolean(savingSelection)}
+          disabled={selector.selectionDisabled}
           onSelect={() => void selectProfile(option.id)}
           className="cursor-pointer py-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
         >
@@ -235,7 +278,8 @@ function ModelProfileOptions({
         <DropdownMenuItem disabled className="text-xs">
           {t('chat.modelProfile.empty')}
         </DropdownMenuItem>
-      ) : null}
+      ) : null}</DropdownMenuGroup>
+      {thinkingOptions.length > 0 && <>
       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
       <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium text-[var(--nova-text-faint)]">
         {t('chat.modelProfile.thinkingSection')}
@@ -245,14 +289,13 @@ function ModelProfileOptions({
         aria-label={t('chat.modelProfile.thinkingSection')}
         className="grid grid-cols-4 gap-1 px-1 pb-1"
       >
-        {THINKING_LEVELS.map((level) => {
+        {thinkingOptions.map(({ value: level, label }) => {
           const selected = level === currentThinkingLevel
-          const label = t(`chat.modelProfile.thinking.${level}`)
           return (
             <button
               key={level}
               type="button"
-              disabled={Boolean(savingSelection)}
+              disabled={selector.selectionDisabled}
               aria-pressed={selected}
               onClick={() => onThinkingLevelSelect(level)}
               className={`flex h-7 min-w-0 items-center justify-center rounded-md border px-1 text-[11px] transition-colors disabled:opacity-50 ${
@@ -268,12 +311,13 @@ function ModelProfileOptions({
           )
         })}
       </div>
+      </>}
       {error ? (
         <>
           <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-          <DropdownMenuItem disabled className="text-xs text-red-400">
+          <DropdownMenuGroup><DropdownMenuItem disabled className="text-xs text-red-400">
             {error}
-          </DropdownMenuItem>
+          </DropdownMenuItem></DropdownMenuGroup>
         </>
       ) : null}
     </>

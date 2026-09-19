@@ -75,6 +75,9 @@ for (const product of ['writing', 'game'] as const) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
         expect(activeReads).toBeGreaterThan(0)
         expect(executionRequests).toEqual([])
+        for (const option of await card.getByRole('radio').all()) {
+          await expect(option).toBeVisible()
+        }
         await card.getByRole('radio', { name: english ? 'I cannot determine this yet' : '暂时无法确定' }).check()
         await card.getByRole('button', { name: english ? 'Submit' : '提交', exact: true }).click()
         await expect(card.getByRole('alert')).toBeVisible()

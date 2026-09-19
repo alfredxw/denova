@@ -273,9 +273,43 @@ func executeCompaction(
 	if len(contextMessages) != len(messages) || present && current.ReplacementTo > len(messages) {
 		return compactionRecord{}, false, CompactionMetrics{}, errors.New("Compaction runtime source does not match journal coverage")
 	}
+	contextMessages, err := resolveMessageAttachmentPaths(prepared.definition.AttachmentRoot, contextMessages)
+	if err != nil {
+		return compactionRecord{}, false, CompactionMetrics{}, err
+	}
 	groups, ends, retainedBytes := compactionGroups(messages, contextMessages, current, present)
+	base := compactionRecord{
+		Version: 2, ID: checkpointID, Revision: max(uint64(1), revisionBase+1), CreatedAt: time.Now().UTC(),
+	}
+	if present {
+		base.Revision = max(base.Revision, current.Revision+1)
+		if !current.Removed {
+			base.ReplacementFrom = current.ReplacementFrom
+		}
+	}
+	recordThrough := func(end int) compactionRecord {
+		next := base
+		next.ReplacementTo = end
+		if prepared.activeModelUser != nil && prepared.activeUserIndex >= next.ReplacementFrom && prepared.activeUserIndex < end {
+			index := prepared.activeUserIndex
+			next.RetainedUserFrom = &index
+		}
+		return next
+	}
 	proposal, err := prepared.definition.Compaction.Plan(ctx, CompactionPlanRequest{
 		Session: session, Run: run, Groups: groups, RetainedBytes: retainedBytes,
+		EstimateAfter: func(count int) (InputSize, error) {
+			if count <= 0 || count > len(ends) || buildAfter == nil {
+				return InputSize{}, errors.New("Compaction estimate requires an eligible group prefix and request projection")
+			}
+			next := recordThrough(ends[count-1])
+			next.Summary = mergeProtectedReceiptContext("", current.Summary, compactionReceiptMessages(contextMessages[next.ReplacementFrom:next.ReplacementTo], modelSnapshot), summaryLimit)
+			after, err := buildAfter(next)
+			if err != nil {
+				return InputSize{}, err
+			}
+			return after.EstimateInput()
+		},
 		ModelSnapshot: modelSnapshot, LifecycleReservedTokens: prepared.goalReservedTokens,
 		Force:   request.Force || present && len(current.Summary) > summaryLimit,
 		Current: compactionStatePointer(current, present),
@@ -332,22 +366,10 @@ func executeCompaction(
 	if err := validateCompactionContextData(checkpoint.ContextData); err != nil {
 		return compactionRecord{}, false, plan.Metrics, err
 	}
-	revision := max(uint64(1), revisionBase+1)
-	if present && current.Revision >= revisionBase {
-		revision = current.Revision + 1
-	}
-	next := compactionRecord{
-		Version: 2, ID: checkpointID, Revision: revision,
-		SourceHash: wantHash,
-		Summary:    checkpoint.Summary, SummaryTokenEstimate: EstimateTextTokens(checkpoint.Summary),
-		ReplacementFrom: plan.SourceFrom, ReplacementTo: plan.SourceTo,
-		CreatedAt:   time.Now().UTC(),
-		ContextData: cloneHostData(checkpoint.ContextData),
-	}
-	if prepared.activeModelUser != nil && prepared.activeUserIndex >= plan.SourceFrom && prepared.activeUserIndex < plan.SourceTo {
-		index := prepared.activeUserIndex
-		next.RetainedUserFrom = &index
-	}
+	next := recordThrough(plan.SourceTo)
+	next.SourceHash = wantHash
+	next.Summary, next.SummaryTokenEstimate = checkpoint.Summary, EstimateTextTokens(checkpoint.Summary)
+	next.ContextData = cloneHostData(checkpoint.ContextData)
 	if modelSnapshot == nil || buildAfter == nil {
 		return compactionRecord{}, false, plan.Metrics, errors.New("Compaction requires exact before and after model request snapshots")
 	}

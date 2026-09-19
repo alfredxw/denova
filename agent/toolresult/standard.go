@@ -215,7 +215,7 @@ func canonicalArtifact(artifact agent.ToolArtifactRef) agent.ToolArtifactRef {
 	artifact.Purpose = agent.ToolArtifactPurpose(strings.TrimSpace(string(artifact.Purpose)))
 	artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.ReadablePath, "\uFFFD"))
 	artifact.ContentType = strings.TrimSpace(artifact.ContentType)
-	if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 {
+	if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 && !agent.IsNativeImageMediaType(artifact.ContentType) {
 		artifact.EstimatedTokens = estimatedTokens(artifact.EstimatedBytes)
 	}
 	return artifact
