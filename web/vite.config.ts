@@ -17,6 +17,7 @@ export default defineConfig({
     include: [
       'react', 'react-dom', 'react-dom/client',
       'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-i18next',
+      'monaco-editor',
       '@pierre/diffs', '@pierre/diffs/react', '@pierre/trees', '@pierre/trees/react',
     ],
   },
