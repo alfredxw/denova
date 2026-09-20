@@ -19,6 +19,30 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
+func TestResolveAskRoutesOnlyOwnedQuestions(t *testing.T) {
+	_, store, sess := pendingAskFixture(t, `{"questions":[{"id":"tone","prompt":"Which tone?"}]}`)
+	defer store.Close()
+	ctx := context.Background()
+	service := &Service{}
+	for _, askID := range []string{"permission-tool-native", "ask-native"} {
+		for _, status := range []string{session.AskAnswered, session.AskCancelled} {
+			result, owned, err := service.ResolveAsk(ctx, "project-1", sess, askID, status, nil, "cancelled")
+			if owned || err != nil || !reflect.DeepEqual(result, conversation.HostAskResolution{}) {
+				t.Fatalf("unowned question must fall through: %s %s: %#v, %t, %v", askID, status, result, owned, err)
+			}
+		}
+	}
+	answers := []conversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Calm"}}
+	result, owned, err := service.ResolveAsk(ctx, "project-1", sess, "ask-execution-1", session.AskAnswered, answers, "")
+	if !owned || err != nil || result.Status != session.AskAnswered {
+		t.Fatalf("owned question was not resolved: %#v, %t, %v", result, owned, err)
+	}
+	_, owned, err = service.ResolveAsk(ctx, "project-1", sess, "ask-execution-1", session.AskCancelled, nil, "cancelled")
+	if !owned || !errors.Is(err, ErrAskConflict) {
+		t.Fatalf("conflicting answer must not fall through: %t, %v", owned, err)
+	}
+}
+
 func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 	for _, engine := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude} {
 		t.Run(string(engine), func(t *testing.T) {

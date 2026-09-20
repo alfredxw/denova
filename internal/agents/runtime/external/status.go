@@ -105,5 +105,8 @@ func (service *Service) ResolveAsk(ctx context.Context, projectID string, sess *
 		return conversation.HostAskResolution{}, true, errors.New("invalid question resolution status")
 	}
 	result, err := service.Interactions.Resolve(ctx, projectID, sess, askID, answers, cancel)
-	return result, !errors.Is(err, ErrAskNotFound), err
+	if errors.Is(err, ErrAskNotFound) {
+		return conversation.HostAskResolution{}, false, nil
+	}
+	return result, true, err
 }
