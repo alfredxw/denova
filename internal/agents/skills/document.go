@@ -34,6 +34,7 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 }
 
 func readDocumentLocked(ctx context.Context, dirs []Directory, dir Directory, name string) (Document, error) {
+	dir = configureDirectory(ctx, dir)
 	dirs = dedupeDirectories(dirs)
 	skillRoot, err := openScopedSkillRoot(dir, name)
 	if err != nil {
@@ -44,11 +45,12 @@ func readDocumentLocked(ctx context.Context, dirs []Directory, dir Directory, na
 	if err != nil {
 		return Document{}, err
 	}
-	path := filepath.Join(dir.Path, name, SkillFileName)
+	path := filepath.Join(skillRoot.Name(), SkillFileName)
 	rec, err := parseRecord(ctx, dir, path, string(data))
 	if err != nil {
 		return Document{}, err
 	}
+	decorateRecord(ctx, &rec)
 	active := activeRecordKeys(loadRecords(ctx, dirs))
 	rec.summary.Active = active[recordKey(rec)]
 	files, err := listSkillFilesFromRoot(ctx, skillRoot, dir.Writable)
@@ -263,6 +265,9 @@ func listSkillFilesFromRoot(ctx context.Context, skillRoot *os.Root, writable bo
 			return nil
 		}
 		rel := path.Clean(filepath.ToSlash(filePath))
+		if rel == remoteStateFile {
+			return nil
+		}
 		files = append(files, skillFileFromInfo(rel, info, writable))
 		return nil
 	}); err != nil {
@@ -658,6 +663,18 @@ func skillDirectory(dirs []Directory, scope Scope, name string) (string, Directo
 	if err != nil {
 		return "", Directory{}, err
 	}
+	if scope == ScopeShared {
+		var found string
+		for _, rec := range loadRecords(context.Background(), []Directory{dir}) {
+			if rec.skill.Name == name {
+				found = rec.skill.BaseDirectory
+			}
+		}
+		if found == "" {
+			return "", dir, fmt.Errorf("shared Skill not found: %s", name)
+		}
+		return found, dir, nil
+	}
 	skillDir := filepath.Join(dir.Path, name)
 	if _, err := os.Stat(filepath.Join(skillDir, SkillFileName)); err != nil {
 		return "", Directory{}, err
@@ -682,6 +699,9 @@ func writableSkillDirectory(dirs []Directory, scope Scope, name string) (string,
 
 func safeSkillFilePath(skillDir, filePath string) (string, string, error) {
 	cleaned := path.Clean(strings.ReplaceAll(strings.TrimSpace(filePath), "\\", "/"))
+	if strings.EqualFold(cleaned, remoteStateFile) {
+		return "", "", fmt.Errorf("Skill source metadata is managed by the library")
+	}
 	if cleaned == "." || cleaned == "/" || cleaned == "" {
 		return "", "", fmt.Errorf("skill file path is required")
 	}
@@ -724,6 +744,15 @@ func regularSkillFileInfoFromFile(file *os.File, displayPath string) (os.FileInf
 func openScopedSkillRoot(dir Directory, name string) (*os.Root, error) {
 	if err := ValidateName(name); err != nil {
 		return nil, err
+	}
+	if dir.Scope == ScopeShared {
+		// Shared libraries commonly contain directory symlinks. Resolve only the
+		// selected Skill; os.Root still bounds all supporting-file reads.
+		resolved, _, err := skillDirectory([]Directory{dir}, dir.Scope, name)
+		if err != nil {
+			return nil, err
+		}
+		return os.OpenRoot(resolved)
 	}
 	scopeRoot, err := os.OpenRoot(dir.Path)
 	if err != nil {

@@ -14,6 +14,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- Skills 新增卡片式技能库、启用开关与搜索筛选；可选择使用 `~/.agents/skills` 通用技能，远程安装支持默认关闭的每日自动更新，并保护本地修改与保留备份。
+- Skills now has a searchable card library with availability controls, optional shared Skills from `~/.agents/skills`, and opt-in daily updates for remote installs with local-edit protection and backups.
+
 - 写作、General、Game 及对应自定义 Agent 支持 Native、Codex 和 Claude Code，可从输入框选项栏在回合间直接切换。外部引擎复用持续会话和自身压缩，支持共通的压缩卡片、排队、追加、暂停恢复、Goal 与 Todo；可使用本机登录或 Denova 中兼容的 API 模型。Game 保留已接纳的草稿、骰点和状态提交。
 - Writing, General, Game, and their custom Agents support Native, Codex, and Claude Code, selectable from the composer between turns. External engines retain their sessions and use their own compaction, with shared compaction cards, queues, follow-ups, pause/resume, Goals, and Todos. Use local sign-in or compatible API models configured in Denova; Game retains accepted drafts, dice results, and state submission.
 

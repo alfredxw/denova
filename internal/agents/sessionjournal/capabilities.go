@@ -16,7 +16,7 @@ func (projection *Projection) Capability(key agentsession.Key, capability string
 	if err != nil || stream == nil {
 		return nil, false, err
 	}
-	record, found := stream.Capabilities[capability]
+	record, found := stream.Recovery.CapabilityRecord(capability)
 	if !found || record.Kind == capabilityDeleteKind {
 		return nil, false, nil
 	}

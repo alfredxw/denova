@@ -61,7 +61,9 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"app-server", "-c", `web_search="disabled"`, "-c", "project_doc_max_bytes=0"}
+	// Denova supplies its filtered Skill catalog and loader. Ambient discovery
+	// must not inject a second catalog that bypasses the library's opt-in.
+	args := []string{"app-server", "-c", `web_search="disabled"`, "-c", "project_doc_max_bytes=0", "-c", "skills.include_instructions=false"}
 	for _, feature := range []string{"shell_tool", "unified_exec", "apply_patch_freeform", "multi_agent", "apps", "browser_use", "browser_use_external", "computer_use", "in_app_browser", "image_generation", "plugins", "hooks", "goals", "memories", "workspace_dependencies", "shell_snapshot"} {
 		args = append(args, "-c", "features."+feature+"=false")
 	}

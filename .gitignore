@@ -31,6 +31,7 @@ docs/tests/*
 !docs/agent-prompt-context-architecture-benchmark.md
 !docs/portable-denova-data-directory-design.md
 !docs/claude-runtime.md
+!docs/skills-library.md
 !docs/agent-runtime-session-design-audit.md
 .worktrees/
 .pnpm-store/

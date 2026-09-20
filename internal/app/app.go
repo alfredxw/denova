@@ -243,6 +243,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		slog.InfoContext(ctx, "[app] No workspace or previously opened book at startup; waiting for frontend selection")
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
+		app.startSkillUpdates(ctx)
 		return app, nil
 	}
 
@@ -273,6 +274,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
 	app.Automation().StartScheduler(ctx)
+	app.startSkillUpdates(ctx)
 	return app, nil
 }
 

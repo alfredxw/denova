@@ -283,6 +283,8 @@ fmt.Println(run.ID())
 
 简单场景使用上面的静态 Definition 即可。确实需要按会话动态选择模型和能力时，再实现 [`Source`](definition.go)；已有产品会话存储时，再接入 [`CanonicalAdapter`](canonical.go) 和 [`session.Store`](session/store.go)，让产品历史和 Agent 恢复记录共享同一份 journal。
 
+历史结果使用 `Session.CommandSnapshot(ctx, commandID)` 或 `RunSnapshot(ctx, runID)` 查询；它们不启动任务，也不要求历史 Run 常驻。Agent 在终态记录提交后释放执行状态，完整历史仍在 canonical journal 中。`AttachRun` 对已完成任务返回调用方持有的只读终态句柄；挂起任务继续保留恢复事实。存储适配器可实现 [`RecoveryLog`](session_recovery_index.go)，用可重建的 `RecoveryIndex` 和按 revision 读取原记录加速冷恢复；输入、输出和工具正文不进入历史索引。普通 `session.Log` 仍可通过顺序回放恢复，内置文件存储在回放时建立临时位置索引，随后历史查询只读取目标事务。
+
 ### 压缩的三个接入级别
 
 ```go

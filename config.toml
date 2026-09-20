@@ -10,6 +10,58 @@
 # denova_dir 仅在全局启动配置或 DENOVA_DIR 环境变量中生效；用户级/工作区级会忽略并过滤该字段。
 # nova_dir / NOVA_DIR 为旧字段兼容，新配置请使用 denova_dir / DENOVA_DIR。
 
+# Keep root-level keys above all table headers, including the optional examples.
+# Keys after a table header belong to that table, even after blank lines or comments.
+
+# 路径
+# skills_dir 是启动时加载的内置/只读 Skills 根目录。
+# 用户自定义 Skills 由界面写入 <denova_dir>/skills 或 <workspace>/.denova/skills；旧工作区已有 .nova 时会沿用旧目录。
+skills_dir = "./skills"
+denova_dir = "./.denova"
+# nova_dir = "./.nova"
+
+# 修改端口号
+# backend_port = 8111
+# frontend_port = 5112
+
+# 编辑器
+auto_save_enabled = true
+auto_save_interval_ms = 1500
+# 项目文件树会在首次请求中尽可能递归加载；仅当条目数超过此用户级安全上限时才回退到分层加载。
+# 默认 100000，最大 1000000。修改后需重启后端。
+project_file_tree_entry_limit = 100000
+chapter_filename_format = "ch{order:05}-{chapter}-{title}.md"
+volume_dir_format = "v{order:05}-{volume}"
+chapter_group_min = 3
+chapter_group_max = 8
+version_timed_enabled = true
+version_timed_interval_minutes = 10
+
+# 外观
+theme = "dark"
+# 可选：system-sans / humanist-sans / apple-system / microsoft-yahei / system-serif / source-han-serif / lxgw-wenkai / mono；本机字体使用 custom:<字体家族名>
+ui_font_family = "apple-system"
+ui_font_size = 14
+reading_font_family = "apple-system"
+reading_font_size = 18
+source_editor_font_family = "mono"
+
+# Agent
+model_max_retries = 5
+# 连续 parallel_read 工具的最大并发数；用户级和工作区级均可覆盖，范围 1–64。
+agent_tool_parallelism = 8
+# 同一父会话下同时运行的 SubAgent 上限；用户级和工作区级均可覆盖，范围 1–32。
+agent_subagent_parallelism = 4
+plan_mode_default = false
+# 写作 Agent 默认叙事编排 ID（当前工作区级配置，字段名沿用 ide_story_teller_id）
+ide_story_teller_id = "classic"
+
+# 互动模式
+interactive_stage_line_height = 1.78
+
+# Default image profile; configure the profiles below.
+default_image_api_profile_id = "default"
+
 # Language models start unconfigured. Create a connection and add models in Settings.
 # Optional example: one shared connection and a model selected as the default.
 # [[model_endpoints]]
@@ -30,7 +82,6 @@
 # 图像模型。内置 OpenAI、xAI/Grok、ComfyUI、火山 Seedream、Google Gemini；
 # 自定义端点可选择任一已支持协议。可配置多个 profile。
 # 生成结果会保存到当前工作区 assets/image/generated/。
-default_image_api_profile_id = "default"
 
 [[image_api_profiles]]
 id = "default"
@@ -165,49 +216,3 @@ system_prompt = '''
 输出 progress、character_state、world_state、foreshadowing 等可应用 patch，写清依据和目标文件；只更新本轮即时进展和角色当前状态。
 长期资料库只在身份、长期关系、能力体系、世界规则等稳定 canon 明确变化时提出建议，并要求父 Agent 先确认；不要擅自改写长期资料库。
 '''
-
-# 路径
-# skills_dir 是启动时加载的内置/只读 Skills 根目录。
-# 用户自定义 Skills 由界面写入 <denova_dir>/skills 或 <workspace>/.denova/skills；旧工作区已有 .nova 时会沿用旧目录。
-skills_dir = "./skills"
-denova_dir = "./.denova"
-# nova_dir = "./.nova"
-
-# 修改端口号
-# backend_port = 8111
-# frontend_port = 5112
-
-# 编辑器
-auto_save_enabled = true
-auto_save_interval_ms = 1500
-# 项目文件树会在首次请求中尽可能递归加载；仅当条目数超过此用户级安全上限时才回退到分层加载。
-# 默认 100000，最大 1000000。修改后需重启后端。
-project_file_tree_entry_limit = 100000
-chapter_filename_format = "ch{order:05}-{chapter}-{title}.md"
-volume_dir_format = "v{order:05}-{volume}"
-chapter_group_min = 3
-chapter_group_max = 8
-version_timed_enabled = true
-version_timed_interval_minutes = 10
-
-# 外观
-theme = "dark"
-# 可选：system-sans / humanist-sans / apple-system / microsoft-yahei / system-serif / source-han-serif / lxgw-wenkai / mono；本机字体使用 custom:<字体家族名>
-ui_font_family = "apple-system"
-ui_font_size = 14
-reading_font_family = "apple-system"
-reading_font_size = 18
-source_editor_font_family = "mono"
-
-# Agent
-model_max_retries = 5
-# 连续 parallel_read 工具的最大并发数；用户级和工作区级均可覆盖，范围 1–64。
-agent_tool_parallelism = 8
-# 同一父会话下同时运行的 SubAgent 上限；用户级和工作区级均可覆盖，范围 1–32。
-agent_subagent_parallelism = 4
-plan_mode_default = false
-# 写作 Agent 默认叙事编排 ID（当前工作区级配置，字段名沿用 ide_story_teller_id）
-ide_story_teller_id = "classic"
-
-# 互动模式
-interactive_stage_line_height = 1.78

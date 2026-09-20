@@ -15,7 +15,7 @@ const agentRuntime = {
   'agentRuntime.sharedClaudeHome': "使用运行 Denova 的电脑上的 Claude Code 登录和服务商环境配置。模型名称由 Claude Code 解析，实际可用性取决于账号。",
   'agentRuntime.claudeLoginInTerminal': "请在运行 Denova 的电脑上执行 claude auth login，然后重新检查连接。",
   'agentRuntime.claudeNotInstalled': "未找到 Claude Code。请先在此电脑上安装。",
-  'agentRuntime.claudeIncompatibleVersion': "Claude Code 版本过旧或无法识别。请使用 2.1.259 或更新版本。",
+  'agentRuntime.claudeIncompatibleVersion': "Claude Code 版本过旧或无法识别，最低支持版本为 2.1.259。请在运行 Denova 的电脑上执行 claude update（Homebrew 安装使用 brew upgrade claude-code），更新后点击「检查连接」。",
 
   'agentRuntime.currentRuntime': "运行时：{{runtime}}",
   'agentRuntime.switchRuntime': "切换运行时",
@@ -49,7 +49,7 @@ const agentRuntime = {
   'agentRuntime.connectionFailed': "连接引擎失败，请检查后重试。",
   'agentRuntime.connectionLost': "引擎连接已断开。",
   'agentRuntime.notInstalled': "未找到 Codex CLI，请先在此电脑安装。",
-  'agentRuntime.incompatibleVersion': "Codex CLI 版本过旧或无法识别，请使用 0.130.0 或更新版本。",
+  'agentRuntime.incompatibleVersion': "Codex CLI 版本过旧或无法识别，最低支持版本为 0.130.0。请在运行 Denova 的电脑上执行 codex update（npm 安装可执行 npm install -g @openai/codex@latest），更新后点击「检查连接」。",
   'agentRuntime.notReady': "引擎尚未就绪。请在 Agents 设置中检查连接和登录状态。",
   'agentRuntime.modelUnavailable': "所选模型或推理强度不可用，请重新选择。",
   'agentRuntime.busy': "会话正在运行或有待处理的提问、工具结果。",

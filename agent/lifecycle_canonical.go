@@ -174,6 +174,9 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 	if !prepared {
 		return errors.New("embedded canonical adapter omitted the Agent checkpoint")
 	}
+	if err := session.recordCommittedLocked(records, session.revision+1); err != nil {
+		return err
+	}
 	session.revision += agentsession.Revision(len(records))
 	session.engineState, session.messageCheckpoint = nextState, checkpoint
 	if update.Tool != nil {

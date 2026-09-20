@@ -52,11 +52,14 @@ func (backend *publicBackend) resume(ctx context.Context, session *agent.Session
 		commandKind: commandKindFromPublicTurn(data.Kind), projectorBound: true,
 		projector: agentchat.NewPublicEventProjector(cycle.Conversation, cycle.Request, cycle.Options, emit),
 	}
+	backend.inputMu.Lock()
+	defer backend.inputMu.Unlock()
 	backend.rememberRegistration(session.Key(), commandID, registration)
 	run, err := backend.agent.ResumeTree(ctx, session.Key(), agent.ResumeRequest{
 		RunID: string(action.OperationID), IdempotencyKey: "resume:" + string(action.OperationID) + ":" + action.ActionID,
 	})
 	if err != nil {
+		backend.forgetRegistration(session.Key(), commandID, registration)
 		return nil, err
 	}
 	return backend.trackRun(session, run, registration, ""), nil

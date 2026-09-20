@@ -313,7 +313,8 @@ func waitForChildTrace(t *testing.T, runtime *Runtime, runID string) {
 	handle := runtime.public.runs[runID]
 	runtime.public.mu.RUnlock()
 	if handle == nil {
-		t.Fatalf("child Run %s has no trace consumer", runID)
+		// Completed consumers leave the live registry only after flushing their trace.
+		return
 	}
 	select {
 	case <-handle.done:

@@ -54,8 +54,8 @@ func writeEngineError(ctx context.Context, c *app.RequestContext, err error) {
 		status, key = consts.StatusConflict, "agentRuntime.notReady"
 	case errors.Is(err, agentruntime.ErrEngineNotInstalled):
 		key = "agentRuntime.notInstalled"
-	case agentruntime.IsVersionUnsupported(err):
-		key = "agentRuntime.incompatibleVersion"
+	case agentruntime.VersionUnsupportedReasonKey(err) != "":
+		key = agentruntime.VersionUnsupportedReasonKey(err)
 	}
 	// Do not log raw authentication errors or URLs, which can contain secrets.
 	slog.WarnContext(ctx, "Agent runtime API operation failed", "runtime", c.Param("id"), "reason", key)

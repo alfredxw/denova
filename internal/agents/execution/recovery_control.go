@@ -169,7 +169,13 @@ func (backend *publicBackend) runTerminalProjected(handle *publicRunHandle) bool
 	if backend == nil || handle == nil || handle.run == nil {
 		return false
 	}
-	for _, item := range backend.runCycleRegistrations(handle.run.ID(), handle.registration) {
+	registrations := backend.runCycleRegistrations(handle.run.ID(), handle.registration)
+	select {
+	case <-handle.done:
+		registrations = handle.completedRegistrations
+	default:
+	}
+	for _, item := range registrations {
 		item.registration.mu.RLock()
 		projector := item.registration.projector
 		item.registration.mu.RUnlock()

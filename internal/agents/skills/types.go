@@ -8,6 +8,7 @@ const (
 	ScopeBuiltin   Scope = "builtin"
 	ScopeUser      Scope = "user"
 	ScopeWorkspace Scope = "workspace"
+	ScopeShared    Scope = "shared"
 
 	CategoryGeneral       = "general"
 	CategoryWriting       = "writing"
@@ -85,9 +86,12 @@ type Scope string
 
 // Directory is a scanned skill root. Later directories override earlier ones.
 type Directory struct {
-	Scope    Scope  `json:"scope"`
-	Path     string `json:"path"`
-	Writable bool   `json:"writable"`
+	Scope          Scope  `json:"scope"`
+	Path           string `json:"path"`
+	Writable       bool   `json:"writable"`
+	settingsRoot   string
+	disabled       bool
+	disabledSkills map[string]bool
 }
 
 // ScopeInfo is returned to the frontend for displaying editable locations.
@@ -99,18 +103,20 @@ type ScopeInfo struct {
 
 // SkillSummary describes a discovered skill.
 type SkillSummary struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	Category     string   `json:"category"`
-	Capabilities []string `json:"capabilities,omitempty"`
-	Context      string   `json:"context,omitempty"`
-	Agent        string   `json:"agent,omitempty"`
-	Model        string   `json:"model,omitempty"`
-	Scope        Scope    `json:"scope"`
-	Path         string   `json:"path"`
-	Editable     bool     `json:"editable"`
-	Active       bool     `json:"active"`
-	UpdatedAt    string   `json:"updated_at,omitempty"`
+	Name         string       `json:"name"`
+	Description  string       `json:"description"`
+	Category     string       `json:"category"`
+	Capabilities []string     `json:"capabilities,omitempty"`
+	Context      string       `json:"context,omitempty"`
+	Agent        string       `json:"agent,omitempty"`
+	Model        string       `json:"model,omitempty"`
+	Scope        Scope        `json:"scope"`
+	Path         string       `json:"path"`
+	Editable     bool         `json:"editable"`
+	Active       bool         `json:"active"`
+	Enabled      bool         `json:"enabled"`
+	Remote       *RemoteState `json:"remote,omitempty"`
+	UpdatedAt    string       `json:"updated_at,omitempty"`
 }
 
 // SkillFile describes a regular file stored inside a Skill directory.
@@ -124,8 +130,9 @@ type SkillFile struct {
 
 // Snapshot is the full skills management view returned by the API.
 type Snapshot struct {
-	Scopes []ScopeInfo    `json:"scopes"`
-	Skills []SkillSummary `json:"skills"`
+	Scopes        []ScopeInfo    `json:"scopes"`
+	Skills        []SkillSummary `json:"skills"`
+	SharedEnabled bool           `json:"shared_enabled"`
 }
 
 // Document is a single editable SKILL.md payload.

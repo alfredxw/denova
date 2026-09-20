@@ -315,4 +315,33 @@ func TestAskAnswerSurvivesSuspensionAndReopen(t *testing.T) {
 	if err != nil || request.ID != question.ID || len(resolution.Answers) != 1 || resolution.Answers[0].Text != "Ada" {
 		t.Fatalf("repeated Session answer after reopen and settlement: request=%+v resolution=%+v error=%v", request, resolution, err)
 	}
+	if err := owner.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definition.Model = &lifecycleModel{responses: []*Message{AssistantMessage("another answer", nil)}}
+	owner, err = New(ctx, definition, WithSessionStore(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err = owner.Session(ctx, NamedSession("ask-pause"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, found, err := session.AttachRun(ctx, run.ID())
+	if err != nil || !found {
+		t.Fatalf("archived Ask Run: found=%v error=%v", found, err)
+	}
+	if err := archived.Respond(ctx, question.ID, answer); err != nil {
+		t.Fatalf("archived answer retry: %v", err)
+	}
+	other, err := session.Run(ctx, Text("another task"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Respond(ctx, question.ID, answer); !errors.Is(err, ErrInteractionStale) {
+		t.Fatalf("answer accepted by a different Run: %v", err)
+	}
 }

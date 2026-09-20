@@ -244,3 +244,19 @@ func (log *memoryLog) usable() error {
 	}
 	return nil
 }
+
+// ReadRecord returns one canonical record without copying the entire history.
+func (log *memoryLog) ReadRecord(ctx context.Context, revision Revision) (Record, error) {
+	if err := log.usable(); err != nil {
+		return Record{}, err
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return Record{}, ctx.Err()
+	}
+	log.data.mu.Lock()
+	defer log.data.mu.Unlock()
+	if revision == 0 || revision > Revision(len(log.data.records)) {
+		return Record{}, fmt.Errorf("Agent record revision %d is missing", revision)
+	}
+	return cloneRecord(log.data.records[revision-1]), nil
+}

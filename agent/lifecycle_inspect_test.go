@@ -2,8 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
+	"time"
+
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 func TestCommandRunSurvivesRecentHistoryEvictionAndColdReopen(t *testing.T) {
@@ -40,6 +44,14 @@ func TestCommandRunSurvivesRecentHistoryEvictionAndColdReopen(t *testing.T) {
 	}
 	assertExact := func(sess *Session) {
 		t.Helper()
+		if len(sess.runs) != 0 {
+			t.Fatalf("settled executions remain resident: %d", len(sess.runs))
+		}
+		for _, input := range sess.inputs {
+			if input.status != inputPending && (input.input.Text != "" || input.Input.Text != "") {
+				t.Fatal("settled input body remains resident")
+			}
+		}
 		run, found, err := sess.CommandRun(ctx, "command-0")
 		if err != nil || !found {
 			t.Fatalf("old command lost: %v %v", found, err)
@@ -50,6 +62,16 @@ func TestCommandRunSurvivesRecentHistoryEvictionAndColdReopen(t *testing.T) {
 		}
 		if _, found, err := sess.CommandRun(ctx, "missing"); found || err != nil {
 			t.Fatalf("missing lookup: %v %v", found, err)
+		}
+		retried, err := sess.Run(ctx, Input{Text: "message-0", IdempotencyKey: "command-0"})
+		if err != nil || retried.Receipt() != first {
+			t.Fatalf("old command retry: %v %v", retried, err)
+		}
+		if _, err := sess.Run(ctx, Input{Text: "changed", IdempotencyKey: "command-0"}); !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("conflicting old command: %v", err)
+		}
+		if len(sess.runs) != 0 {
+			t.Fatal("historical lookup repopulated live Run registry")
 		}
 	}
 	assertExact(sess)
@@ -68,5 +90,48 @@ func TestCommandRunSurvivesRecentHistoryEvictionAndColdReopen(t *testing.T) {
 	assertExact(sess)
 	if len(model.calls()) != 40 {
 		t.Fatalf("lookup executed model: %d", len(model.calls()))
+	}
+}
+
+type blockedOpenStore struct {
+	agentsession.Store
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (store *blockedOpenStore) Open(ctx context.Context, key agentsession.Key) (agentsession.Log, error) {
+	if key.ID == "slow" {
+		close(store.entered)
+		select {
+		case <-store.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return store.Store.Open(ctx, key)
+}
+
+func TestSlowSessionOpenDoesNotBlockOtherSessions(t *testing.T) {
+	store := &blockedOpenStore{Store: agentsession.Memory(), entered: make(chan struct{}), release: make(chan struct{})}
+	owner, err := New(t.Context(), Definition{Name: "inspect", Model: &lifecycleModel{}}, WithSessionStore(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close(context.Background())
+	done := make(chan error, 1)
+	safeGo(func() { _, err := owner.Session(t.Context(), NamedSession("slow")); done <- err }, func(err error) { done <- err })
+	<-store.entered
+	defer close(store.release)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	fast := make(chan error, 1)
+	safeGo(func() { _, err := owner.Session(ctx, NamedSession("fast")); fast <- err }, func(err error) { fast <- err })
+	select {
+	case err := <-fast:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("unrelated Session waited for slow open")
 	}
 }

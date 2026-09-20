@@ -283,6 +283,8 @@ For writing, research, or support, primarily replace Instructions, Context, Skil
 
 Use the static Definition above for simple cases. Implement [`Source`](definition.go) when models and capabilities must vary by Session. For existing product conversation storage, integrate [`CanonicalAdapter`](canonical.go) and [`session.Store`](session/store.go) so product history and Agent recovery records share one journal.
 
+Query historical results with `Session.CommandSnapshot(ctx, commandID)` or `RunSnapshot(ctx, runID)`. These reads neither start work nor require historical Runs to remain resident. After durable settlement, Agent releases execution state while the canonical journal retains the full history. `AttachRun` returns a caller-owned terminal view for settled work; suspended work retains its recovery facts. Storage adapters may implement [`RecoveryLog`](session_recovery_index.go) with a rebuildable `RecoveryIndex` and revision-based record reads to accelerate cold recovery. Historical index entries contain no input, output, or tool-result bodies. Ordinary `session.Log` implementations still recover through streaming replay; the built-in file store collects transient record locations during replay, then reads only the target transaction for historical lookups.
+
 ### Three levels of compaction integration
 
 ```go

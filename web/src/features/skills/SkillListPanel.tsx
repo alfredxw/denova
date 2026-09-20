@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Download, FileText, Plus, Search, Tags } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, Download, FileText, LayoutGrid, Plus, Search, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,7 @@ interface SkillListPanelProps {
   selectedKey: string | null
   loading: boolean
   mode: SkillsMode
+  onLibrary: () => void
   onCreate: () => void
   onInstall: () => void
   onSelect: (key: string) => void
@@ -41,6 +42,7 @@ export function SkillListPanel({
   selectedKey,
   loading,
   mode,
+  onLibrary,
   onCreate,
   onInstall,
   onSelect,
@@ -49,6 +51,18 @@ export function SkillListPanel({
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [openScopes, setOpenScopes] = useState<Partial<Record<SkillScope, boolean>>>({})
+  const selectedScope = snapshot.skills.find((skill) => keyOf(skill) === selectedKey)?.scope
+  const selectingSkill = mode === 'editor' || mode === 'config'
+  const revealSelected = useCallback((element: HTMLButtonElement | null) => {
+    element?.scrollIntoView({ block: 'nearest' })
+  }, [])
+
+  useEffect(() => {
+    if (!selectingSkill || !selectedScope) return
+    setQuery('')
+    setCategoryFilter('all')
+    setOpenScopes((current) => ({ ...current, [selectedScope]: true }))
+  }, [selectedKey, selectedScope, selectingSkill])
 
   const categories = useMemo(() => {
     const discovered = Array.from(new Set(snapshot.skills.map(skillCategory)))
@@ -92,6 +106,15 @@ export function SkillListPanel({
   return (
     <EmbeddedSidebar>
         <SidebarHeader className="gap-3 p-3">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={mode === 'library'} aria-current={mode === 'library' ? 'page' : undefined} onClick={onLibrary}>
+                <LayoutGrid aria-hidden="true" />
+                <span>{t('skills.library.title')}</span>
+              </SidebarMenuButton>
+              <SidebarMenuBadge>{snapshot.skills.length}</SidebarMenuBadge>
+            </SidebarMenuItem>
+          </SidebarMenu>
           <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
@@ -190,8 +213,10 @@ export function SkillListPanel({
                             <SidebarMenuButton
                               type="button"
                               size="lg"
-                              isActive={selectedKey === keyOf(skill)}
-                              className={cn(!skill.active && 'pr-20')}
+                              isActive={selectingSkill && selectedKey === keyOf(skill)}
+                              aria-current={selectingSkill && selectedKey === keyOf(skill) ? 'page' : undefined}
+                              ref={selectingSkill && selectedKey === keyOf(skill) ? revealSelected : undefined}
+                              className={cn((!skill.active || skill.enabled === false) && 'pr-20')}
                               onClick={() => onSelect(keyOf(skill))}
                             >
                               <FileText aria-hidden="true" />
@@ -202,7 +227,7 @@ export function SkillListPanel({
                                 </span>
                               </div>
                             </SidebarMenuButton>
-                            {!skill.active && <SidebarMenuBadge>{t('skills.shadowed')}</SidebarMenuBadge>}
+                            {(!skill.active || skill.enabled === false) && <SidebarMenuBadge>{t(skill.enabled === false ? 'skills.library.disabled' : 'skills.shadowed')}</SidebarMenuBadge>}
                           </SidebarMenuItem>
                         ))}
                       </SidebarMenu>

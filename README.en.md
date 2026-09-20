@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/QuHu2aPya"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the Denova Discord" /></a>
+  <a href="https://discord.gg/BM6dRmyvvZ"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the Denova Discord" /></a>
   <a href="https://github.com/alfredxw/denova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/denova?style=flat-square"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/denova?style=flat-square"></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.26.6%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
@@ -140,7 +140,7 @@ Read [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing. Common commands:
 
 Denova is evolving quickly. Bug reports, workflow ideas, usage notes, and creative discussions are welcome.
 
-[Discord community](https://discord.gg/QuHu2aPya)
+[Discord community](https://discord.gg/BM6dRmyvvZ)
 
 <p align="center">
   <img src="./img/wechat.png" alt="WeChat community" width="240">

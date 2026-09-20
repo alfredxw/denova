@@ -645,6 +645,12 @@ func TestAgentRuntimeCommitsARealDenovaSessionAndFinalizesDisplay(t *testing.T) 
 	if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != "public runtime answer" {
 		t.Fatalf("outcome = %#v", outcome)
 	}
+	runtime.public.mu.RLock()
+	runs, cycles, registrations := len(runtime.public.runs), len(runtime.public.cycles), len(runtime.public.registrations)
+	runtime.public.mu.RUnlock()
+	if runs != 0 || cycles != 0 || registrations != 0 {
+		t.Fatalf("completed display state remains resident: runs=%d cycles=%d registrations=%d", runs, cycles, registrations)
+	}
 	runID := string(operation.Receipt().OperationID)
 	if !strings.HasPrefix(runID, "run-") {
 		t.Fatalf("public run id = %q, want run- prefix", runID)
@@ -1294,6 +1300,13 @@ func TestAgentRuntimeCancelQueuedRemovesAcceptedFollowUp(t *testing.T) {
 	if cancelled.CommandID != "cancel-queued-control" || cancelled.OperationID != operation.Receipt().OperationID {
 		t.Fatalf("cancel receipt = %#v", cancelled)
 	}
+	retried, err := runtime.SubmitCommand(ctx, CommandRequest{
+		Kind: CommandFollowUp, CommandID: "cancel-queued-target", OperationID: operation.Receipt().OperationID,
+		Request: agentchatRequest("cancel-queued-target", "should not run"), Options: options,
+	})
+	if err != nil || retried != queued {
+		t.Fatalf("retry cancelled input: %+v, %v; want %+v", retried, err, queued)
+	}
 	_, err = runtime.SubmitCommand(ctx, CommandRequest{
 		Kind: CommandCancelQueued, CommandID: "cancel-queued-again", OperationID: operation.Receipt().OperationID,
 		TargetCommandID: queued.CommandID, Reason: "already removed", Options: options,
@@ -1305,6 +1318,12 @@ func TestAgentRuntimeCancelQueuedRemovesAcceptedFollowUp(t *testing.T) {
 	outcome := operation.Wait(ctx)
 	if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != "first answer" {
 		t.Fatalf("outcome after cancelling queued input = %#v", outcome)
+	}
+	runtime.public.mu.RLock()
+	retained := len(runtime.public.registrations)
+	runtime.public.mu.RUnlock()
+	if retained != 0 {
+		t.Fatalf("cancelled input remains in runtime registry: %d registrations", retained)
 	}
 	model.mu.Lock()
 	calls := model.calls

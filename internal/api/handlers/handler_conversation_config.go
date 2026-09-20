@@ -97,8 +97,8 @@ func writeConversationConfigError(c *app.RequestContext, err error) {
 		writeErrorKey(c, consts.StatusNotFound, "agentRuntime.notFound")
 	case errors.Is(err, agentruntime.ErrEngineNotInstalled):
 		writeErrorKey(c, consts.StatusServiceUnavailable, "agentRuntime.notInstalled")
-	case agentruntime.IsVersionUnsupported(err):
-		writeErrorKey(c, consts.StatusServiceUnavailable, "agentRuntime.incompatibleVersion")
+	case agentruntime.VersionUnsupportedReasonKey(err) != "":
+		writeErrorKey(c, consts.StatusServiceUnavailable, agentruntime.VersionUnsupportedReasonKey(err))
 	case errors.Is(err, agentruntime.ErrOperationActive), errors.Is(err, appsvc.ErrAgentOperationActive), errors.Is(err, externaljournal.ErrBusy):
 		writeErrorKey(c, consts.StatusConflict, "agentRuntime.busy")
 	case errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported):

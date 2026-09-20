@@ -15,7 +15,7 @@ const agentRuntime = {
   'agentRuntime.sharedClaudeHome': "Uses local Claude Code sign-in and provider environment settings. Model aliases are resolved by Claude Code; availability depends on your account.",
   'agentRuntime.claudeLoginInTerminal': "Run claude auth login on the computer running Denova, then check the connection again.",
   'agentRuntime.claudeNotInstalled': "Claude Code was not found. Install it on this computer first.",
-  'agentRuntime.claudeIncompatibleVersion': "The Claude Code version is too old or unrecognized. Use 2.1.259 or newer.",
+  'agentRuntime.claudeIncompatibleVersion': "The Claude Code version is too old or unrecognized. Minimum supported version: 2.1.259. Run claude update on the computer running Denova (for Homebrew installations, use brew upgrade claude-code), then click Check connection.",
 
   'agentRuntime.currentRuntime': "Runtime: {{runtime}}",
   'agentRuntime.switchRuntime': "Switch runtime",
@@ -51,7 +51,7 @@ const agentRuntime = {
   'agentRuntime.connectionFailed': "Could not connect to the engine. Check the connection and retry.",
   'agentRuntime.connectionLost': "The engine connection was lost.",
   'agentRuntime.notInstalled': "Codex CLI was not found. Install it on this computer first.",
-  'agentRuntime.incompatibleVersion': "The Codex CLI version is too old or unrecognized. Use version 0.130.0 or newer.",
+  'agentRuntime.incompatibleVersion': "The Codex CLI version is too old or unrecognized. Minimum supported version: 0.130.0. Run codex update on the computer running Denova (for npm installations, use npm install -g @openai/codex@latest), then click Check connection.",
   'agentRuntime.notReady': "The engine is not ready. Check its connection and sign-in status in Agents settings.",
   'agentRuntime.modelUnavailable': "The selected model or reasoning effort is unavailable. Select another.",
   'agentRuntime.busy': "The conversation is running or has an unresolved question or tool outcome.",

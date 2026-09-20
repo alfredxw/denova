@@ -867,7 +867,32 @@ export interface LoreItemImageGenerateRequest {
   profile_id?: string
 }
 
-export type SkillScope = 'builtin' | 'user' | 'workspace'
+export type SkillScope = 'builtin' | 'user' | 'workspace' | 'shared'
+
+export interface SkillRemoteState {
+  source: { url: string; ref?: string; subdir?: string }
+  source_path: string
+  digest: string
+  auto_update: boolean
+  checked_at: string
+  update_available: boolean
+  status?: 'current' | 'available' | 'modified' | 'updated' | 'error'
+}
+
+export interface SkillPreferenceChange {
+  scope?: SkillScope
+  name?: string
+  enabled?: boolean
+  shared_enabled?: boolean
+  auto_update?: boolean
+}
+
+export interface SkillUpdateResult {
+  scope: SkillScope
+  name: string
+  remote?: SkillRemoteState
+  error_key?: string
+}
 
 export interface SkillScopeInfo {
   scope: SkillScope
@@ -887,6 +912,8 @@ export interface SkillSummary {
   path: string
   editable: boolean
   active: boolean
+  enabled?: boolean
+  remote?: SkillRemoteState
   updated_at?: string
 }
 
@@ -906,6 +933,7 @@ export interface SkillFile {
 export interface SkillSnapshot {
   scopes: SkillScopeInfo[]
   skills: SkillSummary[]
+  shared_enabled?: boolean
 }
 
 export interface SkillDocument extends SkillSummary {

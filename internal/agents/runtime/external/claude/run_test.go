@@ -113,6 +113,16 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if exe == "" {
 		t.Skip("set DENOVA_TEST_CLAUDE_EXE to exercise the installed CLI against a local model fixture")
 	}
+	personal := t.TempDir()
+	t.Setenv("HOME", personal)
+	t.Setenv("USERPROFILE", personal)
+	ambientSkill := filepath.Join(personal, ".agents", "skills", "ambient-disabled")
+	if err := os.MkdirAll(ambientSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ambientSkill, "SKILL.md"), []byte("---\nname: ambient-disabled\ndescription: ambient-skill-must-not-bypass-library\n---\nAmbient body.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	var mu sync.Mutex
@@ -143,6 +153,9 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 		mu.Lock()
 		requests++
 		raw, _ := json.Marshal(request)
+		if strings.Contains(string(raw), "ambient-skill-must-not-bypass-library") {
+			t.Error("CLI injected an ambient Skill outside the Denova library")
+		}
 		if strings.Contains(string(raw), `"media_type":"image/png"`) {
 			imageSeen = true
 		}

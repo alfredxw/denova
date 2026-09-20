@@ -174,7 +174,14 @@ func (store *Store) baseForKey(key session.Key) (string, [sha256.Size]byte, erro
 	return filepath.Join(store.root, hex.EncodeToString(digest[:])), digest, nil
 }
 
+type recordLocation struct {
+	offset   int64
+	length   int
+	previous session.Revision
+}
+
 type logFile struct {
+	locations        map[session.Revision]recordLocation
 	path             string
 	release          func() error
 	mu               sync.Mutex
@@ -290,6 +297,12 @@ func (log *logFile) Append(ctx context.Context, expected session.Revision, recor
 		log.storageErr = errors.Join(session.ErrCommitUnknown, err)
 		return log.revision, log.storageErr
 	}
+	if log.locations == nil {
+		log.locations = make(map[session.Revision]recordLocation)
+	}
+	for _, record := range committed {
+		log.locations[record.Revision] = recordLocation{offset: log.validBytes, length: len(encoded), previous: expected}
+	}
 	log.revision = body.End
 	log.resilienceFormat = log.resilienceFormat || upgrading
 	log.validBytes += int64(len(encoded))
@@ -306,6 +319,7 @@ func (log *logFile) replayLocked(ctx context.Context, apply func(session.Record)
 		return session.ReplayStats{}, err
 	}
 	defer file.Close()
+	log.locations = make(map[session.Revision]recordLocation)
 	reader := bufio.NewReaderSize(file, replayBufferBytes)
 	var stats session.ReplayStats
 	var revision session.Revision
@@ -330,6 +344,7 @@ func (log *logFile) replayLocked(ctx context.Context, apply func(session.Record)
 			return stats, err
 		}
 		for _, record := range records {
+			log.locations[record.Revision] = recordLocation{offset: validBytes, length: len(line), previous: revision}
 			log.resilienceFormat = log.resilienceFormat || isResilienceRecord(record.Kind)
 			stats.RecordsRead++
 			stats.BytesRead += int64(len(record.Kind) + len(record.Data))

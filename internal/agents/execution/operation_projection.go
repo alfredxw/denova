@@ -18,8 +18,7 @@ type OperationProjection struct {
 	FinishedAt time.Time
 }
 
-func projectOperation(run *agent.Run) OperationProjection {
-	snapshot := run.Snapshot()
+func projectOperation(snapshot agent.RunSnapshot) OperationProjection {
 	view := OperationProjection{
 		Receipt: agentrun.CommandReceipt{CommandID: agentrun.CommandID(snapshot.Receipt.CommandID), OperationID: agentrun.OperationID(snapshot.Receipt.RunID), Cursor: agentrun.Cursor(snapshot.Receipt.Cursor)},
 		Phase:   agentrun.RunPhaseRunning, Queued: !snapshot.Started, Content: snapshot.Output, FinishedAt: snapshot.FinishedAt,
@@ -45,7 +44,7 @@ func (s *Runtime) CommandProjection(ctx context.Context, options agentrun.Option
 	if err != nil {
 		return OperationProjection{}, false, err
 	}
-	run, found, err := session.CommandRun(ctx, commandID)
+	run, found, err := session.CommandSnapshot(ctx, commandID)
 	if err != nil || !found {
 		return OperationProjection{}, false, err
 	}
@@ -62,7 +61,7 @@ func (s *Runtime) OperationProjection(ctx context.Context, options agentrun.Opti
 	if err != nil {
 		return OperationProjection{}, false, err
 	}
-	run, found, err := session.AttachRun(ctx, operationID)
+	run, found, err := session.RunSnapshot(ctx, operationID)
 	if err != nil {
 		return OperationProjection{}, false, err
 	}
@@ -76,7 +75,7 @@ func (s *Runtime) OperationProjection(ctx context.Context, options agentrun.Opti
 		return OperationProjection{}, false, err
 	}
 	for _, child := range sessions[1:] {
-		run, found, err := child.AttachRun(ctx, operationID)
+		run, found, err := child.RunSnapshot(ctx, operationID)
 		if err != nil {
 			return OperationProjection{}, false, err
 		}

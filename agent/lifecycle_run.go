@@ -146,18 +146,16 @@ func (run *Run) Abort(ctx context.Context, request AbortRequest) (CommandReceipt
 		run.session.mu.Unlock()
 		return CommandReceipt{}, ErrSessionClosed
 	}
-	if run.session.runs[run.id] != run {
-		run.session.mu.Unlock()
-		return CommandReceipt{}, ErrRunSettled
-	}
-	if run.isSettled() {
-		if _, found := run.session.controlReceipts[commandID]; !found {
-			run.session.mu.Unlock()
-			return CommandReceipt{}, ErrRunSettled
-		}
+	// Accepted controls belong to the Session journal, even after the live
+	// Run is retired. Revalidate the request before acknowledging its receipt.
+	if _, found := run.session.controlReceipts[commandID]; found {
 		receipt, err := run.session.acceptControlLocked(ctx, "abort", run.id, commandID, reason)
 		run.session.mu.Unlock()
 		return receipt, err
+	}
+	if run.session.runs[run.id] != run || run.isSettled() {
+		run.session.mu.Unlock()
+		return CommandReceipt{}, ErrRunSettled
 	}
 	receipt, err := run.session.acceptControlLocked(ctx, "abort", run.id, commandID, reason)
 	run.session.mu.Unlock()

@@ -121,7 +121,16 @@ func (run *Run) Respond(ctx context.Context, interactionID string, response Inte
 	}
 	run.session.mu.RLock()
 	previous, answered := run.responses[interactionID]
+	settled := run.isSettled()
+	owner := run.session.recovery.Interactions[interactionID].RunID
 	run.session.mu.RUnlock()
+	if settled {
+		if owner != run.id {
+			return ErrInteractionStale
+		}
+		_, _, err := run.session.historicalResponse(ctx, interactionID, response)
+		return err
+	}
 	if answered {
 		if previous.Hash == hash {
 			return nil
@@ -277,17 +286,49 @@ func (session *Session) Respond(ctx context.Context, interactionID string, respo
 	}
 	session.mu.RUnlock()
 	if target == nil {
-		return InteractionRequest{}, InteractionResolution{}, ErrInteractionStale
+		return session.historicalResponse(ctx, interactionID, response)
 	}
 	if err := target.Respond(ctx, interactionID, response); err != nil {
 		return InteractionRequest{}, InteractionResolution{}, err
 	}
+	return session.historicalResponse(ctx, interactionID, response)
+}
+
+func (session *Session) historicalResponse(ctx context.Context, id string, response InteractionResponse) (InteractionRequest, InteractionResolution, error) {
 	session.mu.RLock()
-	stored := target.responses[interactionID]
+	entry, found := session.recovery.Interactions[strings.TrimSpace(id)]
 	session.mu.RUnlock()
-	var resolution InteractionResolution
-	if err := json.Unmarshal(stored.Resolution, &resolution); err != nil {
+	if !found || entry.Response == 0 {
+		return InteractionRequest{}, InteractionResolution{}, ErrInteractionStale
+	}
+	record, err := session.readRecord(ctx, entry.Response)
+	if err != nil {
 		return InteractionRequest{}, InteractionResolution{}, err
 	}
-	return stored.request, resolution, nil
+	var stored persistedInteractionResponse
+	if err := json.Unmarshal(record.Data, &stored); err != nil {
+		return InteractionRequest{}, InteractionResolution{}, err
+	}
+	hash, err := hashCanonical(response)
+	if err != nil {
+		return InteractionRequest{}, InteractionResolution{}, err
+	}
+	if stored.Hash != hash {
+		return InteractionRequest{}, InteractionResolution{}, ErrIdempotencyConflict
+	}
+	record, err = session.readRecord(ctx, entry.Request)
+	if err != nil {
+		return InteractionRequest{}, InteractionResolution{}, err
+	}
+	var original persistedInteraction
+	if err := json.Unmarshal(record.Data, &original); err != nil {
+		return InteractionRequest{}, InteractionResolution{}, err
+	}
+	var request InteractionRequest
+	var resolution InteractionResolution
+	if err := json.Unmarshal(original.Request, &request); err != nil {
+		return request, resolution, err
+	}
+	err = json.Unmarshal(stored.Resolution, &resolution)
+	return request, resolution, err
 }

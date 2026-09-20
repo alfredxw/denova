@@ -1,9 +1,11 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
+	"denova/internal/agents/conversationjournal"
 	"denova/internal/agents/sessionjournal"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -12,7 +14,7 @@ import (
 // Display delivery can stop before a paused interaction is answered. Read the
 // canonical Agent facts when projecting that page instead of requiring a live
 // display task or writing a second authoritative answer.
-func applyJournalAskAnswers(entries []HistoryEntry, projection *sessionjournal.Projection) error {
+func applyJournalAskAnswers(entries []HistoryEntry, projection *sessionjournal.Projection, journal *conversationjournal.Journal) error {
 	pending := make(map[string][]int)
 	for index, entry := range entries {
 		if entry.Ask != nil && entry.Ask.Status == AskPending {
@@ -25,33 +27,29 @@ func applyJournalAskAnswers(entries []HistoryEntry, projection *sessionjournal.P
 	resolved := make(map[string]agent.InteractionResolution)
 	finished := make(map[string]bool)
 	for _, stream := range projection.Streams {
-		for _, record := range stream.Facts {
-			if record.Kind != "turn.interaction_response" {
+		for id, interaction := range stream.Recovery.Interactions {
+			if len(pending[id]) == 0 || interaction.Response == 0 {
 				continue
 			}
+			record, err := projection.ReadRecord(context.Background(), journal, stream.Key, interaction.Response)
+			if err != nil {
+				return err
+			}
 			var response struct {
-				ID         string                      `json:"interaction_id"`
 				State      string                      `json:"state"`
 				Resolution agent.InteractionResolution `json:"resolution"`
 			}
 			if err := json.Unmarshal(record.Data, &response); err != nil {
 				return fmt.Errorf("decode Agent interaction answer: %w", err)
 			}
-			if response.State == "answered" && len(pending[response.ID]) > 0 {
-				resolved[response.ID] = response.Resolution
+			if response.State == "answered" {
+				resolved[id] = response.Resolution
 			}
 		}
-		for _, record := range stream.Turns {
-			if record.Kind != "turn.finished" && record.Kind != "turn.interrupted" {
-				continue
+		for id, run := range stream.Recovery.Runs {
+			if run.Settlement != 0 {
+				finished[id] = true
 			}
-			var turn struct {
-				RunID string `json:"run_id"`
-			}
-			if err := json.Unmarshal(record.Data, &turn); err != nil {
-				return fmt.Errorf("decode Agent settlement: %w", err)
-			}
-			finished[turn.RunID] = true
 		}
 	}
 	for id, indexes := range pending {

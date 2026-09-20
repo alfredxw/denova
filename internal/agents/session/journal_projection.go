@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 26
+	sessionProjectionVersion      = 27
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -197,7 +197,7 @@ func (projection *sessionJournalProjection) Checkpoint() (json.RawMessage, error
 
 func (projection *sessionJournalProjection) Apply(record conversationjournal.Record) error {
 	projection.rememberCursor(record.Location.Cursor)
-	if handled, err := projection.AgentSessions.Apply(record.Payload); handled || err != nil {
+	if handled, err := projection.AgentSessions.Apply(record); handled || err != nil {
 		return err
 	}
 	if handled, err := projection.External.Apply(record); handled || err != nil {

@@ -23,10 +23,17 @@ var (
 	ErrEngineModelUnavailable = errors.New("agent runtime model or effort is unavailable")
 )
 
-// IsVersionUnsupported normalizes adapter errors at the runtime boundary.
+// VersionUnsupportedReasonKey maps adapter version errors to localized product guidance.
 // API handlers must not import a provider implementation to classify failures.
-func IsVersionUnsupported(err error) bool {
-	return errors.Is(err, codex.ErrVersionUnsupported) || errors.Is(err, claude.ErrVersionUnsupported)
+func VersionUnsupportedReasonKey(err error) string {
+	switch {
+	case errors.Is(err, codex.ErrVersionUnsupported):
+		return "agentRuntime.incompatibleVersion"
+	case errors.Is(err, claude.ErrVersionUnsupported):
+		return "agentRuntime.claudeIncompatibleVersion"
+	default:
+		return ""
+	}
 }
 
 // Engines owns host-local connections and their active-use leases. Creating or
@@ -134,14 +141,11 @@ func (entry *engineEntry) connect(ctx context.Context) error {
 		if errors.Is(err, ErrEngineNotInstalled) {
 			entry.state = external.ConnectionState{Status: "not_installed", ReasonKey: "agentRuntime.notInstalled"}
 		}
-		if errors.Is(err, codex.ErrVersionUnsupported) || errors.Is(err, claude.ErrVersionUnsupported) {
-			entry.state = external.ConnectionState{Status: "incompatible", ReasonKey: "agentRuntime.incompatibleVersion"}
+		if key := VersionUnsupportedReasonKey(err); key != "" {
+			entry.state = external.ConnectionState{Status: "incompatible", ReasonKey: key}
 		}
 		if entry.id == config.RuntimeClaude && entry.state.Status == "not_installed" {
 			entry.state.ReasonKey = "agentRuntime.claudeNotInstalled"
-		}
-		if entry.id == config.RuntimeClaude && entry.state.Status == "incompatible" {
-			entry.state.ReasonKey = "agentRuntime.claudeIncompatibleVersion"
 		}
 		return err
 	}

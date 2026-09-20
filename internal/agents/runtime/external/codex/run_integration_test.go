@@ -25,6 +25,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // This opt-in fixture exercises the installed executable, without account
@@ -49,6 +50,13 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			personal := t.TempDir()
 			t.Setenv("HOME", personal)
 			t.Setenv("USERPROFILE", personal)
+			ambientSkill := filepath.Join(personal, ".agents", "skills", "ambient-disabled")
+			if err := os.MkdirAll(ambientSkill, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(ambientSkill, "SKILL.md"), []byte("---\nname: ambient-disabled\ndescription: ambient-skill-must-not-bypass-library\n---\nExternal discovery must not bypass Denova's catalog.\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 			t.Setenv("DENOVA_FIXTURE_CODEX_KEY", "overridden-by-codex-dotenv")
 			guard := filepath.Join(project, "chapter.txt")
 			if err := os.WriteFile(guard, []byte("Original content.\n"), 0o600); err != nil {
@@ -71,6 +79,9 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 					return
 				}
 				mu.Lock()
+				if bytes.Contains(body, []byte("ambient-skill-must-not-bypass-library")) {
+					t.Error("App Server injected an ambient Skill outside the Denova library")
+				}
 				if scenario == "api" && (!bytes.Contains(body, []byte(`"model":"fixture-api-model"`)) || r.Header.Get("X-Tenant") != "api-tenant" || r.Header.Get("X-Unexpected") != "") {
 					t.Error("API model or custom header was not applied")
 				}
@@ -103,7 +114,11 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 				emit(map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "object": "response", "status": "completed", "output": []any{item}, "usage": map[string]int{"input_tokens": 20, "output_tokens": 10, "total_tokens": 30}}})
 			}))
 			defer server.Close()
-			home := t.TempDir()
+			// App Server reports its canonical home (for example /private/var on macOS).
+			home, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
 			configuration := fmt.Sprintf("model = \"gpt-5.5\"\nmodel_provider = \"fixture\"\nmodel_context_window = 128000\n[model_providers.fixture]\nname = \"Local fixture\"\nbase_url = %q\nwire_api = \"responses\"\nenv_key = \"DENOVA_FIXTURE_CODEX_KEY\"\n[features]\nenable_request_compression = false\n", server.URL+"/v1")
 			if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(configuration), 0o600); err != nil {
 				t.Fatal(err)
@@ -128,13 +143,26 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			defer client.Close()
 			defer func() {
 				data, err := os.ReadFile(filepath.Join(home, "config.toml"))
-				// A persistent full-access thread lets the CLI append its scratch
-				// directory trust entry. Existing model and auth configuration must survive.
-				if scenario == "evaluation_patch" && err == nil && strings.HasPrefix(string(data), configuration) {
-					return
+				// The CLI may append trust for its scratch directory. All supplied
+				// model, auth, and Skill preferences must remain byte-for-byte intact.
+				if err == nil && strings.HasPrefix(string(data), configuration) {
+					var appended struct {
+						Projects map[string]struct {
+							TrustLevel string `toml:"trust_level"`
+						} `toml:"projects"`
+					}
+					decoder := toml.NewDecoder(strings.NewReader(strings.TrimPrefix(string(data), configuration))).DisallowUnknownFields()
+					if decoder.Decode(&appended) == nil {
+						for path, value := range appended.Projects {
+							if !filepath.IsAbs(path) || value.TrustLevel != "trusted" {
+								t.Error("unexpected fixture trust entry")
+							}
+						}
+						return
+					}
 				}
 				if err != nil || string(data) != configuration {
-					t.Error("runtime changed CLI configuration")
+					t.Errorf("runtime changed fixture CLI configuration: %s", data)
 				}
 			}()
 			if client.Version() != installedVersion {
