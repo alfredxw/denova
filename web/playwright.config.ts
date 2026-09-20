@@ -18,6 +18,8 @@ export default defineConfig({
     : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
+    // Keep all requests observable by the deterministic network fixture.
+    serviceWorkers: 'block',
     locale: 'zh-CN',
     colorScheme: 'dark',
     trace: 'retain-on-failure',

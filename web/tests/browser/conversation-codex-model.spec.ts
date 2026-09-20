@@ -4,13 +4,6 @@ import { expect, test } from '../support/fixtures'
 import { createAgentChatSession, createAndOpenBook, registerAgentChatProject } from '../support/api'
 import { openAgentChatSession, openAgentChatWorkbench, openWritingAgent } from '../support/agent-chat'
 
-test.afterEach(async ({ request }) => {
-  const current = await (await request.get('/api/settings')).json()
-  const response = await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user,
-    changes: { agent_runtimes: { ide: { selected: 'native' }, general: { selected: 'native' } } } } })
-  expect(response.ok(), await response.text()).toBe(true)
-})
-
 for (const engine of ['codex', 'claude'] as const) {
   for (const kind of ['writing', 'general'] as const) {
     for (const theme of ['dark', 'light']) {

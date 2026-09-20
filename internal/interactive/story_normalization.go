@@ -67,6 +67,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 	story.Protagonist = normalizeStoryProtagonist(story.Protagonist)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
 	story.ImageSettings = normalizeStoryImageSettings(story.ImageSettings)
+	story.SpeechSettings = normalizeStorySpeechSettings(story.SpeechSettings)
 	story.CheckSettings = normalizeStoryCheckSettings(story.CheckSettings)
 	story.ModuleRefs = cloneStoryDirectorModuleRefs(story.ModuleRefs)
 	if story.StateSchemaPolicy == nil {
@@ -87,6 +88,7 @@ func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.Protagonist = normalizeStoryProtagonist(meta.Protagonist)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
+	meta.SpeechSettings = normalizeStorySpeechSettings(meta.SpeechSettings)
 	meta.CheckSettings = normalizeStoryCheckSettings(meta.CheckSettings)
 	meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(meta.ActorStateSchema)
 	meta.ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)

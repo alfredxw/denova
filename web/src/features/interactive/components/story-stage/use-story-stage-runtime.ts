@@ -60,7 +60,7 @@ interface UseStoryStageRuntimeOptions {
   setActivity: (content: string) => void
   setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
   clearComposer: () => void
-  onTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | void
+  onTurnPersisted: (event: InteractiveTurnPersistedEvent, options?: { replayed: boolean }) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
 }
 

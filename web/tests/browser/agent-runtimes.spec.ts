@@ -4,12 +4,6 @@ import { openWritingAgent } from '../support/agent-chat'
 import enRuntime from '../../src/i18n/locales/en-US/agentRuntime'
 import zhRuntime from '../../src/i18n/locales/zh-CN/agentRuntime'
 
-test.afterEach(async ({ request }) => {
-  const current = await (await request.get('/api/settings')).json()
-  const response = await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user, changes: { language: 'zh-CN', theme: 'dark', agent_runtimes: { ide: { selected: 'native' } } } } })
-  expect(response.ok(), await response.text()).toBe(true)
-})
-
 for (const engine of ['codex', 'claude'] as const) {
 for (const language of ['zh-CN', 'en-US']) {
   test(`${engine} CLI sign-in guidance and connection recheck work in ${language}`, async ({ page, request }) => {

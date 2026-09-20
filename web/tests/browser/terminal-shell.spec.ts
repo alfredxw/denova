@@ -2,21 +2,6 @@ import { expect, test } from '../support/fixtures'
 import { createAgentChatSession, createAndOpenBook } from '../support/api'
 import { openAgentChatSession, openAgentChatWorkbench } from '../support/agent-chat'
 
-let originalSettings: { language?: string; theme?: string; terminal_shell?: string }
-
-test.beforeEach(async ({ request }) => {
-  originalSettings = (await (await request.get('/api/settings')).json()).user
-})
-
-test.afterEach(async ({ request }) => {
-  const restored = await request.patch('/api/settings', { data: { layer: 'user', changes: {
-    language: originalSettings.language ?? null,
-    theme: originalSettings.theme ?? null,
-    terminal_shell: originalSettings.terminal_shell ?? null,
-  } } })
-  expect(restored.ok(), await restored.text()).toBe(true)
-})
-
 test('Windows terminal shell choices persist across Writing and Game', async ({ page, request }, testInfo) => {
   test.setTimeout(90_000)
   await page.emulateMedia({ reducedMotion: 'reduce' })

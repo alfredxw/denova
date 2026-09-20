@@ -462,6 +462,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const directorPanelVisible = isMobile ? mobileSnapshotOpen : rightPanelVisible
   const storyStage = (
     <StoryStage
+      active={active}
       projectId={projectId}
       workspace={workspace}
       styleSceneSuggestions={styleSceneSuggestions}

@@ -36,21 +36,31 @@ function consumerFixture(initialMessages: AgentUIMessage[] = []) {
     resetForCheckpoint: vi.fn(() => setMessages([])),
   } as unknown as LiveMessageAccumulator
   const setActivity = vi.fn()
+  const onTurnPersisted = vi.fn()
   const consumer = createStoryStageStreamConsumer({
     liveAccumulator,
     liveTurnNavigationAnchorId: 'live-turn',
     onRuntimeRecoveryRequired: vi.fn().mockResolvedValue(undefined),
-    onTurnPersisted: vi.fn(),
+    onTurnPersisted,
     setActivity,
     setMessages,
     setStageRuntime: vi.fn(),
     t: ((key: string) => key) as unknown as TFunction,
     updateStageRun: vi.fn(),
   })
-  return { consumer, liveAccumulator, messages: () => messages, setActivity }
+  return { consumer, liveAccumulator, messages: () => messages, setActivity, onTurnPersisted }
 }
 
 describe('story stage stream event contract', () => {
+  it('distinguishes replayed commits from fresh commits for automatic playback', async () => {
+    const fixture = consumerFixture()
+    const data = { story_id: 'story', branch_id: 'main', turn_count: 1, turn: { id: 'turn' } }
+    await fixture.consumer.consume(eventStream([
+      { id: '1', event: 'interactive_turn_persisted', data: JSON.stringify({ ...data, replayed: true }) },
+      { id: '2', event: 'interactive_turn_persisted', data: JSON.stringify(data) },
+    ]), fixture.consumer.initialOutcome())
+    expect(fixture.onTurnPersisted.mock.calls.map(call => call[1])).toEqual([{ replayed: true }, { replayed: false }])
+  })
   it('ends a paused stream without requiring a final game turn or reporting failure', async () => {
     const fixture = consumerFixture()
     const outcome = await fixture.consumer.consume(eventStream([

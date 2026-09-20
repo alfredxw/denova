@@ -45,7 +45,7 @@ interface StoryStageStreamConsumerOptions {
   liveAccumulator: LiveMessageAccumulator
   liveTurnNavigationAnchorId: string
   onRuntimeRecoveryRequired: () => Promise<{ handoffTaskId?: string } | void>
-  onTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | void
+  onTurnPersisted: (event: InteractiveTurnPersistedEvent, options?: { replayed: boolean }) => Snapshot | void
   setActivity: (content: string) => void
   setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
   setStageRuntime: (runtime: StoryStageRuntimeUpdater) => void
@@ -379,7 +379,7 @@ export function createStoryStageStreamConsumer({
           receivedPersistedTurn = true
           persistenceRequired = false
           if (data.turn?.id) liveAccumulator.bindPersistedTurn(data.turn.id)
-          const appliedSnapshot = onTurnPersisted(data)
+          const appliedSnapshot = onTurnPersisted(data, { replayed: checkpointReplay || data.replayed === true })
           persistedSnapshot = appliedSnapshot || persistedSnapshot
           if (appliedSnapshot) {
             liveAccumulator.finishMessages()

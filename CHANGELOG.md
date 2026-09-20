@@ -14,6 +14,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- 游戏支持 OpenAI 兼容的语音朗读，可配置统一声线、自动朗读新正文、仅朗读引号内容、跳过星号动作描写，并控制暂停、语速和音量。
+- Game supports OpenAI-compatible read-aloud with one configurable voice, automatic reading of new prose, quoted-text and action filters, pause, playback speed, and volume controls.
+
 - Skills 新增卡片式技能库、启用开关与搜索筛选；可选择使用 `~/.agents/skills` 通用技能，远程安装支持默认关闭的每日自动更新，并保护本地修改与保留备份。
 - Skills now has a searchable card library with availability controls, optional shared Skills from `~/.agents/skills`, and opt-in daily updates for remote installs with local-edit protection and backups.
 

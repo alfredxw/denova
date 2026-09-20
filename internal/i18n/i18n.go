@@ -77,6 +77,15 @@ func stringify(v any) string {
 }
 
 var catalogZH = map[string]string{
+	"speech.error.unconfigured":              "请先配置语音接口、模型和声线。",
+	"speech.error.url":                       "请输入有效的 HTTP 或 HTTPS 语音接口地址，不含用户名、密码或片段标识。",
+	"speech.error.input":                     "朗读内容为空或单段过长。",
+	"speech.error.network":                   "无法连接语音服务或请求超时，请检查地址和网络。",
+	"speech.error.auth":                      "语音服务鉴权失败，请检查 API 密钥。",
+	"speech.error.modelVoice":                "语音服务拒绝了请求，请检查接口路径、模型和声线 ID。",
+	"speech.error.rateLimit":                 "语音服务限流或额度不足，请稍后重试。",
+	"speech.error.service":                   "语音服务暂时不可用，请稍后重试。",
+	"speech.error.audio":                     "语音服务未返回可播放的 MP3 音频。",
 	"api.agent.commandFailed":                "Agent 命令提交失败",
 	"agent_runtime.ask_conflict":             "此问题已有不同的处理结果，请刷新查看。",
 	"agentRuntime.connectionFailed":          "无法连接 Agent 引擎，请检查安装与登录状态。",
@@ -177,6 +186,7 @@ var catalogZH = map[string]string{
 	"api.interactive.storyIDRequired":            "故事 ID 不能为空",
 	"api.interactive.storyModeOnly":              "当前仅支持 story 子模式",
 	"api.interactive.storyStructureBusy":         "故事正在生成，请在本轮结束后再修改主角或状态结构",
+	"api.interactive.invalidSpeechContentMode":   "朗读内容选项无效，请选择完整正文或仅对话。",
 	"api.interactive.tellerInstructionEmpty":     "叙事风格编辑指令不能为空",
 	"api.lore.instructionEmpty":                  "资料库编辑指令不能为空",
 	"api.settings.fileSaveFailed":                "以下配置文件保存失败：{{paths}}。其余成功项已保存，请重新加载后处理失败项。",
@@ -258,6 +268,15 @@ var catalogZH = map[string]string{
 }
 
 var catalogEN = map[string]string{
+	"speech.error.unconfigured":              "Configure a speech endpoint, model and voice first.",
+	"speech.error.url":                       "Enter a valid HTTP or HTTPS speech URL without embedded credentials or a fragment.",
+	"speech.error.input":                     "The speech input is empty or the segment is too long.",
+	"speech.error.network":                   "Could not reach the speech service, or the request timed out. Check the URL and connection.",
+	"speech.error.auth":                      "Speech authentication failed. Check your API key.",
+	"speech.error.modelVoice":                "The speech service rejected the request. Check the endpoint path, model and voice IDs.",
+	"speech.error.rateLimit":                 "The speech service rate limit or quota was reached. Retry later.",
+	"speech.error.service":                   "The speech service is unavailable. Retry later.",
+	"speech.error.audio":                     "The speech service did not return playable MP3 audio.",
 	"api.agent.commandFailed":                "Failed to submit agent command",
 	"agent_runtime.ask_conflict":             "This question was already resolved differently. Refresh to view its result.",
 	"agentRuntime.connectionFailed":          "Could not connect to the Agent runtime. Check installation and sign-in status.",
@@ -358,6 +377,7 @@ var catalogEN = map[string]string{
 	"api.interactive.storyIDRequired":            "Story ID is required.",
 	"api.interactive.storyModeOnly":              "Only the story submode is supported now.",
 	"api.interactive.storyStructureBusy":         "The story is generating. Change the protagonist or state structure after this turn finishes.",
+	"api.interactive.invalidSpeechContentMode":   "Choose full prose or quoted text for speech playback.",
 	"api.interactive.tellerInstructionEmpty":     "Narrative direction edit instruction is required.",
 	"api.lore.instructionEmpty":                  "Lore edit instruction is required.",
 	"api.settings.fileSaveFailed":                "These settings files could not be saved: {{paths}}. Successful changes were saved. Reload before retrying the failed files.",

@@ -4,6 +4,8 @@ import {
   type ConsoleMessage,
   type Response,
 } from '@playwright/test'
+import { createSettingsMergePatch } from '../../src/features/settings/merge-patch'
+import type { Settings } from '../../src/features/settings/types'
 
 export { expect }
 export type { APIRequestContext, Locator, Page } from '@playwright/test'
@@ -15,10 +17,11 @@ interface BrowserDiagnostics {
 
 interface E2EFixtures {
   browserDiagnostics: BrowserDiagnostics
+  _sharedSettings: void
 }
 
 interface BrowserDiagnostic {
-  kind: 'console.error' | 'pageerror' | 'http.5xx'
+  kind: 'console.error' | 'pageerror' | 'http.5xx' | 'network.external'
   text: string
   url?: string
 }
@@ -32,11 +35,42 @@ const knownExpectedBrowserDiagnostics = [
 
 /** Every browser-backed test fails on uncaught errors, console errors, and unexpected 5xx responses. */
 export const test = base.extend<E2EFixtures>({
-  browserDiagnostics: [async ({ page }, use) => {
+  // Restore shared defaults after closing the browser so late UI saves cannot
+  // leak into the next test. Project-owned settings stay with their unique Project.
+  _sharedSettings: [async ({ context, request }, use) => {
+    const beforeResponse = await request.get('/api/settings')
+    expect(beforeResponse.ok(), await beforeResponse.text()).toBe(true)
+    const before = (await beforeResponse.json()).user as Settings
+    await use()
+    await context.close()
+    const afterResponse = await request.get('/api/settings')
+    expect(afterResponse.ok(), await afterResponse.text()).toBe(true)
+    const after = await afterResponse.json()
+    const changes = createSettingsMergePatch(sharedSettings(after.user), sharedSettings(before))
+    if (Object.keys(changes).length > 0) {
+      const restored = await request.patch('/api/settings', { data: {
+        layer: 'user', base_revision: after.revisions.user, changes,
+      } })
+      expect(restored.ok(), await restored.text()).toBe(true)
+      expect(sharedSettings((await restored.json()).user)).toEqual(sharedSettings(before))
+    }
+  }, { auto: true }],
+  browserDiagnostics: [async ({ page, context, _sharedSettings }, use, testInfo) => {
     const diagnostics: BrowserDiagnostic[] = []
     const allowed = [...knownExpectedBrowserDiagnostics]
     const staleStreamURLs = new Map<string, boolean>()
     const responseChecks: Promise<void>[] = []
+    // Page-level mocks take precedence; any unmocked public dependency fails
+    // immediately instead of depending on CDN/DNS availability during a run.
+    await context.route(/^https?:\/\//, async route => {
+      const url = new URL(route.request().url())
+      if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+        await route.continue()
+        return
+      }
+      diagnostics.push({ kind: 'network.external', text: `${route.request().method()} ${url.href}` })
+      await route.abort('blockedbyclient')
+    })
     const recordConsoleError = (message: ConsoleMessage) => {
       if (message.type() !== 'error') return
       const location = message.location()
@@ -75,6 +109,11 @@ export const test = base.extend<E2EFixtures>({
     page.off('pageerror', recordPageError)
     page.off('response', recordServerError)
     await Promise.all(responseChecks)
+    if (testInfo.status !== testInfo.expectedStatus || diagnostics.length > 0) {
+      await testInfo.attach('browser-diagnostics', {
+        body: JSON.stringify(diagnostics, null, 2), contentType: 'application/json',
+      })
+    }
 
     const unexpected = diagnostics
       .filter((diagnostic) => !(diagnostic.kind === 'console.error'
@@ -85,6 +124,13 @@ export const test = base.extend<E2EFixtures>({
     expect(unexpected, `Unexpected browser diagnostics:\n${unexpected.join('\n')}`).toEqual([])
   }, { auto: true }],
 })
+
+function sharedSettings(settings: Settings): Settings {
+  // Host authentication is intentionally outside this snapshot.
+  // These are the public defaults changed by cross-surface browser journeys.
+  const keys = ['language', 'theme', 'agent_runtimes', 'agent_models', 'model_endpoints', 'model_profiles', 'terminal_shell'] as const
+  return Object.fromEntries(keys.filter(key => settings[key] !== undefined).map(key => [key, settings[key]]))
+}
 
 function matches(pattern: RegExp, value: string): boolean {
   pattern.lastIndex = 0

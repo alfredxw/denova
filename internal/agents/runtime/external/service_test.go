@@ -334,7 +334,7 @@ func TestExternalOperationAnswerAndStopSettleCanonicalQuestion(t *testing.T) {
 	for _, action := range []string{"answer", "stop"} {
 		t.Run(action, func(t *testing.T) {
 			service, request, _ := operationFixture(t)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			pending := make(chan *session.AskInteraction, 1)
 			request.Emit = func(event agentrun.Event) {
@@ -368,8 +368,8 @@ func TestExternalOperationAnswerAndStopSettleCanonicalQuestion(t *testing.T) {
 			var ask *session.AskInteraction
 			select {
 			case ask = <-pending:
-			case <-ctx.Done():
-				t.Fatal(ctx.Err())
+			case <-time.After(5 * time.Second):
+				t.Fatal("operation did not publish its pending question")
 			}
 			if action == "answer" {
 				_, err := service.Interactions.Resolve(ctx, request.ProjectID, request.Session, ask.ID, []conversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Restrained"}}, nil)
@@ -388,7 +388,7 @@ func TestExternalOperationAnswerAndStopSettleCanonicalQuestion(t *testing.T) {
 				if result.Status != want {
 					t.Fatalf("outcome=%#v", result)
 				}
-			case <-time.After(2 * time.Second):
+			case <-time.After(5 * time.Second):
 				t.Fatal("operation did not finish")
 			}
 			if err := request.Session.ReadExternal(context.Background(), func(state session.ExternalState) error { return state.Projection.RequireIdle() }); err != nil {

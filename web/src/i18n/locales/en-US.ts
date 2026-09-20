@@ -1,3 +1,4 @@
+import speech from './en-US/speech'
 import common from './en-US/common'
 import agentRuntime from './en-US/agentRuntime'
 import remoteAccess from './en-US/remoteAccess'
@@ -46,6 +47,7 @@ import trajectory from './en-US/trajectory'
 
 const enUS = {
   ...common,
+  ...speech,
   ...agentRuntime,
   ...remoteAccess,
   ...chat,

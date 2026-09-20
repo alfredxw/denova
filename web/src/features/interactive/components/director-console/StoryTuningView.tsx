@@ -1,3 +1,4 @@
+import { StorySpeechControls } from './StorySpeechControls'
 import { Bot, Dices, ImagePlus, UserRound } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -338,6 +339,8 @@ export function StoryTuningView({
             )}
           />
         </ControlSection>
+
+        <StorySpeechControls story={story} disabled={disabled} onChange={speech_settings => { void save('speech_settings', { speech_settings }) }} />
 
         <ControlSection icon={<UserRound className="size-4" />} title={t('directorPanel.tuning.state.title')}>
           <ModuleSelectRow

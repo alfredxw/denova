@@ -27,6 +27,7 @@ docs/tests/*
 !docs/automation-project-agent.md
 !docs/claude-runtime.md
 !docs/skills-library.md
+!docs/speech.md
 !docs/agent-runtime-session-design-audit.md
 .worktrees/
 .pnpm-store/

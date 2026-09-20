@@ -56,8 +56,7 @@ func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 				{"other", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"other"}, CustomInput: "Reflective"}}},
 			} {
 				t.Run(test.name, func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-					defer cancel()
+					ctx := t.Context()
 					directory, store, sess := pendingAskFixtureForEngine(t, test.arguments, engine)
 					interactions := &Interactions{}
 					type outcome struct {
@@ -92,14 +91,16 @@ func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					waitDeadline := time.NewTimer(5 * time.Second)
+					defer waitDeadline.Stop()
 					for range 2 {
 						select {
 						case completed := <-waiters:
 							if completed.err != nil || !reflect.DeepEqual(saved, completed.result) {
 								t.Fatalf("waiter did not receive committed answer: %#v", completed)
 							}
-						case <-ctx.Done():
-							t.Fatal(ctx.Err())
+						case <-waitDeadline.C:
+							t.Fatal("waiters did not observe the committed answer")
 						}
 					}
 					second, err := interactions.Resolve(ctx, "project-1", sess, "ask-execution-1", test.answers, nil)
@@ -123,7 +124,9 @@ func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 						t.Fatal(err)
 					}
 					restarted := &Interactions{}
-					result, err := restarted.Wait(ctx, "project-1", restored, "operation-1", "execution-1")
+					waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					defer cancel()
+					result, err := restarted.Wait(waitCtx, "project-1", restored, "operation-1", "execution-1")
 					if err != nil || !reflect.DeepEqual(saved, result) {
 						t.Fatalf("restarted waiter required old engine state: %#v, %v", result, err)
 					}

@@ -1,3 +1,5 @@
+import { useStorySpeech } from '../use-story-speech'
+import { SpeechPlayback } from '@/features/speech/SpeechPlayback'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -45,7 +47,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
-export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], planningTemplates = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ active = true, projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], planningTemplates = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const [creatingStory, setCreatingStory] = useState(false)
   const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
@@ -75,6 +77,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const snapshotKey = storyStageSnapshotKey(storyId, branchId, snapshot)
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
   const { displaySnapshot, historyWindow, prependPage: prependHistoryPage, resetToLatest: resetHistoryToLatest } = useStoryHistoryWindow(stageKey, snapshot)
+  const speech = useStorySpeech({ owner: stageKey, story, snapshot: displaySnapshot, active })
   const [historyLoading, setHistoryLoading] = useState(false)
   const stageRun = useInteractiveStore((state) => state.storyStageRuns[stageKey] || EMPTY_STAGE_RUN)
   const setStoryStageRun = useInteractiveStore((state) => state.setStoryStageRun)
@@ -312,6 +315,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   }, [snapshotKey])
 
   function clearSubmittedComposer() {
+    speech.stop()
     setInput('')
     setEditingTurn(null)
     setStyleScenes([])
@@ -344,7 +348,10 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     setActivity: setStageActivityContent,
     setMessages: setStageLiveMessages,
     clearComposer: clearSubmittedComposer,
-    onTurnPersisted,
+    onTurnPersisted: (event, options) => {
+      speech.onPersisted(event, options)
+      return onTurnPersisted(event, options)
+    },
     onDone,
   })
 
@@ -403,6 +410,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     const currentIndex = view.metadata.turn_version_index ?? versions.findIndex((version) => version.current)
     const nextVersion = versions[currentIndex + direction]
     if (!nextVersion) return
+    speech.stop()
     setSwitchingVersionTurnId(turnId)
     setStageActivityContent(direction > 0 ? t('storyStage.activity.switchNewer') : t('storyStage.activity.switchOlder'))
     try {
@@ -444,6 +452,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     if (!turnId) return
     const turn = turnsById.get(turnId)
     if (!turn) return
+    speech.stop()
     setReplyEditTarget({
       turnId: turn.id,
       branchId: turn.branch_id || branchId,
@@ -597,6 +606,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
       <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
         <StoryStageHeader isMobile={isMobile} controls={stageControls} />
+        <div className="shrink-0 px-3"><SpeechPlayback owner={stageKey} /></div>
 
         <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
           {!isMobile && <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />}
@@ -692,6 +702,10 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 onCreateBranch={onRequestCreateBranch ? startCreatingBranchFromView : undefined}
                 onRegenerateMessage={regenerateView}
                 onSwitchMessageVersion={switchViewVersion}
+                onReadAloud={(view) => {
+                  const turn = turnsById.get(view.metadata.turn_id || '')
+                  if (turn) speech.read(turn)
+                }}
                 onGenerateInteractiveImage={generateImageForView}
                 generatingInteractiveImageTurnId={storyImages.generatingTurnId || undefined}
                 onOpenSubAgentSession={openSubAgentSession}
