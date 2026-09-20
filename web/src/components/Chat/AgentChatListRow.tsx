@@ -114,6 +114,7 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
   // reference after output stops, following the same timing as reply actions.
   const needsRunActions = item.kind === 'run'
     && !isStreaming
+    && !item.sections.some(section => section.kind === 'process' && section.active)
     && !item.sections.some(section => section.kind === 'message' && section.view.kind === 'assistant')
     && !(nextItem?.kind === 'message' && nextItem.view.kind === 'error' && nextItem.view.metadata.run_id === item.runId)
   useLayoutEffect(() => {

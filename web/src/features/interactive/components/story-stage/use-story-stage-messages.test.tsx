@@ -12,10 +12,19 @@ describe('story message timestamps', () => {
     const { result } = renderHook(() => useStoryStageMessages({
       snapshot: {
         story_id: 'story-1', branch_id: 'main', state: {},
-        turns: [{ id: 'turn-1', parent_id: null, branch_id: 'main', ts: timestamp, user: 'Open the door', narrative: 'A light shines outside.' }],
+        turns: [{ id: 'turn-1', parent_id: null, branch_id: 'main', ts: timestamp, user: 'Open the door', narrative: 'A light shines outside.',
+          rule_resolution: {
+            id: 'check-1',
+            request: {
+              action: 'Open the door', intent: 'Enter', challenge: 'Locked door', cost: 'Noise', state: '', difficulty: 'normal',
+              outcomes: { critical_success: { result: 'Quiet entry' }, success: { result: 'Entered' }, failure: { result: 'Locked' }, critical_failure: { result: 'Alarm' } },
+            },
+            result: { dice: '1d20', rolls: [14], total: 16, target: 10, outcome: 'success' },
+          },
+        }],
       },
       liveMessages: [], streaming: false, stageKey: 'story-1:main',
-      liveTurnNavigationAnchorId: 'live', publicRuleRollVisible: false,
+      liveTurnNavigationAnchorId: 'live',
       optimisticInteractiveImages: {}, belongsToStage: () => true, renderKeyFor: () => undefined,
     }))
 
@@ -28,7 +37,7 @@ describe('story message timestamps', () => {
   it('timestamps live user and assistant messages once as text accumulates', () => {
     const { result } = renderHook(() => {
       const [messages, setMessages] = useState<AgentUIMessage[]>([])
-      const accumulator = useLiveMessageAccumulator({ setMessages, publicRuleRollVisible: false })
+      const accumulator = useLiveMessageAccumulator({ setMessages })
       return { messages, accumulator }
     })
     const startedAt = Date.now()

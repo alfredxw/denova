@@ -4,7 +4,7 @@ import type { ConversationConfigBinding } from '@/features/conversation-config/t
 export type ToolNavigationTarget =
   | { kind: 'workspace_file'; path: string }
   | { kind: 'lore_item'; id?: string; name?: string }
-  | { kind: 'config_resource'; resource: string; id?: string; scope?: string; conversation?: ConversationConfigBinding }
+  | { kind: 'config_resource'; resource: string; id?: string; scope?: string; section?: 'runtime'; conversation?: ConversationConfigBinding }
 
 export interface ToolNavigationIntent {
   target: Exclude<ToolNavigationTarget, { kind: 'workspace_file' }>

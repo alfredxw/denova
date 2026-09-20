@@ -29,7 +29,6 @@ import { TurnNavigator } from './TurnNavigator'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 import { StoryStateLedger } from './story-state/StoryStateLedger'
 import { buildStoryStateModel } from './story-state/model'
-import { storyRuleVisibilityMode } from './story-stage/rule-roll'
 import { useStagePreferences } from './story-stage/use-stage-preferences'
 import { parseInlineStyleScenes, storyStageSnapshotKey } from './story-stage/utils'
 import { useLiveMessageAccumulator } from './story-stage/use-live-message-accumulator'
@@ -89,10 +88,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const liveMessages = stageRun.liveMessages
   const rewindTurnId = stageRun.rewindTurnId
   const branchTerminal = snapshot?.current_turn?.terminal_outcome?.terminal === true
-  const publicRuleRollVisible = useMemo(
-	() => storyRuleVisibilityMode(story) === 'public_roll',
-	[story],
-  )
   const [replyEditTarget, setReplyEditTarget] = useState<{
     turnId: string
     branchId: string
@@ -190,7 +185,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   )
 
   const liveAccumulator = useLiveMessageAccumulator({
-    publicRuleRollVisible,
     setMessages: setStageLiveMessages,
   })
   const storyImages = useStoryImages({
@@ -216,7 +210,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     streaming,
     stageKey,
     liveTurnNavigationAnchorId,
-    publicRuleRollVisible,
     optimisticInteractiveImages: storyImages.optimisticImages,
     belongsToStage: liveAccumulator.belongsToStage,
     renderKeyFor: liveAccumulator.renderKeyFor,

@@ -349,7 +349,6 @@ export function createStoryStageStreamConsumer({
           const data = event.data
           liveAccumulator.flush()
           liveAccumulator.completeToolCall(data, data.content || '')
-          liveAccumulator.appendRuleRoll(data)
           setActivity('')
           break
         }

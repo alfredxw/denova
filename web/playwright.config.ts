@@ -70,6 +70,7 @@ export default defineConfig({
       env: {
         DENOVA_BACKEND_PORT: backendPort,
         DENOVA_FRONTEND_PORT: frontendPort,
+        DENOVA_TEST_VITE_CACHE_DIR: `node_modules/.vite-playwright-${frontendPort}`,
       },
     }] : []),
   ],

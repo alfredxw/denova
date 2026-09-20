@@ -77,7 +77,7 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 	if (hadCurrentTranscript || hadCheckpoint) && !currentCompatible && !checkpointCompatible {
 		var invalidated []string
 		for _, capability := range []string{
-			clearCapability, cleanupCapability, compactionCapability, compactionHealthCapability,
+			clearCapability, cleanupCapability, elisionCapability, compactionCapability, compactionHealthCapability,
 		} {
 			if _, present := session.capabilities[capability]; present {
 				invalidated = append(invalidated, capability)

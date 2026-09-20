@@ -3,14 +3,16 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { ConversationConfigController } from '@/features/conversation-config/types'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
+import { ToolNavigationProvider } from './tool-navigation'
 
 const settingsMocks = vi.hoisted(() => ({
   fetchSettings: vi.fn(),
   fetchEngineModels: vi.fn(),
+  profiles: [] as { id: string; label: string; modelLabel: string }[],
 }))
 
 vi.mock('@/features/agent-runtime/api', () => ({ fetchEngineModels: settingsMocks.fetchEngineModels }))
-vi.mock('@/features/agent-runtime/api-profiles', () => ({ useRuntimeProfiles: () => ({ profiles: [], loaded: true, failed: false }) }))
+vi.mock('@/features/agent-runtime/api-profiles', () => ({ useRuntimeProfiles: () => ({ profiles: settingsMocks.profiles, loaded: true, failed: false }) }))
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: settingsMocks.fetchSettings,
@@ -22,6 +24,39 @@ vi.mock('@/features/settings/query', () => ({
 }))
 
 describe('ModelProfileSwitcher', () => {
+  for (const agentKey of ['ide', 'interactive_story'] as const) {
+    it(`links the ${agentKey} Native runtime to its Agents configuration`, async () => {
+      settingsMocks.fetchSettings.mockResolvedValue({ effective: { openai_model: 'test-model' } })
+      const open = vi.fn()
+      const binding = { mode: agentKey === 'ide' ? 'writing' : 'interactive', project_id: 'project', session_id: 'session' } as const
+      const controller: ConversationConfigController = {
+        binding, snapshot: { agent_kind: agentKey, profile_id: 'default', thinking_level: 'medium', approval_mode: 'write', revision: 1 },
+        initialized: true, loading: false, saving: false, error: null, patch: vi.fn(), reload: vi.fn(),
+      }
+      render(<ToolNavigationProvider value={{ workspace: '', open }}><ModelProfileSwitcher agentKey={agentKey} conversationConfig={controller} /></ToolNavigationProvider>)
+      await waitFor(() => expect(screen.getByRole('button', { name: /切换模型/ })).toBeEnabled())
+      await userEvent.click(screen.getByRole('button', { name: /切换模型/ }))
+      await userEvent.click(screen.getByRole('menuitem', { name: '运行时：Native' }))
+      expect(open).toHaveBeenCalledWith({ kind: 'config_resource', resource: 'agent_profile', id: agentKey, scope: 'user', section: 'runtime', conversation: binding })
+    })
+  }
+  it('uses only Denova profiles without requesting CLI models for an API conversation', async () => {
+    settingsMocks.fetchEngineModels.mockClear()
+    settingsMocks.profiles = [{ id: 'profile:api', label: 'Gateway', modelLabel: 'Gateway' }, { id: 'profile:second', label: 'Second gateway', modelLabel: 'Second gateway' }]
+    const patch = vi.fn().mockResolvedValue(true)
+    const controller: ConversationConfigController = {
+      snapshot: { agent_kind: 'ide', profile_id: 'default', thinking_level: 'medium', approval_mode: 'write', revision: 1,
+        runtime: { kind: 'codex', codex: { profile_id: 'api', sandbox: 'read-only' } } },
+      initialized: true, loading: false, saving: false, error: null, patch, reload: vi.fn(),
+    }
+    try {
+      render(<ModelProfileSwitcher agentKey="ide" conversationConfig={controller} />)
+      await userEvent.click(screen.getByRole('button', { name: /切换模型/ }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'API · Second gateway' }))
+      expect(patch).toHaveBeenCalledWith({ codex: { profile_id: 'second', sandbox: 'read-only' } })
+      expect(settingsMocks.fetchEngineModels).not.toHaveBeenCalled()
+    } finally { settingsMocks.profiles = [] }
+  })
   it('shows the external model without fetching or editing dormant Native profiles', async () => {
     settingsMocks.fetchEngineModels.mockResolvedValue({ items: [] })
     settingsMocks.fetchSettings.mockClear()

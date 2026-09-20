@@ -67,3 +67,12 @@ it('hides Run actions while waiting for the model to emit content', () => {
   render(row({ kind: 'activity', key: 'waiting', content: 'Waiting for the model', runId: 'accepted-run' }, true))
   expect(screen.queryByRole('button', { name: 'Copy Run ID' })).not.toBeInTheDocument()
 })
+
+it('keeps Run actions hidden when execution remains active between streamed parts', () => {
+  const item = runItem([{
+    id: 'thinking', role: 'assistant', metadata: { run_id: 'active-run' },
+    parts: [{ type: 'reasoning', text: 'Checking the result', state: 'done' }],
+  }], true)
+  render(row(item, false))
+  expect(screen.queryByRole('button', { name: 'Copy Run ID' })).not.toBeInTheDocument()
+})

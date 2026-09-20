@@ -234,6 +234,7 @@ assistant, err := agent.New(ctx, agent.Definition{
 	Compaction: compaction.Standard(compaction.StandardConfig{
 		ContextWindowTokens: contextTokens,
 	}),
+	Elision: &agent.ElisionPolicy{ContextWindowTokens: contextTokens},
 	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
 }, agent.WithSessionStore(store))
 if err != nil {
@@ -308,6 +309,14 @@ Compaction: myCompactionManager
 自定义 Manager 的 `Plan` 接收完整交互组和最终模型快照，返回需要覆盖的前缀 `GroupCount`。`EstimateAfter(GroupCount)` 可估算替换后的完整请求（包含受保护输入、工具 Schema 和图片，尚未计入新摘要），仅在当前 `Plan` 调用内使用；规划器需另外预留摘要预算。内置策略按 token 恢复目标选取范围，分批摘要仍传递原生图片；最终请求在写入 checkpoint 前重新校验。`Compact` 只接收旧 checkpoint 与新选材料。两级扩展都返回 `CompactionCheckpoint{Summary, ContextData}`；ContextData 为可选的类型化、版本化 JSON（最多 8 MiB），随摘要原子保存，不自动注入模型。
 
 Agent 统一保护当前用户要求、最近完整工具组及未完成步骤，检查最终请求容量和实际压缩进展，并负责 journal、revision、取消和恢复。应用通过 `Session.Snapshot().Compaction` 读取摘要视图，详细数据位于 `Inspect().CompactionMetrics` 和压缩事件。运行时返回的视图可调用 `Project` 检查有效历史；序列化后的展示数据不携带历史覆盖权限。
+
+### 摘要前的工具结果清理
+
+`Definition.Elision` 可独立启用确定性的工具结果 elision。默认在完整请求及预留达到窗口的 60% 时尝试清理；随后重新估算请求，由 Compaction 决定是否仍需摘要。它保留最近两个完整步骤、至少 30% 窗口的近期历史，以及所有用户指令、图片、错误、受保护结果和无法恢复的结果。普通读取必须有完整、未脱敏或截断的调用参数及当前可用的只读工具；完整产物使用普通读取能力恢复，并保留操作回执，不能靠重做有副作用的操作恢复输出。
+
+清理优先选择较新的合格组以保留更长缓存前缀；每项至少节省 256 token，每批至少节省 `max(256, 窗口的 1%)`，且须通过实际模型请求的收益及稳定前缀检查。原始历史不变，`agent.elision` v1 仅在同一 canonical journal 记录消息坐标和来源 hash（最多 4096 项，已被 Compaction 覆盖的坐标会被忽略）；不复制正文或保存宿主绝对路径。暂停、冷启动、手动压缩和 `Inspect()` 复用同一投影，`Clear` 或历史改写使旧投影失效。`Inspect().ElisionMetrics` 提供上次提交的收益与缓存前缀估计。
+
+Denova 原生 Agent（包括写作、游戏及持久子 Agent）沿用现有的自动压缩开关；软阈值按摘要阈值同比缩放，默认先 60% 清理、再 85% 摘要。SDK 的 `Elision: nil` 不再创建新清理；已提交投影仍保留。最近 Release 的原始用户数据无需迁移，旧 Cleanup 记录仍仅作为历史诊断读取。
 
 
 原生图片通过 [`Attachment`](attachment.go) 进入用户消息或 `ToolResult.Attachments`。`InputSize.Tokens` 包含文本和视觉 token，`InputSize.Bytes` 只统计消息、工具 Schema 与附件描述的 JSON，不包含图片 Base64；这些上下文预算同时用于压缩与最终输入检查。自定义模型可实现 `ModelInputEstimator` 提供视觉计数规则，未知模型默认每张图片预留 32K token。

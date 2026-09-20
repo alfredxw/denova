@@ -21,6 +21,7 @@ import type { ConversationConfigController } from '@/features/conversation-confi
 import { fetchEngineModels } from '@/features/agent-runtime/api'
 import { useRuntimeProfiles } from '@/features/agent-runtime/api-profiles'
 import type { EngineModels } from '@/features/agent-runtime/types'
+import { useToolNavigation } from './tool-navigation'
 
 interface ModelProfileSwitcherProps {
   agentKey?: VisibleAgentKey
@@ -42,6 +43,8 @@ const MODEL_LABEL_OVERFLOW_CLASS = 'min-w-0 overflow-x-clip overflow-y-visible t
 export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false, runActive = false }: ModelProfileSwitcherProps) {
   const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled, runActive })
   const [open, setOpen] = useState(false)
+  const navigation = useToolNavigation()
+  const runtimeName = selector.t(`agentRuntime.${conversationConfig?.snapshot?.runtime?.kind ?? 'native'}`)
 
   if (!selector.enabled) return null
 
@@ -70,11 +73,15 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
         aria-label={selector.t('chat.modelProfile.action')}
         className="w-60 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)]"
       >
-        {selector.external || agentKey === 'ide' || agentKey === 'interactive_story' ? (
-          <div className="px-1.5 py-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
-            {selector.t(selector.external ? 'agentRuntime.conversationModelOnly' : 'chat.modelProfile.rememberSelection')}
-          </div>
-        ) : null}
+        <DropdownMenuGroup>
+          <DropdownMenuItem disabled={!navigation} className="cursor-pointer text-xs text-muted-foreground"
+            onSelect={() => navigation?.open({ kind: 'config_resource', resource: 'agent_profile',
+              id: conversationConfig?.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime',
+              conversation: conversationConfig?.binding })}>
+            {selector.t('agentRuntime.currentRuntime', { runtime: runtimeName })}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
         {runActive ? (
           <>
             <div role="note" className="px-1.5 py-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
@@ -126,7 +133,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   const engineKind = runtime?.kind ?? 'native'
   const engineSettings = runtimeModel(runtime)
   const external = Boolean(engineSettings)
-  const { profiles, loaded: profilesLoaded, failed: profilesFailed } = useRuntimeProfiles(engineKind)
+  const { profiles, loaded: profilesLoaded, failed: profilesFailed } = useRuntimeProfiles(engineSettings?.profile_id ? engineKind : 'native')
   // Model profiles are user-scoped. Global conversations (notably user-wide
   // automations) therefore remain configurable without a workspace path.
   const enabled = Boolean(agentKey && conversationConfig)
@@ -147,10 +154,10 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     setCatalogError(null)
     const load = async () => {
       try {
-        if (external) {
+        if (external && !engineSettings?.profile_id) {
           const catalog = await fetchEngineModels(engineKind)
           if (active) setEngineModels(catalog)
-        } else {
+        } else if (!external) {
           const next = await fetchSettings()
           if (active) setSettings(next)
         }
@@ -161,13 +168,15 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     }
     void load()
     return () => { active = false }
-  }, [enabled, external, engineKind, t])
+  }, [enabled, external, engineKind, engineSettings?.profile_id, t])
 
   const options = useMemo(
     () => external
-      ? [...(engineModels?.items ?? []).map((model) => ({ id: `cli:${model.id}`, label: model.display_name, modelLabel: model.display_name })), ...profiles.map(profile => ({ ...profile, label: t('agentRuntime.apiModelLabel', { name: profile.label }) }))]
+      ? engineSettings?.profile_id
+        ? profiles.map(profile => ({ ...profile, label: t('agentRuntime.apiModelLabel', { name: profile.label }) }))
+        : (engineModels?.items ?? []).map((model) => ({ id: `cli:${model.id}`, label: model.display_name, modelLabel: model.display_name }))
       : buildModelProfileOptions(settings, t),
-    [settings, engineModels, profiles, external, t],
+    [settings, engineModels, profiles, external, engineSettings?.profile_id, t],
   )
   const currentProfile = engineSettings ? runtimeModelKey(engineSettings) : (conversationConfig?.snapshot?.profile_id || 'default')
   const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || engineSettings?.profile_id || engineSettings?.model || currentProfile
@@ -223,7 +232,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
     currentThinkingLevelLabel,
     currentSelectionLabel,
     savingSelection,
-    error: (profilesFailed ? t('agentRuntime.profilesFailed') : null) || (engineSettings?.profile_id ? null : catalogError) || conversationConfig?.error || null,
+    error: (engineSettings?.profile_id && profilesFailed ? t('agentRuntime.profilesFailed') : null) || (engineSettings?.profile_id ? null : catalogError) || conversationConfig?.error || null,
     saving: Boolean(conversationConfig?.saving) || Boolean(savingSelection),
     selectProfile,
     selectThinkingLevel,

@@ -367,6 +367,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 			ContextWindowTokens: config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,
 		}),
 		Compaction: compaction,
+		Elision:    agentcompaction.NewElisionPolicyForModel(cfg, spec.Kind, config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens),
 		Goal:       goalManager,
 		Permission: permission,
 		Execution:  agentExecutionPolicy(cfg),
@@ -608,6 +609,7 @@ func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentde
 		// Goals are a root product workflow. Delegated Agents keep isolated
 		// task transcripts and must not create or continue a parent Goal.
 		Compaction: compaction, Permission: permission,
+		Elision:   agentcompaction.NewElisionPolicyForModel(cfg, spec.ParentKind, spec.ModelContextWindow),
 		Execution: agentExecutionPolicy(cfg),
 	}
 	behavior, err := agent.DefinitionBehaviorIdentity(definition)

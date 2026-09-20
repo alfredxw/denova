@@ -26,7 +26,12 @@ export function ApplyAgentEngineSection({ binding, agentKind, customAgentId, run
     setApplying(true); setMessage('')
     try {
       await saveDefaults()
-      if (await conversation.patch({ runtime: selection })) setMessage(t('agentRuntime.applied'))
+      // Model-source changes within the current engine use its configuration patch;
+      // only switching engines needs the installation/readiness check.
+      const changes = selection.kind === snapshot?.runtime?.kind && selection.kind !== 'native'
+        ? selection.kind === 'codex' ? { codex: selection.codex } : { claude: selection.claude }
+        : { runtime: selection }
+      if (await conversation.patch(changes)) setMessage(t('agentRuntime.applied'))
     } catch { setMessage(t('agentRuntime.saveBeforeApply')) }
     finally { setApplying(false) }
   }

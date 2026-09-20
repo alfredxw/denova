@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Check, Cpu } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { checkAgentEngine, fetchAgentEngines, fetchEngineModels } from '@/features/agent-runtime/api'
 import { resolveRuntimePreferences, runtimeModelKey, runtimeModelFromKey, type AgentEngineID, type EngineDescriptor, type EngineModels, type RuntimePreferences } from '@/features/agent-runtime/types'
 import { useRuntimeProfiles } from '@/features/agent-runtime/api-profiles'
@@ -32,6 +33,7 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
   const executionSettings = selected === 'codex' && resolved.codex?.sandbox ? { sandbox: resolved.codex.sandbox } : {}
   const selectedProfile = profiles.find(item => item.id === runtimeModelKey(settings))
   const model = models.items.find((item) => item.id === settings?.model)
+  const source = settings?.profile_id ? 'denova' : 'cli'
 
   useEffect(() => { if (engines.length) onCatalog(engines) }, [engines, onCatalog])
 
@@ -45,6 +47,7 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
   useEffect(() => {
     if (selected === 'native' || !ready) { setModels({ items: [] }); return }
     let active = true
+    setModels({ items: [] })
     void fetchEngineModels(selected).then((next) => { if (active) setModels(next) })
       .catch(() => { if (active) setError(t('agentRuntime.connectionFailed')) })
     return () => { active = false }
@@ -83,23 +86,34 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
       </Field>}
     </div>
     {selected !== 'native' && <>
+      <Field label={t('agentRuntime.modelSource')}>
+        <ToggleGroup type="single" variant="outline" size="sm" value={source} disabled={busy}
+          aria-label={t('agentRuntime.modelSource')} className="max-w-full flex-wrap"
+          onValueChange={(nextSource) => {
+            if (!nextSource || nextSource === source) return
+            // Source changes select a usable model atomically; no incomplete settings are saved.
+            const key = nextSource === 'denova' ? profiles[0]?.id : `cli:${models.default_id || models.items[0]?.id || ''}`
+            if (!key || key === 'cli:') return
+            onChange({ ...value, [selected]: { ...executionSettings, ...runtimeModelFromKey(key) } })
+          }}>
+          <ToggleGroupItem value="cli" disabled={source !== 'cli' && (!ready || !models.items.length)}>{t('agentRuntime.cliModels')}</ToggleGroupItem>
+          <ToggleGroupItem value="denova" disabled={source !== 'denova' && !profiles.length}>{t('agentRuntime.apiModels')}</ToggleGroupItem>
+        </ToggleGroup>
+      </Field>
+      {!profiles.length && <p className="text-xs text-muted-foreground">{t(selected === 'codex' ? 'agentRuntime.codexProfilesHint' : 'agentRuntime.claudeProfilesHint')}</p>}
       <p className="text-xs leading-relaxed text-[var(--nova-text-muted)]">{t(settings?.profile_id ? 'agentRuntime.apiProfileHint' : selected === 'claude' ? 'agentRuntime.sharedClaudeHome' : 'agentRuntime.sharedCodexHome')}</p>
       {engine?.reason_key && <p className="text-xs leading-relaxed text-[var(--nova-text-muted)]">{t(engine.reason_key)}</p>}
       {!settings?.profile_id && engine?.status === 'auth_required' && <p role="status" className="text-xs leading-relaxed text-[var(--nova-text-muted)]">{t(selected === 'claude' ? 'agentRuntime.claudeLoginInTerminal' : 'agentRuntime.loginInTerminal')}</p>}
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         <Field label={t('agentRuntime.model')} inherited={ownSettings == null}
           onReset={ownSettings ? () => { const next = { ...value }; delete next[selected]; onChange(next) } : undefined}>
-          <Select value={runtimeModelKey(settings)} disabled={busy || (!ready && !profiles.length)}
+          <Select value={runtimeModelKey(settings)} disabled={busy || (source === 'cli' ? !ready : !profiles.length)}
             onValueChange={(key) => onChange({ ...value, [selected]: { ...executionSettings, ...runtimeModelFromKey(key) } })}>
             <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t('agentRuntime.model')}><SelectValue placeholder={t('agentRuntime.chooseModel')} /></SelectTrigger>
             <SelectContent position="popper" align="start" className="w-(--radix-select-trigger-width) max-w-[calc(100vw-2rem)]"><SelectGroup>
-              <SelectLabel>{t('agentRuntime.cliModels')}</SelectLabel>
               {settings && !model && !selectedProfile && <SelectItem value={runtimeModelKey(settings)} disabled>{settings.profile_id ?? settings.model}</SelectItem>}
-              {models.items.map((item) => <SelectItem key={item.id} value={`cli:${item.id}`} disabled={!ready}>{item.display_name}</SelectItem>)}
-            </SelectGroup><SelectGroup>
-              <SelectLabel>{t('agentRuntime.apiModels')}</SelectLabel>
-              {profiles.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}
-              {!profiles.length && <SelectItem value="empty-api" disabled>{t('agentRuntime.noCompatibleProfiles')}</SelectItem>}
+              {source === 'cli' ? models.items.map((item) => <SelectItem key={item.id} value={`cli:${item.id}`} disabled={!ready}>{item.display_name}</SelectItem>)
+                : profiles.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}
             </SelectGroup></SelectContent>
           </Select>
         </Field>

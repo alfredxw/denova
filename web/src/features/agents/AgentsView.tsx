@@ -1,6 +1,6 @@
 import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, Brain, FolderOpen, ScrollText, Wrench } from 'lucide-react'
+import { Bot, Brain, Cpu, FolderOpen, ScrollText, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
@@ -67,17 +67,28 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
   const [agentChatOpen, setAgentChatOpen] = useResponsiveAgentOpen()
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const toolNavigationNonceRef = useRef(0)
+  const configurationRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     const intent = toolNavigationIntent
     if (!intent || intent.nonce === toolNavigationNonceRef.current || intent.target.kind !== 'config_resource' || intent.target.resource !== 'agent_profile') return
-    toolNavigationNonceRef.current = intent.nonce
     const fixedAgent = AGENTS.find((agent) => agent.key === intent.target.id)
     if (fixedAgent) setActiveSelection(fixedAgent.key)
     else if (layered?.effective.custom_agents?.some((agent) => agent.id === intent.target.id)) setActiveSelection(`custom:${intent.target.id}`)
+    else return
+    toolNavigationNonceRef.current = intent.nonce
     if (intent.target.scope === 'workspace' && targetKind === 'project') setActiveLayer('workspace')
     else if (intent.target.scope === 'user') setActiveLayer('user')
   }, [layered?.effective.custom_agents, targetKind, toolNavigationIntent?.nonce])
+
+  useEffect(() => {
+    const target = toolNavigationIntent?.target
+    if (!layered || target?.kind !== 'config_resource' || target.resource !== 'agent_profile' || target.section !== 'runtime'
+      || target.id !== activeSelection.replace(/^custom:/, '') || (target.scope === 'user' && activeLayer !== 'user')) return
+    const section = configurationRef.current?.querySelector<HTMLElement>('[data-agent-configuration-section="runtime"], [data-agent-configuration-section="model"]')
+    section?.scrollIntoView({ block: 'start' })
+    section?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })
+  }, [Boolean(layered), activeSelection, activeLayer, toolNavigationIntent?.nonce])
 
   useEffect(() => {
     let cancelled = false
@@ -441,20 +452,25 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
         }}
       >
         {() => (
-          <main className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
+          <main ref={configurationRef} className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} customAgent={selectedCustomAgent} onArchive={selectedCustomAgent ? archiveCustomAgent : undefined} />
               {selectedCustomAgent ? <CustomAgentIdentitySection agent={selectedCustomAgent} value={layerCustomAgent} onChange={setCustomIdentity} /> : null}
-              {engineAgent ? <AgentEngineSection key={`engine:${targetKey}:${activeLayer}:${activeSelection}`} value={engineValue} inherited={inheritedEngine} onChange={setEngine} beforeSwitch={saveNow} onCatalog={setEngines} /> : null}
+              {engineAgent ? <AgentEngineSection key={`engine:${targetKey}:${activeLayer}:${activeSelection}:${toolNavigationIntent?.nonce ?? 0}`} value={engineValue} inherited={inheritedEngine} onChange={setEngine} beforeSwitch={saveNow} onCatalog={setEngines} /> : (
+                <AgentConfigurationDisclosure key={`runtime:${activeSelection}:${toolNavigationIntent?.nonce ?? 0}`} id="runtime" icon={Cpu}
+                  title={t('agentRuntime.title')} summary={t('agentRuntime.native')} defaultOpen>
+                  <p className="text-xs text-muted-foreground">{t('agentRuntime.nativeOnly')}</p>
+                </AgentConfigurationDisclosure>
+              )}
               {engineAgent && applyTarget ? <ApplyAgentEngineSection key={`apply:${toolNavigationIntent?.nonce}:${activeLayer}:${activeSelection}`} binding={applyTarget} agentKind={engineAgent} customAgentId={selectedCustomAgent?.id} runtime={resolvedEngine} saveDefaults={saveNow} /> : null}
               {showModelConfiguration && editable('native.model') ? (
                 <AgentConfigurationDisclosure
-                  key={`model:${activeSelection}`}
+                  key={`model:${activeSelection}:${toolNavigationIntent?.nonce ?? 0}`}
                   id="model"
                   icon={Brain}
                   title={t('agents.module.model')}
                   summary={modelSummary}
-                  defaultOpen={!selectedCustomAgent}
+                  defaultOpen={!selectedCustomAgent || (toolNavigationIntent?.target.kind === 'config_resource' && toolNavigationIntent.target.section === 'runtime')}
                 >
                   {activeLayer === 'user' ? <AgentModelSection value={modelValue} inherited={inheritedModel} profiles={profileOptions} onChange={setAgentModel} /> : (
                     <section className="border-b border-[var(--nova-border)] pb-5 text-xs text-[var(--nova-text-muted)]">{t('agents.model.userScoped')}</section>

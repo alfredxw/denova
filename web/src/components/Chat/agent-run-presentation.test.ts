@@ -3,6 +3,16 @@ import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-vi
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { buildAgentRunPresentation } from './agent-run-presentation'
 
+it.each([false, true])('uses the actual execution state for a process without final prose: %s', (active) => {
+  const views = buildAgentMessageViews([{
+    id: 'thinking', role: 'assistant', metadata: { run_id: 'run' },
+    parts: [{ type: 'reasoning', text: 'Checking the result', state: 'done' }],
+  }])
+  expect(buildAgentRunPresentation(views, 0, active)?.sections).toMatchObject([
+    { kind: 'process', active },
+  ])
+})
+
 it.each(['ide', 'general', 'interactive_story'])('keeps completed and streaming cycles separate for %s', (agentKind) => {
   for (const streaming of [false, true]) {
     const messages: AgentUIMessage[] = [1, 2].map((cycle) => {

@@ -56,6 +56,22 @@ func TestAgentManagerForModelSeparatesPolicyKindFromConcreteModelWindow(t *testi
 	}
 }
 
+func TestElisionPolicySharesProductControlAndUsesConcreteChildBudget(t *testing.T) {
+	threshold := .5
+	enabled := false
+	cfg := &config.Config{OpenAIContextWindowTokens: 100_000, AgentContexts: config.AgentContextSettings{
+		IDE:              config.AgentContextOverride{CompactionThreshold: &threshold},
+		InteractiveStory: config.AgentContextOverride{CompactionEnabled: &enabled},
+	}}
+	policy := NewElisionPolicyForModel(cfg, config.AgentKindIDE, 12_000)
+	if policy == nil || policy.ContextWindowTokens != 12_000 || policy.TriggerRatio >= threshold || policy.ReservedTokens <= 0 {
+		t.Fatalf("child Elision policy ignored inherited control or actual budget: %+v", policy)
+	}
+	if got := NewElisionPolicyForModel(cfg, config.AgentKindInteractiveStory, 12_000); got != nil {
+		t.Fatalf("disabled automatic maintenance still enabled Elision: %+v", got)
+	}
+}
+
 func TestCompactionSummarizerIdentityIncludesCheckpointGuidance(t *testing.T) {
 	guidance := "Preserve verification evidence."
 	base, err := NewAgentManager(&config.Config{OpenAIContextWindowTokens: 100_000}, config.AgentKindIDE)

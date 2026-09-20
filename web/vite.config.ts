@@ -8,8 +8,17 @@ const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Isolated browser-test servers must not replace a running dev server's
+  // optimized modules while it still holds their previous metadata in memory.
+  cacheDir: process.env.DENOVA_TEST_VITE_CACHE_DIR || 'node_modules/.vite',
   optimizeDeps: {
-    include: ['@pierre/diffs', '@pierre/diffs/react', '@pierre/trees', '@pierre/trees/react'],
+    // Prebundle the renderer and lazy App's hook dependencies together. Late
+    // discovery can otherwise replace React's shared chunks during startup.
+    include: [
+      'react', 'react-dom', 'react-dom/client',
+      'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-i18next',
+      '@pierre/diffs', '@pierre/diffs/react', '@pierre/trees', '@pierre/trees/react',
+    ],
   },
   test: {
     environment: 'jsdom',
@@ -24,6 +33,7 @@ export default defineConfig({
     maxWorkers: '25%',
   },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, './src'),
     },

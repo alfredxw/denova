@@ -54,6 +54,7 @@ type Inspection struct {
 	ModelIdentity           CapabilityIdentity
 	Compaction              *CompactionState
 	CompactionMetrics       CompactionMetrics
+	ElisionMetrics          ElisionMetrics
 	// ContextFragments is the exact bounded provenance materialized by the
 	// selected Definition before model middleware. ModelRequest remains the
 	// sole provider-visible payload; diagnostics use these fragments to explain
