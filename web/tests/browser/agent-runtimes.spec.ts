@@ -15,10 +15,11 @@ for (const language of ['zh-CN', 'en-US']) {
     } })
     expect(saved.ok(), await saved.text()).toBe(true)
     let checked = false
+    const catalogResponse = await request.get('/api/agent-runtimes')
+    expect(catalogResponse.ok()).toBe(true)
+    const catalog = await catalogResponse.json()
     await page.route('**/api/agent-runtimes', async route => {
-      const response = await route.fetch()
-      const body = await response.json()
-      await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === engine
+      await route.fulfill({ json: { items: catalog.items.map((item: { id: string }) => item.id === engine
         ? { ...item, status: 'auth_required' } : item) } })
     })
     await page.route(`**/api/agent-runtimes/${engine}/check`, async route => {
@@ -71,10 +72,11 @@ for (const theme of ['dark', 'light']) {
     expect(seeded.ok(), await seeded.text()).toBe(true)
     // Exercise the product settings API and UI without signing a real account
     // in. Engine protocol execution has separate actual-CLI integration tests.
+    const catalogResponse = await request.get('/api/agent-runtimes')
+    expect(catalogResponse.ok()).toBe(true)
+    const catalog = await catalogResponse.json()
     await page.route('**/api/agent-runtimes', async (route) => {
-      const response = await route.fetch()
-      const body = await response.json()
-      await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === 'codex' ? { ...item, status: 'ready' } : item) } })
+      await route.fulfill({ json: { items: catalog.items.map((item: { id: string }) => item.id === 'codex' ? { ...item, status: 'ready' } : item) } })
     })
     await page.route('**/api/agent-runtimes/codex/models', (route) => route.fulfill({ json: { items: [{ id: 'engine-model', display_name: 'Engine model', efforts: ['medium', 'high'] }] } }))
     await page.goto('/')
@@ -196,10 +198,13 @@ test(`${engine} runtime settings show version and upgrade guidance while unavail
   expect(saved.ok(), await saved.text()).toBe(true)
   expect((await request.get('/api/agent-runtimes/unknown/models')).status()).toBe(404)
   let incompatible = false
+  // The directory is fixed for this UI journey. Reloads must not re-probe host
+  // CLIs through a forwarded request that navigation can interrupt.
+  const catalogResponse = await request.get('/api/agent-runtimes')
+  expect(catalogResponse.ok()).toBe(true)
+  const catalog = await catalogResponse.json()
   await page.route('**/api/agent-runtimes', async route => {
-    const response = await route.fetch()
-    const body = await response.json()
-    await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === engine ? {
+    await route.fulfill({ json: { items: catalog.items.map((item: { id: string }) => item.id === engine ? {
       ...item, status: incompatible ? 'incompatible' : 'not_installed',
       reason_key: incompatible ? (engine === 'codex' ? 'agentRuntime.incompatibleVersion' : 'agentRuntime.claudeIncompatibleVersion') : 'agentRuntime.notInstalled',
     } : item) } })

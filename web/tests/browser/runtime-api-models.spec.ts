@@ -22,10 +22,11 @@ for (const engine of ['codex', 'claude'] as const) {
           model_profiles: [...before.user.model_profiles, { id: profileID, endpoint_id: 'runtime-api', model: 'gateway-model', name: label }],
         })
         const book = await createAndOpenBook(request, `${engine} API ${theme}`)
+        const catalogResponse = await request.get('/api/agent-runtimes')
+        expect(catalogResponse.ok()).toBe(true)
+        const catalog = await catalogResponse.json()
         await page.route('**/api/agent-runtimes', async route => {
-          const response = await route.fetch()
-          const body = await response.json()
-          await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === engine ? { ...item, status: 'auth_required' } : item) } })
+          await route.fulfill({ json: { items: catalog.items.map((item: { id: string }) => item.id === engine ? { ...item, status: 'auth_required' } : item) } })
         })
         await page.route(`**/api/agent-runtimes/${engine}/models`, route => route.fulfill({ status: 409, json: { error: 'Sign-in required' } }))
         await page.goto('/')
