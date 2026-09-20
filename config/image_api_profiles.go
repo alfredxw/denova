@@ -405,6 +405,14 @@ func resolveImageAPIProfileDraftForPurpose(cfg *Config, draft ImageAPIProfileSet
 	base = imageProfileWithEndpoint(cfg, base)
 	draft = imageProfileWithEndpoint(cfg, draft)
 	merged := mergeImageAPIProfile(base, draft)
+	// The settings editor submits the complete profile form, so an empty draft
+	// default means "cleared back to provider default", not "inherit the stored
+	// value" as in layered user/workspace merges.
+	merged.DefaultSize = normalizeImageAPISize(draft.DefaultSize)
+	merged.DefaultAspectRatio = normalizeImageAPIAspectRatio(draft.DefaultAspectRatio)
+	merged.DefaultResolution = normalizeImageAPIResolution(draft.DefaultResolution)
+	merged.DefaultQuality = normalizeImageAPIQuality(draft.DefaultQuality)
+	merged.DefaultOutputFormat = normalizeImageAPIOutputFormat(draft.DefaultOutputFormat)
 	if draft.APIKey == "" {
 		merged.APIKey = ""
 		if strings.TrimSpace(base.APIKey) != "" && imageAPICredentialScope(base) == imageAPICredentialScope(merged) {
