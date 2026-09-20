@@ -17,7 +17,9 @@
 # skills_dir 是启动时加载的内置/只读 Skills 根目录。
 # 用户自定义 Skills 由界面写入 <denova_dir>/skills 或 <workspace>/.denova/skills；旧工作区已有 .nova 时会沿用旧目录。
 skills_dir = "./skills"
-denova_dir = "./.denova"
+# Leave unset to keep existing .nova data when .denova does not exist.
+# Fresh installations use .denova; set this only to choose a different data root.
+# denova_dir = "./.denova"
 # nova_dir = "./.nova"
 
 # 修改端口号
