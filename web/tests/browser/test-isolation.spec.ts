@@ -1,5 +1,6 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
+import { expectAgentChatReply } from '../support/agent-chat'
 
 test('creates independent Projects when a scenario reuses its readable title', async ({ request }) => {
   const first = await createAndOpenBook(request, 'Repeated scenario')
@@ -24,4 +25,9 @@ test('allows explicitly mocked public responses without external network access'
     headers: { 'Access-Control-Allow-Origin': '*' }, json: { source: 'fixture' },
   }))
   expect(await page.evaluate(url => fetch(url).then(response => response.json()), url)).toEqual({ source: 'fixture' })
+})
+
+test('reports a terminal Agent error while waiting for its reply', async ({ page }) => {
+  await page.setContent('<div role="alert">Fixture canonical commit failed</div>')
+  await expect(expectAgentChatReply(page, 'unavailable reply')).rejects.toThrow(/Fixture canonical commit failed/)
 })
