@@ -242,7 +242,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 
 func builtinPromptBlocks(cfg *config.Config, agentKind, flow string) config.AgentPromptBlocks {
 	return config.AgentPromptBlocks{
-		RuntimeContract:      runtimeContractForAgent(agentKind),
+		RuntimeContract:      runtimeContractForAgent(cfg, agentKind),
 		OutputProtocol:       outputProtocolForAgent(agentKind),
 		EditableSystemPrompt: editablePromptFlowForAgent(agentKind, flow),
 	}
@@ -254,7 +254,7 @@ func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSo
 		ID:      "runtime_contract",
 		Title:   "Runtime Contract",
 		Source:  "Denova runtime",
-		Content: runtimeContractForAgent(agentKind),
+		Content: runtimeContractForAgent(cfg, agentKind),
 	})
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(agentKind)); outputProtocol != "" {
 		sources = append(sources, config.AgentPromptSource{

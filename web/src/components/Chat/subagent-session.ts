@@ -25,17 +25,18 @@ export function subAgentSessionKey(message?: Pick<ChatMessage, 'subagent' | 'sub
   ].filter(Boolean).join('/')
 }
 
-/** Reads the one unambiguous delegated invocation returned by task.start. */
+/** Reads one unambiguous child Run from send or a released task receipt. */
 export function taskSubAgentSessionKey(result: string) {
   if (!result.trim()) return ''
   try {
     const parsed = JSON.parse(result) as {
-      results?: Array<{ task?: { ref?: { session?: unknown; run?: unknown } } }>
+      results?: Array<{ ref?: { session?: unknown; run?: unknown }; task?: { ref?: { session?: unknown; run?: unknown } } }>
     }
     const keys = new Set<string>()
     for (const item of parsed.results || []) {
-      const session = typeof item.task?.ref?.session === 'string' ? item.task.ref.session.trim() : ''
-      const run = typeof item.task?.ref?.run === 'string' ? item.task.ref.run.trim() : ''
+      const ref = item.ref ?? item.task?.ref
+      const session = typeof ref?.session === 'string' ? ref.session.trim() : ''
+      const run = typeof ref?.run === 'string' ? ref.run.trim() : ''
       if (session && run) keys.add(`${session}/${run}`)
     }
     return keys.size === 1 ? [...keys][0] : ''

@@ -831,6 +831,9 @@ func (engine *definitionEngine) Run(
 					return runstate.EngineResult{}, err
 				}
 			}
+			if variant.discarded {
+				continue
+			}
 			if message.Role == ToolRole {
 				if pendingToolTranscriptIndex < 0 {
 					controls.stop()

@@ -98,7 +98,7 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 	}
 	parentModel := &publicBackendTestModel{responses: []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{ID: "delegate-chapter", Type: "function", Function: agent.FunctionCall{
-			Name: "task", Arguments: `{"action":"start","starts":[{"agent":"writer","idempotency_key":"chapter-once","prompt":"Write and revise the delegated chapter."}]}`,
+			Name: "send", Arguments: `{"items":[{"action":"delegate","message":"Write and revise the delegated chapter.","agent":"writer","idempotency_key":"chapter-once"}]}`,
 		}}}),
 		agent.AssistantMessage("Delegated chapter complete.", nil),
 	}}
@@ -222,7 +222,7 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 		t.Fatalf("child boundary content = %v", contentRecords)
 	}
 	parentTrace, err := agentrun.ReadRunTrace(location, string(operation.Receipt().OperationID))
-	if err != nil || len(parentTrace.Children) != 1 || parentTrace.Children[0].ID != childRunID || parentTrace.Summary.LLMCalls != 2 || parentTrace.Summary.ToolCalls != 1 {
+	if err != nil || len(parentTrace.Children) != 1 || parentTrace.Children[0].ID != childRunID || parentTrace.Summary.LLMCalls != len(parentModel.inputs) || parentTrace.Summary.ToolCalls != 1 {
 		t.Fatalf("parent trace mixed or lost child execution: %#v, error = %v", parentTrace, err)
 	}
 	if err := runtime.Close(ctx); err != nil {

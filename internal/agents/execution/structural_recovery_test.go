@@ -41,7 +41,7 @@ func (manager structuralTestCompaction) Compact(_ context.Context, request agent
 	manager.t.Helper()
 	found := false
 	for _, tool := range request.ModelSnapshot.ResolvedOptions().Tools {
-		found = found || tool.Name == "task"
+		found = found || tool.Name == "send"
 	}
 	if !found {
 		manager.t.Fatal("structural preparation omitted delegated tool schemas")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"sort"
 	"sync"
 )
@@ -32,6 +33,20 @@ type memoryEntry struct {
 	key   Key
 	data  *memoryData
 	lease chan struct{}
+}
+
+func (store *memoryStore) OpenReader(_ context.Context, key Key) (Log, error) {
+	canonical, err := CanonicalKey(key)
+	if err != nil {
+		return nil, err
+	}
+	store.mu.Lock()
+	entry := store.entries[canonical]
+	store.mu.Unlock()
+	if entry == nil {
+		return nil, os.ErrNotExist
+	}
+	return ReadOnlyLog{Reader: &memoryLog{data: entry.data}}, nil
 }
 
 func (store *memoryStore) Open(ctx context.Context, key Key) (Log, error) {

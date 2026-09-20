@@ -21,7 +21,7 @@ type StreamEncoder struct {
 	started  bool
 	finished bool
 
-	// Root and SubAgent content can interleave while task_wait is active. Each
+	// Root and SubAgent content can interleave during child execution. Each
 	// source therefore owns its open AI SDK content segments independently.
 	textIDs       map[string]string
 	textSeq       int

@@ -1,6 +1,6 @@
 # 多运行时会话：分层决策与验收
 
-更新：2026-09-20。本文保留实现边界与取舍，代码、测试和 AGENTS.md 是事实源。
+更新：2026-09-21。本文保留实现边界与取舍，代码、测试和 AGENTS.md 是事实源。
 
 ## 分层
 
@@ -34,6 +34,20 @@
 | 排队、暂停、恢复 | Native 生命周期 | 外部公共控制层与适配器 | 产品 journal、共用控制组件 |
 | Goal | Native Goal manager 自行验收 | 外部专用只读 fork 评估 | 仅写作与通用对话支持；统一入口和展示 |
 | 模型发现 | 现有模型配置 | Codex 模型列表；Claude initialize 返回的模型与 effort 列表 | 展示运行时返回值，不维护 Claude 模型目录 |
+
+### Native 多 Agent 协作
+
+Native 向模型提供三个工具，复用现有 Session、Run、输入回执与 canonical journal，不新增任务状态源或跨 runtime 执行器：
+
+| 工具 | 职责与实现 |
+| --- | --- |
+| `send` | 批量发送 `delegate / message / followup / steer / interrupt / resume / abort`，逐项返回结果；[输入、输出及校验](../agent/tools/agent_send.go) |
+| `await` | `timeout_ms = 0` 显式观察，可读取有界结果；正值只同步就绪状态，终态结果由 mailbox 投递；[契约](../agent/tools/task_wait_tool.go) |
+| `list_agents` | 发现定义、恢复可访问子实例引用；读取不启动 Agent、不获取写租约、不改写 journal；[契约](../agent/tools/agent_list.go) |
+
+`message` 不启动工作，`followup` 开始新 Run；`interrupt / resume` 暂停和继续同一个 Run。父 Agent 在子任务运行时继续独立工作，只在依赖点和最终收口等待。独立上下文和并行处理是收益来源，不引入自动组队、空闲池、共享任务 DAG、广播或固定角色。
+
+协作说明仅在 Native 且启用委派能力时注入，提示词预览使用相同条件。外部 runtime 的工具、执行与恢复协议独立；[提示词边界](../internal/agents/prompts/runtime_contract.go)、[外部入口回归](../internal/agents/builder_external_test.go)覆盖写作、通用对话和游戏。模型实际接收的 schema 与行为以代码和[协作测试](../agent/tools/agent_coordination_test.go)为准，不维护第二份设计期 schema。
 
 ### Goal
 

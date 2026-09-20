@@ -94,6 +94,20 @@ func (store *Store) Open(ctx context.Context, key session.Key) (session.Log, err
 	return &logFile{path: base + ".jsonl", release: release}, nil
 }
 
+func (store *Store) OpenReader(ctx context.Context, key session.Key) (session.Log, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	base, _, err := store.baseForKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(base + ".manifest.json"); err != nil {
+		return nil, err
+	}
+	return session.ReadOnlyLog{Reader: &logFile{path: base + ".jsonl"}}, nil
+}
+
 func (store *Store) List(ctx context.Context, selector session.Selector) ([]session.Key, error) {
 	if store == nil || store.root == "" {
 		return nil, errors.New("agent Session file Store is nil")

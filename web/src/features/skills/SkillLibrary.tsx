@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -82,7 +83,7 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
           <Badge variant="outline">{snapshot.skills.length}</Badge>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div className="@container flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <InputGroup className="min-w-0 flex-1 basis-64">
               <InputGroupAddon><Search /></InputGroupAddon>
@@ -104,14 +105,18 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
               </ToggleGroup>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <ToggleGroup type="single" value={source} onValueChange={(value) => value && setSource(value)} size="sm" aria-label={t('skills.library.sourceFilter')} className="flex-wrap">
+          <div className="flex flex-col gap-3 @3xl:flex-row @3xl:items-center @3xl:gap-4">
+            <ToggleGroup type="single" value={source} onValueChange={(value) => value && setSource(value)} size="sm" aria-label={t('skills.library.sourceFilter')} className="max-w-full flex-wrap @3xl:shrink-0">
               {['all', 'denova', 'shared', 'remote'].map((item) => <ToggleGroupItem key={item} value={item}>{t(`skills.library.${item}`)}</ToggleGroupItem>)}
             </ToggleGroup>
             {categories.length > 1 && (
-              <ToggleGroup type="single" value={category} onValueChange={(value) => setCategory(value || 'all')} size="sm" aria-label={t('skills.category.filter')} className="flex-wrap">
-                {categories.map((item) => <ToggleGroupItem key={item} value={item}>{skillCategoryLabel(item, t)}</ToggleGroupItem>)}
-              </ToggleGroup>
+              <>
+                <Separator className="@3xl:hidden" />
+                <Separator orientation="vertical" className="my-1 hidden @3xl:block" />
+                <ToggleGroup type="single" value={category} onValueChange={(value) => setCategory(value || 'all')} size="sm" aria-label={t('skills.category.filter')} className="min-w-0 max-w-full flex-wrap">
+                  {categories.map((item) => <ToggleGroupItem key={item} value={item}>{skillCategoryLabel(item, t)}</ToggleGroupItem>)}
+                </ToggleGroup>
+              </>
             )}
           </div>
         </div>

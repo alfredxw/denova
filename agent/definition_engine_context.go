@@ -320,6 +320,9 @@ func consumeMessageVariant(variant *loopMessage, source runstate.EventSource, di
 	if variant == nil {
 		return nil, nil
 	}
+	if variant.discarded {
+		return CloneMessage(variant.Message), nil
+	}
 	toolInputs := newToolInputProjector(variant, source)
 	if !variant.IsStreaming {
 		message := CloneMessage(variant.Message)

@@ -43,7 +43,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   const result = message.result || ''
   const presentationKind = toolPresentationKind(message, 'call')
   const isDelegationTool = presentationKind === 'delegation'
-  const isTaskWait = name === 'task_wait'
+  const isTaskWait = (name === 'await' || name === 'task_wait')
   const isScriptTool = presentationKind === 'script'
   const taskSubAgent = canInterpretInput && isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
   // The raw input remains opaque while streaming. File cards may read only the
@@ -51,7 +51,9 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   const fileTarget = isWorkspaceFileTool(name) ? extractToolArgPath(rawArgs) : ''
   const fileTargetSummary = fileTarget ? workspaceFileName(fileTarget) : ''
   let displayName = toolDisplayName(name, t)
-  if (isDelegationTool) displayName = t('chat.subagent.taskLabel')
+  if (isDelegationTool && name !== 'list_agents') displayName = t('chat.subagent.taskLabel')
+  if (name === 'list_agents') displayName = t('chat.subagent.listLabel')
+  if (name === 'send') displayName = t('chat.subagent.sendLabel')
   if (isTaskWait) displayName = t('chat.subagent.waitLabel')
   const detailArgs = canInterpretInput
     ? (isDelegationTool ? formatTaskDelegationArgs(rawArgs) : args)
@@ -72,7 +74,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
     }
   }
   const resultBody = stripToolResultMetadata(result)
-  const taskSessionKey = name === 'task' && status === 'success' ? taskSubAgentSessionKey(resultBody) : ''
+  const taskSessionKey = (name === 'send' || name === 'task') && status === 'success' ? taskSubAgentSessionKey(resultBody) : ''
   const opensTaskSession = Boolean(taskSessionKey && onOpenSubAgentSession)
   const specializedSummary = canInterpretInput ? toolDetailSummary(name, rawArgs, resultBody, t) : ''
   if (specializedSummary) summary = specializedSummary
@@ -271,7 +273,7 @@ function parseTaskSubagentType(args: string) {
   try {
     const data = JSON.parse(args) as Record<string, unknown>
     if (typeof data.subagent_type === 'string') return data.subagent_type
-    const starts = Array.isArray(data.starts) ? data.starts : []
+    const starts = Array.isArray(data.items) ? data.items.filter(item => item?.action === 'delegate') : Array.isArray(data.starts) ? data.starts : []
     const first = starts[0]
     if (!first || typeof first !== 'object') return ''
     const agent = (first as Record<string, unknown>).agent

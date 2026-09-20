@@ -117,8 +117,8 @@ func (run *Run) Events() <-chan Event {
 }
 
 func (run *Run) Steer(ctx context.Context, input Input) (CommandReceipt, error) {
-	if err := run.usable(); err != nil {
-		return CommandReceipt{}, err
+	if run == nil || run.session == nil {
+		return CommandReceipt{}, ErrRunSettled
 	}
 	receipt, _, err := run.session.receiveInput(ctx, input, inputSteer, run.id, runUsesSession)
 	return receipt, err
@@ -173,7 +173,7 @@ func (run *Run) Abort(ctx context.Context, request AbortRequest) (CommandReceipt
 	select {
 	case run.controls <- runstate.EngineControl{Kind: runstate.EngineControlAbort}:
 	case <-run.done:
-		return CommandReceipt{}, ErrRunSettled
+		return receipt, ErrRunSettled
 	}
 	return receipt, nil
 }

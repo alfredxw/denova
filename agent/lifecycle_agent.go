@@ -245,6 +245,17 @@ func (agent *Agent) openSession(ctx context.Context, key SessionKey) (*Session, 
 	if err != nil {
 		return nil, fmt.Errorf("open Agent Session transcript: %w", err)
 	}
+	return agent.loadSession(ctx, key, log, sessionWriter)
+}
+
+type sessionAccess uint8
+
+const (
+	sessionWriter sessionAccess = iota
+	sessionInspection
+)
+
+func (agent *Agent) loadSession(ctx context.Context, key SessionKey, log agentsession.Log, access sessionAccess) (*Session, error) {
 	binding := runstate.BindingRef{Kind: key.Namespace, Key: key.ID, Labels: maps.Clone(key.Attributes)}
 	engine, err := (&definitionEngineFactory{
 		source: agent.source, trace: agent.trace, cacheKeys: agent.cacheKeys,
@@ -265,12 +276,52 @@ func (agent *Agent) openSession(ctx context.Context, key SessionKey) (*Session, 
 	if canonical, ok := log.(agentsession.CanonicalMessageLog); ok {
 		session.canonicalMessages = canonical.CanonicalMessages()
 	}
-	if err := session.replay(ctx); err != nil {
+	if err := session.replay(ctx, access); err != nil {
 		_ = log.Close()
 		return nil, err
 	}
 
 	return session, nil
+}
+
+// InspectSession reads live state or replays an existing journal without
+// registering an execution handle, taking a writer lease, or resuming work.
+func (agent *Agent) InspectSession(ctx context.Context, key SessionKey) (SessionSnapshot, error) {
+	canonical, err := agentsession.CanonicalKey(key)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	agent.mu.RLock()
+	live, closed := agent.sessions[canonical], agent.closed
+	agent.mu.RUnlock()
+	if closed {
+		return SessionSnapshot{}, ErrAgentClosed
+	}
+	if live != nil {
+		live.mu.RLock()
+		snapshot := live.snapshotLocked()
+		live.mu.RUnlock()
+		return snapshot, nil
+	}
+	reader, ok := agent.store.(agentsession.ReaderStore)
+	if !ok {
+		return SessionSnapshot{}, ErrCapabilityUnsupported
+	}
+	log, err := reader.OpenReader(ctx, key)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	defer log.Close()
+	session, err := agent.loadSession(ctx, key, log, sessionInspection)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	defer func() {
+		for _, run := range session.runs {
+			run.cancel()
+		}
+	}()
+	return session.snapshotLocked(), nil
 }
 
 func (agent *Agent) ListSessions(ctx context.Context, selector SessionSelector) ([]SessionKey, error) {

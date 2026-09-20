@@ -122,7 +122,7 @@ func (session *Session) Key() SessionKey {
 	return key
 }
 
-func (session *Session) replay(ctx context.Context) error {
+func (session *Session) replay(ctx context.Context, access sessionAccess) error {
 	if err := session.loadRecovery(ctx); err != nil {
 		return err
 	}
@@ -244,6 +244,9 @@ func (session *Session) replay(ctx context.Context) error {
 			run.cancel()
 			run.endHandle()
 			close(run.executionDone)
+			if access == sessionInspection {
+				return nil
+			}
 			return run.restoreEffectInteractions()
 		}
 		interrupted := *unfinished

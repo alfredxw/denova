@@ -29,7 +29,6 @@ type Child struct {
 // These values affect the model-visible tool contract and are fingerprinted.
 type Config struct {
 	Capability         string
-	Description        string
 	MaxResultBytes     int
 	Parallelism        int
 	ValidationIdentity agent.CapabilityIdentity
@@ -55,7 +54,6 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 		}
 	}
 	config.Capability = strings.TrimSpace(config.Capability)
-	config.Description = strings.TrimSpace(config.Description)
 	if config.Capability == "" || config.MaxResultBytes <= 0 || config.Parallelism <= 0 || config.Validate == nil ||
 		config.ValidationIdentity.Kind == "" || config.ValidationIdentity.Version == 0 {
 		return nil, errors.New("delegation Catalog requires capability, positive result limit, positive parallelism, and identified manifest validation")
@@ -77,7 +75,6 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 	encoded, _ := json.Marshal(struct {
 		Base               agent.CapabilityIdentity
 		Capability         string
-		Description        string
 		MaxResultBytes     int
 		Parallelism        int
 		ValidationIdentity agent.CapabilityIdentity
@@ -86,7 +83,7 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 			Identity          agent.CapabilityIdentity
 		}
 	}{
-		Base: base.Identity(), Capability: config.Capability, Description: config.Description,
+		Base: base.Identity(), Capability: config.Capability,
 		MaxResultBytes: config.MaxResultBytes, Parallelism: config.Parallelism, ValidationIdentity: config.ValidationIdentity,
 		Children: childIdentities(resolved),
 	})
@@ -199,34 +196,12 @@ func (bound *boundCatalog) PrepareTools(ctx context.Context, request agent.ToolR
 		}
 		tasks[index].Descriptor.Capability = bound.catalog.config.Capability
 		tasks[index].Descriptor.MaxResultBytes = bound.catalog.config.MaxResultBytes
-		info, infoErr := tasks[index].Tool.Info(ctx)
-		if infoErr != nil {
-			return nil, fmt.Errorf("inspect delegated Agent tool %d: %w", index, infoErr)
-		}
-		if bound.catalog.config.Description != "" && info != nil && info.Name == "task" {
-			tasks[index].Tool = describedTaskTool{Tool: tasks[index].Tool, description: bound.catalog.config.Description}
-		}
 	}
 	definitions := append(base, tasks...)
 	if err := bound.catalog.config.Validate(ctx, definitions); err != nil {
 		return nil, fmt.Errorf("validate delegated Agent tool manifest: %w", err)
 	}
 	return definitions, nil
-}
-
-type describedTaskTool struct {
-	agent.Tool
-	description string
-}
-
-func (tool describedTaskTool) Info(ctx context.Context) (*agent.ToolInfo, error) {
-	info, err := tool.Tool.Info(ctx)
-	if err != nil || info == nil {
-		return info, err
-	}
-	cloned := *info
-	cloned.Desc = tool.description
-	return &cloned, nil
 }
 
 func AsCatalog(toolset agent.Toolset) (*Catalog, bool) {

@@ -340,7 +340,6 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		}
 		catalog, err := agentdelegation.NewCatalog(rootTools, agentdelegation.Config{
 			Capability:         config.AgentToolDelegation,
-			Description:        "Delegate an independently scoped task to a configured SubAgent.",
 			MaxResultBytes:     toolresult.LimitBytes(cfg),
 			Parallelism:        configSubAgentParallelism(cfg),
 			ValidationIdentity: validationIdentity,

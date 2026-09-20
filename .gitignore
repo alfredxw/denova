@@ -24,12 +24,7 @@ docs/*
 !docs/tests/
 docs/tests/*
 !docs/tests/large-change-regression-checklist.md
-!docs/continual-learning-user-state-design.md
-!docs/dynamic-tool-orchestration-design.md
 !docs/automation-project-agent.md
-!docs/agent-prompt-architecture-audit.md
-!docs/agent-prompt-context-architecture-benchmark.md
-!docs/portable-denova-data-directory-design.md
 !docs/claude-runtime.md
 !docs/skills-library.md
 !docs/agent-runtime-session-design-audit.md

@@ -19,6 +19,15 @@ type RunSnapshot struct {
 	FinishedAt time.Time
 }
 
+// AcceptedControl returns a journal receipt for retry admission. Callers must
+// still invoke the original operation to validate its kind, target and payload.
+func (session *Session) AcceptedControl(commandID string) (CommandReceipt, bool) {
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	control, found := session.controlReceipts[strings.TrimSpace(commandID)]
+	return control.Receipt, found
+}
+
 // CommandRun resolves a root input command through the canonical Session.
 // A false result proves absence only in this exact Session, never another one.
 func (session *Session) CommandRun(ctx context.Context, commandID string) (*Run, bool, error) {

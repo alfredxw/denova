@@ -189,14 +189,14 @@ function taskRefKey(ref) {
 }
 
 function remainingMultiAgentTaskRefs(body) {
-  const started = toolResultMessages(body, 'task')
+  const started = toolResultMessages(body, 'send')
     .flatMap(message => parseToolResult(message).results ?? [])
-    .map(result => result?.task?.ref)
+    .map(result => result?.ref)
     .filter(ref => ref?.agent && ref?.session && ref?.run)
-  const ready = new Set(toolResultMessages(body, 'task_wait')
+  const ready = new Set(toolResultMessages(body, 'await')
     .flatMap(message => parseToolResult(message).results ?? [])
     .filter(result => result?.ready === true)
-    .map(result => taskRefKey(result?.task?.ref)))
+    .map(result => taskRefKey(result?.run?.ref)))
   return started.filter(ref => !ready.has(taskRefKey(ref)))
 }
 
@@ -257,7 +257,7 @@ function writeChatCompletion(response, frames) {
 }
 
 async function writeGatedMultiAgentCompletion(response, child) {
-  // Keep every child silent until the parent has entered task_wait. Without
+  // Keep every child silent until the parent has entered await. Without
   // this handshake a fast mock response can finish its initial frames before
   // the wait subscription exists, so the test exercises timing rather than
   // the live interleaving contract.
@@ -478,30 +478,31 @@ const server = createServer(async (request, response) => {
     return
   }
   const multiAgentChild = multiAgentChildren.find(child => requestIncludesMarker(body, child.marker))
-  if (multiAgentChild && !requestIncludesTool(body, 'task')) {
+  if (multiAgentChild && !requestIncludesTool(body, 'send')) {
     recordRequest(multiAgentChild.marker)
     await writeGatedMultiAgentCompletion(response, multiAgentChild)
     return
   }
-  if (requestIncludesMarker(body, multiAgentDisplayMarker) && requestIncludesTool(body, 'task')) {
-    const taskResults = toolResultMessages(body, 'task')
+  if (requestIncludesMarker(body, multiAgentDisplayMarker) && requestIncludesTool(body, 'send')) {
+    const taskResults = toolResultMessages(body, 'send')
     if (taskResults.length === 0) {
       const starts = multiAgentChildren.map(child => ({
         agent: 'general-purpose',
-        prompt: `Return only the deterministic ${child.label} stream. ${child.marker}`,
+        action: 'delegate',
+        message: `Return only the deterministic ${child.label} stream. ${child.marker}`,
       }))
       writeChatCompletion(response, toolCompletionFrames(
-        'task',
-        JSON.stringify({ action: 'start', starts }),
+        'send',
+        JSON.stringify({ items: starts }),
         'call-e2e-multi-agent-start',
       ))
       return
     }
     const remaining = remainingMultiAgentTaskRefs(body)
     if (remaining.length > 0) {
-      const waitIndex = toolResultMessages(body, 'task_wait').length + 1
+      const waitIndex = toolResultMessages(body, 'await').length + 1
       writeChatCompletion(response, toolCompletionFrames(
-        'task_wait',
+        'await',
         JSON.stringify({ targets: remaining.map(ref => ({ ref })) }),
         `call-e2e-multi-agent-wait-${waitIndex}`,
       ))

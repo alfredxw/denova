@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Download, FileText, LayoutGrid, Plus, Search, Tags } from 'lucide-react'
+import { ChevronDown, Download, FileText, LayoutGrid, ListFilter, Plus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
 import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
@@ -106,15 +106,6 @@ export function SkillListPanel({
   return (
     <EmbeddedSidebar>
         <SidebarHeader className="gap-3 p-3">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton isActive={mode === 'library'} aria-current={mode === 'library' ? 'page' : undefined} onClick={onLibrary}>
-                <LayoutGrid aria-hidden="true" />
-                <span>{t('skills.library.title')}</span>
-              </SidebarMenuButton>
-              <SidebarMenuBadge>{snapshot.skills.length}</SidebarMenuBadge>
-            </SidebarMenuItem>
-          </SidebarMenu>
           <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
@@ -138,31 +129,51 @@ export function SkillListPanel({
             </Button>
           </div>
 
-          <div className="relative">
-            <SidebarInput
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={mode === 'library'} aria-current={mode === 'library' ? 'page' : undefined} onClick={onLibrary}>
+                <LayoutGrid aria-hidden="true" />
+                <span>{t('skills.library.title')}</span>
+              </SidebarMenuButton>
+              <SidebarMenuBadge>{snapshot.skills.length}</SidebarMenuBadge>
+            </SidebarMenuItem>
+          </SidebarMenu>
+
+          <InputGroup className="h-auto">
+            <InputGroupAddon><Search aria-hidden="true" /></InputGroupAddon>
+            <InputGroupInput
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t('skills.searchPlaceholder')}
               aria-label={t('skills.searchPlaceholder')}
-              className="pl-8"
             />
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          </div>
-
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger size="sm" aria-label={t('skills.category.filter')} className="w-full">
-              <Tags aria-hidden="true" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="all">{t('skills.category.all')}</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category} value={category}>{skillCategoryLabel(category, t)}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+            <InputGroupAddon align="inline-end" className="py-0.5">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <InputGroupButton
+                    type="button"
+                    variant={categoryFilter === 'all' ? 'ghost' : 'secondary'}
+                    aria-label={t('skills.category.filter')}
+                    title={categoryFilter === 'all' ? t('skills.category.all') : skillCategoryLabel(categoryFilter, t)}
+                  >
+                    <ListFilter aria-hidden="true" />
+                  </InputGroupButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-max max-w-(--radix-dropdown-menu-content-available-width)">
+                  <DropdownMenuGroup>
+                    <DropdownMenuCheckboxItem checked={categoryFilter === 'all'} onSelect={() => setCategoryFilter('all')}>
+                      {t('skills.category.all')}
+                    </DropdownMenuCheckboxItem>
+                    {categories.map((category) => (
+                      <DropdownMenuCheckboxItem key={category} checked={categoryFilter === category} onSelect={() => setCategoryFilter(category)}>
+                        <span className="min-w-0 break-words">{skillCategoryLabel(category, t)}</span>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </InputGroupAddon>
+          </InputGroup>
         </SidebarHeader>
 
         <SidebarSeparator />
