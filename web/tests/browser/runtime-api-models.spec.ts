@@ -1,6 +1,7 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 import { openWritingAgent } from '../support/agent-chat'
+import zhRuntime from '../../src/i18n/locales/zh-CN/agentRuntime'
 
 for (const engine of ['codex', 'claude'] as const) {
   for (const theme of ['dark', 'light'] as const) {
@@ -64,7 +65,7 @@ for (const engine of ['codex', 'claude'] as const) {
         await enginePicker.click()
         await page.getByRole('option', { name: 'Native', exact: true }).click()
         await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.agent_runtimes.ide.selected).toBe('native')
-        await expect(runtime.getByText('运行时切换仅对新会话生效，已有会话继续使用原运行时。', { exact: true })).toBeVisible()
+        await expect(runtime.getByText(zhRuntime['agentRuntime.defaultsOnly'], { exact: true })).toBeVisible()
         expect(await (await request.get(configURL)).json()).toMatchObject({ revision: original.revision, runtime: original.runtime })
         for (const width of [1440, 390]) {
           await page.setViewportSize({ width, height: 960 })

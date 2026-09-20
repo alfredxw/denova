@@ -57,7 +57,11 @@ for (const kind of ['writing', 'general', 'game'] as const) {
       if (kind === 'writing') await openWritingAgent(page)
       else if (kind === 'general') { await openAgentChatWorkbench(page); await openAgentChatSession(page, projectId, 'Runtime switching') }
       else await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
-      const editor = page.locator('[contenteditable="true"]').filter({ visible: true }).last()
+      // Navigation can leave the previous Writing composer visible until Game
+      // hydrates. Wait for the destination editor before entering the draft.
+      const editor = kind === 'game' ? page.getByPlaceholder(/你要做什么/)
+        : page.locator('[contenteditable="true"]').filter({ visible: true }).last()
+      await expect(editor).toBeVisible()
       const trigger = page.locator('[data-model-profile-trigger]').filter({ visible: true })
       await expect(trigger).toBeEnabled()
       await editor.fill('Keep this draft / 保留这段草稿')

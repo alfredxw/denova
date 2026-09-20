@@ -1,6 +1,8 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 import { openWritingAgent } from '../support/agent-chat'
+import enRuntime from '../../src/i18n/locales/en-US/agentRuntime'
+import zhRuntime from '../../src/i18n/locales/zh-CN/agentRuntime'
 
 test.afterEach(async ({ request }) => {
   const current = await (await request.get('/api/settings')).json()
@@ -37,9 +39,8 @@ for (const language of ['zh-CN', 'en-US']) {
     await page.goto('/')
     await page.getByRole('button', { name: 'Agents', exact: true }).click()
     const runtime = page.locator('[data-agent-configuration-section="runtime"]')
-    await expect(runtime.getByText(language === 'zh-CN'
-      ? '运行时切换仅对新会话生效，已有会话继续使用原运行时。'
-      : 'Runtime changes apply only to new conversations. Existing conversations keep their original runtime.', { exact: true })).toBeVisible()
+    const messages = language === 'zh-CN' ? zhRuntime : enRuntime
+    await expect(runtime.getByText(messages['agentRuntime.defaultsOnly'], { exact: true })).toBeVisible()
     const hint = engine === 'claude'
       ? (language === 'zh-CN' ? '请在运行 Denova 的电脑上执行 claude auth login，然后重新检查连接。' : 'Run claude auth login on the computer running Denova, then check the connection again.')
       : language === 'zh-CN'

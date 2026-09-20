@@ -10,10 +10,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-build:
-    name: Test and build
+  checks:
+    name: Go, unit tests and production build
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       GO_MODULES: ". agent"
 
@@ -93,23 +98,20 @@ jobs:
       - name: Run frontend unit tests
         run: pnpm --dir web test:unit --reporter=default --reporter=junit --outputFile=test-results/unit.xml
 
-      # Keep browser coverage running when a unit suite fails, so one run
-      # reports both failures without weakening the overall CI result.
-      - name: Run frontend browser and end-to-end tests
-        if: ${{ !cancelled() && steps.translations.outcome == 'success' }}
-        run: pnpm --dir web test:playwright
-
       - name: Build distribution
+        id: build
+        if: ${{ !cancelled() && steps.translations.outcome == 'success' }}
         run: ./scripts/build.sh
 
       - name: Smoke-test production frontend
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm --dir web smoke:production
 
       - name: Upload test reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports
+          name: test-reports-checks
           path: |
             web/playwright-report
             web/test-results/unit.xml
@@ -118,3 +120,77 @@ jobs:
             web/test-results/production-artifacts
           if-no-files-found: ignore
           retention-days: 7
+
+  browser-tests:
+    name: Playwright (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      # Independent backends and data roots prevent suite state from leaking.
+      # Report both suites even when one fails; do not hide flakes with retries.
+      fail-fast: false
+      matrix:
+        project: [browser, e2e]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            agent/go.sum
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.15.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
+      - name: Install frontend dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm --dir web exec playwright install --with-deps chromium
+
+      - name: Run Playwright suite
+        run: pnpm --dir web exec playwright test --project=${{ matrix.project }}
+
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ matrix.project }}
+          path: |
+            web/playwright-report
+            web/test-results/playwright.json
+            web/test-results/artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Preserve the existing required-check name, covering every isolated suite.
+  test-build:
+    name: Test and build
+    if: ${{ always() }}
+    needs: [checks, browser-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all suites to pass
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          BROWSER_RESULT: ${{ needs.browser-tests.result }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          test "$BROWSER_RESULT" = success
