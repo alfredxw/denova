@@ -48,6 +48,7 @@ type Config struct {
 	AllowLANAccess           bool                         `toml:"allow_lan_access"`
 	RemoteAccessUsername     string                       `toml:"remote_access_username"`
 	RemoteAccessPasswordHash string                       `toml:"remote_access_password_hash"`
+	TrustProxyHeaders        bool                         `toml:"trust_proxy_headers"`
 	Language                 string                       `toml:"language"`
 	DenovaDir                string                       `toml:"denova_dir"`
 	NovaDir                  string                       `toml:"nova_dir"`
@@ -677,10 +678,11 @@ func (cfg *Config) RemoteAccessConfig() RemoteAccessConfig {
 		return RemoteAccessConfig{}
 	}
 	return RemoteAccessConfig{
-		DataDir:        cfg.DataDir(),
-		AllowLANAccess: cfg.AllowLANAccess,
-		Username:       cfg.RemoteAccessUsername,
-		PasswordHash:   cfg.RemoteAccessPasswordHash,
+		DataDir:           cfg.DataDir(),
+		AllowLANAccess:    cfg.AllowLANAccess,
+		Username:          cfg.RemoteAccessUsername,
+		PasswordHash:      cfg.RemoteAccessPasswordHash,
+		TrustProxyHeaders: cfg.TrustProxyHeaders,
 	}
 }
 

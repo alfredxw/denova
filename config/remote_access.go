@@ -27,6 +27,10 @@ type RemoteAccessConfig struct {
 	AllowLANAccess bool
 	Username       string
 	PasswordHash   string
+	// TrustProxyHeaders honors X-Forwarded-Host/Proto in the origin check.
+	// Enable only behind a reverse proxy (for example Docker + Traefik), where
+	// the direct peer is the proxy and forwarded headers carry the public URL.
+	TrustProxyHeaders bool
 }
 
 func HTTPListenHost(allowLANAccess bool) string {
@@ -57,6 +61,11 @@ func ApplyRemoteAccessEnvironment(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("DENOVA_REMOTE_ACCESS_PASSWORD")); v != "" {
 		if hash, err := HashRemoteAccessPassword(v); err == nil {
 			cfg.RemoteAccessPasswordHash = hash
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_TRUST_PROXY_HEADERS")); v != "" {
+		if trust, err := strconv.ParseBool(v); err == nil {
+			cfg.TrustProxyHeaders = trust
 		}
 	}
 }

@@ -1,21 +1,25 @@
 services:
   denova:
     build: .
+    # Passes every .env variable into the container (model keys etc.); absent
+    # on Coolify, where variables come from the platform UI via interpolation.
+    env_file:
+      - path: .env
+        required: false
     ports:
-      # Host port is customizable: DENOVA_PORT=9000 docker compose up -d
-      # (or set DENOVA_PORT in the platform's environment, e.g. Coolify).
       - "${DENOVA_PORT:-8080}:8080"
     environment:
       # Published ports reach the container from the Docker bridge, which the
-      # access gate treats as remote: LAN access and login credentials are
-      # required. Change the password before exposing the port.
+      # access gate treats as remote: LAN access is structural, do not remove.
       DENOVA_ALLOW_LAN_ACCESS: "true"
-      DENOVA_REMOTE_ACCESS_USERNAME: admin
-      DENOVA_REMOTE_ACCESS_PASSWORD: change-me
       DENOVA_WORKSPACE: /workspace
-      # OPENAI_API_KEY: sk-...
-      # OPENAI_BASE_URL: https://models.example.com/v1
-      # OPENAI_MODEL: my-model
+      # Login credentials: override in .env or the platform's environment
+      # settings (Coolify). The interpolation also lets Coolify reach them.
+      DENOVA_REMOTE_ACCESS_USERNAME: ${DENOVA_REMOTE_ACCESS_USERNAME:-admin}
+      DENOVA_REMOTE_ACCESS_PASSWORD: ${DENOVA_REMOTE_ACCESS_PASSWORD:-change-me}
+      # Required behind a reverse proxy (Coolify/Traefik/Nginx): honor
+      # X-Forwarded-Host/Proto so the origin check accepts the public URL.
+      DENOVA_TRUST_PROXY_HEADERS: ${DENOVA_TRUST_PROXY_HEADERS:-true}
     volumes:
       - denova-data:/data
       - ./workspace:/workspace

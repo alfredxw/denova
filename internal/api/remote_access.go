@@ -35,7 +35,7 @@ func newRemoteAccessGate(readConfig func() config.RemoteAccessConfig, port strin
 
 func (g *remoteAccessGate) middleware(ctx context.Context, c *app.RequestContext) {
 	// Cookies also accompany browser-initiated writes and WebSocket upgrades.
-	if needsOriginCheck(c) && !sameOriginRequest(c) {
+	if needsOriginCheck(c) && !sameOriginRequest(c, g.config().TrustProxyHeaders) {
 		abortWithLocalizedError(c, consts.StatusForbidden, "api.access.originRejected")
 		return
 	}
@@ -73,7 +73,7 @@ func needsOriginCheck(c *app.RequestContext) bool {
 	return (method != "GET" && method != "HEAD" && method != "OPTIONS") || strings.EqualFold(string(c.GetHeader("Upgrade")), "websocket")
 }
 
-func sameOriginRequest(c *app.RequestContext) bool {
+func sameOriginRequest(c *app.RequestContext, trustProxyHeaders bool) bool {
 	origin := string(c.GetHeader("Origin"))
 	if origin == "" {
 		origin = string(c.GetHeader("Referer"))
@@ -88,7 +88,7 @@ func sameOriginRequest(c *app.RequestContext) bool {
 	}
 	host := string(c.Host())
 	scheme := string(c.Request.URI().Scheme())
-	if isLocalClientIP(directClientIP(c)) {
+	if isLocalClientIP(directClientIP(c)) || trustProxyHeaders {
 		if forwarded := string(c.GetHeader("X-Forwarded-Host")); forwarded != "" {
 			host = forwarded
 		}
