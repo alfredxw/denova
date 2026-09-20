@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -59,7 +60,7 @@ func ApplyRemoteAccessEnvironment(cfg *Config) {
 		cfg.RemoteAccessUsername = v
 	}
 	if v := strings.TrimSpace(os.Getenv("DENOVA_REMOTE_ACCESS_PASSWORD")); v != "" {
-		if hash, err := HashRemoteAccessPassword(v); err == nil {
+		if hash, err := hashEnvRemoteAccessPassword(v); err == nil {
 			cfg.RemoteAccessPasswordHash = hash
 		}
 	}
@@ -68,6 +69,31 @@ func ApplyRemoteAccessEnvironment(cfg *Config) {
 			cfg.TrustProxyHeaders = trust
 		}
 	}
+}
+
+// envRemoteAccessPasswordHash memoizes the bcrypt hash of the password
+// environment variable. bcrypt re-salts every call, while browser sessions
+// snapshot the hash at login and compare it on each request — re-hashing on
+// every settings refresh would invalidate live sessions.
+var envRemoteAccessPasswordHash struct {
+	sync.Mutex
+	password string
+	hash     string
+}
+
+func hashEnvRemoteAccessPassword(password string) (string, error) {
+	envRemoteAccessPasswordHash.Lock()
+	defer envRemoteAccessPasswordHash.Unlock()
+	if envRemoteAccessPasswordHash.hash != "" && envRemoteAccessPasswordHash.password == password {
+		return envRemoteAccessPasswordHash.hash, nil
+	}
+	hash, err := HashRemoteAccessPassword(password)
+	if err != nil {
+		return "", err
+	}
+	envRemoteAccessPasswordHash.password = password
+	envRemoteAccessPasswordHash.hash = hash
+	return hash, nil
 }
 
 func HTTPURL(host string, port int) string {
