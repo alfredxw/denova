@@ -17,7 +17,9 @@ class MockAudio {
   removeAttribute() { this.src = '' }
   getAttribute() { return this.src }
 }
-const audioResponse = () => new Response(new Blob(['ID3audio'], { type: 'audio/mpeg' }))
+// Response uses Node's Fetch implementation; a jsdom Blob is not a compatible
+// body on every supported Node version. Let Response construct its own Blob.
+const audioResponse = () => new Response('ID3audio', { headers: { 'Content-Type': 'audio/mpeg' } })
 let player: SpeechPlayer
 let fetchMock: ReturnType<typeof vi.fn>
 const flush = async () => { await vi.waitFor(() => expect(player.getSnapshot().status).not.toBe('loading')) }

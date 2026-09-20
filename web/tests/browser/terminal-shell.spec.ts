@@ -23,7 +23,9 @@ test('Windows terminal shell choices persist across Writing and Game', async ({ 
     await page.getByRole('button', { name: '终端', exact: true }).click()
     const selector = page.getByRole('combobox', { name: '终端 Shell', exact: true })
     await selector.click()
+    const shellSaved = page.waitForResponse(response => response.url().endsWith('/api/settings') && response.request().method() === 'PATCH')
     await page.getByRole('option', { name: label, exact: true }).click()
+    expect((await shellSaved).ok()).toBe(true)
     await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.terminal_shell).toBe(shell)
     await page.reload()
     await expect(selector).toHaveText(label)
@@ -39,7 +41,11 @@ test('Windows terminal shell choices persist across Writing and Game', async ({ 
     const theme = page.locator('[data-slot="field"]').filter({ has: page.getByText(english ? 'Theme' : '主题', { exact: true }) }).getByRole('combobox')
     await theme.scrollIntoViewIfNeeded()
     await theme.click()
+    // Theme rendering is optimistic. Await persistence before the next scenario
+    // changes settings through the API, otherwise their revisions can race.
+    const themeSaved = page.waitForResponse(response => response.url().endsWith('/api/settings') && response.request().method() === 'PATCH')
     await page.getByRole('option', { name: english ? 'Light' : '深色', exact: true }).click()
+    expect((await themeSaved).ok()).toBe(true)
     await expect(page.locator('html')).toHaveAttribute('data-theme', scenario.theme)
     const section = english ? 'Terminal' : '终端'
     if (scenario.width < 768) {
