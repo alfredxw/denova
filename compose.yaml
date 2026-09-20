@@ -12,7 +12,7 @@ services:
       # Published ports reach the container from the Docker bridge, which the
       # access gate treats as remote: LAN access is structural, do not remove.
       DENOVA_ALLOW_LAN_ACCESS: "true"
-      DENOVA_WORKSPACE: /workspace
+      DENOVA_WORKSPACE: ${DENOVA_WORKSPACE:-/workspace}
       # Login credentials: override in .env or the platform's environment
       # settings (Coolify). The interpolation also lets Coolify reach them.
       DENOVA_REMOTE_ACCESS_USERNAME: ${DENOVA_REMOTE_ACCESS_USERNAME:-admin}

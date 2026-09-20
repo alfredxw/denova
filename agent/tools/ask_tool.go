@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -14,7 +16,7 @@ type askInput struct {
 // The host derives the interaction's free-text flag from the optional choices.
 // Keeping it out of model input avoids two competing ways to select a question type.
 type askQuestionInput struct {
-	ID       string                    `json:"id" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable question ID used to correlate the answer."`
+	ID       string                    `json:"id,omitempty" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable question ID used to correlate the answer. May be omitted — the host derives one from the question position."`
 	Prompt   string                    `json:"prompt" jsonschema:"minLength=1,maxLength=8192" jsonschema_description:"User-facing question in the user's language."`
 	Options  []agent.InteractionOption `json:"options,omitempty" jsonschema:"maxItems=4" jsonschema_description:"Omit or use an empty array for free text. Otherwise provide two to four distinct choices, with exactly one recommended. The host adds Other automatically."`
 	Multiple bool                      `json:"multiple,omitempty" jsonschema_description:"Allow multiple listed choices. Must be false or omitted for a free-text question."`
@@ -42,9 +44,22 @@ func buildAsk() (agent.Toolset, error) {
 			}
 			questions := make([]agent.InteractionQuestion, len(input.Questions))
 			for index, question := range input.Questions {
+				options := make([]agent.InteractionOption, len(question.Options))
+				usedValues := make(map[string]struct{}, len(question.Options)+1)
+				// "other" is reserved for the host-provided free-text choice.
+				usedValues["other"] = struct{}{}
+				for _, option := range question.Options {
+					if value := strings.TrimSpace(option.Value); value != "" {
+						usedValues[value] = struct{}{}
+					}
+				}
+				for optionIndex, option := range question.Options {
+					option.Value = stableAskOptionValue(option.Value, optionIndex, usedValues)
+					options[optionIndex] = option
+				}
 				questions[index] = agent.InteractionQuestion{
-					ID: question.ID, Prompt: question.Prompt,
-					Options: question.Options, Multiple: question.Multiple,
+					ID: stableAskQuestionID(question.ID, index), Prompt: question.Prompt,
+					Options: options, Multiple: question.Multiple,
 					AllowFreeText: len(question.Options) == 0,
 				}
 			}
@@ -73,4 +88,28 @@ func buildAsk() (agent.Toolset, error) {
 		Presentation:   agent.UniformToolPresentation(agent.ToolPresentationInteraction),
 	}}
 	return agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.ask", Version: 4}, definition)
+}
+
+// Models frequently omit the stable IDs the schema asks for; deriving them
+// deterministically keeps answer correlation intact without a retry round-trip.
+func stableAskQuestionID(id string, index int) string {
+	if id = strings.TrimSpace(id); id != "" {
+		return id
+	}
+	return fmt.Sprintf("q%d", index+1)
+}
+
+func stableAskOptionValue(value string, index int, used map[string]struct{}) string {
+	candidate := strings.TrimSpace(value)
+	if candidate == "" {
+		candidate = fmt.Sprintf("option-%d", index+1)
+	}
+	base := candidate
+	for attempt := 2; ; attempt++ {
+		if _, taken := used[candidate]; !taken {
+			used[candidate] = struct{}{}
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s-%d", base, attempt)
+	}
 }

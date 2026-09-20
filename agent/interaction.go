@@ -29,7 +29,7 @@ type LocalizedText struct {
 // InteractionOption is model-provided Ask copy. Its visible text follows the
 // current user's input language instead of duplicating localized variants.
 type InteractionOption struct {
-	Value       string `json:"value" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable option ID; other is reserved for the host-provided free-text choice."`
+	Value       string `json:"value,omitempty" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable option ID; other is reserved for the host-provided free-text choice. May be omitted — the host derives a deterministic ID."`
 	Label       string `json:"label" jsonschema:"minLength=1,maxLength=4096" jsonschema_description:"Concise user-visible label in the same language as the user's current input."`
 	Description string `json:"description,omitempty" jsonschema:"maxLength=4096" jsonschema_description:"Optional consequence or tradeoff in the same language as the user's current input."`
 	Recommended bool   `json:"recommended,omitempty" jsonschema_description:"True for the single recommended option."`

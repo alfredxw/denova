@@ -247,8 +247,13 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 
 	projectRecord, err := app.projectRegistry.EnsureBook(workspace)
 	if err != nil {
-		app.Close()
-		return nil, err
+		// An archived or otherwise unrestorable startup workspace must not
+		// abort boot: containers would restart-loop forever, and desktop users
+		// can reselect or relink the Project from the UI instead.
+		slog.WarnContext(ctx, fmt.Sprintf("[app] startup workspace %q unavailable: %v; starting without a workspace", workspace, err))
+		cfg.Workspace = ""
+		app.Automation().StartScheduler(ctx)
+		return app, nil
 	}
 	layout, err := app.projectRegistry.EnsureStore(projectRecord)
 	if err != nil {
