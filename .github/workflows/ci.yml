@@ -122,7 +122,7 @@ jobs:
           retention-days: 7
 
   browser-tests:
-    name: Playwright (${{ matrix.project }})
+    name: Playwright (${{ matrix.project }} ${{ matrix.shard }}/${{ matrix.shards }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -130,7 +130,16 @@ jobs:
       # Report both suites even when one fails; do not hide flakes with retries.
       fail-fast: false
       matrix:
-        project: [browser, e2e]
+        include:
+          - project: browser
+            shard: 1
+            shards: 2
+          - project: browser
+            shard: 2
+            shards: 2
+          - project: e2e
+            shard: 1
+            shards: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -165,13 +174,13 @@ jobs:
         run: pnpm --dir web exec playwright install --with-deps chromium
 
       - name: Run Playwright suite
-        run: pnpm --dir web exec playwright test --project=${{ matrix.project }}
+        run: pnpm --dir web exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/${{ matrix.shards }}
 
       - name: Upload test reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports-${{ matrix.project }}
+          name: test-reports-${{ matrix.project }}-${{ matrix.shard }}
           path: |
             web/playwright-report
             web/test-results/playwright.json
