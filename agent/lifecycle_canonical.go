@@ -71,13 +71,15 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 	var completionIDs []string
 	prepared := false
 	err := commit(func(receipt CommitReceipt) (JournalCheckpoint, error) {
-		if prepared {
-			return JournalCheckpoint{}, errors.New("canonical commit requested its checkpoint more than once")
-		}
+		// A product journal CAS conflict can retry preparation before anything
+		// is committed. Rebuild from the locked Agent state, retaining only the
+		// final attempt and leaving previously returned records untouched.
+		prepared = false
+		records = nil
+		completionIDs = nil
 		if receipt.Revision == "" {
 			return JournalCheckpoint{}, errors.New("canonical checkpoint requires the product revision")
 		}
-		prepared = true
 		nextSnapshot = update.Snapshot
 		nextState = append(json.RawMessage(nil), update.State...)
 		switch update.Stage {
@@ -163,6 +165,7 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 			}
 			records = append(records, delivery)
 		}
+		prepared = true
 		return JournalCheckpoint{Session: session.Key(), ExpectedRevision: session.revision, Records: records}, nil
 	})
 	if err != nil {

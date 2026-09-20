@@ -59,8 +59,10 @@ type ContextCommitRequest struct {
 // CanonicalCheckpoint supplies Agent continuation records for the host's
 // exact product commit receipt. Embedded hosts must append these records in
 // the same journal transaction as the product change, after validating the
-// expected Agent revision. Invoke once while preparing that transaction; do
-// not call back into the same Session. A nil callback means no embedded log.
+// expected Agent revision. Preparation may be repeated after a confirmed
+// uncommitted transaction conflict; append only the final attempt. Never retry
+// after an ambiguous or successful commit, or call back into the same Session.
+// A nil callback means no embedded log.
 type CanonicalCheckpoint func(CommitReceipt) (JournalCheckpoint, error)
 
 type JournalCheckpoint struct {
