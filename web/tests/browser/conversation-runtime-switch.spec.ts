@@ -8,13 +8,15 @@ import { openAgentChatSession, openAgentChatWorkbench, openWritingAgent } from '
 // browser test isolates the composer contract without requiring CLI login.
 for (const kind of ['writing', 'general', 'game'] as const) {
   for (const theme of ['dark', 'light'] as const) {
-    test(`${kind} switches runtimes without losing draft in ${theme}`, async ({ page, request }) => {
+    test(`${kind} switches runtimes without losing draft in ${theme}`, async ({ page, request }, testInfo) => {
       test.setTimeout(90_000)
       const current = await (await request.get('/api/settings')).json()
       const seeded = await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user,
         changes: { theme, agent_runtimes: { ide: { selected: 'native' }, general: { selected: 'native' }, interactive_story: { selected: 'native' } } } } })
       expect(seeded.ok(), await seeded.text()).toBe(true)
-      let projectId = (await createAndOpenBook(request, `Runtime ${kind} ${theme}`)).projectId
+      // Repetitions share a backend, so each attempt needs its own Project.
+      const attempt = `${testInfo.repeatEachIndex}-${testInfo.retry}`
+      let projectId = (await createAndOpenBook(request, `Runtime ${kind} ${theme} ${attempt}`)).projectId
       let sessionId = ''
       let storyId = ''
       if (kind === 'game') storyId = (await createStartedStory(request, `Runtime ${theme}`)).id
