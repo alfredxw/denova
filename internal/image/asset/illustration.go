@@ -72,6 +72,17 @@ type illustrationMeta struct {
 	CreatedAt     string `json:"created_at"`
 }
 
+// isImageAssetPath catches the recurring model mistake of passing the desired
+// illustration output file as the chapter path.
+func isImageAssetPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) GenerateIllustration(ctx context.Context, cfg *config.Config, bookService *book.Service, request IllustrationGenerateRequest) (IllustrationResult, error) {
 	if s == nil {
 		s = NewService()
@@ -88,6 +99,9 @@ func (s *Service) GenerateIllustration(ctx context.Context, cfg *config.Config, 
 	chapterPath := filepath.ToSlash(strings.TrimSpace(request.ChapterPath))
 	if chapterPath == "" {
 		return IllustrationResult{}, fmt.Errorf("chapter_path 不能为空")
+	}
+	if isImageAssetPath(chapterPath) {
+		return IllustrationResult{}, fmt.Errorf("chapter_path must be the existing chapter Markdown file (e.g. chapters/ch00001-1-prologue.md), not an illustration output path %q; the image path under assets/illustrations/ is derived automatically", chapterPath)
 	}
 	if _, err := bookService.FileRevision(chapterPath); err != nil {
 		return IllustrationResult{}, fmt.Errorf("读取章节路径失败: %w", err)
