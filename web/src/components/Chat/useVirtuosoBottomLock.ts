@@ -34,7 +34,9 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
   const viewportScrollTopRef = useRef<number | null>(null)
   const lockedRef = useRef(true)
   const afterContentInteractionRef = useRef(false)
-  const afterContentScrollTopRef = useRef<number | null>(null)
+  // Footer interactions follow the bottom only when they start there; otherwise
+  // preserve the reading position until an explicit scroll gesture takes over.
+  const afterContentAnchorRef = useRef<{ kind: 'bottom' } | { kind: 'position'; scrollTop: number } | null>(null)
   const pointerGestureYRef = useRef<number | null>(null)
   const autoFollowEnabledRef = useRef(autoFollowEnabled)
   const previousAutoFollowEnabledRef = useRef(autoFollowEnabled)
@@ -171,31 +173,29 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
 
   const resetAfterContentInteraction = useCallback(() => {
     afterContentInteractionRef.current = false
-    afterContentScrollTopRef.current = null
+    afterContentAnchorRef.current = null
   }, [])
 
   const beginAfterContentInteraction = useCallback(() => {
     const element = currentScrollerElement()
-    afterContentScrollTopRef.current = element?.scrollTop ?? viewportScrollTopRef.current
+    afterContentAnchorRef.current = element && isNearBottom(element)
+      ? { kind: 'bottom' }
+      : { kind: 'position', scrollTop: element?.scrollTop ?? viewportScrollTopRef.current ?? 0 }
     afterContentInteractionRef.current = true
     unlockFromBottom()
-  }, [currentScrollerElement, unlockFromBottom])
+  }, [currentScrollerElement, isNearBottom, unlockFromBottom])
 
   const releaseBottomLock = useCallback(() => {
-    if (!afterContentInteractionRef.current) {
-      const element = currentScrollerElement()
-      afterContentScrollTopRef.current = element?.scrollTop ?? viewportScrollTopRef.current
-    }
-    afterContentInteractionRef.current = true
-    unlockFromBottom()
-  }, [currentScrollerElement, unlockFromBottom])
+    if (!afterContentInteractionRef.current) beginAfterContentInteraction()
+  }, [beginAfterContentInteraction])
 
   const restoreAfterContentScrollPosition = useCallback(() => {
-    const targetScrollTop = afterContentScrollTopRef.current
-    if (!afterContentInteractionRef.current || targetScrollTop === null) return
+    const anchor = afterContentAnchorRef.current
+    if (!afterContentInteractionRef.current || !anchor || !visibleRef.current) return
     const element = currentScrollerElement()
     if (!element) return
-    element.scrollTop = Math.max(0, Math.min(targetScrollTop, element.scrollHeight - element.clientHeight))
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+    element.scrollTop = anchor.kind === 'bottom' ? maxScrollTop : Math.min(anchor.scrollTop, maxScrollTop)
     viewportScrollTopRef.current = element.scrollTop
     updateAwayFromBottom(element)
   }, [currentScrollerElement, updateAwayFromBottom])
@@ -299,14 +299,11 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
   }, [resetAfterContentInteraction, unlockFromBottom])
 
   const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (isAfterContentEventTarget(event.target)) {
-      pointerGestureYRef.current = null
-      return
-    }
-    resetAfterContentInteraction()
     pointerGestureYRef.current = event.pointerType === 'touch' || event.pointerType === 'pen'
       ? event.clientY
       : null
+    if (isAfterContentEventTarget(event.target)) return
+    resetAfterContentInteraction()
     // Wheel/keyboard handlers carry directional intent. A pointer event whose
     // target is the scroller itself covers scrollbar dragging without treating
     // layout-driven scroll events as user input.
@@ -319,8 +316,9 @@ export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCou
     pointerGestureYRef.current = event.clientY
     // Moving a touch pointer down scrolls the content upward. Use the gesture
     // direction instead of scrollTop deltas, which also change during layout.
+    if (Math.abs(event.clientY - previousY) > 1) resetAfterContentInteraction()
     if (event.clientY > previousY + 1) unlockFromBottom()
-  }, [unlockFromBottom])
+  }, [resetAfterContentInteraction, unlockFromBottom])
 
   const onPointerEnd = useCallback(() => {
     pointerGestureYRef.current = null

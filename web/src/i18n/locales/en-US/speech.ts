@@ -10,7 +10,7 @@ const speech = {
   'speech.voiceHelp': "Model and voice IDs depend on your provider. Custom IDs are accepted. Preview uses the current form values.",
   'speech.preview': "Preview voice",
   'speech.sample': "As night falls, quiet footsteps approach. Hello, and welcome to this story.",
-  'speech.configure': "Configure speech",
+  'speech.configure': "Configure model",
   'speech.auto': "Read new prose automatically",
   'speech.autoHelp': "Only read newly completed and saved prose. History is never played automatically.",
   'speech.content': "Content to read",

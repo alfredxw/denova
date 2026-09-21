@@ -10,7 +10,7 @@ const speech = {
   'speech.voiceHelp': "模型和声线由服务提供方决定，可直接填写自定义 ID。试听使用当前填写的配置。",
   'speech.preview': "试听",
   'speech.sample': "夜色渐深，远处传来轻轻的脚步声。你好，欢迎来到这个故事。",
-  'speech.configure': "配置语音",
+  'speech.configure': "配置模型",
   'speech.auto': "自动朗读新正文",
   'speech.autoHelp': "只朗读此后完成并保存的新正文，不补播历史。",
   'speech.content': "朗读内容",

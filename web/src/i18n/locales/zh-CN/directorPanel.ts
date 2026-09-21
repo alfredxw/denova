@@ -58,7 +58,7 @@ const directorPanel = {
   'directorPanel.tuning.check.difficulty.1': '提高',
   'directorPanel.tuning.check.difficulty.2': '大幅提高',
   'directorPanel.tuning.image.title': '互动图像',
-  'directorPanel.tuning.image.configure': '配置图像',
+  'directorPanel.tuning.image.configure': '配置模型',
   'directorPanel.tuning.image.automatic': '自动生成',
   'directorPanel.tuning.image.automaticHint': '按回合间隔生成故事画面；关闭后仅手动生成。',
   'directorPanel.tuning.image.interval': '生成间隔（回合）',

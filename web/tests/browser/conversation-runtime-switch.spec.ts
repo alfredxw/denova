@@ -102,6 +102,15 @@ for (const kind of ['writing', 'general', 'game'] as const) {
       await expect(page.getByRole('heading', { name: kind === 'writing' ? '写作 Agent' : kind === 'game' ? '游戏 Agent' : 'General Agent', exact: true })).toBeVisible()
       const runtimeSection = page.locator('[data-agent-configuration-section="runtime"]')
       await expect(runtimeSection.getByRole('combobox', { name: '执行引擎' })).toBeVisible()
+      // A rendered destination is not enough: a stale modal pointer lock makes
+      // the entire page look frozen even though routing has completed.
+      await expect(page.locator('body')).not.toHaveCSS('pointer-events', 'none')
+      const enginePicker = runtimeSection.getByRole('combobox', { name: '执行引擎' })
+      await enginePicker.click()
+      await expect(page.getByRole('option', { name: 'Native', exact: true })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await runtimeSection.getByRole('button', { name: '运行时', exact: true }).click()
+      await expect(enginePicker).toBeHidden()
     })
   }
 }

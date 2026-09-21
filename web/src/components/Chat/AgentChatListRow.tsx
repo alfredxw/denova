@@ -78,7 +78,7 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
         onOpenSubAgentSession={onOpenSubAgentSession}
         onInsertIllustration={onInsertIllustration}
         onReadAloud={onReadAloud}
-        onGenerateInteractiveImage={isStreaming || !mutationsAllowed ? undefined : onGenerateInteractiveImage}
+        onGenerateInteractiveImage={isStreaming ? undefined : onGenerateInteractiveImage}
         generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
         activeSubAgentSessionKey={activeSubAgentSessionKey}
         subAgentPresentation={subAgentPresentation}

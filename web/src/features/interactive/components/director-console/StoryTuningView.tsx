@@ -303,7 +303,7 @@ export function StoryTuningView({
         </ControlSection>
 
         <ControlSection icon={<ImagePlus className="size-4" />} title={t('directorPanel.tuning.image.title')}
-          action={!imageConfigured ? <TuningLinkButton label={t('directorPanel.tuning.image.configure')} onClick={() => requestSettingsSection('image')} /> : undefined}>
+          action={<TuningLinkButton label={t('directorPanel.tuning.image.configure')} onClick={() => requestSettingsSection('image')} />}>
           {imageConfigured && <>
             <TuningRow title={t('directorPanel.tuning.image.automatic')} busy={savingKey === 'image-mode'}>
               <Switch

@@ -103,7 +103,6 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
       <section
         aria-label={t('storyStage.state.current')}
         data-state-panel-mode={panelMode}
-        data-nova-chat-after-content-height-scope={panelMode}
         className="story-state-ledger mt-3 overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
       >
         <header className="flex h-10 min-w-0 items-center gap-2 px-2.5">
@@ -309,7 +308,7 @@ function StateEntityPanels({
           <motion.div
             initial={false}
             animate={{ opacity: selectedTab === ledger.id ? 1 : 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.18, ease: novaEase }}
+            transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
           >
             <ActorLedgerBody
               ledger={ledger}
@@ -325,7 +324,7 @@ function StateEntityPanels({
           <motion.div
             initial={false}
             animate={{ opacity: selectedTab === WORLD_STATE_TAB ? 1 : 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.18, ease: novaEase }}
+            transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
           >
             <WorldLedgerBody
               ledger={worldLedger}
@@ -516,20 +515,23 @@ function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGro
   )
 }
 
-/** Keep content mounted while animating its natural height; closed content cannot receive focus. */
+/**
+ * Animate intrinsic content with grid tracks so opening and closing share the same
+ * path without temporarily expanding to measure an auto height in the virtualized list.
+ */
 function StateReveal({ open, children, className }: { open: boolean; children: ReactNode; className?: string }) {
   const reducedMotion = useReducedMotionConfig()
   return (
     <motion.div
       initial={false}
-      animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
-      transition={{ duration: reducedMotion ? 0 : 0.22, ease: novaEase }}
+      animate={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
+      transition={{ type: 'tween', duration: reducedMotion ? 0 : 0.16, ease: novaEase }}
       aria-hidden={!open}
       inert={!open}
       className={className}
-      style={{ overflow: 'hidden' }}
+      style={{ display: 'grid' }}
     >
-      {children}
+      <div className="min-h-0 overflow-hidden">{children}</div>
     </motion.div>
   )
 }
