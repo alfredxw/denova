@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { motion, useReducedMotionConfig } from 'motion/react'
 import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, Gauge, Globe2, LayoutDashboard, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { novaEase } from '@/features/motion/motion-tokens'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -156,22 +158,24 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
         </header>
 
         {isMobile && collapsed && model.changes.length > 0 ? <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} /> : null}
-        <CollapsibleContent>
-          {model.changes.length > 0 ? (
-            <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} />
-          ) : null}
-          <StateEntityPanels
-            actorLedgers={actorLedgers}
-            actorTabs={actorTabs}
-            worldLedger={worldLedger}
-            showWorld={hasWorldFacts}
-            selectedTab={selectedTab}
-            layouts={layouts}
-            panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
-            onSelectedTabChange={setSelectedTab}
-            onPanelModeChange={setPanelMode}
-          />
-          <ActorArchiveList entries={model.archivedActors} />
+        <CollapsibleContent forceMount>
+          <StateReveal open={!collapsed}>
+            {model.changes.length > 0 ? (
+              <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} />
+            ) : null}
+            <StateEntityPanels
+              actorLedgers={actorLedgers}
+              actorTabs={actorTabs}
+              worldLedger={worldLedger}
+              showWorld={hasWorldFacts}
+              selectedTab={selectedTab}
+              layouts={layouts}
+              panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+              onSelectedTabChange={setSelectedTab}
+              onPanelModeChange={setPanelMode}
+            />
+            <ActorArchiveList entries={model.archivedActors} />
+          </StateReveal>
         </CollapsibleContent>
         {selectedLedger ? (
           <StateLayoutEditor
@@ -294,6 +298,7 @@ function StateEntityPanels({
   onSelectedTabChange: (tab: string) => void
   onPanelModeChange: (mode: StoryStatePanelMode) => void
 }) {
+  const reducedMotion = useReducedMotionConfig()
   if (actorLedgers.length === 0 && !showWorld) return null
 
   return (
@@ -301,22 +306,34 @@ function StateEntityPanels({
       <StateEntityTabs actors={actorTabs} showWorld={showWorld} />
       {actorLedgers.map((ledger) => (
         <TabsContent key={ledger.id} value={ledger.id} forceMount hidden={selectedTab !== ledger.id} className="mt-0">
-          <ActorLedgerBody
-            ledger={ledger}
-            layout={layouts[ledger.templateId]}
-            panelMode={panelMode}
-            onPanelModeChange={onPanelModeChange}
-          />
+          <motion.div
+            initial={false}
+            animate={{ opacity: selectedTab === ledger.id ? 1 : 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.18, ease: novaEase }}
+          >
+            <ActorLedgerBody
+              ledger={ledger}
+              layout={layouts[ledger.templateId]}
+              panelMode={panelMode}
+              onPanelModeChange={onPanelModeChange}
+            />
+          </motion.div>
         </TabsContent>
       ))}
       {showWorld ? (
         <TabsContent value={WORLD_STATE_TAB} forceMount hidden={selectedTab !== WORLD_STATE_TAB} className="mt-0">
-          <WorldLedgerBody
-            ledger={worldLedger}
-            layout={layouts[worldLedger.templateId]}
-            panelMode={panelMode}
-            onPanelModeChange={onPanelModeChange}
-          />
+          <motion.div
+            initial={false}
+            animate={{ opacity: selectedTab === WORLD_STATE_TAB ? 1 : 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.18, ease: novaEase }}
+          >
+            <WorldLedgerBody
+              ledger={worldLedger}
+              layout={layouts[worldLedger.templateId]}
+              panelMode={panelMode}
+              onPanelModeChange={onPanelModeChange}
+            />
+          </motion.div>
         </TabsContent>
       ) : null}
     </Tabs>
@@ -461,13 +478,20 @@ function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGro
   // Keep the already-visible preview sections anchored in place. Sections
   // revealed by the user's action append after them even when their schema
   // order originally placed them above the preview set.
-  const visibleGroups = expanded ? [...preview, ...hidden] : preview
   const decorated = groups.length > 1
   return (
     <div className="story-state-ledger__sections">
-      {visibleGroups.map((group) => (
+      {preview.map((group) => (
         <LedgerSectionBlock key={group.key} group={group} decorated={decorated} />
       ))}
+      {hidden.length > 0 ? (
+        // Offset the extra flex gap while closed; include group spacing in the animated height.
+        <StateReveal open={expanded} className="-my-1">
+          <div className="flex flex-col gap-2 py-1">
+            {hidden.map((group) => <LedgerSectionBlock key={group.key} group={group} decorated={decorated} />)}
+          </div>
+        </StateReveal>
+      ) : null}
       {!expanded && hidden.length > 0 ? (
         <button
           type="button"
@@ -489,6 +513,24 @@ function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGro
         </button>
       ) : null}
     </div>
+  )
+}
+
+/** Keep content mounted while animating its natural height; closed content cannot receive focus. */
+function StateReveal({ open, children, className }: { open: boolean; children: ReactNode; className?: string }) {
+  const reducedMotion = useReducedMotionConfig()
+  return (
+    <motion.div
+      initial={false}
+      animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
+      transition={{ duration: reducedMotion ? 0 : 0.22, ease: novaEase }}
+      aria-hidden={!open}
+      inert={!open}
+      className={className}
+      style={{ overflow: 'hidden' }}
+    >
+      {children}
+    </motion.div>
   )
 }
 

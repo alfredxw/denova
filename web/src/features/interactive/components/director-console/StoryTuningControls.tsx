@@ -27,7 +27,7 @@ export function ControlSection({
         <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{title}</h3>
         {action ? <div className="director-control-section__action shrink-0">{action}</div> : null}
       </header>
-      <FieldGroup className="gap-0 border-t border-border">{children}</FieldGroup>
+      {children ? <FieldGroup className="gap-0 border-t border-border">{children}</FieldGroup> : null}
     </section>
   )
 }

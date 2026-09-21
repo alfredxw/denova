@@ -1,4 +1,5 @@
 import { useStorySpeech } from '../use-story-speech'
+import { useImageModelConfigured } from '@/features/settings/use-image-model-configured'
 import { SpeechPlayback } from '@/features/speech/SpeechPlayback'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -49,6 +50,7 @@ const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
 export function StoryStage({ active = true, projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], planningTemplates = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
+  const imageConfigured = useImageModelConfigured(projectId)
   const [creatingStory, setCreatingStory] = useState(false)
   const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
     mode: 'interactive', project_id: projectId, story_id: storyId,
@@ -702,11 +704,11 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                 onCreateBranch={onRequestCreateBranch ? startCreatingBranchFromView : undefined}
                 onRegenerateMessage={regenerateView}
                 onSwitchMessageVersion={switchViewVersion}
-                onReadAloud={(view) => {
+                onReadAloud={speech.configured ? (view) => {
                   const turn = turnsById.get(view.metadata.turn_id || '')
                   if (turn) speech.read(turn)
-                }}
-                onGenerateInteractiveImage={generateImageForView}
+                } : undefined}
+                onGenerateInteractiveImage={imageConfigured ? generateImageForView : undefined}
                 generatingInteractiveImageTurnId={storyImages.generatingTurnId || undefined}
                 onOpenSubAgentSession={openSubAgentSession}
                 activeRunId={stageRun.runtime.operationId}

@@ -28,7 +28,7 @@ for (const theme of ['dark', 'light']) {
     const endpoint = `http://127.0.0.1:${address.port}/custom/audio/speech`
     const original = await (await request.get('/api/settings', { maxRetries: 2 })).json()
     try {
-      await request.patch('/api/settings', { data: { layer: 'user', base_revision: original.revisions.user, changes: { speech: null, theme, language: 'zh-CN' } } })
+      await request.patch('/api/settings', { data: { layer: 'user', base_revision: original.revisions.user, changes: { speech: null, image_api_endpoints: [], image_api_profiles: [], default_image_api_profile_id: null, theme, language: 'zh-CN' } } })
       await createAndOpenBook(request, `Speech ${theme}`)
       const story = await createStartedStory(request, '朗读验收故事')
       const snapshot = await (await request.get(`/api/interactive/stories/${story.id}/snapshot?branch=main`)).json()
@@ -42,7 +42,28 @@ for (const theme of ['dark', 'light']) {
       await page.getByRole('tab', { name: '控制', exact: true }).click()
       const titles = await page.locator('.director-console__scroll h3').allTextContents()
       expect(titles.indexOf('语音朗读')).toBe(titles.indexOf('互动图像') + 1)
-      await expect(page.getByRole('switch', { name: '自动朗读新正文', exact: true })).not.toBeChecked()
+      await expect(page.getByRole('switch', { name: '自动朗读新正文', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '朗读正文', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('switch', { name: '自动生成', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '生成互动图像', exact: true })).toHaveCount(0)
+      await page.getByRole('button', { name: '配置图像', exact: true }).scrollIntoViewIfNeeded()
+      await page.screenshot({ path: test.info().outputPath(`unconfigured-media-${theme}.png`) })
+      await page.getByRole('button', { name: '配置图像', exact: true }).click()
+      await expect(page.getByRole('button', { name: '公共配置图像模型', exact: true })).toBeVisible()
+      await sidebar.getByRole('button', { name: '游戏', exact: true }).click()
+      const beforeImage = await (await request.get('/api/settings')).json()
+      const configuredImage = await request.patch('/api/settings', { data: {
+        layer: 'user', base_revision: beforeImage.revisions.user,
+        changes: {
+          default_image_api_profile_id: 'local-image',
+          image_api_endpoints: [{ id: 'local-image', provider: 'custom', base_url: 'http://127.0.0.1:8000/v1', protocol: 'openai-images' }],
+          image_api_profiles: [{ id: 'local-image', endpoint_id: 'local-image', model: 'test-image' }],
+        },
+      } })
+      expect(configuredImage.ok(), await configuredImage.text()).toBe(true)
+      await page.reload()
+      await expect(page.getByRole('switch', { name: '自动生成', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: '生成互动图像', exact: true })).toHaveCount(1)
       await page.getByRole('button', { name: '配置语音', exact: true }).click()
       await page.getByLabel('语音接口地址', { exact: true }).fill(endpoint)
       await page.getByLabel('语音模型 ID', { exact: true }).fill('custom-tts')
@@ -122,7 +143,7 @@ for (const theme of ['dark', 'light']) {
       }
     } finally {
       const latest = await (await request.get('/api/settings', { maxRetries: 2 })).json()
-      await request.patch('/api/settings', { data: { layer: 'user', base_revision: latest.revisions.user, changes: { speech: original.user.speech ?? null, theme: original.user.theme ?? null, language: original.user.language ?? null } } })
+      await request.patch('/api/settings', { data: { layer: 'user', base_revision: latest.revisions.user, changes: { speech: original.user.speech ?? null, image_api_endpoints: original.user.image_api_endpoints ?? null, image_api_profiles: original.user.image_api_profiles ?? null, default_image_api_profile_id: original.user.default_image_api_profile_id ?? null, theme: original.user.theme ?? null, language: original.user.language ?? null } } })
       server.closeAllConnections()
       await new Promise<void>(resolve => server.close(() => resolve()))
     }

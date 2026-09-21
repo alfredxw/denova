@@ -516,6 +516,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                   onMobileConsoleOpenChange={setMobileSnapshotOpen}
                   story={storyStage}
                   console={<DirectorPanel
+                      projectId={projectId}
                       storyId={currentStoryId}
                       story={currentStory}
                       planningTemplates={planningTemplates}

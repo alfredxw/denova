@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { useSpeechSettings } from '@/features/speech/hooks'
-import { speechPlayer } from '@/features/speech/player'
+import { speechConfigError, speechPlayer } from '@/features/speech/player'
 import { speechText } from '@/features/speech/text'
 import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary, TurnEvent } from './types'
 import { sanitizeStoredNarrative } from './stream-parser'
@@ -47,5 +47,5 @@ export function useStorySpeech({ owner, story, snapshot, active }: { owner: stri
     seen.current.add(event.turn.id)
     if (!options?.replayed && current.active && current.story?.speech_settings?.auto_read) read(event.turn, true)
   }, [read, snapshot?.branch_id])
-  return { read, onPersisted, stop: () => speechPlayer.stopOwner(owner) }
+  return { configured: !speechConfigError(settings), read, onPersisted, stop: () => speechPlayer.stopOwner(owner) }
 }

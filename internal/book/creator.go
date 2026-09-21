@@ -25,9 +25,6 @@ func ensureCreatorTemplate(workspace string) error {
 		// A digest identifies the released template without retaining its retired
 		// instructions in the executable. Release fixtures live only in testdata.
 		if revisionfile.Revision(canonical) != "sha256:f7751f17a30b5819fc0ed2d88345dddb4e3af53ce808ef70617041666f3eaf04" {
-			if bytes.Contains(canonical, []byte("#main rule#")) {
-				slog.Warn("Preserved customized CREATOR.md with a legacy template marker; review creative instructions manually", "path", path)
-			}
 			return current.Content, nil
 		}
 		_, err := revisionfile.Mutate(context.Background(), backupPath, revisionfile.Options{FileMode: 0o600}, func(backup revisionfile.Snapshot) ([]byte, error) {
