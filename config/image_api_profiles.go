@@ -15,6 +15,7 @@ const (
 	ImageProviderComfyUI    = "comfyui"
 	ImageProviderVolcengine = "volcengine"
 	ImageProviderGoogle     = "google"
+	ImageProviderAgnes      = "agnes"
 	ImageProviderCustom     = "custom"
 
 	ImageProtocolOpenAI  = "openai-images"
@@ -22,6 +23,7 @@ const (
 	ImageProtocolComfyUI = "comfyui-workflow"
 	ImageProtocolArk     = "ark-images"
 	ImageProtocolGemini  = "gemini-images"
+	ImageProtocolAgnes   = "agnes-images"
 
 	DefaultImageAPIProvider = ImageProviderOpenAI
 	DefaultImageAPIProtocol = ImageProtocolOpenAI

@@ -28,6 +28,7 @@ func NewService() *Service {
 		config.ImageProtocolXAI:     NewXAIAdapter(nil),
 		config.ImageProtocolArk:     NewArkAdapter(nil),
 		config.ImageProtocolGemini:  NewGeminiAdapter(nil),
+		config.ImageProtocolAgnes:   NewAgnesAdapter(nil),
 		config.ImageProtocolComfyUI: NewComfyUIAdapter(nil),
 	}}
 }

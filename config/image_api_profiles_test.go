@@ -73,6 +73,40 @@ func TestResolveImageProfileDraftUsesEditedEndpoint(t *testing.T) {
 	}
 }
 
+func TestResolveAgnesImageProfileDefaults(t *testing.T) {
+	cfg := &Config{
+		ImageAPIEndpoints: []ImageAPIEndpointSettings{{
+			ID: "agnes", Provider: ImageProviderAgnes, APIKey: "agnes-key",
+		}},
+		ImageAPIProfiles: []ImageAPIProfileSettings{
+			{ID: "agnes", EndpointID: "agnes"},
+		},
+	}
+
+	resolved, err := ResolveImageAPIProfile(cfg, "agnes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Protocol != ImageProtocolAgnes {
+		t.Fatalf("protocol = %q", resolved.Protocol)
+	}
+	if resolved.BaseURL != "https://apihub.agnes-ai.com/v1" || resolved.Model != "agnes-image-2.5-flash" {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	if resolved.Size != "2K" {
+		t.Fatalf("size = %q", resolved.Size)
+	}
+	// The Agnes queue rejects OpenAI-only fields, so defaults must stay empty.
+	if resolved.Quality != "" || resolved.OutputFormat != "" {
+		t.Fatalf("quality=%q output_format=%q, want both empty", resolved.Quality, resolved.OutputFormat)
+	}
+
+	cfg.ImageAPIEndpoints[0].APIKey = ""
+	if _, err := ResolveImageAPIProfile(cfg, "agnes"); !errors.Is(err, ErrImageAPIKeyMissing) {
+		t.Fatalf("missing key err = %v", err)
+	}
+}
+
 func TestResolveDiscoveredComfyUIWorkflowPreservesBindings(t *testing.T) {
 	cfg := &Config{
 		DefaultImageAPIProfileID: "comfy",

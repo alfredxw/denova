@@ -12,10 +12,11 @@ export const IMAGE_API_PROTOCOLS = [
   'xai-images',
   'ark-images',
   'gemini-images',
+  'agnes-images',
   'comfyui-workflow',
 ] as const
 
-export type ImageAPIProvider = 'openai' | 'xai' | 'comfyui' | 'volcengine' | 'google' | 'custom'
+export type ImageAPIProvider = 'openai' | 'xai' | 'comfyui' | 'volcengine' | 'google' | 'agnes' | 'custom'
 
 const ENDPOINT_DEFAULTS: Record<ImageAPIProvider, ImageAPIEndpointSettings> = {
   openai: { provider: 'openai', protocol: 'openai-images', base_url: DEFAULT_IMAGE_API_BASE_URL },
@@ -23,6 +24,7 @@ const ENDPOINT_DEFAULTS: Record<ImageAPIProvider, ImageAPIEndpointSettings> = {
   comfyui: { provider: 'comfyui', protocol: 'comfyui-workflow', base_url: 'http://127.0.0.1:8188' },
   volcengine: { provider: 'volcengine', protocol: 'ark-images', base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
   google: { provider: 'google', protocol: 'gemini-images', base_url: 'https://generativelanguage.googleapis.com/v1' },
+  agnes: { provider: 'agnes', protocol: 'agnes-images', base_url: 'https://apihub.agnes-ai.com/v1' },
   custom: { provider: 'custom', protocol: 'openai-images' },
 }
 
@@ -32,11 +34,12 @@ const PROFILE_DEFAULTS: Record<ImageAPIProvider, ImageAPIProfileSettings> = {
   comfyui: { default_size: '1024x1024', comfyui: { workflow_mode: 'remote' } },
   volcengine: { model: 'doubao-seedream-5-0-260128', default_resolution: '2K', default_output_format: 'png' },
   google: { model: 'gemini-3.1-flash-image', default_resolution: '1K' },
+  agnes: { model: 'agnes-image-2.5-flash', default_size: '2K' },
   custom: {},
 }
 
 export function imageAPIProvider(value?: string): ImageAPIProvider {
-  return value === 'xai' || value === 'comfyui' || value === 'volcengine' || value === 'google' || value === 'custom'
+  return value === 'xai' || value === 'comfyui' || value === 'volcengine' || value === 'google' || value === 'agnes' || value === 'custom'
     ? value
     : 'openai'
 }

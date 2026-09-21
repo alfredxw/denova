@@ -6,7 +6,7 @@ func normalizeImageAPIProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "", ImageProviderOpenAI:
 		return ImageProviderOpenAI
-	case ImageProviderXAI, ImageProviderComfyUI, ImageProviderVolcengine, ImageProviderGoogle, ImageProviderCustom:
+	case ImageProviderXAI, ImageProviderComfyUI, ImageProviderVolcengine, ImageProviderGoogle, ImageProviderAgnes, ImageProviderCustom:
 		return strings.ToLower(strings.TrimSpace(provider))
 	default:
 		return ""
@@ -19,7 +19,7 @@ func normalizeImageAPIProtocol(protocol string) string {
 
 func isSupportedImageAPIProtocol(protocol string) bool {
 	switch normalizeImageAPIProtocol(protocol) {
-	case ImageProtocolOpenAI, ImageProtocolXAI, ImageProtocolComfyUI, ImageProtocolArk, ImageProtocolGemini:
+	case ImageProtocolOpenAI, ImageProtocolXAI, ImageProtocolComfyUI, ImageProtocolArk, ImageProtocolGemini, ImageProtocolAgnes:
 		return true
 	default:
 		return false
@@ -38,6 +38,8 @@ func imageDefaultsForProvider(provider string) (imageProviderDefaults, bool) {
 		return imageProviderDefaults{Protocol: ImageProtocolArk, BaseURL: "https://ark.cn-beijing.volces.com/api/v3", Model: "doubao-seedream-5-0-260128", Resolution: "2K", OutputFormat: "png"}, true
 	case ImageProviderGoogle:
 		return imageProviderDefaults{Protocol: ImageProtocolGemini, BaseURL: "https://generativelanguage.googleapis.com/v1", Model: "gemini-3.1-flash-image", Resolution: "1K"}, true
+	case ImageProviderAgnes:
+		return imageProviderDefaults{Protocol: ImageProtocolAgnes, BaseURL: "https://apihub.agnes-ai.com/v1", Model: "agnes-image-2.5-flash", Size: "2K"}, true
 	case ImageProviderCustom:
 		return imageProviderDefaults{Protocol: ImageProtocolOpenAI}, true
 	default:
@@ -47,7 +49,7 @@ func imageDefaultsForProvider(provider string) (imageProviderDefaults, bool) {
 
 func imageProviderRequiresAPIKey(provider string) bool {
 	switch normalizeImageAPIProvider(provider) {
-	case ImageProviderOpenAI, ImageProviderXAI, ImageProviderVolcengine, ImageProviderGoogle:
+	case ImageProviderOpenAI, ImageProviderXAI, ImageProviderVolcengine, ImageProviderGoogle, ImageProviderAgnes:
 		return true
 	default:
 		return false

@@ -39,7 +39,9 @@ const GEMINI_ASPECT_RATIO_OPTIONS = ['1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '
 const XAI_RESOLUTION_OPTIONS = ['1k', '2k']
 const GEMINI_RESOLUTION_OPTIONS = ['512', '1K', '2K', '4K']
 const ARK_RESOLUTION_OPTIONS = ['1K', '2K', '4K']
-const IMAGE_PROVIDERS: ImageAPIProvider[] = ['openai', 'xai', 'comfyui', 'volcengine', 'google', 'custom']
+const AGNES_SIZE_OPTIONS = ['1K', '2K', '3K', '4K']
+const AGNES_ASPECT_RATIO_OPTIONS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9']
+const IMAGE_PROVIDERS: ImageAPIProvider[] = ['openai', 'xai', 'comfyui', 'volcengine', 'google', 'agnes', 'custom']
 
 interface ImageAPIProfilesEditorProps {
   endpoints: ImageAPIEndpointSettings[]
@@ -269,6 +271,7 @@ function ProtocolOptions({ protocol, profile, defaults, onUpdate }: { protocol: 
           <Input value={profile.default_size ?? ''} placeholder={defaults.default_size || t('settings.imageApi.providerDefault')} onChange={(event) => onUpdate({ default_size: event.target.value })} />
         </ProfileField>
       )}
+      {protocol === 'agnes-images' && <OptionSelect label={t('settings.imageApi.defaultSize')} value={profile.default_size ?? ''} options={AGNES_SIZE_OPTIONS} onChange={(value) => onUpdate({ default_size: value })} />}
       {aspectRatioOptions && <OptionSelect label={t('settings.imageApi.defaultAspectRatio')} value={profile.default_aspect_ratio ?? ''} options={aspectRatioOptions} onChange={(value) => onUpdate({ default_aspect_ratio: value })} />}
       {resolutionOptions && <OptionSelect label={t('settings.imageApi.defaultResolution')} value={profile.default_resolution ?? ''} options={resolutionOptions} onChange={(value) => onUpdate({ default_resolution: value })} />}
       {qualityOptions && <OptionSelect label={t('settings.imageApi.defaultQuality')} value={profile.default_quality ?? ''} options={qualityOptions} onChange={(value) => onUpdate({ default_quality: value })} />}
@@ -296,6 +299,8 @@ function protocolOptionLists(protocol: string): {
       }
     case 'ark-images':
       return { resolutionOptions: ARK_RESOLUTION_OPTIONS }
+    case 'agnes-images':
+      return { aspectRatioOptions: AGNES_ASPECT_RATIO_OPTIONS }
     case 'openai-images':
       return { qualityOptions: OPENAI_QUALITY_OPTIONS }
     case 'comfyui-workflow':
@@ -370,6 +375,7 @@ function providerLabel(provider: ImageAPIProvider, t: (key: string) => string): 
     case 'comfyui': return 'ComfyUI'
     case 'volcengine': return t('settings.imageApi.providerVolcengine')
     case 'google': return 'Google Gemini'
+    case 'agnes': return 'Agnes'
     case 'custom': return t('settings.imageApi.providerCustom')
   }
 }
@@ -380,6 +386,7 @@ function protocolLabel(protocol: string, t: (key: string) => string): string {
     case 'xai-images': return 'xAI Images API'
     case 'ark-images': return t('settings.imageApi.protocolArk')
     case 'gemini-images': return 'Gemini generateContent'
+    case 'agnes-images': return 'Agnes Images API'
     case 'comfyui-workflow': return 'ComfyUI Workflow API'
     default: return protocol
   }

@@ -14,6 +14,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- 图像模型新增内置 Agnes 提供方（agnes-image-2.5-flash），按 Agnes Images API 的尺寸档位与宽高比出图；该接口不再发送其不支持的 `output_format`、`quality` 等 OpenAI 专有参数。
+- Image models now include a built-in Agnes provider (agnes-image-2.5-flash) using the Agnes Images API size tiers and aspect ratios; OpenAI-only fields such as `output_format` and `quality`, which that API rejects, are no longer sent.
+
 - 写作、General 及对应自定义 Agent 可在 Agents 页选择 Native、Codex 或 Claude Code 执行引擎，分别保留专属配置；外部引擎可复用本机登录或选择 Denova 中兼容的 API 模型，无需修改 CLI 配置，支持提问、领域工具和会话历史续接。
 - Writing, General, and their custom Agents can select Native, Codex, or Claude Code on the Agents page and retain separate engine settings. External engines can use local sign-in or compatible API models configured in Denova without editing CLI configuration, while supporting questions, domain tools, and conversation history.
 
