@@ -1,4 +1,6 @@
 const agentRuntime = {
+  'agentRuntime.configure': "Configure",
+  'agentRuntime.checking': "Checking availability…",
   'agentRuntime.apiProfileHint': "Uses the API connection from the Denova model profile without CLI sign-in. The engine manages sampling and reasoning; profile temperature, output limit and context window settings do not apply.",
   'agentRuntime.cliConnection': "CLI account status",
   'agentRuntime.cliModels': "CLI models",
@@ -30,7 +32,7 @@ const agentRuntime = {
   'agentRuntime.native': "Native",
   'agentRuntime.nativeOnly': "This Agent uses the Native runtime.",
   'agentRuntime.codex': "Codex",
-  'agentRuntime.defaultsOnly': "These are defaults for new conversations. Switch an existing conversation from the options menu on the left of its composer.",
+  'agentRuntime.defaultsOnly': "These defaults apply to new conversations. Switch existing conversations from the model menu in the composer.",
   'agentRuntime.check': "Check connection",
   'agentRuntime.connection': "Connection status",
   'agentRuntime.sharedCodexHome': "Uses the Codex configuration, credentials and proxy settings on the computer running Denova.",

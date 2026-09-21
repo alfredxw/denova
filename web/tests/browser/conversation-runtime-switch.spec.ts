@@ -53,6 +53,9 @@ for (const kind of ['writing', 'general', 'game'] as const) {
         await route.fulfill({ json: snapshot })
       })
       await page.route('**/api/agent-runtimes/*/models', route => route.fulfill({ json: { default_id: 'test-external', items: [{ id: 'test-external', display_name: `External model ${'long label '.repeat(12)}`, efforts: ['medium'] }] } }))
+      const statuses: Record<string, string> = { native: 'ready', codex: 'ready', claude: 'ready' }
+      await page.route('**/api/agent-runtimes/codex/check', route => { statuses.codex = 'ready'; return route.fulfill({ json: { id: 'codex', status: 'ready' } }) })
+      await page.route('**/api/agent-runtimes', route => route.fulfill({ json: { items: ['native', 'codex', 'claude'].map(id => ({ id, name_key: `agentRuntime.${id}`, status: statuses[id] })) } }))
       await page.goto('/')
       if (kind === 'writing') await openWritingAgent(page)
       else if (kind === 'general') { await openAgentChatWorkbench(page); await openAgentChatSession(page, projectId, 'Runtime switching') }
@@ -66,6 +69,23 @@ for (const kind of ['writing', 'general', 'game'] as const) {
       await expect(trigger).toBeEnabled()
       await editor.fill('Keep this draft / 保留这段草稿')
       await expect(page.locator('[data-action="send"]').filter({ visible: true })).toBeEnabled()
+      if (kind === 'writing' && theme === 'dark') {
+        statuses.codex = 'unchecked'
+        statuses.claude = 'not_installed'
+        await page.setViewportSize({ width: 390, height: 960 })
+        await page.getByRole('tab', { name: 'Agent', exact: true }).click()
+        await trigger.click()
+        await page.getByRole('menuitem', { name: '运行时：Native', exact: true }).click()
+        await expect(page.getByRole('menuitem', { name: 'Claude Code', exact: true })).toBeDisabled()
+        await expect(page.getByText('未安装', { exact: true })).toBeVisible()
+        await page.screenshot({ path: test.info().outputPath('unavailable-runtime.png'), animations: 'disabled' })
+        await page.getByRole('menuitem', { name: 'Codex', exact: true }).click()
+        await expect(page.getByText('尚未检查', { exact: true })).toHaveCount(0)
+        expect(switches).toEqual([])
+        await page.keyboard.press('Escape')
+        await page.keyboard.press('Escape')
+        statuses.claude = 'ready'
+      }
       for (const [engine, previous, width] of [['Codex', 'Native', 1440], ['Claude Code', 'Codex', 390], ['Native', 'Claude Code', 390]] as const) {
         await page.setViewportSize({ width, height: 960 })
         if (kind === 'writing' && width === 390) await page.getByRole('tab', { name: 'Agent', exact: true }).click()
@@ -75,10 +95,7 @@ for (const kind of ['writing', 'general', 'game'] as const) {
         await expect(page.getByText('切换运行时', { exact: true })).toHaveCount(0)
         expect((await runtimeLink.locator('span').boundingBox())?.height).toBeLessThan(30)
         await page.screenshot({ path: test.info().outputPath(`${kind}-${theme}-${width}-model-menu.png`), animations: 'disabled' })
-        await page.mouse.click(1, 1)
-        await expect(runtimeLink).toBeHidden()
-        await page.getByRole('button', { name: '输入动作', exact: true }).filter({ visible: true }).click()
-        await page.getByRole('menuitem', { name: /切换运行时/ }).click()
+        await runtimeLink.click()
         const option = page.getByRole('menuitem', { name: engine, exact: true })
         await expect(option).toBeVisible()
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -88,9 +105,11 @@ for (const kind of ['writing', 'general', 'game'] as const) {
         }).toBe(true)
         await page.screenshot({ path: test.info().outputPath(`${kind}-${theme}-${width}-${engine}.png`), animations: 'disabled' })
         await option.click()
-        await expect(page.locator('[data-slot="dropdown-menu-content"]')).toHaveCount(0)
+        await expect(page.getByRole('menuitem', { name: `运行时：${engine}`, exact: true })).toBeVisible()
+        await page.keyboard.press('Escape')
         await expect(editor).toHaveText('Keep this draft / 保留这段草稿')
         await page.getByRole('button', { name: '输入动作', exact: true }).filter({ visible: true }).click()
+        await expect(page.getByText('切换运行时', { exact: true })).toHaveCount(0)
         await expect(page.getByRole('menuitem', { name: '上下文分析', exact: true })).toHaveCount(engine === 'Native' ? 1 : 0)
         await expect(page.getByRole('menuitemcheckbox', { name: '目标', exact: true })).toHaveCount(kind === 'game' ? 0 : 1)
         await page.keyboard.press('Escape')
@@ -98,7 +117,7 @@ for (const kind of ['writing', 'general', 'game'] as const) {
       expect(switches).toEqual(['codex', 'claude', 'native'])
       expect(gameGoalRequests).toEqual([])
       await trigger.click()
-      await page.getByRole('menuitem', { name: '运行时：Native', exact: true }).click()
+      await page.getByRole('menuitem', { name: '配置', exact: true }).click()
       await expect(page.getByRole('heading', { name: kind === 'writing' ? '写作 Agent' : kind === 'game' ? '游戏 Agent' : 'General Agent', exact: true })).toBeVisible()
       const runtimeSection = page.locator('[data-agent-configuration-section="runtime"]')
       await expect(runtimeSection.getByRole('combobox', { name: '执行引擎' })).toBeVisible()

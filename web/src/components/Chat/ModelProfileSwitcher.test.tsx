@@ -39,7 +39,7 @@ describe('ModelProfileSwitcher', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: /切换模型/ })).toBeEnabled())
       await userEvent.click(screen.getByRole('button', { name: /切换模型/ }))
       expect(screen.queryByText('切换运行时')).not.toBeInTheDocument()
-      await userEvent.click(screen.getByRole('menuitem', { name: '运行时：Native' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: '配置' }))
       await waitFor(() => expect(open).toHaveBeenCalledWith({ kind: 'config_resource', resource: 'agent_profile', id: agentKey, scope: 'user', section: 'runtime' }))
       // Navigation can mount a new overlay; the old modal must release its lock first.
       expect(open.mock.results[0].value).toEqual({ pointerEvents: '', menu: null })
@@ -51,6 +51,22 @@ describe('ModelProfileSwitcher', () => {
       expect(open).toHaveBeenCalledTimes(1)
     })
   }
+  it('keeps runtime configuration accessible when the Native model catalog fails', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    settingsMocks.fetchSettings.mockRejectedValueOnce(new Error('offline'))
+    const open = vi.fn()
+    const controller: ConversationConfigController = {
+      snapshot: { agent_kind: 'ide', profile_id: 'default', thinking_level: 'medium', approval_mode: 'write', revision: 1 },
+      initialized: true, loading: false, saving: false, error: null, patch: vi.fn(), reload: vi.fn(),
+    }
+    try {
+      render(<ToolNavigationProvider value={{ workspace: '', open }}><ModelProfileSwitcher agentKey="ide" conversationConfig={controller} /></ToolNavigationProvider>)
+      await waitFor(() => expect(warning).toHaveBeenCalled())
+      await userEvent.click(screen.getByRole('button', { name: /切换模型/ }))
+      await userEvent.click(screen.getByRole('menuitem', { name: '配置' }))
+      await waitFor(() => expect(open).toHaveBeenCalledWith({ kind: 'config_resource', resource: 'agent_profile', id: 'ide', scope: 'user', section: 'runtime' }))
+    } finally { warning.mockRestore() }
+  })
   it('uses only Denova profiles without requesting CLI models for an API conversation', async () => {
     settingsMocks.fetchEngineModels.mockClear()
     settingsMocks.profiles = [{ id: 'profile:api', label: 'Gateway', modelLabel: 'Gateway' }, { id: 'profile:second', label: 'Second gateway', modelLabel: 'Second gateway' }]

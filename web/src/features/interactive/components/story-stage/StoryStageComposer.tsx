@@ -8,7 +8,6 @@ import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { FileReferencePicker, type FileReferencePickerHandle } from '@/components/Chat/FileReferencePicker'
 import { InputCommandMenu, type IndexedInputCommandOption } from '@/components/Chat/InputCommandMenu'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
-import { ConversationRuntimeMenu } from '@/components/Chat/ConversationRuntimeMenu'
 import { ImageGenerationSettingsMenu } from '@/components/Chat/ImageGenerationSettingsMenu'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
 import { ComposerMenuItem } from '@/components/Chat/ComposerMenuRow'
@@ -286,7 +285,6 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
                       onSelect={attachments.openPicker}
                     />
                   </DropdownMenuGroup>
-                  <ConversationRuntimeMenu controller={conversationConfig} runActive={streaming || Boolean(pendingInterruptionId)} disabled={branchTerminal || !approvalReady} onSwitched={() => setActionsOpen(false)} />
                   <AgentApprovalModeMenu runActive={streaming} presentation="submenu" conversationConfig={conversationConfig} />
                   <ImageGenerationSettingsMenu projectId={projectId} disabled={streaming}>{null}</ImageGenerationSettingsMenu>
                   <DropdownMenuGroup>
@@ -309,7 +307,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
               {attachments.input}
             </>}
             toolbarEnd={<>
-              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={!approvalReady} runActive={streaming || Boolean(pendingInterruptionId)} />
+              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={branchTerminal || !approvalReady} runActive={streaming || Boolean(pendingInterruptionId)} />
               <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{t('storyStage.hotChoices.button')}</Button>
             </>}
             submitControl={<AgentComposerControls generationActive={streaming} hasSendableContent={Boolean(input.trim() || attachments.files.length)} resumeAvailable={resumeAvailable} onStop={() => { void stop() }} onSend={() => { void submit() }} sendDisabled={sendBlocked || !approvalReady || !storyId || (!input.trim() && attachments.files.length === 0 && !resumeAvailable)} disabled={branchTerminal} abortPending={abortPending} actionPending={commandSubmitting} activeControlsDisabled={activeControlsDisabled} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw data-icon="inline-start" /> : undefined} />}

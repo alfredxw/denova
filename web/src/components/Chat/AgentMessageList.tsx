@@ -137,18 +137,22 @@ export function MessageList({ projectId, attachmentScope, messages, projection, 
   // Historical tool cards can retain an interrupted running state. Only this
   // reply can replace the waiting shimmer, including turns without text yet.
   const replyStart = views.findLastIndex(view => view.kind === 'user' || view.kind === 'clear') + 1
-  const hasActiveResponse = views.slice(replyStart).some((view) =>
+  const replyViews = views.slice(replyStart)
+  const hasActiveResponse = replyViews.some((view) =>
     view.kind !== 'user' &&
     !isAgentRunMetadataView(view) &&
     view.kind !== 'clear' &&
     (!activeRunId || !view.metadata.run_id || view.metadata.run_id === activeRunId || view.metadata.subagent) &&
     (view.streaming || view.status === 'running'),
   )
-  // 真实 thinking / tool / 正文行已经承担进度展示；额外 activity 行会重复展示，
-  // 并在内容增高时被底部锁定反复拉动。没有真实输出时则统一使用 Shimmer 填充等待态。
+  // A committed final reply can replace streaming prose before the transport
+  // closes. Do not turn that handoff back into a model-waiting indicator.
+  const hasFinalResponse = replyViews.some(view => view.kind === 'assistant' &&
+    !view.metadata.subagent && (!activeRunId || view.metadata.run_id === activeRunId) &&
+    view.metadata.display_phase === 'final' && agentViewContent(view).trim())
   const visibleActivityContent = hasActiveResponse
     ? ''
-    : activityContent || (isStreaming ? t('chat.activity.thinking') : '')
+    : activityContent || (isStreaming && !hasFinalResponse ? t('chat.activity.thinking') : '')
   const listItems = useMemo(
     () => buildAgentChatListItems({
       views,

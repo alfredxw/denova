@@ -78,6 +78,30 @@ beforeEach(() => {
 })
 
 describe('StoryStage runtime stream lifecycle', () => {
+  it('keeps the waiting indicator hidden after narrative arrives and is persisted before the stream ends', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+    render(<PersistedTurnHarness onDone={vi.fn().mockResolvedValue(undefined)} />)
+    await user.type(getStageInput(), '推门')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('思考中...')).toBeVisible()
+    try {
+      for (const content of ['门外', '有灯', '。']) {
+        await act(async () => { stream.enqueue({ event: 'chunk', data: JSON.stringify({ content }) }) })
+        await waitFor(() => expect(screen.queryByText('思考中...')).not.toBeInTheDocument())
+      }
+      await expectVisibleText('门外有灯。')
+      expect(screen.queryByText('思考中...')).not.toBeInTheDocument()
+      await act(async () => { stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) }) })
+      await expectVisibleText('门外有灯。')
+      expect(screen.queryByText('思考中...')).not.toBeInTheDocument()
+    } finally {
+      await act(async () => { stream.enqueue({ event: 'done', data: '{}' }); stream.close() })
+    }
+  })
+
   it('requires persistence confirmation for the final cycle rather than any earlier cycle', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()

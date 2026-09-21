@@ -252,6 +252,7 @@ function projectNarrativeMessage(
     agent_kind: turn.agent_kind,
     turn_versions: turn.versions,
     turn_version_index: turn.version_idx,
+    display_phase: 'final',
   }
   const message = createAgentTextMessage({
     id,

@@ -1,4 +1,6 @@
 const agentRuntime = {
+  'agentRuntime.configure': "配置",
+  'agentRuntime.checking': "正在检查可用性…",
   'agentRuntime.apiProfileHint': "使用 Denova 模型档案的 API 连接，无需 CLI 账号登录。采样和推理由所选引擎管理，档案中的温度、输出上限与上下文窗口设置不应用。",
   'agentRuntime.cliConnection': "CLI 账号状态",
   'agentRuntime.cliModels': "CLI 模型",
@@ -28,7 +30,7 @@ const agentRuntime = {
   'agentRuntime.native': "Native",
   'agentRuntime.nativeOnly': "此 Agent 使用 Native 运行时。",
   'agentRuntime.codex': "Codex",
-  'agentRuntime.defaultsOnly': "这里设置新会话的默认运行时。已有会话可在输入框左侧的选项菜单中切换。",
+  'agentRuntime.defaultsOnly': "这里设置新会话的默认运行时。已有会话可在输入框的模型菜单中切换。",
   'agentRuntime.check': "检查连接",
   'agentRuntime.connection': "连接状态",
   'agentRuntime.sharedCodexHome': "复用运行 Denova 的电脑上的 Codex 配置、凭据和代理设置。",
