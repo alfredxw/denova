@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { motion, useReducedMotionConfig } from 'motion/react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { animate, motion, useMotionValue, useReducedMotionConfig } from 'motion/react'
 import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, Gauge, Globe2, LayoutDashboard, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -298,43 +298,69 @@ function StateEntityPanels({
   onPanelModeChange: (mode: StoryStatePanelMode) => void
 }) {
   const reducedMotion = useReducedMotionConfig()
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const height = useMotionValue<number | 'auto'>('auto')
+
+  useLayoutEffect(() => {
+    if (height.get() === 'auto' || !contentRef.current) return
+    // Animate real layout height so the chat footer can follow each frame.
+    // Return to intrinsic sizing afterward to avoid nesting height animations
+    // when sections expand, content changes, or the viewport resizes.
+    const controls = animate(height, contentRef.current.getBoundingClientRect().height, {
+      type: 'tween', duration: reducedMotion ? 0 : 0.16, ease: novaEase,
+    })
+    let cancelled = false
+    void controls.then(() => { if (!cancelled) height.set('auto') })
+    return () => { cancelled = true; controls.stop() }
+  }, [selectedTab, reducedMotion, height])
+
+  const selectTab = (tab: string) => {
+    if (tab === selectedTab) return
+    if (viewportRef.current) height.set(viewportRef.current.getBoundingClientRect().height)
+    onSelectedTabChange(tab)
+  }
   if (actorLedgers.length === 0 && !showWorld) return null
 
   return (
-    <Tabs value={selectedTab} onValueChange={onSelectedTabChange} className="gap-0">
+    <Tabs value={selectedTab} onValueChange={selectTab} className="gap-0">
       <StateEntityTabs actors={actorTabs} showWorld={showWorld} />
-      {actorLedgers.map((ledger) => (
-        <TabsContent key={ledger.id} value={ledger.id} forceMount hidden={selectedTab !== ledger.id} className="mt-0">
-          <motion.div
-            initial={false}
-            animate={{ opacity: selectedTab === ledger.id ? 1 : 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
-          >
-            <ActorLedgerBody
-              ledger={ledger}
-              layout={layouts[ledger.templateId]}
-              panelMode={panelMode}
-              onPanelModeChange={onPanelModeChange}
-            />
-          </motion.div>
-        </TabsContent>
-      ))}
-      {showWorld ? (
-        <TabsContent value={WORLD_STATE_TAB} forceMount hidden={selectedTab !== WORLD_STATE_TAB} className="mt-0">
-          <motion.div
-            initial={false}
-            animate={{ opacity: selectedTab === WORLD_STATE_TAB ? 1 : 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
-          >
-            <WorldLedgerBody
-              ledger={worldLedger}
-              layout={layouts[worldLedger.templateId]}
-              panelMode={panelMode}
-              onPanelModeChange={onPanelModeChange}
-            />
-          </motion.div>
-        </TabsContent>
-      ) : null}
+      <motion.div ref={viewportRef} style={{ height, overflow: 'hidden' }}>
+        <div ref={contentRef}>
+          {actorLedgers.map((ledger) => (
+            <TabsContent key={ledger.id} value={ledger.id} forceMount hidden={selectedTab !== ledger.id} className="mt-0">
+              <motion.div
+                initial={false}
+                animate={{ opacity: selectedTab === ledger.id ? 1 : 0 }}
+                transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
+              >
+                <ActorLedgerBody
+                  ledger={ledger}
+                  layout={layouts[ledger.templateId]}
+                  panelMode={panelMode}
+                  onPanelModeChange={onPanelModeChange}
+                />
+              </motion.div>
+            </TabsContent>
+          ))}
+          {showWorld ? (
+            <TabsContent value={WORLD_STATE_TAB} forceMount hidden={selectedTab !== WORLD_STATE_TAB} className="mt-0">
+              <motion.div
+                initial={false}
+                animate={{ opacity: selectedTab === WORLD_STATE_TAB ? 1 : 0 }}
+                transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
+              >
+                <WorldLedgerBody
+                  ledger={worldLedger}
+                  layout={layouts[worldLedger.templateId]}
+                  panelMode={panelMode}
+                  onPanelModeChange={onPanelModeChange}
+                />
+              </motion.div>
+            </TabsContent>
+          ) : null}
+        </div>
+      </motion.div>
     </Tabs>
   )
 }
