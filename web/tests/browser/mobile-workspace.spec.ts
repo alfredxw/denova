@@ -473,6 +473,9 @@ test('mobile resource selections leave the directory and reveal the selected edi
 })
 
 test('mobile workbench keeps primary and secondary conversations in retained full-page views', async ({ page, request }) => {
+  // This journey switches viewport layouts, restores both drafts, and runs a
+  // real Native turn, so it needs the same total budget as the E2E journeys.
+  test.setTimeout(120_000)
   const { createAgentChatSession } = await import('../support/api')
   const book = await createMobileBook(request, 'Mobile split workbench')
   const session = await createAgentChatSession(request, book.projectId, `Primary conversation ${test.info().project.name}`)
