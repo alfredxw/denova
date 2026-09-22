@@ -243,6 +243,12 @@ async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
     }
     await expect(panel.getByRole('button', { name: '关闭 SubAgent 详情', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: '关闭 general-purpose', exact: true }).click()
+    await expect(panel).toBeHidden()
+    // Closing the detail pane reflows the parent conversation. Wait for its
+    // final width before aiming the next click at another child card.
+    const secondaryPane = page.locator('[data-nova-panel-motion="resizable"][data-nova-panel-side="right"]')
+      .filter({ has: page.locator('[data-agent-chat-group="secondary"]') })
+    await expect(secondaryPane).toHaveCSS('width', '0px')
   }
   expect([...seen].sort()).toEqual(multiAgentExpectations.map(item => item.marker).sort())
 }
