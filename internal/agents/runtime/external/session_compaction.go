@@ -10,7 +10,7 @@ import (
 
 // CompactSession performs maintenance without admitting a user or assistant
 // message. The caller holds its product admission fence for the entire call.
-func CompactSession(ctx context.Context, request StartRequest, prepare func(context.Context, Input, Adapter) (Input, error)) (agentcompaction.Result, error) {
+func CompactSession(ctx context.Context, request StartRequest, prepare func(context.Context, HistoryPreparation) (Input, error)) (agentcompaction.Result, error) {
 	_, wire, err := prepareTools(ctx, request.Definitions)
 	if err != nil {
 		return agentcompaction.Result{}, err
@@ -29,11 +29,8 @@ func CompactSession(ctx context.Context, request StartRequest, prepare func(cont
 		Key:      request.ProjectID + "/" + request.Session.ID + "/" + incarnation,
 		Boundary: request.SourceBoundary, Input: request.Input,
 		Prepare: func(ctx context.Context, input Input, adapter Adapter) (Input, error) {
-			input, err := prepare(ctx, input, adapter)
-			if err != nil {
-				return Input{}, err
-			}
-			return projection.projectMedia(ctx, input)
+			return prepare(ctx, HistoryPreparation{Input: input, Adapter: adapter,
+				ProviderInputMaxBytes: request.ProviderInputMaxBytes, ResolveMedia: projection.media().Resolve})
 		},
 	}, observer)
 	if result.Usage != nil {

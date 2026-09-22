@@ -46,9 +46,10 @@ type Input struct {
 type OperationMode string
 
 const (
-	OperationTurn     OperationMode = ""
-	OperationCompact  OperationMode = "compact"
-	OperationEvaluate OperationMode = "evaluate"
+	OperationTurn      OperationMode = ""
+	OperationSummarize OperationMode = "summarize"
+	OperationCompact   OperationMode = "compact"
+	OperationEvaluate  OperationMode = "evaluate"
 )
 
 // Message carries public conversation content only. Tool observations are

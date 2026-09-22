@@ -147,7 +147,7 @@ func (service *Service) generateItemImageWithAgent(ctx context.Context, projectI
 	if err != nil {
 		return booklore.Item{}, fmt.Errorf("encode lore image source context: %w", err)
 	}
-	_, err = service.images.GenerateProjectWithAgent(ctx, projectID, imageapp.AgentGenerateRequest{
+	result, err := service.images.GenerateProjectWithAgent(ctx, projectID, imageapp.AgentGenerateRequest{
 		CommandID: request.CommandID, Purpose: "lore_item", LoreItemID: item.ID,
 		SourceContext: string(source), ImagePresetID: request.ImagePresetID,
 		SystemPrompt: "Generate exactly one recognizable visual reference for this lore item. Do not edit lore content and do not generate text, titles, watermarks, logos, UI panels, or QR codes.",
@@ -164,7 +164,10 @@ func (service *Service) generateItemImageWithAgent(ctx context.Context, projectI
 		return booklore.Item{}, err
 	}
 	if item.Image == nil || strings.TrimSpace(item.Image.ImagePath) == "" || item.Image.ImagePath == previousImagePath {
-		return booklore.Item{}, fmt.Errorf("image Agent did not generate a new lore image")
+		err := result.MissingImageError()
+		slog.WarnContext(ctx, "[lore-image] Image Agent completed without a new lore image",
+			"project_id", projectID, "item_id", item.ID, "command_id", request.CommandID, "error", err)
+		return booklore.Item{}, err
 	}
 	return item, nil
 }

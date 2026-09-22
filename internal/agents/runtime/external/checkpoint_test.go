@@ -20,8 +20,15 @@ func TestExternalCheckpointCoversLargeCanonicalMessageAndReusesVerifiedPrefix(t 
 	request.Adapter = adapterFunc(func(ctx context.Context, input Input, host Host) (Result, error) {
 		if input.Instructions == checkpointInstruction {
 			maintenance++
-			if len(input.Text) > maintenanceChunkBytes+checkpointSummaryBytes+100 || !utf8.ValidString(input.Text) {
-				t.Fatal("maintenance did not bound UTF-8 source")
+			textBytes := 0
+			for _, message := range input.History {
+				textBytes += len(message.Text)
+				if !utf8.ValidString(message.Text) {
+					t.Fatal("maintenance split a UTF-8 source character")
+				}
+			}
+			if textBytes > maintenanceChunkBytes {
+				t.Fatal("maintenance did not bound source text")
 			}
 			result, err := host.CallTool(ctx, ToolCall{ID: "unexpected", Name: "ask"})
 			if err != nil || result.Success {
@@ -30,7 +37,11 @@ func TestExternalCheckpointCoversLargeCanonicalMessageAndReusesVerifiedPrefix(t 
 			return Result{Text: "Preserve the opening document at chapters/opening.md and the original history constraints."}, nil
 		}
 		turns++
-		if historyBytes(input.History) > historyBudget || !strings.Contains(input.History[0].Text, "chapters/opening.md") {
+		textBytes := 0
+		for _, message := range input.History {
+			textBytes += len(message.Text)
+		}
+		if textBytes > historyBudget || !strings.Contains(input.History[0].Text, "chapters/opening.md") {
 			t.Fatalf("invalid compacted input: %#v", input.History)
 		}
 		return Result{Text: "Continued."}, nil

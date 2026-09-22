@@ -154,7 +154,7 @@ func (turn *ExternalTurn) prepareInput(ctx context.Context, mode external.Operat
 
 func (turn *ExternalTurn) prepareRuntimeInput(ctx context.Context, source external.Input, adapter external.Adapter) (external.Input, error) {
 	var usageErr error
-	preparation := external.HistoryPreparation{Input: source, Adapter: adapter, ProviderInputMaxBytes: turn.inputLimit(), AddUsage: func(usage *agent.TokenUsage) { usageErr = turn.recordUsage(usage) }}
+	preparation := external.HistoryPreparation{Input: source, Adapter: adapter, ProviderInputMaxBytes: turn.inputLimit(), ResolveMedia: turn.media().Resolve, AddUsage: func(usage *agent.TokenUsage) { usageErr = turn.recordUsage(usage) }}
 	prepare := turn.config.PrepareHistory
 	if prepare == nil {
 		prepare = func(ctx context.Context, preparation external.HistoryPreparation) (external.Input, error) {
@@ -168,7 +168,7 @@ func (turn *ExternalTurn) prepareRuntimeInput(ctx context.Context, source extern
 	if usageErr != nil {
 		return external.Input{}, usageErr
 	}
-	return turn.projectMedia(ctx, input)
+	return input, nil
 }
 
 func externalGameMessages(messages []*agent.Message) []external.Message {
@@ -193,74 +193,18 @@ func (turn *ExternalTurn) inputLimit() int {
 	return config.ResolveAgentContext(&turn.config.Config, config.AgentKindInteractiveStory).MaxProviderInputBytes
 }
 
+func (turn *ExternalTurn) media() external.MediaProjection {
+	resolver, _ := turn.config.Conversation.ToolArtifactStore().(agent.ToolArtifactPathResolver)
+	return external.MediaProjection{Root: turn.config.Config.ProjectStoreDir,
+		Scope: attachment.StoryScope(turn.config.Conversation.storyID), Artifacts: resolver}
+}
+
 func (turn *ExternalTurn) projectMedia(ctx context.Context, input external.Input) (external.Input, error) {
-	c := turn.config.Conversation
-	project := func(files []agent.Attachment) ([]agent.Attachment, error) {
-		if len(files) == 0 {
-			return nil, nil
-		}
-		return attachment.ProjectFiles(turn.config.Config.ProjectStoreDir, attachment.StoryScope(c.storyID), files)
-	}
-	var err error
-	input.Attachments, err = project(input.Attachments)
-	if err != nil {
-		return external.Input{}, err
-	}
-	input.Text = agent.ModelUserContent(&agent.Message{Content: input.Text, Attachments: input.Attachments})
-	for i := range input.History {
-		message := &input.History[i]
-		message.Attachments, err = project(message.Attachments)
-		if err != nil {
-			return external.Input{}, err
-		}
-		message.Text = agent.ModelUserContent(&agent.Message{Content: message.Text, Attachments: message.Attachments})
-		message.ToolImages, err = turn.projectToolImages(ctx, message.ToolImages)
-		if err != nil {
-			return external.Input{}, err
-		}
-	}
-	if limit := turn.inputLimit(); limit > 0 {
-		body, err := json.Marshal(input)
-		if err != nil {
-			return external.Input{}, err
-		}
-		bytes := int64(len(body))
-		count := func(files []agent.Attachment) {
-			for _, file := range files {
-				if agent.IsNativeImageMediaType(file.MediaType) {
-					bytes += (file.Size + 2) / 3 * 4
-				}
-			}
-		}
-		count(input.Attachments)
-		for _, message := range input.History {
-			count(message.Attachments)
-			count(message.ToolImages)
-		}
-		if bytes > int64(limit) {
-			return external.Input{}, fmt.Errorf("external Game input exceeds shared byte budget: %d > %d", bytes, limit)
-		}
-	}
-	return input, nil
+	return turn.media().Prepare(ctx, input, turn.inputLimit())
 }
 
 func (turn *ExternalTurn) projectToolImages(ctx context.Context, files []agent.Attachment) ([]agent.Attachment, error) {
-	if len(files) == 0 {
-		return nil, nil
-	}
-	resolver, ok := turn.config.Conversation.ToolArtifactStore().(agent.ToolArtifactPathResolver)
-	if !ok {
-		return nil, fmt.Errorf("Game tool images require the product artifact resolver")
-	}
-	result := append([]agent.Attachment(nil), files...)
-	for i := range result {
-		path, err := resolver.ResolveToolArtifactPath(ctx, result[i].Path)
-		if err != nil {
-			return nil, err
-		}
-		result[i].RuntimePath = path
-	}
-	return result, nil
+	return turn.media().ResolveToolImages(ctx, files)
 }
 
 func (turn *ExternalTurn) recordUsage(usage *agent.TokenUsage) error {

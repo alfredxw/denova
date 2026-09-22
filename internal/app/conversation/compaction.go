@@ -38,13 +38,14 @@ func (execution Execution) Compact(ctx context.Context, commandID string, option
 			return agentcompaction.Result{}, err
 		}
 		prepared.Runtime = execution.engines.ExternalRuntime(execution.runtime.Config)
-		return external.CompactSession(ctx, prepared, func(ctx context.Context, input external.Input, adapter external.Adapter) (external.Input, error) {
+		return external.CompactSession(ctx, prepared, func(ctx context.Context, preparation external.HistoryPreparation) (external.Input, error) {
 			var usageErr error
-			bounded, err := state.PrepareExternalHistory(ctx, external.HistoryPreparation{Input: input, Adapter: adapter, ProviderInputMaxBytes: prepared.ProviderInputMaxBytes, AddUsage: func(usage *agent.TokenUsage) {
+			preparation.AddUsage = func(usage *agent.TokenUsage) {
 				if usage != nil {
 					usageErr = execution.runtime.Session.AppendDisplayEvent(external.UsageDisplay(usage))
 				}
-			}})
+			}
+			bounded, err := state.PrepareExternalHistory(ctx, preparation)
 			if err == nil {
 				err = usageErr
 			}

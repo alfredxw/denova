@@ -2,7 +2,6 @@ package external
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"denova/internal/agents/attachment"
@@ -10,17 +9,52 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-func projectToolImages(ctx context.Context, sess *session.Session, images []agent.Attachment) ([]agent.Attachment, error) {
+// MediaProjection binds immutable user copies and tool artifacts to one product.
+// Resolve returns a copy with host-local paths; it never changes canonical text
+// or portable references. Preparation and live steering share this boundary.
+type MediaProjection struct {
+	Root      string
+	Scope     attachment.Scope
+	Artifacts agent.ToolArtifactPathResolver
+}
+
+func (media MediaProjection) Resolve(ctx context.Context, input Input) (Input, error) {
+	project := func(files []agent.Attachment) ([]agent.Attachment, error) {
+		if len(files) == 0 {
+			return nil, nil
+		}
+		return attachment.ProjectFiles(media.Root, media.Scope, files)
+	}
+	var err error
+	input.Attachments, err = project(input.Attachments)
+	if err != nil {
+		return Input{}, err
+	}
+	input.History = append([]Message(nil), input.History...)
+	for index := range input.History {
+		message := &input.History[index]
+		message.Attachments, err = project(message.Attachments)
+		if err != nil {
+			return Input{}, err
+		}
+		message.ToolImages, err = media.ResolveToolImages(ctx, message.ToolImages)
+		if err != nil {
+			return Input{}, err
+		}
+	}
+	return input, nil
+}
+
+func (media MediaProjection) ResolveToolImages(ctx context.Context, images []agent.Attachment) ([]agent.Attachment, error) {
 	result := append([]agent.Attachment(nil), images...)
 	if len(result) == 0 {
 		return result, nil
 	}
-	resolver, ok := sess.ToolArtifactStore().(agent.ToolArtifactPathResolver)
-	if !ok {
+	if media.Artifacts == nil {
 		return nil, fmt.Errorf("external tool images require the product artifact resolver")
 	}
 	for index := range result {
-		path, err := resolver.ResolveToolArtifactPath(ctx, result[index].Path)
+		path, err := media.Artifacts.ResolveToolArtifactPath(ctx, result[index].Path)
 		if err != nil {
 			return nil, err
 		}
@@ -29,54 +63,24 @@ func projectToolImages(ctx context.Context, sess *session.Session, images []agen
 	return result, nil
 }
 
-// Media paths are projected after checkpointing, so hashes and summaries use
-// portable references. Binary data remains in the original immutable stores.
-func (operation *Operation) projectMedia(ctx context.Context, input Input) (Input, error) {
-	project := func(files []agent.Attachment) ([]agent.Attachment, error) {
-		if len(files) == 0 {
-			return nil, nil
-		}
-		return attachment.ProjectFiles(operation.request.AttachmentRoot, attachment.SessionScope(operation.request.Session.ID), files)
-	}
-	var err error
-	input.Attachments, err = project(input.Attachments)
+func (media MediaProjection) Prepare(ctx context.Context, input Input, limit int) (Input, error) {
+	resolved, err := media.Resolve(ctx, input)
 	if err != nil {
 		return Input{}, err
 	}
-	input.Text = agent.ModelUserContent(&agent.Message{Content: input.Text, Attachments: input.Attachments})
-	for index := range input.History {
-		message := &input.History[index]
-		message.Attachments, err = project(message.Attachments)
-		if err != nil {
-			return Input{}, err
-		}
-		message.Text = agent.ModelUserContent(&agent.Message{Content: message.Text, Attachments: message.Attachments})
-		message.ToolImages, err = projectToolImages(ctx, operation.request.Session, message.ToolImages)
-		if err != nil {
-			return Input{}, err
-		}
-	}
-	if limit := operation.request.ProviderInputMaxBytes; limit > 0 {
-		body, err := json.Marshal(input)
-		if err != nil {
-			return Input{}, err
-		}
-		bytes := int64(len(body))
-		count := func(files []agent.Attachment) {
-			for _, file := range files {
-				if agent.IsNativeImageMediaType(file.MediaType) {
-					bytes += (file.Size + 2) / 3 * 4
-				}
-			}
-		}
-		count(input.Attachments)
-		for _, message := range input.History {
-			count(message.Attachments)
-			count(message.ToolImages)
-		}
-		if bytes > int64(limit) {
-			return Input{}, fmt.Errorf("external provider input exceeds shared byte budget: %d > %d", bytes, limit)
-		}
-	}
-	return input, nil
+	return prepareInput(resolved, limit)
+}
+
+func (operation *Operation) media() MediaProjection {
+	resolver, _ := operation.request.Session.ToolArtifactStore().(agent.ToolArtifactPathResolver)
+	return MediaProjection{Root: operation.request.AttachmentRoot, Scope: attachment.SessionScope(operation.request.Session.ID), Artifacts: resolver}
+}
+
+func (operation *Operation) projectMedia(ctx context.Context, input Input) (Input, error) {
+	return operation.media().Prepare(ctx, input, operation.request.ProviderInputMaxBytes)
+}
+
+func projectToolImages(ctx context.Context, sess *session.Session, images []agent.Attachment) ([]agent.Attachment, error) {
+	resolver, _ := sess.ToolArtifactStore().(agent.ToolArtifactPathResolver)
+	return (MediaProjection{Artifacts: resolver}).ResolveToolImages(ctx, images)
 }

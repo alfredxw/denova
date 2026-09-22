@@ -107,6 +107,9 @@ type Closed struct {
 // Checkpoint summarizes an exact canonical source interval. The source hash
 // makes a checkpoint invalid after a restore or a different transcript prefix.
 type Checkpoint struct {
+	// Version identifies summary semantics. Legacy records remain readable but
+	// cannot cover source that the old text-only summarizer never inspected.
+	Version        uint16           `json:"version,omitempty"`
 	Summary        string           `json:"summary"`
 	SourceStart    uint64           `json:"source_start"`
 	SourceEnd      uint64           `json:"source_end"`
