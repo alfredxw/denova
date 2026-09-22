@@ -4,61 +4,67 @@ Denova 仅在此记录用户可感知的重大功能、重要不兼容或数据�
 
 Denova records only major user-visible features, important compatibility or data changes, security updates, and fixes affecting core workflows. Internal refactors, test changes, copy edits, and minor UI polish are omitted; see the [Git history](https://github.com/alfredxw/denova/commits/master) for full details.
 
-`Unreleased` 以最近一个已发布版本（当前为 v0.4.5）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.4.5 后从未发布的中间格式不计入。
+`Unreleased` 以最近一个已发布版本（当前为 v0.5.0）为比较基线，只描述升级用户最终可感知的净变化；内部接口、实现重构和 v0.5.0 后从未发布的中间格式不计入。
 
-`Unreleased` compares against the latest release (currently v0.4.5) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.4.5 are excluded.
+`Unreleased` compares against the latest release (currently v0.5.0) and describes only the final user-visible delta. Internal APIs, implementation refactors, and intermediate formats never released after v0.5.0 are excluded.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-09-22
+
+### Brief / 简要说明
+
+#### 中文
+
+- 写作、通用对话与游戏支持 Native、Codex 和 Claude Code，可使用本机登录或兼容的 API 模型，并在回合间切换。
+- 支持任务暂停与重启后恢复、读取本地图片，改善长任务与多图会话的压缩和断流重试。
+- 新增游戏语音朗读、可搜索和更新的 Skills 技能库，以及安装包上传更新。
+- 升级会自动备份受影响的会话记录；v0.4.5 无法直接读取新版记录，降级需恢复升级前备份并另行保留新增内容。
+
+#### English
+
+- Writing, General chat, and Game support Native, Codex, and Claude Code, with local sign-in or compatible API models and runtime switching between turns.
+- Pause tasks and resume after restart, inspect local images, and use more reliable compaction and stream retries for long tasks and image-rich conversations.
+- Added Game read-aloud, a searchable Skills library with updates, and updates from uploaded release archives.
+- Affected conversation journals are backed up before upgrading. v0.4.5 cannot read the new records; downgrading requires restoring pre-upgrade backups and separately preserving newer content.
+
 ### Added / 新增
 
-- 游戏支持 OpenAI 兼容的语音朗读，可配置统一声线、自动朗读新正文、仅朗读引号内容、跳过星号动作描写，并控制暂停、语速和音量。
-- Game supports OpenAI-compatible read-aloud with one configurable voice, automatic reading of new prose, quoted-text and action filters, pause, playback speed, and volume controls.
+- 写作、通用对话、游戏及对应自定义 Agent 可在回合间切换 Native、Codex 和 Claude Code，使用本机登录或 Denova 中兼容的 API 模型。外部引擎保留持续会话和自身压缩；写作与通用对话支持 Goal，游戏不支持 Goal。
+- Writing, General chat, Game, and their custom Agents can switch between Native, Codex, and Claude Code between turns using local sign-in or compatible API models in Denova. External engines retain their sessions and native compaction; Goals are supported in Writing and General chat, but not Game.
 
-- Skills 新增卡片式技能库、启用开关与搜索筛选；可选择使用 `~/.agents/skills` 通用技能，远程安装支持默认关闭的每日自动更新，并保护本地修改与保留备份。
-- Skills now has a searchable card library with availability controls, optional shared Skills from `~/.agents/skills`, and opt-in daily updates for remote installs with local-edit protection and backups.
+- 写作与游戏支持暂停整个 Agent 任务并在重启后继续，保留已接收输入、子任务和游戏已接纳草稿；可核实结果不明的中断操作或取消任务。
+- Pause an entire Writing or Game Agent task and continue after restart, preserving accepted input, child tasks, and accepted Game drafts; verify uncertain interrupted operations or cancel the task.
 
-- 写作、General、Game 及对应自定义 Agent 支持 Native、Codex 和 Claude Code，可从输入框选项栏在回合间直接切换。外部引擎复用持续会话和自身压缩，支持共通的压缩卡片、排队、追加、暂停恢复、Goal 与 Todo；可使用本机登录或 Denova 中兼容的 API 模型。Game 保留已接纳的草稿、骰点和状态提交。
-- Writing, General, Game, and their custom Agents support Native, Codex, and Claude Code, selectable from the composer between turns. External engines retain their sessions and use their own compaction, with shared compaction cards, queues, follow-ups, pause/resume, Goals, and Todos. Use local sign-in or compatible API models configured in Denova; Game retains accepted drafts, dice results, and state submission.
+- 游戏支持 OpenAI 兼容的语音朗读，可配置声线、自动朗读、引号与动作过滤，并控制暂停、语速和音量。
+- Game supports OpenAI-compatible read-aloud with voice selection, automatic reading, quoted-text and action filters, pause, playback speed, and volume controls.
 
-- 首次写入外部执行或运行控制记录前备份对应 Session / Story journal。新增记录和 Agent Profile 配置无法由 v0.4.5 读取；切回 Native 不会降级格式，回滚需恢复升级前备份并另行保留之后的新内容。
-- Session and Story journals are backed up before their first external execution or runtime-control records. New records and Agent Profile settings are unreadable by v0.4.5; switching back to Native does not downgrade them. Rolling back requires restoring the pre-upgrade backup and separately preserving newer content.
+- Skills 新增可搜索的卡片式技能库和启用开关，可使用 `~/.agents/skills` 通用技能；远程安装支持默认关闭的每日自动更新，并保护本地修改、保留备份。
+- Skills has a searchable card library with availability controls, optional shared Skills from `~/.agents/skills`, and opt-in daily updates for remote installs with local-edit protection and backups.
 
-- Agent 可通过 `read` 查看本地图片与生成图；写作和游戏保留读取时的图片副本，重启后仍可继续分析。
-- Agents can inspect local and generated images with `read`; Writing and Game retain captured image copies for continued analysis after restart.
+- Agent 可通过 `read` 查看本地图片与生成图；写作和游戏保留读取时的图片副本，重启后仍可分析。
+- Agents can inspect local and generated images with `read`; Writing and Game retain captured image copies for analysis after restart.
 
-- 写作与游戏支持暂停整个 Agent 任务，重启后继续原任务，保留已接收输入、子任务及游戏已接纳草稿；中断后结果不明的操作可核实或直接取消任务。
-- Pause an entire Writing or Game Agent task and continue it after restart, preserving accepted input, child tasks, and accepted Game drafts; verify uncertain interrupted operations or cancel the task directly.
-
-- 支持从设置中的“手动更新”上传 GitHub Release 安装包，离线校验后重启安装。
-- Upload a GitHub Release archive through Manual update in Settings, validate it offline, and restart to install.
+- 支持在设置中上传 GitHub Release 安装包，离线校验后重启安装。
+- Upload a GitHub Release archive in Settings, validate it offline, and restart to install.
 
 ### Fixed / 修复
 
-- 修复写作与游戏的图片容量计量及压缩：图片上下文预算与实际发送大小分别校验，不再误触发通用 4 MB 上限；多图会话按视觉 token 选择压缩范围，分批摘要保留原生图片输入，必要时仅缩小发送副本。
-- Fix image budgeting and compaction in Writing and Game: check visual context separately from payload size, avoid false generic 4 MB rejections, select enough history under visual-token pressure, and preserve native images in summary batches; resize only sending copies when needed.
+- 改善写作与游戏的长任务、多图会话及重复压缩，避免误报容量不足和摘要来源不匹配；保留当前要求、近期工具结果与图片输入，超大工具输出可回读完整文件，重启后摘要仍可用。
+- Improve compaction for long tasks, image-rich conversations, and repeated Game summaries, avoiding false capacity errors and source mismatches. Preserve current instructions, recent tool results, and image inputs; oversized tool output remains readable from files, and checkpoints survive restart.
 
-- 写作与游戏的长任务可在同一个请求内反复压缩已完成步骤，保留当前要求与最近工具结果；超大工具输出可回读完整文件，重启后继续使用摘要。修正压缩后的 token 校准，避免多余压缩与误报容量不足。
-- Writing and Game long tasks can compact completed steps repeatedly within one request while preserving current instructions and recent tool results; complete oversized output remains readable from artifacts, and checkpoints survive restart. Correct post-compaction token calibration to avoid redundant summaries and false capacity failures.
+- 修复生成中途断流无法重试的问题，重试等待可取消，且不会执行未接纳响应中的工具。
+- Retry interrupted model streams with cancellable backoff and prevent tool execution from unaccepted responses.
 
-- 修复生成中途断流不能重试的问题，统一网络重试与输出修复次数，支持可取消退避，避免执行未接纳响应中的工具。
-- Retry interrupted model streams with one shared budget for network retries and output repair, cancellable backoff, and no execution of tools from unaccepted responses.
-
-- 修复设置部分保存失败后，已保存状态未同步、撤回修改后重试仍提交旧草稿的问题；保留未保存修改并展示逐文件结果。
-- Fixed partial settings saves leaving stale saved state or retrying withdrawn drafts; unsaved edits are preserved and per-file outcomes are shown.
-
-- 修复游戏已有摘要并保留旧回合时，再次压缩因上下文来源匹配失败而报错的问题。
-- Fix repeated game context compaction failing source validation when older turns remain visible beside an existing checkpoint.
+- 修复设置部分保存失败后状态不同步、重试仍提交已撤回草稿的问题；保留未保存修改并展示逐文件结果。
+- Fix stale settings state and retries submitting withdrawn drafts after partial saves; preserve unsaved edits and show per-file outcomes.
 
 ### Changed / 变更
 
-- 新版压缩首次写入前备份会话 journal 为 `.pre-incremental-compaction-v2.bak`。v0.4.5 的游戏摘要会从原始历史重建；新版回合内压缩边界不能由旧版直接解释。降回 v0.4.5 应恢复最早的升级前备份（已升级任务恢复格式时使用 `.pre-resilience-v1.bak`），并另行保留后续内容。
-- Conversation journals receive a `.pre-incremental-compaction-v2.bak` before their first new checkpoint. Game checkpoints from v0.4.5 are rebuilt from original history; the old release cannot interpret within-turn coverage. To return to v0.4.5, restore the earliest pre-upgrade backup (`.pre-resilience-v1.bak` when task recovery was also upgraded) and separately preserve newer content.
-
-- 新的任务恢复记录无法由 v0.4.5 直接读取；首次升级写入前为既有会话 journal 保留 `.pre-resilience-v1.bak`。降级需退出应用并恢复备份，备份之后的新内容应另行保留。
-- New task recovery records cannot be read directly by v0.4.5. Existing conversation journals receive a `.pre-resilience-v1.bak` before the first upgraded write. Downgrading requires stopping the app and restoring those backups while separately preserving newer content.
+- v0.4.5 无法读取新版任务恢复、压缩、外部运行时记录及 Agent Profile 配置。首次升级写入前为对应 journal 保留 `.pre-resilience-v1.bak`、`.pre-incremental-compaction-v2.bak` 或 `.pre-external-runtime-v1.bak`；旧游戏摘要会从原始历史重建。切回 Native 不会降级格式，降级需退出应用、恢复最早的升级前备份，并另行保留后续内容及配置。
+- v0.4.5 cannot read the new task recovery, compaction, external runtime records, or Agent Profile settings. Before the first upgraded write, affected journals receive `.pre-resilience-v1.bak`, `.pre-incremental-compaction-v2.bak`, or `.pre-external-runtime-v1.bak`; old Game checkpoints are rebuilt from original history. Switching back to Native does not downgrade the format. To downgrade, stop the app, restore the earliest pre-upgrade backup, and separately preserve newer content and settings.
 
 ## [v0.4.5] - 2026-09-09
 

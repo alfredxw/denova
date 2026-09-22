@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu'
@@ -8,6 +8,8 @@ import { ConversationRuntimeMenu } from './ConversationRuntimeMenu'
 const mocks = vi.hoisted(() => ({ fetchProjectSettings: vi.fn(), fetchSettings: vi.fn(), fetchModelCatalog: vi.fn(), fetchAgentEngines: vi.fn(), fetchEngineModels: vi.fn(), checkAgentEngine: vi.fn() }))
 vi.mock('@/features/settings/api', () => mocks)
 vi.mock('@/features/agent-runtime/api', () => mocks)
+
+let user: ReturnType<typeof userEvent.setup>
 
 function controller(agent: 'ide' | 'general' | 'interactive_story' = 'general'): ConversationConfigController {
   return {
@@ -22,12 +24,15 @@ function menu(config: ConversationConfigController, runActive = false) {
   </DropdownMenuContent></DropdownMenu>
 }
 async function openRuntime() {
-  await userEvent.click(screen.getByRole('menuitem', { name: '运行时：Native' }))
+  await user.click(screen.getByRole('menuitem', { name: '运行时：Native' }))
   await waitFor(() => expect(screen.queryByText('正在检查可用性…')).not.toBeInTheDocument())
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // jsdom has no submenu geometry for Radix's pointer-grace handling. Exercise
+  // clicks here; the browser suite covers pointer travel, hover, and placement.
+  user = userEvent.setup({ skipHover: true })
   mocks.fetchProjectSettings.mockResolvedValue({ effective: { openai_model: 'native-model' } })
   mocks.fetchAgentEngines.mockResolvedValue({ items: ['native', 'codex', 'claude'].map(id => ({ id, status: 'ready' })) })
   mocks.fetchEngineModels.mockResolvedValue({ default_id: 'saved-model', items: [{ id: 'saved-model', efforts: ['high'] }] })
@@ -40,7 +45,7 @@ describe('ConversationRuntimeMenu', () => {
       const config = controller(agent)
       render(menu(config))
       await openRuntime()
-      await userEvent.click(await screen.findByRole('menuitem', { name: 'Codex' }))
+      await user.click(await screen.findByRole('menuitem', { name: 'Codex' }))
       await waitFor(() => expect(config.patch).toHaveBeenCalledWith({ runtime: { kind: 'codex', codex: { model: 'saved-model', effort: 'high' } } }))
       await waitFor(() => expect(screen.getAllByRole('menu')).toHaveLength(1))
       expect(mocks.fetchProjectSettings).toHaveBeenCalledWith('project')
@@ -63,11 +68,11 @@ describe('ConversationRuntimeMenu', () => {
     const config = controller()
     render(menu(config))
     await openRuntime()
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Codex' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Codex' }))
     await waitFor(() => expect(mocks.checkAgentEngine).toHaveBeenCalledWith('codex'))
     await waitFor(() => expect(screen.queryByText('正在检查可用性…')).not.toBeInTheDocument())
     expect(config.patch).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Codex' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Codex' }))
     await waitFor(() => expect(config.patch).toHaveBeenCalledOnce())
   })
   it('accepts a compatible API profile without CLI authentication', async () => {
@@ -81,7 +86,7 @@ describe('ConversationRuntimeMenu', () => {
     const config = controller()
     render(menu(config))
     await openRuntime()
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Codex' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Codex' }))
     await waitFor(() => expect(config.patch).toHaveBeenCalledWith({ runtime: { kind: 'codex', codex: { profile_id: 'api', sandbox: 'read-only' } } }))
     expect(mocks.fetchEngineModels).not.toHaveBeenCalled()
   })
@@ -107,7 +112,7 @@ describe('ConversationRuntimeMenu', () => {
     render(menu(config))
     await openRuntime()
     mocks.fetchEngineModels.mockResolvedValue({ items: [] })
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Codex' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Codex' }))
     await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Codex' })).toHaveAttribute('aria-disabled', 'true'))
     expect(config.patch).not.toHaveBeenCalled()
   })
@@ -120,7 +125,7 @@ describe('ConversationRuntimeMenu', () => {
       await openRuntime()
       const option = screen.getByRole('menuitem', { name: 'Codex' })
       if (state === 'failure') {
-        fireEvent.click(option)
+        await user.click(option)
         await waitFor(() => expect(config.patch).toHaveBeenCalledOnce())
         expect(screen.getAllByRole('menu')).toHaveLength(2)
       } else {

@@ -60,7 +60,7 @@ for (const engine of ['codex', 'claude'] as const) {
         await page.getByRole('option', { name: '切换到会话 API conversation', exact: true }).click()
         const trigger = page.locator('[data-model-profile-trigger]').filter({ visible: true })
         await trigger.click()
-        await page.getByRole('menuitem', { name: `运行时：${engine === 'codex' ? 'Codex' : 'Claude Code'}`, exact: true }).click()
+        await page.getByRole('menuitem', { name: '配置', exact: true }).click()
         await expect(runtime.getByRole('group', { name: '模型来源' })).toBeVisible()
         const enginePicker = runtime.getByRole('combobox', { name: '执行引擎', exact: true })
         await enginePicker.click()
