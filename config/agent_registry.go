@@ -86,7 +86,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		ToolCapabilities: []string{
 			AgentToolFilesystemRead, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
-			AgentToolScript,
+			AgentToolScript, AgentToolTodo,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveStory },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.InteractiveStory = override },
@@ -212,16 +212,17 @@ var agentToolCapabilities = []AgentToolCapability{
 		"read": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 	}), "read"),
 	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinitionWithToolDescriptors(
-		AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"task", "task_wait"},
+		AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"send", "await", "list_agents"},
 		descriptorWithRetention(descriptorSummary(
 			agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
 			agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationDelegation,
 		), agent.ToolResultProtected),
 		map[string]agent.ToolDescriptor{
-			"task_wait": descriptorWithRetention(descriptorSummary(
+			"await": descriptorWithRetention(descriptorSummary(
 				agent.ToolExecutionInteractiveWait, agent.ToolMutationNone, agent.ToolPostCheckNone,
 				agent.ToolRecoveryReadOnly, agent.SteeringInterruptibleWait, agent.ToolPresentationDelegation,
 			), agent.ToolResultProtected),
+			"list_agents": readOnlyDescriptor(agent.ToolPresentationDelegation, agent.ToolResultRecoveryRerun),
 		},
 	)),
 	withRuntimeResultLimit(capabilityDefinition(AgentToolScript, "agents.tool.script.title", "agents.tool.script.subtitle", []string{"script"}, descriptorWithRetention(descriptorSummary(

@@ -38,7 +38,7 @@ func TestSettingsRuntimePatchPreservesSelectionAndInactiveBranches(t *testing.T)
 	for _, patch := range []string{
 		`{"agent_runtimes":{"ide":{"codex":{"effort":"low"}}}}`,
 		`{"agent_runtimes":{"ide":{"selected":"missing-runtime"}}}`,
-		`{"agent_runtimes":{"interactive_story":{"selected":"codex"}}}`,
+		`{"agent_runtimes":{"image":{"selected":"codex"}}}`,
 		`{"agent_runtimes":{"ide":{"codex":{"unknown":null}}}}`,
 	} {
 		if _, err := ApplySettingsMergePatch(original, json.RawMessage(patch)); !errors.Is(err, ErrInvalidSettingsPatch) {
@@ -49,11 +49,12 @@ func TestSettingsRuntimePatchPreservesSelectionAndInactiveBranches(t *testing.T)
 
 func TestRuntimePreferencesRoundTripThroughAgentProfiles(t *testing.T) {
 	original := Settings{AgentRuntimes: AgentRuntimeSettings{
-		IDE:     &RuntimePreferences{Selected: RuntimeNative, Codex: &CodexRuntimeSettings{Model: "retained", Effort: "low"}},
-		General: &RuntimePreferences{Selected: RuntimeCodex, Codex: &CodexRuntimeSettings{Model: "active"}},
+		IDE:              &RuntimePreferences{Selected: RuntimeNative, Codex: &CodexRuntimeSettings{Model: "retained", Effort: "low"}},
+		General:          &RuntimePreferences{Selected: RuntimeCodex, Codex: &CodexRuntimeSettings{Model: "active"}},
+		InteractiveStory: &RuntimePreferences{Selected: RuntimeClaude, Claude: &ClaudeRuntimeSettings{Model: "story-model"}},
 	}}
 	restored := Settings{}
-	for _, kind := range []string{AgentKindIDE, AgentKindGeneral} {
+	for _, kind := range []string{AgentKindIDE, AgentKindGeneral, AgentKindInteractiveStory} {
 		content, err := encodeMainAgentProfile(original, fixedAgentProfile{Kind: kind})
 		if err != nil {
 			t.Fatal(err)
@@ -115,8 +116,8 @@ func TestRuntimeSelectionOnlyUsesTheActiveBranch(t *testing.T) {
 	if preferences.Codex.Model != "unavailable-model" {
 		t.Fatal("selection aliases mutable preferences")
 	}
-	if _, err := preferences.Selection(AgentKindInteractiveStory); !errors.Is(err, ErrInvalidAgentRuntime) {
-		t.Fatalf("game accepted an external runtime: %v", err)
+	if _, err := preferences.Selection(AgentKindInteractiveStory); err != nil {
+		t.Fatalf("game rejected an external runtime: %v", err)
 	}
 	if err := (RuntimeSelection{Kind: RuntimeNative, Codex: preferences.Codex}).Validate(AgentKindIDE); !errors.Is(err, ErrInvalidAgentRuntime) {
 		t.Fatalf("mixed execution branches were accepted: %v", err)

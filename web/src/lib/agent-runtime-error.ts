@@ -29,6 +29,7 @@ export function localizeAgentRuntimeReason(reason: unknown, fallback: string, t:
 }
 
 export function localizeAgentRuntimeError(data: Record<string, unknown>, fallback: string, t: Translate) {
+  if (typeof data.error_key === 'string' && data.error_key.trim()) return t(data.error_key)
   if (typeof data.code === 'string') {
     const translationKey = modelErrorTranslationKeys[data.code]
     if (translationKey) return t(translationKey)

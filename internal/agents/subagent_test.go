@@ -12,6 +12,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/providers"
+	publictools "github.com/alfredxw/denova/agent/tools"
 )
 
 func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
@@ -70,6 +71,39 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 			names = append(names, child.Name)
 		}
 		t.Fatalf("delegated child names = %v", names)
+	}
+
+	owner, err := agent.New(context.Background(), children[0].Definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close(context.Background())
+	executor, err := publictools.NewLocalTasks(publictools.LocalTaskOptions{Parallelism: 1, Self: publictools.TaskRef{Agent: "parent", Session: "parent"}}, publictools.LocalTaskAgent{Name: children[0].Name, Description: children[0].Description, Identity: children[0].Identity, Opener: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := catalog.Bind(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions, err := bound.PrepareTools(context.Background(), agent.ToolRequest{})
+	if err != nil {
+		t.Fatalf("delegation manifest did not match executable tools: %v", err)
+	}
+	names := toolNamesForTest(t, definitions)
+	for _, name := range []string{"send", "await", "list_agents"} {
+		if !names[name] {
+			t.Fatalf("missing delegation tool %s", name)
+		}
+	}
+	for _, definition := range definitions {
+		info, err := definition.Tool.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Name == "send" && (!strings.Contains(info.Desc, "interrupt pauses") || !strings.Contains(info.Desc, "Accepted receipts")) {
+			t.Fatalf("catalog erased the operation contract: %s", info.Desc)
+		}
 	}
 	var generalOrchestrator, rootOrchestrator *agenttoolruntime.OrchestratorMiddleware
 	for _, middleware := range children[0].Definition.Middlewares {
@@ -199,7 +233,7 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if toolNamesForTest(t, tools)["task"] {
+	if toolNamesForTest(t, tools)["send"] {
 		t.Fatalf("task tool should be absent without any available subagent")
 	}
 }

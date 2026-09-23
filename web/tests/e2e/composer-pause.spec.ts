@@ -30,7 +30,10 @@ for (const product of ['writing', 'game'] as const) {
       const composer = page.getByPlaceholder(product === 'writing' ? /输入消息/ : /你要做什么/).filter({ visible: true })
       await expect(composer).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      const previousRunActions = await page.getByRole('button', { name: '复制 Run ID', exact: true }).count()
+      // The started Game already has one settled opening run on desktop.
+      // Wait for hydration before counting it; the composer mounts earlier.
+      const previousRunActions = product === 'game' && width >= 800 ? 1 : 0
+      await expect(page.getByRole('button', { name: '复制 Run ID', exact: true })).toHaveCount(previousRunActions)
       const marker = 'E2E_COMPOSER_PAUSE'
       await composer.fill(`检查门后的脚印。${marker}`)
       await page.locator('[data-action="send"]').filter({ visible: true }).click()

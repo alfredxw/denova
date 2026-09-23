@@ -608,6 +608,32 @@ describe('AgentChatView project workbenches', () => {
     expect(await screen.findByTestId('project-files-tab')).toHaveTextContent('no-selection')
   })
 
+  it('returns focus to the primary pane after closing its last child-Agent tab', async () => {
+    const user = userEvent.setup()
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [agentTabForProject('agent-tab', 'project-a', '/books/a', 'session-a')],
+          activeTabIds: { primary: 'agent-tab', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    await user.click(await screen.findByRole('button', { name: 'open child Agent' }))
+    await user.click(await screen.findByRole('button', { name: '关闭 Researcher' }))
+    await waitFor(() => expect(readStoredWorkbenchState().projects['project-a']).toMatchObject({
+      tabs: [{ id: 'agent-tab' }],
+      activeTabIds: { primary: 'agent-tab', secondary: null },
+      focusedGroup: 'primary',
+      secondaryVisible: false,
+    }))
+  })
+
   it('opens a tool path in the Files tab owned by that Agent Chat project', async () => {
     const user = userEvent.setup()
     persistWorkbenchState({

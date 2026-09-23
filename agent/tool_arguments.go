@@ -178,7 +178,8 @@ func decodeJSONValue(arguments string) (any, error) {
 }
 
 func normalizeJSONValue(path string, value any, schema *jsonschema.Schema) (any, error) {
-	if schema == nil {
+	if schema == nil || schema.Comments == "agent:independent-batch-item" {
+		// Batch tools validate items independently while preserving the outer contract.
 		return cloneJSONValue(value), nil
 	}
 	if allowed, boolean := jsonSchemaBoolean(schema); boolean {
@@ -540,7 +541,7 @@ func requireJSONEOF(decoder *json.Decoder) error {
 }
 
 func validateJSONValue(path string, value any, schema *jsonschema.Schema) error {
-	if schema == nil {
+	if schema == nil || schema.Comments == "agent:independent-batch-item" {
 		return nil
 	}
 	if allowed, boolean := jsonSchemaBoolean(schema); boolean {

@@ -42,6 +42,7 @@ interface MessageItemProps {
   onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void
   onOpenSubAgentSession?: (message: ChatMessage) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onReadAloud?: (message: ChatMessage) => void
   onGenerateInteractiveImage?: (message: ChatMessage) => void
   generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
@@ -62,7 +63,7 @@ export const MessageItem = memo(function MessageItem(props: MessageItemProps) {
     : content
 })
 
-function MessageItemContent({ projectId = '', message, assistantPresentation = 'message', highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
+function MessageItemContent({ projectId = '', message, assistantPresentation = 'message', highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -109,7 +110,7 @@ function MessageItemContent({ projectId = '', message, assistantPresentation = '
         ? message.streaming_target_content
         : undefined
       const visibleContent = sanitizeThinkTags(streamingTargetContent || content).trim()
-      const reserveMetaSpace = message.streaming === true || Boolean(canEditAssistantReply || canCreateBranch || onGenerateInteractiveImage || onRegenerate || onSwitchVersion)
+      const reserveMetaSpace = message.streaming === true || Boolean(onReadAloud || canEditAssistantReply || canCreateBranch || onGenerateInteractiveImage || onRegenerate || onSwitchVersion)
       return (
         <AIMessage from="assistant" className="max-w-none">
           <div className="w-full">
@@ -143,6 +144,7 @@ function MessageItemContent({ projectId = '', message, assistantPresentation = '
                   onEdit={canEditAssistantReply ? onEditAssistantReply : undefined}
                   editLabelKey="chat.action.editAssistantReply"
                   onCreateBranch={canCreateBranch ? onCreateBranch : undefined}
+                  onReadAloud={!message.streaming && !message.subagent && message.turn_id ? onReadAloud : undefined}
                   onGenerateInteractiveImage={canGenerateInteractiveImage ? onGenerateInteractiveImage : undefined}
                   generatingInteractiveImage={Boolean(message.turn_id && generatingInteractiveImageTurnId === message.turn_id)}
                   interactiveImageGenerationDisabled={Boolean(generatingInteractiveImageTurnId)}
@@ -231,6 +233,9 @@ function MessageItemContent({ projectId = '', message, assistantPresentation = '
 
     case 'context_compaction':
       return <ContextCompactionBlock message={message} />
+
+    case 'todo_updated':
+      return <TodoListBlock message={message} />
 
     // Usage records are summarized in TokenUsagePanel rather than the timeline.
     case 'token_usage':

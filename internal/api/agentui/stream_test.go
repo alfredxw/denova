@@ -9,6 +9,21 @@ import (
 	"testing"
 )
 
+func TestProviderTodoSnapshotDoesNotReplaceNativeToolInspection(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out, "plan")
+	for _, managed := range []bool{false, true} {
+		if err := encoder.WriteEvent(agentrun.Event{Type: "todo_updated", Data: map[string]any{
+			"schema": "agent.todo.v1", "items": []any{}, "runtime_managed": managed,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Count(out.String(), DataTypeTodo) != 1 {
+		t.Fatalf("duplicate Todo presentation: %s", out.String())
+	}
+}
+
 func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	var out bytes.Buffer
 	encoder := NewStreamEncoder(&out, "0198-stream-request")

@@ -24,7 +24,7 @@ import type {
   AgentChatReviewRenderContext,
   AgentChatTab,
 } from './types'
-import { ToolNavigationProvider, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
+import { ToolNavigationProvider, useToolNavigation, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
 
 const FilesTab = lazy(() => import('@/features/files/FilesTab').then((module) => ({ default: module.FilesTab })))
 
@@ -164,10 +164,14 @@ export function AgentChatTabContent({
     paths: string[],
     metadata: WorkspaceChangeMetadata,
   ) => onWorkspaceChanged?.(tab.projectId, changedWorkspace, paths, metadata), [onWorkspaceChanged, tab.projectId])
+  const parentToolNavigation = useToolNavigation()
   const toolNavigation = useMemo(() => ({
     workspace: tab.workspace,
-    open: (target: ToolNavigationTarget) => onOpenToolTarget(tab.projectId, tabGroup(tab), target),
-  }), [onOpenToolTarget, tab.group, tab.projectId, tab.workspace])
+    // Agent configuration belongs to the outer workbench, outside Project tabs.
+    open: (target: ToolNavigationTarget) => target.kind === 'config_resource' && target.resource === 'agent_profile'
+      ? parentToolNavigation?.open(target)
+      : onOpenToolTarget(tab.projectId, tabGroup(tab), target),
+  }), [onOpenToolTarget, parentToolNavigation, tab.group, tab.projectId, tab.workspace])
   const handleConversationStateChange = useCallback(
     (state: AgentChatConversationState) => onConversationStateChange(tab.projectId, tab.id, state),
     [onConversationStateChange, tab.id, tab.projectId],

@@ -40,6 +40,12 @@ func InvokeHostTool(ctx context.Context, policy OrchestratorConfig, identity Hos
 	if err != nil {
 		return agent.ToolResult{}, err
 	}
+	if policy.AgentKind == "interactive_story" {
+		endpoint, err = NewInteractiveStoryMiddleware().WrapToolCall(ctx, endpoint, toolContext)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+	}
 	result, err := endpoint(ctx, args)
 	if err != nil && (len(returned.Details) > 0 || len(returned.Effects) > 0) {
 		// The Native middleware may short-circuit on a cancelled context. Host

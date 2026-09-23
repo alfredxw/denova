@@ -1,6 +1,8 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
+test.use({ reducedMotion: 'no-preference' })
+
 for (const theme of ['dark', 'light']) {
   test(`primary navigation responds without background trailing in ${theme} mode`, async ({ page, request }) => {
     // This journey hydrates six destinations on slower CI runners.
@@ -46,6 +48,9 @@ for (const theme of ['dark', 'light']) {
 }
 
 test('keeps exactly one primary destination active across the normal workbench routes', async ({ page, request }) => {
+  // This journey hydrates twelve destinations; each assertion keeps its normal
+  // deadline, while the total budget includes cold route loads on CI runners.
+  test.setTimeout(90_000)
   await createAndOpenBook(request, 'Browser Navigation Book')
   const settings = await (await request.get('/api/settings')).json()
   await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
@@ -58,11 +63,13 @@ test('keeps exactly one primary destination active across the normal workbench r
   const sidebar = page.getByLabel('工作台侧边栏')
   await expect(sidebar).toBeVisible()
   for (const destination of ['写作', '游戏', '资料库', '方案预设', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '轨迹', '设置']) {
-    await sidebar.getByRole('button', { name: destination, exact: true }).click()
-    await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(1)
-    await expect(sidebar.getByRole('button', { name: destination, exact: true })).toHaveAttribute('aria-current', 'page')
-    await expect(page.locator('[data-slot=loading-state]:visible')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^关闭(?:设置|书籍管理|版本管理|自动化| Agents)?$/ })).toHaveCount(0)
+    await test.step(destination, async () => {
+      await sidebar.getByRole('button', { name: destination, exact: true }).click()
+      await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(1)
+      await expect(sidebar.getByRole('button', { name: destination, exact: true })).toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('[data-slot=loading-state]:visible')).toHaveCount(0)
+      await expect(page.getByRole('button', { name: /^关闭(?:设置|书籍管理|版本管理|自动化| Agents)?$/ })).toHaveCount(0)
+    })
   }
 })
 

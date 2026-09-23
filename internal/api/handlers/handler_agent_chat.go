@@ -11,6 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
@@ -357,7 +358,7 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 			return
 		}
 	}
-	receipt, err := h.app.AgentChat().SubmitCommand(ctx, binding, appagentruntime.Command{
+	receipt, err := h.app.AgentChat().SubmitCommand(ctx, binding, agentruntime.Command{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
 		OperationID:     appsvc.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),
 		TargetCommandID: appsvc.AgentCommandID(strings.TrimSpace(body.TargetCommandID)),
@@ -529,9 +530,19 @@ func (h *Handlers) HandleAgentChatSlashCommand(ctx context.Context, c *app.Reque
 		}
 		writeJSON(c, consts.StatusOK, map[string]string{"result": status})
 	case "help":
-		writeJSON(c, consts.StatusOK, map[string]string{"result": "/clear · /status · /help"})
+		writeJSON(c, consts.StatusOK, map[string]string{"result": "/compact · /clear · /status · /help"})
 	case "compact":
-		writeError(c, consts.StatusConflict, "AgentChat 暂不支持手动压缩 / Manual compaction is not available in AgentChat yet")
+		compacted, err := h.app.AgentChat().CompactContext(ctx, binding, "")
+		if err != nil {
+			h.writeAgentCommandError(ctx, c, err, "")
+			return
+		}
+		localizer := requestLocalizer(c)
+		result := localizer.T("api.command.runtimeCompacted")
+		if !compacted.RuntimeManaged {
+			result = localizer.T("api.command.compacted", "epoch", compacted.Revision, "before", compacted.TokensBefore, "after", compacted.TokensAfter)
+		}
+		writeJSON(c, consts.StatusOK, map[string]string{"result": result})
 	default:
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 	}

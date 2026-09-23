@@ -40,6 +40,7 @@ func (agent *modelToolLoop) callModelWithRetry(
 	registry *Registry,
 	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
+	deferFinal bool,
 ) (*Message, int, []*Message, context.Context, error) {
 	if initial == nil || initial.Model == nil || initialContext == nil {
 		return nil, 0, nil, ctx, errors.New("model retry boundary requires an initial model call and context")
@@ -58,13 +59,13 @@ func (agent *modelToolLoop) callModelWithRetry(
 	stableOptions := initial.Snapshot().ResolvedOptions()
 	var retryFeedback []*Message
 	var streamOutput *modelStreamOutput
-	if initial.Streaming {
+	if initial.Streaming && !deferFinal {
 		streamOutput = &modelStreamOutput{agent: agent, events: events, registry: registry}
 		defer streamOutput.close()
 	}
 	responseOrdinal := 0
 	publish := func(message *Message, action ModelOutputAction) {
-		if currentCall.Streaming || message == nil {
+		if currentCall.Streaming && !deferFinal || message == nil {
 			return
 		}
 		event := agent.messageEvent(message.Clone(), nil, Assistant, "")
@@ -74,6 +75,7 @@ func (agent *modelToolLoop) callModelWithRetry(
 			output.ToolExecutionNamespace = scope.ToolNamespace
 		}
 		output.ModelResponseOrdinal, output.previewOnly = responseOrdinal, action == ModelOutputRepair
+		output.discarded = deferFinal && len(message.ToolCalls) == 0
 		events.Send(event)
 	}
 	message, err := executeModelAttempts(modelCtx, agent.modelMaxAttempts, agent.retry,
@@ -515,6 +517,11 @@ func (agent *modelToolLoop) callModel(
 			return nil, err, true
 		}
 		chunk = chunk.Clone()
+		if streamOutput == nil {
+			if activity := idleActivityFromContext(ctx); activity != nil {
+				activity()
+			}
+		}
 		bindModelInputEstimate(chunk, inputEstimate)
 		chunks = append(chunks, chunk.Clone())
 		streamOutput.send(chunk.Clone(), nil)

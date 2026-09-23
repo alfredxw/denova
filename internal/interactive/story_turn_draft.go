@@ -54,6 +54,7 @@ type TurnDraft struct {
 	NarrativeSource string                  `json:"narrative_source,omitempty"`
 	Submission      *TurnSubmissionProgress `json:"submission,omitempty"`
 	RuleResolution  *RuleResolution         `json:"rule_resolution,omitempty"`
+	DisplayEvents   []DisplayEvent          `json:"display_events,omitempty"`
 }
 
 type TurnDraftEvent struct {
@@ -136,6 +137,10 @@ func (s *Store) LoadTurnDraft(storyID, branchID string, identity DomainCommitIde
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.loadTurnDraftLocked(storyID, branchID, identity)
+}
+
+func (s *Store) loadTurnDraftLocked(storyID, branchID string, identity DomainCommitIdentity) (TurnDraft, bool, error) {
 	handle, err := s.openStoryJournalLocked(storyID)
 	if err != nil {
 		return TurnDraft{}, false, err

@@ -7,6 +7,7 @@ import (
 	"denova/config"
 	"denova/internal/agents/agentprofile"
 	"denova/internal/agents/conversationconfig"
+	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/lifecycle"
 	"denova/internal/agents/prompts"
 	"denova/internal/agents/toolruntime"
@@ -47,6 +48,21 @@ func BuildExternalConversationAssembly(ctx context.Context, cfg *config.Config, 
 	if err != nil {
 		return ExternalAssembly{}, err
 	}
+	return buildExternalAssembly(ctx, cfg, state, kind, composition, factory, host)
+}
+
+// BuildExternalGameAssembly exposes Game's product contract to an external
+// engine. It constructs no Native Definition, model, session or control tools.
+func BuildExternalGameAssembly(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, host AgentHostCapabilities, tools agentinteractive.InteractiveStoryToolContext) (ExternalAssembly, error) {
+	composition, err := prompts.ComposeInteractiveStoryInstruction(cfg, state, teller)
+	if err != nil {
+		return ExternalAssembly{}, err
+	}
+	return buildExternalAssembly(ctx, cfg, state, config.AgentKindInteractiveStory, composition,
+		toolruntime.NewCatalogWithContext(ctx, cfg).InteractiveStory(toolruntime.ProjectInteractiveContext(tools)), host)
+}
+
+func buildExternalAssembly(ctx context.Context, cfg *config.Config, state *book.State, kind string, composition prompts.SystemPromptComposition, factory producttools.Factory, host AgentHostCapabilities) (ExternalAssembly, error) {
 	if err := composition.ValidateForAgent(kind); err != nil {
 		return ExternalAssembly{}, err
 	}
@@ -55,16 +71,19 @@ func BuildExternalConversationAssembly(ctx context.Context, cfg *config.Config, 
 	settings := ExternalConversationToolSettings(kind)
 	assembly, err := buildAgentTools(ctx, cfg, agentToolsSpec{
 		Kind: kind, SystemPrompt: composition, Settings: settings, EnableSkills: true,
-		ExtraToolsFactory: factory, ReadAdapters: host.ReadAdapters,
+		ExtraToolsFactory: factory, ReadAdapters: host.ReadAdapters, ExtraTools: host.RootTools,
 	})
 	if err != nil {
 		return ExternalAssembly{}, err
 	}
-	// Root tools are Native session controls. Ask reuses its public schema only;
+	// Root tools are application-owned capabilities. Ask reuses its schema only;
 	// the external Host resolves it from the product journal instead of Run state.
-	asks, err := publictools.Ask().PrepareTools(ctx, agent.ToolRequest{})
-	if err != nil {
-		return ExternalAssembly{}, err
+	var asks []agent.ToolDefinition
+	if kind != config.AgentKindInteractiveStory {
+		asks, err = publictools.Ask().PrepareTools(ctx, agent.ToolRequest{})
+		if err != nil {
+			return ExternalAssembly{}, err
+		}
 	}
 	definitions := append(assembly.Tools, asks...)
 	definitions, err = agentprofile.ApplyToolGuidance(ctx, cfg, kind, definitions)
@@ -89,7 +108,7 @@ func BuildExternalConversationAssembly(ctx context.Context, cfg *config.Config, 
 // Agents manifest. Native permissions and session-dependent tools stay dormant.
 func ExternalConversationToolSettings(kind string) config.ResolvedAgentToolSettings {
 	settings := config.ResolveAgentTools(&config.Config{AgentTools: config.DefaultAgentToolSettings()}, kind)
-	for _, capability := range []string{config.AgentToolTodo, config.AgentToolDelegation, config.AgentToolScript} {
+	for _, capability := range []string{config.AgentToolDelegation, config.AgentToolScript} {
 		settings[capability] = false
 	}
 	return settings

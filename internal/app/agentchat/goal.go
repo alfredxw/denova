@@ -2,12 +2,10 @@ package agentchat
 
 import (
 	"context"
+	agentruntime "denova/internal/agents/runtime"
 	"errors"
-	"fmt"
 
-	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
-	"denova/internal/agents/conversationconfig"
 
 	agent "github.com/alfredxw/denova/agent"
 	publicgoal "github.com/alfredxw/denova/agent/goal"
@@ -27,10 +25,15 @@ func (service *Service) ConversationGoal(ctx context.Context, binding Binding) (
 	if err != nil {
 		return agent.GoalState{}, false, err
 	}
-	if selection.Engine().Kind != config.RuntimeNative {
-		return agent.GoalState{}, false, nil
+	sess, err := project.store.Get(resolved.SessionID)
+	if err != nil {
+		return agent.GoalState{}, false, err
 	}
-	return project.executionRuntime.Goal(ctx, runtimeOptions(resolved, ""))
+	bound, err := service.host.AgentEngines().ConversationSession(project.executionRuntime, runtimeOptions(resolved, ""), sess, selection.Engine())
+	if err != nil {
+		return agent.GoalState{}, false, err
+	}
+	return bound.Goal(ctx)
 }
 
 func (service *Service) MutateConversationGoal(ctx context.Context, binding Binding, action string, objective string, expectedRevision uint64) (agent.GoalState, error) {
@@ -44,34 +47,19 @@ func (service *Service) MutateConversationGoal(ctx context.Context, binding Bind
 	if err != nil {
 		return agent.GoalState{}, err
 	}
-	if selection.Engine().Kind != config.RuntimeNative {
-		return agent.GoalState{}, conversationconfig.ErrRuntimeCapabilityUnsupported
-	}
 	sess, _, err := getOrCreateConversation(project, resolved)
 	if err != nil {
 		return agent.GoalState{}, err
 	}
-	if engines := service.host.AgentEngines(); engines != nil {
-		release, err := engines.AdmitExecution(ctx, sess, nil)
-		if err != nil {
-			return agent.GoalState{}, err
-		}
-		defer release()
+	mutation, err := agentruntime.GoalMutation(action, objective, expectedRevision)
+	if err != nil {
+		return agent.GoalState{}, err
 	}
-	mutation := agent.GoalMutation{ExpectedRevision: expectedRevision}
-	switch action {
-	case "set":
-		mutation.Kind, mutation.Objective = agent.GoalSet, objective
-	case "pause":
-		mutation.Kind = agent.GoalPause
-	case "resume":
-		mutation.Kind = agent.GoalResume
-	case "clear":
-		mutation.Kind = agent.GoalClear
-	default:
-		return agent.GoalState{}, fmt.Errorf("unsupported goal action %q", action)
+	bound, err := service.host.AgentEngines().ConversationSession(project.executionRuntime, runtimeOptions(resolved, ""), sess, selection.Engine())
+	if err != nil {
+		return agent.GoalState{}, err
 	}
-	return project.executionRuntime.UpdateGoal(ctx, runtimeOptions(resolved, ""), mutation)
+	return bound.UpdateGoal(ctx, mutation)
 }
 
 func IsGoalRevisionConflict(err error) bool { return errors.Is(err, publicgoal.ErrRevisionConflict) }

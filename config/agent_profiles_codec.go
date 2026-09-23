@@ -126,6 +126,8 @@ func mainAgentProfileForSettings(settings Settings, kind string) (mainAgentProfi
 		document.Runtime = settings.AgentRuntimes.IDE
 	case AgentKindGeneral:
 		document.Runtime = settings.AgentRuntimes.General
+	case AgentKindInteractiveStory:
+		document.Runtime = settings.AgentRuntimes.InteractiveStory
 		document.ToolParallelism = settings.AgentToolParallelism
 		document.SubAgentParallelism = settings.AgentSubAgentParallelism
 	case AgentKindImage:
@@ -153,7 +155,7 @@ func applyMainAgentProfile(settings *Settings, document mainAgentProfileDocument
 		if document.SchemaVersion != agentRuntimeProfileSchemaVersion {
 			return fmt.Errorf("runtime preferences require Agent Profile schema_version %d", agentRuntimeProfileSchemaVersion)
 		}
-		if expectedKind != AgentKindIDE && expectedKind != AgentKindGeneral {
+		if expectedKind != AgentKindIDE && expectedKind != AgentKindGeneral && expectedKind != AgentKindInteractiveStory {
 			return fmt.Errorf("%w: runtime preferences are not supported for %q", ErrInvalidAgentRuntime, expectedKind)
 		}
 		if err := document.Runtime.Validate(); err != nil {
@@ -185,6 +187,8 @@ func applyMainAgentProfile(settings *Settings, document mainAgentProfileDocument
 		settings.AgentRuntimes.IDE = document.Runtime
 	case AgentKindGeneral:
 		settings.AgentRuntimes.General = document.Runtime
+	case AgentKindInteractiveStory:
+		settings.AgentRuntimes.InteractiveStory = document.Runtime
 		settings.AgentToolParallelism = document.ToolParallelism
 		settings.AgentSubAgentParallelism = document.SubAgentParallelism
 	case AgentKindImage:

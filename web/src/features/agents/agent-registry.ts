@@ -144,7 +144,8 @@ export function toolDefinitionsFromManifest(manifest?: readonly ResolvedAgentToo
   }))
 }
 
-export function skillAvailableForAgent(skill: Pick<SkillSummary, 'name' | 'agent'>, agentKey: VisibleAgentKey, settings?: AgentSkillSettings) {
+export function skillAvailableForAgent(skill: Pick<SkillSummary, 'name' | 'agent' | 'enabled'>, agentKey: VisibleAgentKey, settings?: AgentSkillSettings) {
+  if (skill.enabled === false) return false
   const explicit = settings?.[agentKey]?.[skill.name] ?? settings?.default?.[skill.name]
   if (explicit !== undefined) return explicit
   return skillAgentFieldMatches(skill.agent, agentKey)

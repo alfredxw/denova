@@ -13,9 +13,9 @@ import (
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
 	agentexecution "denova/internal/agents/execution"
-	"denova/internal/agents/external"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -163,18 +163,16 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		if input.Task != nil && input.Task != replay {
 			return nil, fmt.Errorf("%w: command_id=%q", apptask.ErrCommandConflict, request.CommandID)
 		}
-		project, err := service.projectRuntime(ctx, binding.ProjectID)
-		if err != nil {
+		if control, selected, err := service.externalController(ctx, binding); err != nil {
 			return nil, err
-		}
-		sess, err := project.store.Get(binding.SessionID)
-		if err != nil {
-			return nil, err
-		}
-		if receipt, found, err := external.CommandReceipt(ctx, sess, request.CommandID); err != nil {
-			return nil, err
-		} else if found {
-			return &AcceptedTurn{service: service, task: replay, replayed: true, receipt: receipt}, nil
+		} else if selected {
+			receipt, found, err := control.Receipt(ctx, request.CommandID)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				return &AcceptedTurn{service: service, task: replay, replayed: true, receipt: receipt}, nil
+			}
 		}
 		_, runtime := service.host.BaseRuntime()
 		view, found, err := runtime.CommandProjection(ctx, runtimeOptions(binding, ""), request.CommandID)
@@ -187,7 +185,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		return &AcceptedTurn{service: service, task: replay, replayed: true, receipt: view.Receipt}, nil
 	}
 	if active := service.activeRun(binding); active != nil && active.task != nil && !active.task.Finished() {
-		return nil, appagentruntime.ErrOperationActive
+		return nil, agentruntime.ErrOperationActive
 	}
 
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
@@ -291,7 +289,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 			return nil, fmt.Errorf("%w: command_id=%q", apptask.ErrCommandConflict, request.CommandID)
 		}
 		if errors.Is(err, agent.ErrSessionBusy) {
-			return nil, appagentruntime.ErrOperationActive
+			return nil, agentruntime.ErrOperationActive
 		}
 		return nil, err
 	}
@@ -356,71 +354,32 @@ func startOptions(
 
 // SubmitCommand targets one exact Project conversation. A command from
 // another tab cannot steer, queue into, or abort this binding.
-func (service *Service) SubmitCommand(ctx context.Context, binding Binding, command appagentruntime.Command) (agentrun.CommandReceipt, error) {
+func (service *Service) SubmitCommand(ctx context.Context, binding Binding, command agentruntime.Command) (agentrun.CommandReceipt, error) {
 	var err error
 	binding, err = service.ResolveBinding(binding)
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
 	active := service.activeRun(binding)
-	if active != nil && active.runtime.Config.ActiveAgentRuntime != nil && active.runtime.Config.ActiveAgentRuntime.Kind != config.RuntimeNative {
-		if command.Kind != agentexecution.CommandAbort {
-			return agentrun.CommandReceipt{}, conversationconfig.ErrRuntimeCapabilityUnsupported
-		}
-		status, _, err := service.host.AgentEngines().Operations.Status(ctx, binding.ProjectID, active.runtime.Session)
-		if err != nil {
-			return agentrun.CommandReceipt{}, err
-		}
-		if status.ActiveOperation != command.OperationID || active.task.Finished() {
-			return agentrun.CommandReceipt{}, agentrun.ErrStaleOperation
-		}
-		active.task.Abort()
-		return agentrun.CommandReceipt{CommandID: agentrun.CommandID(command.CommandID), OperationID: status.ActiveOperation, Cursor: status.Cursor}, nil
+	taskID := ""
+	var emit func(agentrun.Event)
+	if active != nil && active.task != nil && !active.task.Finished() {
+		taskID, emit = active.task.ID(), active.task.Emit
+	}
+	bound, err := service.agentSession(ctx, binding, taskID)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
 	}
 	if active == nil || active.task == nil || active.task.Finished() {
-		selection, err := service.ConversationConfig(ctx, binding)
-		if err != nil {
-			return agentrun.CommandReceipt{}, err
-		}
-		if selection.Engine().Kind != config.RuntimeNative {
-			return agentrun.CommandReceipt{}, conversationconfig.ErrRuntimeCapabilityUnsupported
-		}
-		_, runtime := service.host.BaseRuntime()
-		options := runtimeOptions(binding, "")
-		status, err := runtime.RuntimeStatusProjection(ctx, options)
+		status, err := bound.Status(ctx)
 		if err != nil {
 			return agentrun.CommandReceipt{}, err
 		}
 		if status.Phase != agentrun.RunPhaseSuspended {
 			return agentrun.CommandReceipt{}, appagentruntime.ErrNoActiveOperation
 		}
-		return runtime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: command.Kind, CommandID: command.CommandID,
-			OperationID: command.OperationID, AfterOperationID: command.OperationID,
-			TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Request: command.Input, Options: options,
-		})
 	}
-
-	options := runtimeOptions(binding, active.task.ID())
-	switch command.Kind {
-	case agentexecution.CommandAbort, agentexecution.CommandSuspend, agentexecution.CommandSteerQueued, agentexecution.CommandCancelQueued:
-		return active.runtime.ExecutionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: command.Kind, CommandID: command.CommandID,
-			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Options: options,
-		})
-	case agentexecution.CommandSteer, agentexecution.CommandFollowUp, agentexecution.CommandNextTurn:
-		// Prepared below after the active Run admits the exact command.
-	default:
-		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported AgentChat command %q", agentrun.ErrInvalidCommand, command.Kind)
-	}
-
-	return active.runtime.ExecutionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-		Kind: command.Kind, CommandID: command.CommandID,
-		OperationID: command.OperationID, AfterOperationID: command.OperationID,
-		Request: command.Input, Emit: active.task.Emit, Options: options,
-	})
+	return bound.Submit(ctx, command, emit)
 }
 
 func (service *Service) prepareCommandExecution(ctx context.Context, active *run, request chatagent.ChatRequest) (agentexecution.Cycle, error) {

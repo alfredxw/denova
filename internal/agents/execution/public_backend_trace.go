@@ -189,7 +189,7 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 			ArgsBytes: len(payload.Arguments), ArgsComplete: &argsComplete,
 		})
 	case agent.ToolFinished:
-		if payload.Name == "task" && payload.Projection != nil {
+		if (payload.Name == "send" || payload.Name == "task") && payload.Projection != nil {
 			for _, child := range agentrun.TaskRunTraceReferences(payload.Projection.ModelContent) {
 				child.ParentCallID = payload.CallID
 				if err := trace.recordChildRun(child); err != nil {

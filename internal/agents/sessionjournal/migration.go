@@ -28,7 +28,7 @@ func (log *Log) HasCapabilityRecord(capability string) (bool, error) {
 	if err != nil || stream == nil {
 		return false, err
 	}
-	_, exists := stream.Capabilities[capability]
+	_, exists := stream.Recovery.CapabilityRecord(capability)
 	return exists, nil
 }
 
@@ -56,7 +56,7 @@ func (log *Log) ImportCapabilityIfAbsent(
 		return false, err
 	}
 	if stream != nil {
-		if _, exists := stream.Capabilities[capability]; exists {
+		if _, exists := stream.Recovery.CapabilityRecord(capability); exists {
 			return false, nil
 		}
 	}

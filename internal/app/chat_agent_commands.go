@@ -2,20 +2,16 @@ package app
 
 import (
 	"context"
-	"denova/config"
-	"denova/internal/agents/conversationconfig"
-	"errors"
-	"fmt"
-
-	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
+	"errors"
 )
 
 var ErrNoActiveAgentOperation = appagentruntime.ErrNoActiveOperation
 
-type ChatAgentCommand = appagentruntime.Command
+type ChatAgentCommand = agentruntime.Command
 
 // SubmitChatAgentCommand adapts a transport command to the active writing
 // binding. Workspace/session identity is captured from App state and never
@@ -48,41 +44,16 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
-	if runtime.cfg.ActiveAgentRuntime != nil && runtime.cfg.ActiveAgentRuntime.Kind != config.RuntimeNative {
-		if command.Kind != agentexecution.CommandAbort {
-			return agentrun.CommandReceipt{}, conversationconfig.ErrRuntimeCapabilityUnsupported
-		}
-		status, _, err := s.app.AgentEngines().Operations.Status(ctx, runtime.projectID, runtime.sess)
-		if err != nil {
-			return agentrun.CommandReceipt{}, err
-		}
-		if status.ActiveOperation != command.OperationID || task == nil || task.Finished() {
-			return agentrun.CommandReceipt{}, agentrun.ErrStaleOperation
-		}
-		task.Abort()
-		return agentrun.CommandReceipt{CommandID: agentrun.CommandID(command.CommandID), OperationID: status.ActiveOperation, Cursor: status.Cursor}, nil
-	}
 	taskID := ""
 	var emit func(agentrun.Event)
 	if task != nil {
 		taskID, emit = task.ID(), task.Emit
 	}
-	if command.Kind == agentexecution.CommandAbort || command.Kind == agentexecution.CommandSuspend || command.Kind == agentexecution.CommandSteerQueued || command.Kind == agentexecution.CommandCancelQueued {
-		return runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: command.Kind, CommandID: command.CommandID,
-			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Options: runtime.agentOptions(taskID),
-		})
+	bound, err := s.app.agentSession(runtime.agentOptions(taskID), runtime.executionRuntime)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
 	}
-	if command.Kind != agentexecution.CommandSteer && command.Kind != agentexecution.CommandFollowUp && command.Kind != agentexecution.CommandNextTurn {
-		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported writing command %q", agentrun.ErrInvalidCommand, command.Kind)
-	}
-	return runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-		Kind: command.Kind, CommandID: command.CommandID,
-		OperationID: command.OperationID, AfterOperationID: command.OperationID,
-		Request: command.Input, Emit: emit,
-		Options: runtime.agentOptions(taskID),
-	})
+	return bound.Submit(ctx, command, emit)
 }
 
 // A paused logical Run remains addressable after its display task closes.
@@ -100,10 +71,11 @@ func (s *ChatAppService) commandRuntime(ctx context.Context) (ideChatRuntime, *a
 	runtime = ideChatRuntime{app: a, projectID: a.cfg.ProjectID, projectStore: a.cfg.ProjectStoreDir,
 		workspace: a.workspace, sess: a.session, state: a.bookState, executionRuntime: a.executionRuntime}
 	a.mu.RUnlock()
-	if selection, ok := runtime.sess.RuntimeConfig(); ok && selection.Engine().Kind != config.RuntimeNative {
-		return ideChatRuntime{}, nil, conversationconfig.ErrRuntimeCapabilityUnsupported
+	bound, err := a.agentSession(runtime.agentOptions(""), runtime.executionRuntime)
+	if err != nil {
+		return ideChatRuntime{}, nil, err
 	}
-	status, err := runtime.executionRuntime.RuntimeStatusProjection(ctx, runtime.agentOptions(""))
+	status, err := bound.Status(ctx)
 	if err != nil {
 		return ideChatRuntime{}, nil, err
 	}

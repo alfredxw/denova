@@ -63,7 +63,7 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 			outcomes[index].Err = err
 			continue
 		}
-		task, taskErr := taskFromSnapshot(ref, snapshot)
+		task, taskErr := tasks.taskFromSessionSnapshot(waitCtx, session, ref, snapshot)
 		if taskErr != nil {
 			outcomes[index].Err = taskErr
 			continue
@@ -79,7 +79,7 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 			outcomes[index].Task = nil
 			continue
 		}
-		task, taskErr = taskFromSnapshot(ref, observation.Snapshot)
+		task, taskErr = tasks.taskFromSessionSnapshot(waitCtx, session, ref, observation.Snapshot)
 		if taskErr != nil {
 			outcomes[index].Err = taskErr
 			outcomes[index].Task = nil
@@ -114,9 +114,17 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 	if len(pending) != 0 {
 		if tasks.completionParent != nil {
 			for _, interaction := range pending {
+				if interaction.request.Verification != nil {
+					ready[interaction.index] = true
+					continue
+				}
 				if err := tasks.rejectChildInteraction(interaction.ref, interaction.request); err != nil && !errors.Is(err, agent.ErrInteractionStale) {
 					return nil, fmt.Errorf("reject non-interactive child request: %w", err)
 				}
+			}
+			if len(ready) != 0 {
+				cancel()
+				return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
 			}
 		} else {
 			interaction := pending[0]
@@ -156,7 +164,7 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 	for openStreams > 0 {
 		chosen, received, ok := reflect.Select(cases)
 		if chosen == 0 {
-			return nil, ctx.Err()
+			return outcomes, ctx.Err()
 		}
 		source := sources[chosen]
 		if source.mailbox {
@@ -218,6 +226,11 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 		switch payload := event.Payload.(type) {
 		case agent.InteractionRequested:
 			if tasks.completionParent != nil {
+				if payload.Request.Verification != nil {
+					ready[stream.index] = true
+					cancel()
+					return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
+				}
 				if err := tasks.rejectChildInteraction(stream.ref, payload.Request); err != nil && !errors.Is(err, agent.ErrInteractionStale) {
 					return nil, fmt.Errorf("reject non-interactive child request: %w", err)
 				}

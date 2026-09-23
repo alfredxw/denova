@@ -3,15 +3,14 @@ package agentchat
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sort"
 	"strings"
 
 	chatagent "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
-	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
 )
@@ -21,8 +20,12 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	if err != nil || service.host == nil {
 		return ActiveView{}
 	}
-	_, executionRuntime := service.host.BaseRuntime()
-	runtime, projected := appagentruntime.RuntimeProjection(ctx, executionRuntime, runtimeOptions(binding, ""))
+	var runtime agentrun.RuntimeStatus
+	projected := false
+	if bound, err := service.agentSession(ctx, binding, ""); err == nil {
+		runtime, err = bound.Status(ctx)
+		projected = err == nil
+	}
 	active := service.activeRun(binding)
 	var taskSnapshot *apptask.Snapshot
 	var pendingAsks []*session.AskInteraction
@@ -40,17 +43,6 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	pendingInterruptionID := ""
 	if project, projectErr := service.projectRuntime(ctx, binding.ProjectID); projectErr == nil {
 		if conversation, sessionErr := project.store.Get(binding.SessionID); sessionErr == nil {
-			if engines := service.host.AgentEngines(); engines != nil {
-				if view, owned, err := engines.Operations.Status(ctx, binding.ProjectID, conversation); owned {
-					runtime, projected = view, err == nil
-					var askErr error
-					pendingAsks, askErr = conversation.PendingExternalAsks(ctx)
-					if askErr != nil {
-						projected = false
-						slog.ErrorContext(ctx, "Read external pending questions failed", "session_id", binding.SessionID, "error", askErr)
-					}
-				}
-			}
 			if pending := conversation.PendingInterruption(); pending != nil {
 				pendingInterruptionID = strings.TrimSpace(pending.ID)
 			}
@@ -152,7 +144,7 @@ func (service *Service) resolveAsk(
 		return agentconversation.HostAskResolution{}, err
 	}
 	if engines := service.host.AgentEngines(); engines != nil {
-		if result, owned, err := engines.Operations.ResolveAsk(ctx, binding.ProjectID, sess, askID, status, answers, cancelReason); owned {
+		if result, owned, err := engines.Operations.ResolveAsk(ctx, binding.ProjectID, sess, askID, status, answers, cancelReason); owned || err != nil {
 			return result, err
 		}
 	}
@@ -168,7 +160,7 @@ func (service *Service) ClearSession(ctx context.Context, binding Binding) error
 		return err
 	}
 	if active := service.activeRun(binding); active != nil && active.task != nil && !active.task.Finished() {
-		return appagentruntime.ErrOperationActive
+		return agentruntime.ErrOperationActive
 	}
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
@@ -242,7 +234,7 @@ func (service *Service) Activity() []Binding {
 
 func (service *Service) requireIdle(binding Binding) error {
 	if service.SessionBusy(binding) {
-		return fmt.Errorf("%w: AgentChat conversation is running", appagentruntime.ErrOperationActive)
+		return fmt.Errorf("%w: AgentChat conversation is running", agentruntime.ErrOperationActive)
 	}
 	return nil
 }

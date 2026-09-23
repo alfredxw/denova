@@ -9,16 +9,16 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentexecution "denova/internal/agents/execution"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
-	appagentruntime "denova/internal/app/agentruntime"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
 )
 
 type activeViewTestHost struct{}
 
-func (activeViewTestHost) AgentEngines() *appagentruntime.Engines { return nil }
+func (activeViewTestHost) AgentEngines() *agentruntime.Engines { return nil }
 
 func (activeViewTestHost) BaseRuntime() (config.Config, *agentexecution.Runtime) {
 	return config.Config{}, nil

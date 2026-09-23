@@ -1,5 +1,5 @@
 import { runtimeModel, runtimeModelKey, runtimeModelFromKey } from '@/features/agent-runtime/types'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -22,6 +22,7 @@ import { fetchEngineModels } from '@/features/agent-runtime/api'
 import { useRuntimeProfiles } from '@/features/agent-runtime/api-profiles'
 import type { EngineModels } from '@/features/agent-runtime/types'
 import { useToolNavigation } from './tool-navigation'
+import { ConversationRuntimeMenu } from './ConversationRuntimeMenu'
 
 interface ModelProfileSwitcherProps {
   agentKey?: VisibleAgentKey
@@ -43,8 +44,8 @@ const MODEL_LABEL_OVERFLOW_CLASS = 'min-w-0 overflow-x-clip overflow-y-visible t
 export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false, runActive = false }: ModelProfileSwitcherProps) {
   const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled, runActive })
   const [open, setOpen] = useState(false)
+  const pendingNavigationRef = useRef<(() => void) | null>(null)
   const navigation = useToolNavigation()
-  const runtimeName = selector.t(`agentRuntime.${conversationConfig?.snapshot?.runtime?.kind ?? 'native'}`)
 
   if (!selector.enabled) return null
 
@@ -53,14 +54,14 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled || !selector.ready || !conversationConfig?.initialized || selector.saving}
+          disabled={disabled || !conversationConfig?.initialized || selector.saving}
           className="group flex h-8 min-w-0 max-w-44 flex-[0_1_auto] items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
           aria-label={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           data-model-profile-trigger="true"
           data-current-model={selector.currentModelLabel}
           data-current-thinking-level={selector.currentThinkingLevel}
         >
-          <span className={MODEL_LABEL_OVERFLOW_CLASS}>{selector.ready ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
+          <span className={MODEL_LABEL_OVERFLOW_CLASS}>{(selector.ready || selector.error) ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
           {selector.currentThinkingLevelLabel ? (
             <span className="shrink-0 font-normal text-[var(--nova-text-faint)]">{selector.currentThinkingLevelLabel}</span>
           ) : null}
@@ -72,15 +73,25 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
         side="top"
         aria-label={selector.t('chat.modelProfile.action')}
         className="w-60 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)]"
+        onCloseAutoFocus={(event) => {
+          const navigate = pendingNavigationRef.current
+          if (!navigate) return
+          pendingNavigationRef.current = null
+          // Let the modal menu release its pointer lock and focus scope before
+          // the destination mounts. Focus belongs to the destination on navigation.
+          event.preventDefault()
+          navigate()
+        }}
       >
-        <DropdownMenuGroup>
-          <DropdownMenuItem disabled={!navigation} className="cursor-pointer text-xs text-muted-foreground"
-            onSelect={() => navigation?.open({ kind: 'config_resource', resource: 'agent_profile',
-              id: conversationConfig?.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime',
-              conversation: conversationConfig?.binding })}>
-            {selector.t('agentRuntime.currentRuntime', { runtime: runtimeName })}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+        {conversationConfig && <ConversationRuntimeMenu
+          controller={conversationConfig} runActive={runActive} disabled={disabled}
+          configurationDisabled={!navigation}
+          onConfigure={() => {
+            pendingNavigationRef.current = () => navigation?.open({ kind: 'config_resource', resource: 'agent_profile',
+              id: conversationConfig.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime' })
+            setOpen(false)
+          }}
+        />}
         <DropdownMenuSeparator />
         {runActive ? (
           <>

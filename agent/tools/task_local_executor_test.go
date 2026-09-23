@@ -37,10 +37,6 @@ func (*lateBoundTaskExecutor) Identity() agent.CapabilityIdentity {
 	return agent.CapabilityIdentity{Kind: "test.task.late-bound", Version: 1}
 }
 
-func (*lateBoundTaskExecutor) TaskAgents() []TaskAgentInfo {
-	return []TaskAgentInfo{{Name: DefaultTaskAgentName, Description: "General delegated work"}}
-}
-
 func (executor *lateBoundTaskExecutor) Start(ctx context.Context, request TaskRequest) (Task, error) {
 	return executor.delegate.Start(ctx, request)
 }
@@ -62,7 +58,7 @@ func (executor *lateBoundTaskExecutor) Wait(ctx context.Context, refs []TaskRef)
 	return executor.delegate.Wait(ctx, refs)
 }
 
-func (executor *lateBoundTaskExecutor) Steer(ctx context.Context, ref TaskRef, input agent.Input) error {
+func (executor *lateBoundTaskExecutor) Steer(ctx context.Context, ref TaskRef, input agent.Input) (agent.CommandReceipt, error) {
 	return executor.delegate.Steer(ctx, ref, input)
 }
 
@@ -70,7 +66,7 @@ func (executor *lateBoundTaskExecutor) Respond(ctx context.Context, ref TaskRef,
 	return executor.delegate.Respond(ctx, ref, id, response)
 }
 
-func (executor *lateBoundTaskExecutor) Abort(ctx context.Context, ref TaskRef, request agent.AbortRequest) error {
+func (executor *lateBoundTaskExecutor) Abort(ctx context.Context, ref TaskRef, request agent.AbortRequest) (agent.CommandReceipt, error) {
 	return executor.delegate.Abort(ctx, ref, request)
 }
 
@@ -102,10 +98,10 @@ func (model *parentTaskCompletionModel) next(_ context.Context, input []*agent.M
 	case 1:
 		return agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "delegate", Type: "function", Function: agent.FunctionCall{
-				Name: "task", Arguments: `{"action":"start","starts":[{"prompt":"inspect"}]}`,
+				Name: "send", Arguments: `{"items":[{"action":"delegate","message":"inspect"}]}`,
 			},
 		}}), nil
-	case 2:
+	case 2, 3:
 		model.once.Do(func() { close(model.secondStarted) })
 		return agent.AssistantMessage("parent final after child", nil), nil
 	default:
@@ -490,8 +486,8 @@ func TestLocalTasksStreamsAndBlocksParentFinalWithoutTaskWait(t *testing.T) {
 	}
 	select {
 	case <-parentModel.secondStarted:
-		t.Fatal("parent called the model again before its child completed")
-	case <-time.After(20 * time.Millisecond):
+	case <-ctx.Done():
+		t.Fatal("parent failed to continue while its child was running")
 	}
 	probeCtx, stopProbe := context.WithTimeout(ctx, 20*time.Millisecond)
 	if result, waitErr := run.Wait(probeCtx); !errors.Is(waitErr, context.DeadlineExceeded) {
@@ -522,11 +518,11 @@ func TestLocalTasksStreamsAndBlocksParentFinalWithoutTaskWait(t *testing.T) {
 		t.Fatalf("nested child identity = %#v", nested[0].Source)
 	}
 	inputs := parentModel.capturedInputs()
-	if len(inputs) != 2 {
-		t.Fatalf("parent model calls = %d, want 2", len(inputs))
+	if len(inputs) != 3 {
+		t.Fatalf("parent model calls = %d, want 3", len(inputs))
 	}
 	completionMessages := 0
-	for _, message := range inputs[1] {
+	for _, message := range inputs[2] {
 		if message.TaskCompletion != nil {
 			completionMessages++
 		}
@@ -664,7 +660,7 @@ func TestLocalTasksWaitForwardsStableTypedChildIdentity(t *testing.T) {
 	parent, err := agent.New(ctx, agent.Definition{
 		Name: "root", Model: &taskModel{responses: []*agent.Message{
 			agent.AssistantMessage("", []agent.ToolCall{{
-				ID: "wait", Type: "function", Function: agent.FunctionCall{Name: "task_wait", Arguments: string(arguments)},
+				ID: "wait", Type: "function", Function: agent.FunctionCall{Name: "await", Arguments: string(arguments)},
 			}}),
 			agent.AssistantMessage("parent final", nil),
 		}},
@@ -751,4 +747,11 @@ func TestTaskStatusDistinguishesWaitingAndAborting(t *testing.T) {
 	if got := taskStatus(agent.SessionSnapshot{ActiveRunID: runID, ActiveAbortPending: true}, runID); got != "aborting" {
 		t.Fatalf("aborting status = %q", got)
 	}
+}
+
+func (executor *lateBoundTaskExecutor) Interrupt(ctx context.Context, ref TaskRef, request agent.SuspendRequest) (agent.CommandReceipt, error) {
+	return executor.delegate.Interrupt(ctx, ref, request)
+}
+func (executor *lateBoundTaskExecutor) ListAgents(ctx context.Context, input ListAgentsInput) (ListAgentsOutput, error) {
+	return executor.delegate.ListAgents(ctx, input)
 }

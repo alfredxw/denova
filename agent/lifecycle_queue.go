@@ -114,6 +114,11 @@ func (queued *QueuedInput) control(ctx context.Context, request QueueControlRequ
 		return CommandReceipt{}, err
 	}
 	item.status, item.delivery = status, delivery
+	if status == inputCancelled {
+		item.input = Input{}
+		item.Input = runstate.UserInput{}
+		item.bytes = 0
+	}
 	session.controlReceipts[id] = control
 	session.cursor = control.Receipt.Cursor
 	if status == inputPending {

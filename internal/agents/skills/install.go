@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"denova/internal/portablepath"
 )
 
 const (
@@ -87,6 +89,10 @@ func previewZip(ctx context.Context, dirs []Directory, scope Scope, data []byte,
 }
 
 func installZip(ctx context.Context, dirs []Directory, scope Scope, data []byte, subdir string, candidateIDs []string) (InstallResult, error) {
+	return installZipFromSource(ctx, dirs, scope, data, subdir, candidateIDs, RemoteArchiveSource{})
+}
+
+func installZipFromSource(ctx context.Context, dirs []Directory, scope Scope, data []byte, subdir string, candidateIDs []string, source RemoteArchiveSource) (InstallResult, error) {
 	root, cleanup, err := extractZipData(data)
 	if err != nil {
 		return InstallResult{}, err
@@ -96,7 +102,7 @@ func installZip(ctx context.Context, dirs []Directory, scope Scope, data []byte,
 	if err != nil {
 		return InstallResult{}, err
 	}
-	return InstallFromDirectory(ctx, dirs, scope, searchRoot, candidateIDs)
+	return installFromDirectory(ctx, dirs, scope, searchRoot, candidateIDs, source)
 }
 
 func PreviewDirectory(ctx context.Context, dirs []Directory, scope Scope, root string) (InstallPreview, error) {
@@ -130,6 +136,10 @@ func PreviewDirectory(ctx context.Context, dirs []Directory, scope Scope, root s
 }
 
 func InstallFromDirectory(ctx context.Context, dirs []Directory, scope Scope, root string, candidateIDs []string) (InstallResult, error) {
+	return installFromDirectory(ctx, dirs, scope, root, candidateIDs, RemoteArchiveSource{})
+}
+
+func installFromDirectory(ctx context.Context, dirs []Directory, scope Scope, root string, candidateIDs []string, source RemoteArchiveSource) (InstallResult, error) {
 	if ctx.Err() != nil {
 		return InstallResult{}, ctx.Err()
 	}
@@ -183,8 +193,26 @@ func InstallFromDirectory(ctx context.Context, dirs []Directory, scope Scope, ro
 	defer os.RemoveAll(stageRoot)
 
 	for _, candidate := range candidates {
-		if err := copySkillDir(candidate.sourceDir, filepath.Join(stageRoot, candidate.Name)); err != nil {
+		staged := filepath.Join(stageRoot, candidate.Name)
+		if err := copySkillDir(candidate.sourceDir, staged); err != nil {
 			return InstallResult{}, err
+		}
+		// Consent and provenance can only originate here, never in an archive.
+		if err := os.RemoveAll(filepath.Join(staged, remoteStateFile)); err != nil {
+			return InstallResult{}, err
+		}
+		if err := portablepath.PreflightTree(staged); err != nil {
+			return InstallResult{}, err
+		}
+		if source.URL != "" {
+			digest, err := skillContentDigest(ctx, staged)
+			if err != nil {
+				return InstallResult{}, err
+			}
+			state := RemoteState{Source: source, SourcePath: candidate.SourcePath, Digest: digest}
+			if err := writeRemoteState(staged, &state); err != nil {
+				return InstallResult{}, err
+			}
 		}
 	}
 

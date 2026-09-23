@@ -19,11 +19,11 @@ import (
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
 	agentexecution "denova/internal/agents/execution"
-	"denova/internal/agents/external"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
+	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
-	appagentruntime "denova/internal/app/agentruntime"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
@@ -58,6 +58,11 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 			var mu sync.Mutex
 			var requests []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/compact") {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, `{"output":[{"type":"compaction","encrypted_content":"fixture-compacted-state"}],"usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150}}`)
+					return
+				}
 				if strings.Contains(r.URL.Path, "count_tokens") {
 					fmt.Fprint(w, `{"input_tokens":100}`)
 					return
@@ -121,7 +126,8 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 					t.Setenv(key, "")
 				}
 			} else {
-				home := filepath.Join(hostRoot, "Denova", "runtimes", "codex")
+				home := filepath.Join(hostRoot, ".codex")
+				t.Setenv("CODEX_HOME", home)
 				if err := os.MkdirAll(home, 0o700); err != nil {
 					t.Fatal(err)
 				}
@@ -172,6 +178,9 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 				t.Fatal(err)
 			}
 			runtime := Runtime{ProjectID: cfg.ProjectID, ProjectStore: cfg.ProjectStoreDir, ProjectType: projectdomain.TypeGeneral, AgentKind: scenario.kind, Session: sess, Config: cfg, Workspace: workspace, BookService: book.NewService(workspace)}
+			runtime.ExecutionRuntime = agentexecution.NewEphemeralRuntime()
+			defer runtime.ExecutionRuntime.Close(context.Background())
+			bindingOptions := agentrun.Options{ProjectID: cfg.ProjectID, StateRoot: cfg.ProjectStoreDir, Workspace: workspace, SessionID: sess.ID, AgentKind: scenario.kind, Mode: "agent_chat"}
 			if scenario.kind == config.AgentKindIDE {
 				runtime.ProjectType, runtime.State = projectdomain.TypeBook, book.NewState(workspace)
 				if err := runtime.State.InitWorkspace(); err != nil {
@@ -183,7 +192,7 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 			if err != nil {
 				t.Fatal(err)
 			}
-			engines := appagentruntime.NewEngines()
+			engines := agentruntime.NewEngines()
 			defer engines.Close()
 			built, err := BuildExecution(ctx, runtime, agents.AgentHostCapabilities{}, engines, "")
 			if err != nil {
@@ -191,8 +200,12 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 			}
 			answered, verified, inputCommitted := false, false, false
 			var usage map[string]any
+			var toolRunID string
 			var eventError error
 			emit := func(event agentrun.Event) {
+				if event.Type == "tool_result" {
+					toolRunID = event.DataString("run_id")
+				}
 				if event.Type == "token_usage" {
 					usage, _ = event.Data.(map[string]any)
 					return
@@ -200,13 +213,11 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 				if event.Type != "ask_pending" {
 					return
 				}
-				pending, err := sess.PendingExternalAsks(ctx)
-				if err != nil || len(pending) != 1 {
-					eventError = fmt.Errorf("pending question projection: %v", err)
-					cancel()
-					return
-				}
-				_, err = engines.Operations.Interactions.Resolve(ctx, runtime.ProjectID, sess, pending[0].ID, []agentconversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Restrained"}}, nil)
+				data, _ := json.Marshal(event.Data)
+				var pending session.AskInteraction
+				_ = json.Unmarshal(data, &pending)
+				id := pending.ID
+				_, _, err := engines.Operations.ResolveAsk(ctx, runtime.ProjectID, runtime.Session, id, session.AskAnswered, []agentconversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Restrained"}}, "")
 				answered, eventError = err == nil, err
 				if err != nil {
 					cancel()
@@ -215,6 +226,8 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 			options := agentrun.Options{InputCommitEffect: agentrun.InputCommitEffectFuncs{ApplyFunc: func(context.Context, agentrun.InputCommitEffectRequest) error { inputCommitted = true; return nil }}, OnMutationsVerified: func(_ context.Context, mutations []agenttool.Mutation, _ agenttool.Verification) {
 				verified = len(mutations) > 0
 			}}
+			options.ProjectID, options.StateRoot, options.Workspace = bindingOptions.ProjectID, bindingOptions.StateRoot, bindingOptions.Workspace
+			options.SessionID, options.AgentKind, options.Mode = bindingOptions.SessionID, bindingOptions.AgentKind, bindingOptions.Mode
 			op, err := built.Start(ctx, request, ProjectConversation(runtime, request), options, emit)
 			if err != nil {
 				t.Fatal(err)
@@ -237,8 +250,8 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 			if err != nil {
 				t.Fatal(err)
 			}
-			group, err := changes.GetGroup(ctx, string(op.Receipt().OperationID))
-			if err != nil || len(group.ChangeSets) != 1 {
+			group, err := changes.GetGroup(ctx, toolRunID)
+			if err != nil || len(group.ChangeSets) != 1 || group.RunID != toolRunID {
 				t.Fatalf("missing original domain receipt: %+v, %v", group, err)
 			}
 			history, err := external.ReadHistory(ctx, sess)
@@ -257,6 +270,21 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 				body, _ := json.Marshal(canonical)
 				t.Fatalf("Native projection lost completed external observations: %s", body)
 			}
+			compacted, err := built.Compact(ctx, "manual-compaction", options)
+			if err != nil || !compacted.Triggered || !compacted.RuntimeManaged {
+				t.Fatalf("manual product compaction: %+v %v", compacted, err)
+			}
+			mu.Lock()
+			requestsAfterCompaction := len(requests)
+			mu.Unlock()
+			if replay, err := built.Compact(ctx, "manual-compaction", options); err != nil || replay != compacted {
+				t.Fatalf("manual compaction retry: %+v %v", replay, err)
+			}
+			mu.Lock()
+			if len(requests) != requestsAfterCompaction {
+				t.Error("manual compaction retry ran the provider again")
+			}
+			mu.Unlock()
 			// Switch this exact logical Session and execute the real Native loop.
 			// Only its model is a fixture; preparation and canonical synchronization
 			// remain the production implementation.
@@ -310,7 +338,7 @@ context_window_tokens = 100000
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if len(requests) != 3 || !strings.Contains(requests[1], "Restrained") {
+			if len(requests) != requestsAfterCompaction || !strings.Contains(requests[1], "Restrained") {
 				t.Fatalf("engine did not continue with answer, requests=%d", len(requests))
 			}
 			if customID != "" && !strings.Contains(requests[0], "CUSTOM_ROLE_SENTINEL") {
@@ -345,7 +373,11 @@ func emitClaudeProductFixture(emit func(map[string]any), ordinal int, item map[s
 		delta = map[string]any{"type": "input_json_delta", "partial_json": item["arguments"]}
 	} else {
 		block = map[string]any{"type": "text", "text": ""}
-		delta = map[string]any{"type": "text_delta", "text": "The restrained draft is saved."}
+		text, _ := item["fixture_text"].(string)
+		if text == "" {
+			text = "The restrained draft is saved."
+		}
+		delta = map[string]any{"type": "text_delta", "text": text}
 	}
 	emit(map[string]any{"type": "content_block_start", "index": 0, "content_block": block})
 	emit(map[string]any{"type": "content_block_delta", "index": 0, "delta": delta})

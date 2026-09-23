@@ -6,6 +6,7 @@ import (
 	"denova/config"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
@@ -18,7 +19,7 @@ var (
 	// ErrNoWorkspace reports that an operation requires a selected workspace.
 	ErrNoWorkspace = appagentruntime.ErrNoWorkspace
 	// ErrOperationActive leaves delivery pending while the Project Agent is busy.
-	ErrOperationActive = appagentruntime.ErrOperationActive
+	ErrOperationActive = agentruntime.ErrOperationActive
 	// ErrCommandIDRequired rejects commands that cannot be replayed safely.
 	ErrCommandIDRequired = apptask.ErrCommandIDRequired
 	// ErrCommandConflict reports reuse of a command identity for another intent.

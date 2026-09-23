@@ -6,6 +6,24 @@ import path from 'path'
 
 const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT || '8080'
 
+// Only suites that exercise browser APIs need a fresh DOM and React setup.
+// Keep file isolation in both projects so mocks and module state cannot leak.
+const domTests = [
+  'src/**/*.test.tsx',
+  'src/i18n/i18n.test.ts',
+  'src/lib/api.test.ts',
+  'src/lib/autosave/rebase-with-recovery.test.ts',
+  'src/lib/api-client/{autosave-conflicts,client,project-files}.test.ts',
+  'src/components/Editor/editorDocument.test.ts',
+  'src/components/workbench/TabController.test.ts',
+  'src/features/agent-chat/tab-state.test.ts',
+  'src/features/workspace-events/client.test.ts',
+  'src/features/settings/font-variables.test.ts',
+  'src/features/speech/{player,text}.test.ts',
+  'src/features/interactive/stores/interactive-store.test.ts',
+  'src/features/interactive/components/director-console/persistence.test.ts',
+]
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // Isolated browser-test servers must not replace a running dev server's
@@ -17,20 +35,27 @@ export default defineConfig({
     include: [
       'react', 'react-dom', 'react-dom/client',
       'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-i18next',
+      'monaco-editor',
       '@pierre/diffs', '@pierre/diffs/react', '@pierre/trees', '@pierre/trees/react',
     ],
   },
   test: {
-    environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
     globals: true,
     exclude: [...configDefaults.exclude, 'tests/**'],
     // Only the review workspace relies on computed CSS visibility in jsdom.
     // Other styles are presentation-only and do not need Vitest processing.
     css: { include: [/review-diff\.css$/] },
-    // jsdom suites are CPU and memory intensive. A proportional cap stays
-    // adaptive across developer and CI machines.
-    maxWorkers: '25%',
+    maxWorkers: '50%',
+    projects: [
+      { extends: true, test: {
+        name: 'node', environment: 'node', include: ['**/*.test.ts'],
+        exclude: [...configDefaults.exclude, 'tests/**', ...domTests],
+      } },
+      { extends: true, test: {
+        name: 'dom', environment: 'jsdom', include: domTests,
+        setupFiles: './src/test/setup.ts',
+      } },
+    ],
   },
   resolve: {
     dedupe: ['react', 'react-dom'],

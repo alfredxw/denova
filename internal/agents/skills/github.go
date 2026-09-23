@@ -49,7 +49,7 @@ func InstallGitHub(ctx context.Context, dirs []Directory, scope Scope, source Gi
 	if err != nil {
 		return InstallResult{}, err
 	}
-	return installZip(ctx, dirs, scope, data, repo.Subdir, candidateIDs)
+	return installZipFromSource(ctx, dirs, scope, data, repo.Subdir, candidateIDs, RemoteArchiveSource(source))
 }
 
 func ParseGitHubSource(source GitHubSource) (GitHubRepository, error) {

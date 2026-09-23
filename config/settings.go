@@ -28,6 +28,7 @@ type Settings struct {
 	OpenAIContextWindowTokens *int                    `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
 	ModelEndpoints            []ModelEndpointSettings `toml:"model_endpoints,omitempty" json:"model_endpoints,omitempty"`
 	ModelProfiles             []ModelProfileSettings  `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
+	Speech                    *SpeechSettings         `toml:"speech,omitempty" json:"speech,omitempty"`
 	// LegacyImageAPI* are presence-aware decode aliases for the former
 	// top-level image settings. They are migrated into ImageAPIProfiles.
 	LegacyImageAPIKey        *string                      `toml:"image_api_key,omitempty" json:"image_api_key,omitempty"`
@@ -257,6 +258,10 @@ func Merge(parent, child Settings) Settings {
 	}
 	out.ModelEndpoints = mergeModelEndpoints(out.ModelEndpoints, child.ModelEndpoints)
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
+	if child.Speech != nil {
+		speech := *child.Speech
+		out.Speech = &speech
+	}
 	if child.DefaultImageAPIProfileID != "" {
 		out.DefaultImageAPIProfileID = child.DefaultImageAPIProfileID
 	}

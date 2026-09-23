@@ -16,9 +16,24 @@ import (
 )
 
 var (
-	ErrNoWorkspace = errors.New("no workspace is selected")
-	ErrExecution   = errors.New("image Agent execution failed")
+	ErrNoWorkspace        = errors.New("no workspace is selected")
+	ErrExecution          = errors.New("image Agent execution failed")
+	ErrImageToolNotCalled = errors.New("image Agent did not call the image generation tool")
+	ErrImageOutputMissing = errors.New("image generation tool completed without the requested image")
 )
+
+// ImageToolError retains the last unsuccessful image tool result for callers
+// that have verified the requested image is missing from canonical state.
+type ImageToolError struct {
+	Detail string
+}
+
+func (err *ImageToolError) Error() string {
+	if err.Detail == "" {
+		return "image generation tool failed"
+	}
+	return "image generation tool failed: " + err.Detail
+}
 
 // Operation pins one workspace generation until Release. Implementations must
 // cancel Context when that generation starts draining.

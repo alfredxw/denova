@@ -77,6 +77,9 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 			return StorySummary{}, err
 		}
 	}
+	if err := validateStorySpeechSettings(req.SpeechSettings); err != nil {
+		return StorySummary{}, err
+	}
 	if err := validateStoryCheckSettings(req.CheckSettings); err != nil {
 		return StorySummary{}, err
 	}
@@ -102,6 +105,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Opening:            normalizeStoryOpeningConfig(req.Opening),
 		ImageSettings:      normalizeStoryImageSettings(req.ImageSettings),
 		CheckSettings:      normalizeStoryCheckSettings(req.CheckSettings),
+		SpeechSettings:     normalizeStorySpeechSettings(req.SpeechSettings),
 		StateSchemaPolicy:  cloneStoryStateSchemaPolicy(stateSchemaPolicy),
 		CreatedAt:          now,
 		UpdatedAt:          now,
@@ -139,6 +143,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Opening:            story.Opening,
 		ImageSettings:      story.ImageSettings,
 		CheckSettings:      story.CheckSettings,
+		SpeechSettings:     story.SpeechSettings,
 		StateSchemaPolicy:  cloneStoryStateSchemaPolicy(stateSchemaPolicy),
 		InitialTraitRolls:  append([]InitialActorTraitRoll(nil), req.InitialTraitRolls...),
 		CurrentBranch:      "main",
@@ -337,6 +342,12 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if req.ImageSettings != nil {
 		meta.ImageSettings = normalizeStoryImageSettings(*req.ImageSettings)
 	}
+	if req.SpeechSettings != nil {
+		if err := validateStorySpeechSettings(*req.SpeechSettings); err != nil {
+			return StorySummary{}, err
+		}
+		meta.SpeechSettings = normalizeStorySpeechSettings(*req.SpeechSettings)
+	}
 	if req.CheckSettings != nil {
 		if err := validateStoryCheckSettings(*req.CheckSettings); err != nil {
 			return StorySummary{}, err
@@ -461,6 +472,9 @@ func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
 	}
 	if req.ImageSettings != nil {
 		fields = append(fields, "image_settings")
+	}
+	if req.SpeechSettings != nil {
+		fields = append(fields, "speech_settings")
 	}
 	if req.CheckSettings != nil {
 		fields = append(fields, "check_settings")

@@ -244,8 +244,8 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, reason }),
       }),
-    // This scoped API exposes automatic compaction only. Do not offer the
-    // foreground Writing endpoint as a fallback for another conversation.
+    // Provider compaction cannot be removed through Native checkpoint controls.
+    // Never target a different foreground conversation as a fallback.
     removeContextCompaction: null,
   }
 }

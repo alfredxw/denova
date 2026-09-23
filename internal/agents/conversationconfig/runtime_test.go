@@ -79,8 +79,8 @@ func TestRuntimePatchReplacesBranchAndPreservesAgentSnapshot(t *testing.T) {
 	}
 	game := base
 	game.AgentKind = config.AgentKindInteractiveStory
-	if _, err := Merge(&config.Config{}, game, patch); err == nil {
-		t.Fatal("Game must remain Native")
+	if selected, err := Merge(&config.Config{}, game, patch); err != nil || selected.Engine().Kind != config.RuntimeCodex {
+		t.Fatalf("Game runtime selection: %+v, %v", selected, err)
 	}
 }
 
@@ -113,7 +113,7 @@ func TestCustomRuntimeIsCapturedAndDoesNotInheritBuiltInDefaults(t *testing.T) {
 }
 
 func TestCodexModelPatchPreservesEngineAndReplacesSelection(t *testing.T) {
-	for _, kind := range []string{config.AgentKindIDE, config.AgentKindGeneral} {
+	for _, kind := range []string{config.AgentKindIDE, config.AgentKindGeneral, config.AgentKindInteractiveStory} {
 		t.Run(kind, func(t *testing.T) {
 			base := Config{AgentKind: kind, ProfileID: "dormant", ThinkingLevel: "medium", ApprovalMode: config.AgentApprovalAsk,
 				Runtime: &config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "first", Effort: "high"}}}

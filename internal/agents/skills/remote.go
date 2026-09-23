@@ -136,7 +136,7 @@ func InstallRemoteArchive(ctx context.Context, dirs []Directory, scope Scope, so
 	if err != nil {
 		return InstallResult{}, err
 	}
-	return installZip(ctx, dirs, scope, data, subdir, candidateIDs)
+	return installZipFromSource(ctx, dirs, scope, data, subdir, candidateIDs, source)
 }
 
 func remoteArchiveData(ctx context.Context, source RemoteArchiveSource) ([]byte, string, error) {

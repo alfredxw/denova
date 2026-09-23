@@ -18,6 +18,7 @@ const (
 	DataTypeExecutionSummary  = "data-agent-execution-summary"
 	DataTypeInteractiveImage  = "data-agent-interactive-image"
 	DataTypeProposedPlan      = "data-agent-proposed-plan"
+	DataTypeTodo              = "data-agent-todo"
 	DataTypeRuleRoll          = "data-agent-rule-roll"
 	DataTypeSystem            = "data-agent-system"
 	DataTypeTokenUsage        = "data-agent-token-usage"
@@ -62,7 +63,7 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			"created_at": formatEntryTime(entry),
 		}), true
 	}
-	if entry.Content == "" && len(entry.Attachments) == 0 && entry.Role != "tool_call" && entry.Role != "ask" {
+	if entry.Content == "" && len(entry.Attachments) == 0 && entry.Role != "tool_call" && entry.Role != "ask" && entry.Role != "context_compaction" {
 		if entry.Role == "execution_summary" {
 			return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
 		}
@@ -138,6 +139,8 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 		return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
 	case "proposed_plan":
 		return assistantDataMessage(entry, index, DataTypeProposedPlan, entryPayload(entry)), true
+	case "todo_updated":
+		return assistantDataMessage(entry, index, DataTypeTodo, parseJSONValue(entry.Content)), true
 	case "system":
 		return assistantDataMessage(entry, index, DataTypeSystem, entryPayload(entry)), true
 	case "error":
@@ -207,6 +210,9 @@ func entryPayload(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 		"status":     entry.Status,
 		"result":     entry.Result,
 		"created_at": formatEntryTime(entry),
+	}
+	if entry.Role == "context_compaction" {
+		payload["phase"], payload["runtime_managed"] = entry.Phase, entry.RuntimeManaged
 	}
 	if entry.Role == "execution_summary" {
 		payload["run_started_at"] = entry.RunStartedAt

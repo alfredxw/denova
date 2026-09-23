@@ -16,6 +16,7 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL,
+    serviceWorkers: 'block',
     locale: 'zh-CN',
     colorScheme: 'dark',
     trace: 'retain-on-failure',

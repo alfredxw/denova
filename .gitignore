@@ -9,6 +9,7 @@ log/
 .gomodcache/
 .npm-cache/
 denova-windows-test/
+denova.exe
 denova-test.exe
 nova-windows-test/
 nova-test.exe
@@ -23,8 +24,6 @@ docs/*
 !docs/tests/
 docs/tests/*
 !docs/tests/large-change-regression-checklist.md
-!docs/continual-learning-user-state-design.md
-!docs/dynamic-tool-orchestration-design.md
 !docs/automation-project-agent.md
 !docs/agent-prompt-architecture-audit.md
 !docs/agent-prompt-context-architecture-benchmark.md
@@ -36,6 +35,11 @@ docs/tests/*
 docs/plugin-platform-research-audit.md
 !docs/portable-denova-data-directory-design.md
 !docs/claude-runtime.md
+!docs/ci-performance.md
+!docs/skills-library.md
+!docs/resource-pack-import-export-design.md
+!docs/speech.md
+!docs/agent-runtime-session-design-audit.md
 .worktrees/
 .pnpm-store/
 .DS_Store

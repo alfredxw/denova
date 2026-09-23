@@ -487,7 +487,7 @@ export async function compactInteractiveContext(storyId: string, branchId?: stri
   const commandId = interactiveStructuralCommandIDs.get(key) ?? createAgentCommandID()
   interactiveStructuralCommandIDs.set(key, commandId)
   try {
-    await requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction`, {
+    await requestJSON<Record<string, unknown>>(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction`, {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ command_id: commandId, branch_id: branchId }),

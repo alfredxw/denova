@@ -7,6 +7,47 @@ import { useLiveMessageAccumulator } from './use-live-message-accumulator'
 import { useStoryStageMessages } from './use-story-stage-messages'
 
 describe('story message timestamps', () => {
+  it('settles a historical tool card from its separate confirmed result', () => {
+    const { result } = renderHook(() => useStoryStageMessages({
+      snapshot: {
+        story_id: 'story-1', branch_id: 'main', state: {},
+        turns: [{ id: 'turn-1', parent_id: null, branch_id: 'main', ts: '2026-09-20T02:00:00Z', user: 'Wait', narrative: 'The guard leaves.',
+          display_events: [
+            { id: 'check-1', role: 'tool_call', name: 'prepare_interactive_turn', status: 'running' },
+            { id: 'check-1', role: 'tool_result', name: 'prepare_interactive_turn', status: 'success', content: 'The guard did not notice you.' },
+            { role: 'narrative' },
+          ],
+        }],
+      },
+      liveMessages: [], streaming: false, stageKey: 'story-1:main',
+      liveTurnNavigationAnchorId: 'live', optimisticInteractiveImages: {}, belongsToStage: () => true, renderKeyFor: () => undefined,
+    }))
+    expect(buildAgentMessageViews(result.current.agentMessages).filter(view => view.kind === 'tool')).toMatchObject([
+      { status: 'success', streaming: false, output: 'The guard did not notice you.' },
+    ])
+  })
+  it('preserves runtime compaction identity across live and persisted projections', () => {
+    const { result } = renderHook(() => {
+      const [messages, setMessages] = useState<AgentUIMessage[]>([])
+      const accumulator = useLiveMessageAccumulator({ setMessages })
+      const projected = useStoryStageMessages({
+        snapshot: { story_id: 'story-1', branch_id: 'main', state: {}, turns: [], pending_display_events: [
+          { id: 'provider-first', role: 'context_compaction', status: 'success', runtime_managed: true },
+        ] },
+        liveMessages: messages, streaming: true, stageKey: 'story-1:main',
+        liveTurnNavigationAnchorId: 'live', optimisticInteractiveImages: {},
+        belongsToStage: () => true, renderKeyFor: () => undefined,
+      })
+      return { messages, accumulator, projected }
+    })
+    act(() => {
+      result.current.accumulator.appendContextCompaction({ id: 'provider-first', status: 'completed', runtime_managed: true })
+      result.current.accumulator.appendContextCompaction({ id: 'provider-second', status: 'completed', runtime_managed: true })
+    })
+    expect(result.current.messages.map(message => message.id)).toEqual(['provider-first', 'provider-second'])
+    expect(result.current.projected.agentMessages.map(message => message.id)).toEqual(['provider-first', 'provider-second'])
+  })
+
   it('projects the persisted turn time into both conversation messages', () => {
     const timestamp = '2026-09-05T11:52:00Z'
     const { result } = renderHook(() => useStoryStageMessages({

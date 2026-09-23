@@ -4,16 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"denova/config"
 	agents "denova/internal/agents"
-	agentchat "denova/internal/agents/chat"
 	"denova/internal/agents/conversationconfig"
-	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
-	appagentruntime "denova/internal/app/agentruntime"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
 )
@@ -44,22 +41,17 @@ func TestExternalPreparationUsesProductContextWithoutNativeModel(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			engines := appagentruntime.NewEngines()
+			engines := agentruntime.NewEngines()
 			defer engines.Close()
 			built, err := BuildExecution(context.Background(), runtime, agents.AgentHostCapabilities{}, engines, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			request := agentchat.ChatRequest{CommandID: "request-1", Message: "Write a scene with a quiet ending."}
-			prepared, err := prepareExternal(t.Context(), runtime, request, ProjectConversation(runtime, request), *built.external, agentrun.Options{}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if prepared.Input.Selection.Codex.Model != "external-model" || !strings.Contains(prepared.Input.Text, request.Message) || prepared.Message.Content != request.Message || prepared.Revision != 1 {
-				t.Fatalf("incorrect external input: %#v", prepared.Input)
+			if built.external == nil || built.native.Definition.Model != nil {
+				t.Fatal("external execution must be assembled independently of Native Agent")
 			}
 			foundAsk := false
-			for _, definition := range prepared.Definitions {
+			for _, definition := range built.external.Tools {
 				info, err := definition.Tool.Info(t.Context())
 				if err != nil {
 					t.Fatal(err)

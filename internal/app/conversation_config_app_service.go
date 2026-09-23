@@ -12,6 +12,7 @@ import (
 	"denova/internal/agents/conversationconfig"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agentchatapp "denova/internal/app/agentchat"
 	interactiveapp "denova/internal/app/interactive"
@@ -69,113 +70,61 @@ func IsConversationGoalStateChanged(err error) bool {
 	return errors.Is(err, publicgoal.ErrNotFound) || errors.Is(err, publicgoal.ErrNotActive)
 }
 
-func (a *App) ConversationGoal(ctx context.Context, binding ConversationConfigBinding) (agent.GoalState, bool, error) {
-	switch normalizeConversationMode(binding.Mode) {
-	case ConversationModeWriting:
-		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
-			return agent.GoalState{}, false, err
-		}
-		service := a.chat()
-		service.admission.Lock()
-		defer service.admission.Unlock()
-		runtime, options, _, err := a.writingGoalRuntime(binding.SessionID)
-		if err != nil {
-			return agent.GoalState{}, false, err
-		}
-		return runtime.Goal(ctx, options)
-	case ConversationModeAgentChat:
-		return a.AgentChat().ConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID})
-	case ConversationModeInteractive:
-		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
-			return agent.GoalState{}, false, err
-		}
-		service := a.interactiveService()
-		service.admission.Lock()
-		defer service.admission.Unlock()
-		runtime, options, err := a.interactiveGoalRuntime(binding)
-		if err != nil {
-			return agent.GoalState{}, false, err
-		}
-		return runtime.Goal(ctx, options)
-	default:
-		return agent.GoalState{}, false, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
+// foregroundGoalSession holds the product admission fence until the caller
+// finishes reading or mutating its bound session. Scoped AgentChat owns its
+// separate project admission path.
+func (a *App) foregroundGoalSession(binding ConversationConfigBinding) (*agentruntime.Session, func(), error) {
+	if normalizeConversationMode(binding.Mode) != ConversationModeWriting {
+		return nil, nil, conversationconfig.ErrRuntimeCapabilityUnsupported
 	}
+	if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+		return nil, nil, err
+	}
+	service := a.chat()
+	service.admission.Lock()
+	unlock := service.admission.Unlock
+	runtime, options, _, err := a.writingGoalRuntime(binding.SessionID)
+	var bound *agentruntime.Session
+	if err == nil {
+		bound, err = a.agentSession(options, runtime)
+	}
+	if err != nil {
+		unlock()
+		return nil, nil, err
+	}
+	return bound, unlock, nil
+}
+
+func (a *App) ConversationGoal(ctx context.Context, binding ConversationConfigBinding) (agent.GoalState, bool, error) {
+	if normalizeConversationMode(binding.Mode) == ConversationModeAgentChat {
+		return a.AgentChat().ConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID})
+	}
+	bound, release, err := a.foregroundGoalSession(binding)
+	if err != nil {
+		return agent.GoalState{}, false, err
+	}
+	defer release()
+	return bound.Goal(ctx)
 }
 
 func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationConfigBinding, mutation ConversationGoalMutation) (agent.GoalState, error) {
 	action := strings.TrimSpace(mutation.Action)
-	switch normalizeConversationMode(binding.Mode) {
-	case ConversationModeWriting:
-		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
-			return agent.GoalState{}, err
-		}
-		service := a.chat()
-		service.admission.Lock()
-		defer service.admission.Unlock()
-		runtime, options, _, err := a.writingGoalRuntime(binding.SessionID)
-		if err != nil {
-			return agent.GoalState{}, err
-		}
-		store, _, sessionID, err := a.foregroundConversationRuntime(binding.SessionID)
-		if err != nil {
-			return agent.GoalState{}, err
-		}
-		sess, err := store.Get(sessionID)
-		if err != nil {
-			return agent.GoalState{}, err
-		}
-		release, err := a.AgentEngines().AdmitExecution(ctx, sess, nil)
-		if err != nil {
-			return agent.GoalState{}, err
-		}
-		defer release()
-		goalMutation := agent.GoalMutation{ExpectedRevision: mutation.ExpectedRevision}
-		switch action {
-		case "set":
-			goalMutation.Kind, goalMutation.Objective = agent.GoalSet, mutation.Objective
-		case "pause":
-			goalMutation.Kind = agent.GoalPause
-		case "resume":
-			goalMutation.Kind = agent.GoalResume
-		case "clear":
-			goalMutation.Kind = agent.GoalClear
-		default:
-			return agent.GoalState{}, fmt.Errorf("unsupported goal action %q", action)
-		}
-		return runtime.UpdateGoal(ctx, options, goalMutation)
-	case ConversationModeAgentChat:
+	if normalizeConversationMode(binding.Mode) == ConversationModeAgentChat {
 		return a.AgentChat().MutateConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID}, action, mutation.Objective, mutation.ExpectedRevision)
-	case ConversationModeInteractive:
-		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
-			return agent.GoalState{}, err
-		}
-		service := a.interactiveService()
-		service.admission.Lock()
-		defer service.admission.Unlock()
-		runtime, options, err := a.interactiveGoalRuntime(binding)
-		if err != nil {
-			return agent.GoalState{}, err
-		}
-		goalMutation := agent.GoalMutation{ExpectedRevision: mutation.ExpectedRevision}
-		switch action {
-		case "set":
-			goalMutation.Kind, goalMutation.Objective = agent.GoalSet, mutation.Objective
-		case "pause":
-			goalMutation.Kind = agent.GoalPause
-		case "resume":
-			goalMutation.Kind = agent.GoalResume
-		case "clear":
-			goalMutation.Kind = agent.GoalClear
-		default:
-			return agent.GoalState{}, fmt.Errorf("unsupported goal action %q", action)
-		}
-		return runtime.UpdateGoal(ctx, options, goalMutation)
-	default:
-		return agent.GoalState{}, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
 	}
+	goalMutation, err := agentruntime.GoalMutation(action, mutation.Objective, mutation.ExpectedRevision)
+	if err != nil {
+		return agent.GoalState{}, err
+	}
+	bound, release, err := a.foregroundGoalSession(binding)
+	if err != nil {
+		return agent.GoalState{}, err
+	}
+	defer release()
+	return bound.UpdateGoal(ctx, goalMutation)
 }
 
-func (a *App) interactiveGoalRuntime(binding ConversationConfigBinding) (*agentexecution.Runtime, agentrun.Options, error) {
+func (a *App) interactiveSessionRuntime(binding ConversationConfigBinding) (*agentexecution.Runtime, agentrun.Options, error) {
 	store, runtimeCfg, err := a.interactiveConversationRuntime(binding)
 	if err != nil {
 		return nil, agentrun.Options{}, err
@@ -202,14 +151,11 @@ func (a *App) writingGoalRuntime(requestedSessionID string) (*agentexecution.Run
 	if err != nil {
 		return nil, agentrun.Options{}, config.Config{}, err
 	}
-	// The product Session remains the canonical writing-history owner, but Goal
-	// state is held only by the public Agent Session.
-	sess, err := store.Get(sessionID)
+	// Goal state is embedded in the same canonical product journal. The selected
+	// runtime owns mutations; resolving this route does not open an Agent Session.
+	_, err = store.Get(sessionID)
 	if err != nil {
 		return nil, agentrun.Options{}, config.Config{}, err
-	}
-	if selection, ok := sess.RuntimeConfig(); ok && selection.Engine().Kind != config.RuntimeNative {
-		return nil, agentrun.Options{}, config.Config{}, conversationconfig.ErrRuntimeCapabilityUnsupported
 	}
 	a.mu.RLock()
 	executionRuntime := a.executionRuntime
@@ -309,7 +255,7 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
 			return conversationconfig.Snapshot{}, err
 		}
-		snapshot, err = a.patchInteractiveConversationConfig(binding, change, baseRevision)
+		snapshot, err = a.patchInteractiveConversationConfig(ctx, binding, change, baseRevision)
 	default:
 		return conversationconfig.Snapshot{}, fmt.Errorf("unsupported conversation mode %q", binding.Mode)
 	}
@@ -406,7 +352,7 @@ func (a *App) interactiveConversationConfig(binding ConversationConfigBinding) (
 	return interactiveapp.ApplyConversationConfig(store, &runtimeCfg, binding.StoryID, binding.BranchID)
 }
 
-func (a *App) patchInteractiveConversationConfig(binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
+func (a *App) patchInteractiveConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
 	service := a.interactiveService()
 	service.admission.Lock()
 	defer service.admission.Unlock()
@@ -443,6 +389,38 @@ func (a *App) patchInteractiveConversationConfig(binding ConversationConfigBindi
 	next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
+	}
+	if patch.Runtime != nil || patch.Codex != nil || patch.Claude != nil {
+		runtime, options, err := a.interactiveSessionRuntime(binding)
+		if err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+		a.mu.RLock()
+		task := interactiveTaskForScopeLocked(a, runtimeCfg.Workspace, options.StoryID, options.BranchID)
+		a.mu.RUnlock()
+		if task != nil && !task.Finished() {
+			return conversationconfig.Snapshot{}, ErrAgentOperationActive
+		}
+		pending, err := interactiveapp.ExternalTurnInterruption(store, binding.StoryID, options.BranchID)
+		if err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+		if pending != nil {
+			return conversationconfig.Snapshot{}, agentruntime.ErrOperationActive
+		}
+		if err := runtime.ReleaseIdleForEngineSwitch(ctx, options); err != nil && !errors.Is(err, agentexecution.ErrRuntimeProjectionUnavailable) {
+			if errors.Is(err, agent.ErrSessionBusy) {
+				return conversationconfig.Snapshot{}, agentruntime.ErrOperationActive
+			}
+			return conversationconfig.Snapshot{}, err
+		}
+		if next.Engine().Kind != config.RuntimeNative {
+			_, release, err := a.AgentEngines().Acquire(ctx, next.Engine(), runtimeCfg)
+			if err != nil {
+				return conversationconfig.Snapshot{}, err
+			}
+			release()
+		}
 	}
 	return store.SetBranchRuntimeConfig(binding.StoryID, binding.BranchID, next, baseRevision)
 }

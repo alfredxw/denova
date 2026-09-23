@@ -44,9 +44,9 @@ func skillContentRevision(data []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
-// skillDirectoryRevision fingerprints every entry that root deletion would
-// remove. Paths, modes, sizes, mtimes, regular-file bytes, and symlink targets
-// are framed independently so different directory layouts cannot collide.
+// skillDirectoryRevision fingerprints the editable bundle, excluding library
+// update metadata. Paths, modes, sizes, mtimes, regular-file bytes, and symlink
+// targets are framed independently so directory layouts cannot collide.
 func skillDirectoryRevision(ctx context.Context, root *os.Root) (string, error) {
 	hasher := sha256.New()
 	err := fs.WalkDir(root.FS(), ".", func(filePath string, entry fs.DirEntry, walkErr error) error {
@@ -57,14 +57,22 @@ func skillDirectoryRevision(ctx context.Context, root *os.Root) (string, error) 
 			return err
 		}
 		rel := path.Clean(filepath.ToSlash(filePath))
+		// Update consent/check timestamps are independent of editable content.
+		if rel == remoteStateFile {
+			return nil
+		}
 		info, err := entry.Info()
 		if err != nil {
 			return err
 		}
 		writeSkillRevisionField(hasher, []byte(rel))
 		writeSkillRevisionField(hasher, []byte(info.Mode().String()))
-		writeSkillRevisionUint(hasher, uint64(info.Size()))
-		writeSkillRevisionUint(hasher, uint64(info.ModTime().UnixNano()))
+		// The root directory's size/mtime also change for source metadata and
+		// its atomic temporary files. Entry membership below captures deletions.
+		if rel != "." {
+			writeSkillRevisionUint(hasher, uint64(info.Size()))
+			writeSkillRevisionUint(hasher, uint64(info.ModTime().UnixNano()))
+		}
 		switch {
 		case info.Mode().IsRegular():
 			file, err := root.Open(filepath.FromSlash(rel))

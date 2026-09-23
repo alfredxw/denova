@@ -4,18 +4,26 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
 // NewDirectories returns the canonical skill search path for Denova.
 func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
-	dirs := make([]Directory, 0, 3)
+	dirs := make([]Directory, 0, 4)
+	settingsRoot := ""
+	if novaDir != "" {
+		settingsRoot = filepath.Join(novaDir, "skills")
+		if home, err := os.UserHomeDir(); err == nil {
+			dirs = append(dirs, Directory{Scope: ScopeShared, Path: filepath.Join(home, ".agents", "skills"), settingsRoot: settingsRoot})
+		}
+	}
 	if path := normalizePath(builtinDir); path != "" {
-		dirs = append(dirs, Directory{Scope: ScopeBuiltin, Path: path, Writable: false})
+		dirs = append(dirs, Directory{Scope: ScopeBuiltin, Path: path, Writable: false, settingsRoot: settingsRoot})
 	}
 	if path := normalizePath(filepath.Join(novaDir, "skills")); novaDir != "" && path != "" {
-		dirs = append(dirs, Directory{Scope: ScopeUser, Path: path, Writable: true})
+		dirs = append(dirs, Directory{Scope: ScopeUser, Path: path, Writable: true, settingsRoot: settingsRoot})
 	}
 	if workspace != "" {
 		if err := MigrateWorkspaceSkills(workspace); err != nil {
@@ -23,7 +31,10 @@ func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
 		}
 	}
 	if path := normalizePath(filepath.Join(workspace, "skills")); workspace != "" && path != "" {
-		dirs = append(dirs, Directory{Scope: ScopeWorkspace, Path: path, Writable: true})
+		dirs = append(dirs, Directory{Scope: ScopeWorkspace, Path: path, Writable: true, settingsRoot: path})
+	}
+	for _, dir := range dirs {
+		recoverDirectoryUpdates(context.Background(), dir)
 	}
 	return dirs
 }

@@ -316,6 +316,29 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		}
 	case "subagent_settled":
 		r.flushSource(eventMetadataFromData(ev.Data))
+	case "context_compaction":
+		if !eventDataBool(ev.Data, "runtime_managed") {
+			return
+		}
+		status := eventDataString(ev.Data, "status")
+		if status != "completed" && status != "failed" {
+			return
+		}
+		r.flushAllText()
+		if status == "completed" {
+			status = "success"
+		} else {
+			status = "error"
+		}
+		meta := eventMetadataFromData(ev.Data)
+		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+			ID: eventDataString(ev.Data, "id"), Role: "context_compaction", Status: status,
+			Phase: eventDataString(ev.Data, "phase"), RuntimeManaged: true,
+			Content: eventDataString(ev.Data, "summary"), RunID: meta.RunID,
+			AgentKind: meta.AgentKind, AgentCycle: meta.AgentCycle,
+		}); err != nil {
+			slog.ErrorContext(context.Background(), "Persist runtime compaction display failed", "error", err)
+		}
 	case "token_usage":
 		r.flushAllText()
 		stats := runTokenUsage{

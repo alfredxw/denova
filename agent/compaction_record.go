@@ -110,14 +110,17 @@ func compactionModelRequest(
 	if prepared.definition.Instructions != "" {
 		result = append(result, SystemMessage(prepared.definition.Instructions))
 	}
-	effective, err := effectiveCompactionMessages(messages, current, present, prepared.definition.Compaction.SummaryLimitBytes())
+	effective, err := effectiveHistoryMessages(messages, prepared.elision, current, present, prepared.definition.Compaction.SummaryLimitBytes())
 	if err != nil {
 		// Raw history is retained specifically so an oversized checkpoint can be
 		// regenerated after the target Agent's configured limits are lowered.
 		if !errors.Is(err, ErrContextLimit) {
 			return nil, err
 		}
-		effective = cloneMessages(messages)
+		effective, err = elisionForHistory(prepared.elision, current, present).project(messages)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if strings.TrimSpace(currentInput) == "" {
 		result = append(result, leadingContextMessages(prepared.fragments)...)

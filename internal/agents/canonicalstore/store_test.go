@@ -110,7 +110,7 @@ func TestStoreEmbedsRootRecordsAndKeepsChildrenInProjectState(t *testing.T) {
 	if err := rebuilt.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(rebuiltRecords) != 1 || rebuiltRecords[0].Revision != 2 || rebuiltRecords[0].Kind != "session.capability_delete" {
+	if len(rebuiltRecords) != 2 || rebuiltRecords[1].Revision != 2 || rebuiltRecords[1].Kind != "session.capability_delete" {
 		t.Fatalf("rebuilt Agent projection = %#v", rebuiltRecords)
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "agent-transcripts")); !os.IsNotExist(err) {

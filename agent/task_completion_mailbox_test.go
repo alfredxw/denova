@@ -72,7 +72,7 @@ func TestTaskCompletionMailboxInjectsAfterToolBoundaryWithoutWait(t *testing.T) 
 	}
 }
 
-func TestTrackedTaskCompletionsBlockModelUntilAllFinish(t *testing.T) {
+func TestTrackedTaskCompletionsAllowParentWorkBeforeFinal(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	model := &finalBoundaryModel{
@@ -98,33 +98,33 @@ func TestTrackedTaskCompletionsBlockModelUntilAllFinish(t *testing.T) {
 	}
 	select {
 	case <-model.started:
-		t.Fatal("parent called the model before its tracked children completed")
-	case <-time.After(20 * time.Millisecond):
+	case <-ctx.Done():
+		t.Fatal("parent could not work while its children were running")
 	}
+	close(model.release)
 	if accepted, enqueueErr := session.EnqueueTaskCompletion(ctx, testTaskCompletion("first-completion", "first answer")); enqueueErr != nil || !accepted {
 		t.Fatalf("enqueue accepted=%t err=%v", accepted, enqueueErr)
 	}
-	select {
-	case <-model.started:
-		t.Fatal("parent called the model while one tracked child remained active")
-	case <-time.After(20 * time.Millisecond):
+	time.Sleep(20 * time.Millisecond)
+	snapshot, err := session.Snapshot(ctx)
+	if err != nil || snapshot.ActiveRunID != first.ID() || snapshot.ActiveOutput.Content != "" {
+		t.Fatalf("provisional final escaped: snapshot=%#v err=%v", snapshot, err)
 	}
 	if accepted, enqueueErr := session.EnqueueTaskCompletion(ctx, testTaskCompletion("second-completion", "second answer")); enqueueErr != nil || !accepted {
 		t.Fatalf("enqueue accepted=%t err=%v", accepted, enqueueErr)
 	}
-	close(model.release)
 	if result, waitErr := first.Wait(ctx); waitErr != nil || result.Status != ResultCompleted {
 		t.Fatalf("first result=%#v err=%v", result, waitErr)
 	}
-	if calls := model.callCount(); calls != 1 {
-		t.Fatalf("model calls = %d, want one call after all completions", calls)
+	if calls := model.callCount(); calls != 2 {
+		t.Fatalf("model calls = %d, want parallel work then final synthesis", calls)
 	}
 	watch, err := session.WatchTaskCompletions(ctx, []string{"first-completion", "second-completion"})
 	if err != nil || len(watch.PendingIDs) != 0 {
 		t.Fatalf("delivered completion pending=%#v err=%v", watch.PendingIDs, err)
 	}
 	inputs := model.capturedInputs()
-	if len(inputs) != 1 || countTaskCompletionMessages(inputs[0]) != 2 {
+	if len(inputs) != 2 || countTaskCompletionMessages(inputs[1]) != 2 {
 		t.Fatalf("model inputs = %#v", inputs)
 	}
 }

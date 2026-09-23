@@ -195,6 +195,7 @@ export function InputArea({
   const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -672,7 +673,7 @@ export function InputArea({
           }
           toolbarStart={
             <>
-              <DropdownMenu>
+              <DropdownMenu open={actionsOpen} onOpenChange={setActionsOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
@@ -733,12 +734,12 @@ export function InputArea({
                       detailTone="faint"
                       onSelect={() => setTokenUsageOpen(true)}
                     />
-                    <ComposerMenuItem
+                    {!externalEngine && <ComposerMenuItem
                       icon={ScrollText}
                       label={t('chat.contextAnalysis.action')}
                       disabled={disabled || generationActive || !onContextAnalyze}
                       onSelect={handleContextAnalyze}
-                    />
+                    />}
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>

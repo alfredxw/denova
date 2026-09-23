@@ -72,6 +72,9 @@ async function openGame(page: Page) {
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
   const composer = page.getByPlaceholder(/你要做什么/)
   await expect(composer).toBeVisible()
+  // Wait for the story snapshot to bind the draft before adding files. The
+  // composer shell can mount before the selected story finishes hydrating.
+  await expect(page.getByTestId('story-stage').getByText('暮色落在旧车站外，石门后的轨道传来遥远的回声。', { exact: true })).toHaveCount(1)
   return composer
 }
 

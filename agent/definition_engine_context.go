@@ -171,6 +171,34 @@ func assembleCycleMessages(
 	return resolved, CloneMessage(resolved[len(resolved)-1]), nil
 }
 
+// prepareHistoryModelCall is shared by Elision and Compaction. Rebuild the
+// active input and middleware exactly as an ordinary model step, without
+// mutating canonical messages or publishing maintenance state.
+func prepareHistoryModelCall(prepared preparedDefinition, raw []*Message, compaction compactionRecord, present bool, input Input, activeUserIndex int, modelContext *ModelContext) (*preparedModelCall, *Message, error) {
+	summaryLimit := 0
+	if prepared.definition.Compaction != nil {
+		summaryLimit = prepared.definition.Compaction.SummaryLimitBytes()
+	}
+	effective, err := effectiveHistoryMessages(raw, prepared.elision, compaction, present, summaryLimit)
+	if err != nil {
+		return nil, nil, err
+	}
+	userIndex := compactionMessageIndex(raw, compaction, present, activeUserIndex)
+	if userIndex < 0 || userIndex >= len(effective) {
+		return nil, nil, errors.New("context maintenance removed the active Agent input")
+	}
+	messages, modelUser, err := assembleCycleMessages(effective[:userIndex], input.Text, input.Attachments, prepared.fragments, prepared.definition.AttachmentRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	messages = append(messages, cloneMessages(effective[userIndex+1:])...)
+	if modelContext.prepareCompaction == nil {
+		return nil, nil, errors.New("context maintenance requires the active model preparation seam")
+	}
+	candidate, err := modelContext.prepareCompaction(messages, stableContextPrefixMessages(prepared.fragments, compaction, present))
+	return candidate, modelUser, err
+}
+
 // leadingContextMessages is the single assembly rule for lifecycle-owned
 // stable fragments. Normal turns, retries, and structural Compaction snapshots
 // must preserve the exact same role and bytes for provider cache identity.
@@ -291,6 +319,9 @@ func renderContextFragment(fragment ContextFragment) string {
 func consumeMessageVariant(variant *loopMessage, source runstate.EventSource, displayOnly bool, emit runstate.EngineEventSink) (*Message, error) {
 	if variant == nil {
 		return nil, nil
+	}
+	if variant.discarded {
+		return CloneMessage(variant.Message), nil
 	}
 	toolInputs := newToolInputProjector(variant, source)
 	if !variant.IsStreaming {

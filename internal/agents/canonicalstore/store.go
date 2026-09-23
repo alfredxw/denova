@@ -69,6 +69,31 @@ func (store *Store) Open(ctx context.Context, key agentsession.Key) (agentsessio
 	return log, nil
 }
 
+// Delegation discovery only inspects self-contained child journals. Root
+// product inspection continues through the product's existing read APIs.
+func (store *Store) OpenReader(ctx context.Context, key agentsession.Key) (agentsession.Log, error) {
+	root, child, err := rootSessionKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if !child {
+		return nil, agent.ErrCapabilityUnsupported
+	}
+	_, layout, err := store.resolve(root, false)
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(layout.SessionsDir(), "children")
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	childStore, err := sessionfile.New(path)
+	if err != nil {
+		return nil, err
+	}
+	return childStore.OpenReader(ctx, key)
+}
+
 func (store *Store) openResolved(
 	ctx context.Context,
 	key agentsession.Key,

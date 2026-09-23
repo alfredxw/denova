@@ -3,6 +3,7 @@ package interactiveapp
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"denova/internal/project"
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/permission"
+	"github.com/alfredxw/denova/agent/toolresult"
 )
 
 const incrementalIntent = "Verify 24 sources. Corrected budget is 72519, not 72591; preserve evidence IDs."
@@ -81,152 +83,178 @@ func (m *longProductModel) Stream(ctx context.Context, messages []*agent.Message
 
 func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 	for _, kind := range []string{agentrun.AgentKindIDE, agentrun.AgentKindInteractiveStory} {
-		t.Run(kind, func(t *testing.T) {
-			ctx := t.Context()
-			workspace, dataDir := t.TempDir(), t.TempDir()
-			registry := project.NewRegistry(dataDir)
-			record, err := registry.Add(workspace, project.TypeGeneral, "Incremental checkpoint")
-			if err != nil {
-				t.Fatal(err)
-			}
-			layout, err := registry.EnsureStore(record)
-			if err != nil {
-				t.Fatal(err)
-			}
-			journals, err := canonicalstore.New(dataDir, registry)
-			if err != nil {
-				t.Fatal(err)
-			}
-			stories := interactive.NewStore(workspace)
-			defer stories.Close()
-			story, err := stories.CreateStory(interactive.CreateStoryRequest{Title: "Incremental checkpoint", StoryTellerID: "classic"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			products, err := productsession.NewStore(layout.SessionsDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer products.Close()
-			writing, err := products.GetOrCreate("incremental-writing")
-			if err != nil {
-				t.Fatal(err)
-			}
-			newRuntime := func() *agentexecution.Runtime {
-				runtime, err := agentexecution.NewAgentRuntime(ctx, dataDir, agentexecution.WithSessionStore(journals), agentexecution.WithProfiles(publicGameNoopProfile(workspace, story.ID)), agentexecution.WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }))
+		for _, maintenance := range []string{"summary_only", "elision_then_summary"} {
+			t.Run(kind+"/"+maintenance, func(t *testing.T) {
+				ctx := t.Context()
+				workspace, dataDir := t.TempDir(), t.TempDir()
+				registry := project.NewRegistry(dataDir)
+				record, err := registry.Add(workspace, project.TypeGeneral, "Incremental checkpoint")
 				if err != nil {
 					t.Fatal(err)
 				}
-				return runtime
-			}
-			runtime := newRuntime()
-			defer func() { _ = runtime.Close(context.Background()) }()
-			cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 64_000}
-			model := &longProductModel{t: t}
-			identity := agent.CapabilityIdentity{Kind: "test.long-product", Version: 1}
-			manager, err := agentcompaction.NewAgentManagerForModel(cfg, kind, 64_000)
-			if err != nil {
-				t.Fatal(err)
-			}
-			executions := map[int]int{}
-			tool, err := agent.InferTool("evidence", "Read one source", func(_ context.Context, input struct {
-				Step int `json:"step"`
-			}) (string, error) {
-				executions[input.Step]++
-				return fmt.Sprintf("source-%d: corrected budget 72519.\n%s\nsource-%d: verified.", input.Step, strings.Repeat("证", 6000), input.Step), nil
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			toolset, err := agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "test.long-product-tools", Version: 1}, agent.ToolDefinition{Tool: tool, Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead, MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone, Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 32 << 10}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			options := agentrun.Options{ProjectID: record.ID, AgentKind: kind, Workspace: workspace, StateRoot: layout.StoreRoot, SessionID: writing.ID}
-			if kind == agentrun.AgentKindInteractiveStory {
-				options = publicGameOptions(workspace, story.ID, "main")
-				options.ProjectID = record.ID
-			}
-			cycle := func(input, command string) agentexecution.Cycle {
-				definition := agent.Definition{Key: "long-product", Name: "long-product", Model: model, ModelIdentity: identity, Tools: toolset, Permission: permission.FullAccess(), Compaction: manager}
-				var conversation agentchat.Conversation = agentconversation.NewSessionConversationForAgent(writing, cfg, kind)
+				layout, err := registry.EnsureStore(record)
+				if err != nil {
+					t.Fatal(err)
+				}
+				journals, err := canonicalstore.New(dataDir, registry)
+				if err != nil {
+					t.Fatal(err)
+				}
+				stories := interactive.NewStore(workspace)
+				defer stories.Close()
+				story, err := stories.CreateStory(interactive.CreateStoryRequest{Title: "Incremental checkpoint", StoryTellerID: "classic"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				products, err := productsession.NewStore(layout.SessionsDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer products.Close()
+				writing, err := products.GetOrCreate("incremental-writing")
+				if err != nil {
+					t.Fatal(err)
+				}
+				newRuntime := func() *agentexecution.Runtime {
+					runtime, err := agentexecution.NewAgentRuntime(ctx, dataDir, agentexecution.WithSessionStore(journals), agentexecution.WithProfiles(publicGameNoopProfile(workspace, story.ID)), agentexecution.WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }))
+					if err != nil {
+						t.Fatal(err)
+					}
+					return runtime
+				}
+				runtime := newRuntime()
+				defer func() { _ = runtime.Close(context.Background()) }()
+				cfg := &config.Config{Workspace: workspace, OpenAIContextWindowTokens: 64_000}
+				model := &longProductModel{t: t}
+				identity := agent.CapabilityIdentity{Kind: "test.long-product", Version: 1}
+				manager, err := agentcompaction.NewAgentManagerForModel(cfg, kind, 64_000)
+				if err != nil {
+					t.Fatal(err)
+				}
+				executions := map[int]int{}
+				tool, err := agent.InferTool("evidence", "Read one source", func(_ context.Context, input struct {
+					Step int `json:"step"`
+				}) (string, error) {
+					executions[input.Step]++
+					return fmt.Sprintf("source-%d: corrected budget 72519.\n%s\nsource-%d: verified.", input.Step, strings.Repeat("证", 6000), input.Step), nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				toolset, err := agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "test.long-product-tools", Version: 1}, agent.ToolDefinition{Tool: tool, Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead, MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone, Recovery: agent.ToolRecoveryReadOnly, ResultRecoveryKind: agent.ToolResultRecoveryRead, ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 32 << 10}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				options := agentrun.Options{ProjectID: record.ID, AgentKind: kind, Workspace: workspace, StateRoot: layout.StoreRoot, SessionID: writing.ID}
 				if kind == agentrun.AgentKindInteractiveStory {
-					game := NewConversation(stories, "", workspace, story.ID, "main", input, 800, cfg)
-					conversation = game
-					if input != "" {
-						definition.Middlewares = []agent.Middleware{gameSubmissionForTest(t, game, input, input)}
+					options = publicGameOptions(workspace, story.ID, "main")
+					options.ProjectID = record.ID
+				}
+				cycle := func(input, command string) agentexecution.Cycle {
+					definition := agent.Definition{Key: "long-product", Name: "long-product", Model: model, ModelIdentity: identity, Tools: toolset, Permission: permission.FullAccess(), Compaction: manager}
+					if maintenance == "elision_then_summary" {
+						definition.Elision = agentcompaction.NewElisionPolicyForModel(cfg, kind, 64_000)
+						definition.ResultProcessor = toolresult.Standard(toolresult.Policy{MaxBytes: 32 << 10, ContextWindowTokens: 64_000})
+					}
+					var conversation agentchat.Conversation = agentconversation.NewSessionConversationForAgent(writing, cfg, kind)
+					if kind == agentrun.AgentKindInteractiveStory {
+						game := NewConversation(stories, "", workspace, story.ID, "main", input, 800, cfg)
+						conversation = game
+						if input != "" {
+							definition.Middlewares = []agent.Middleware{gameSubmissionForTest(t, game, input, input)}
+						}
+					}
+					return agentexecution.Cycle{Definition: definition, Conversation: conversation, Options: options, Request: agentchat.ChatRequest{CommandID: command, Message: input}}
+				}
+				run, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: cycle(incrementalIntent, "long-run")})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if outcome := run.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
+					t.Fatalf("run failed: %+v", outcome)
+				}
+				if maintenance == "summary_only" && model.summaries < 3 {
+					t.Fatalf("one Run generated only %d checkpoints", model.summaries)
+				}
+				for step := 1; step <= 24; step++ {
+					if executions[step] != 1 {
+						t.Errorf("source %d executed %d times", step, executions[step])
 					}
 				}
-				return agentexecution.Cycle{Definition: definition, Conversation: conversation, Options: options, Request: agentchat.ChatRequest{CommandID: command, Message: input}}
-			}
-			run, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: cycle(incrementalIntent, "long-run")})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if outcome := run.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
-				t.Fatalf("run failed: %+v", outcome)
-			}
-			if model.summaries < 3 {
-				t.Fatalf("one Run generated only %d checkpoints", model.summaries)
-			}
-			for step := 1; step <= 24; step++ {
-				if executions[step] != 1 {
-					t.Errorf("source %d executed %d times", step, executions[step])
+				status, err := runtime.RuntimeStatusProjection(ctx, options)
+				if err != nil || maintenance == "summary_only" && status.Compaction == nil {
+					t.Fatalf("checkpoint missing: %+v %v", status.Compaction, err)
 				}
-			}
-			status, err := runtime.RuntimeStatusProjection(ctx, options)
-			if err != nil || status.Compaction == nil {
-				t.Fatalf("checkpoint missing: %+v %v", status.Compaction, err)
-			}
-			t.Logf("one Run generated %d checkpoints at raw boundary %d", model.summaries, status.Compaction.SourceMessageCount)
-			manual, err := runtime.ExecuteStructuralOperation(ctx, cycle("", "manual-calibration"), agentstructural.Spec{
-				CommandID: "manual-calibration", Action: agentstructural.Compact,
-				Ref: agentrun.ContextCompactionRef{Force: true},
+				if maintenance == "elision_then_summary" {
+					if model.summaries != 0 {
+						t.Fatalf("recoverable tool bodies still required %d automatic summaries", model.summaries)
+					}
+					before, err := runtime.Inspect(ctx, cycle("Preview the evidence", "elision-preview"))
+					if err != nil || before.ElisionMetrics.ResultsElided == 0 || !containsMessageContent(before.ModelRequest.Messages, "[Earlier tool output elided;") {
+						t.Fatalf("Elision not projected: %+v %v", before.ElisionMetrics, err)
+					}
+					if err := runtime.Close(ctx); err != nil {
+						t.Fatal(err)
+					}
+					runtime = newRuntime()
+					after, err := runtime.Inspect(ctx, cycle("Preview the evidence", "elision-preview"))
+					// The final prospective user input includes a freshly captured
+					// runtime clock. Persisted history and Elision must remain identical.
+					count := len(before.ModelRequest.Messages)
+					if err != nil || count == 0 || len(after.ModelRequest.Messages) != count ||
+						!reflect.DeepEqual(before.ModelRequest.Messages[:count-1], after.ModelRequest.Messages[:count-1]) || before.ElisionMetrics != after.ElisionMetrics {
+						t.Fatalf("canonical product journal did not restore the same Elision projection: %v", err)
+					}
+				}
+				manual, err := runtime.ExecuteStructuralOperation(ctx, cycle("", "manual-calibration"), agentstructural.Spec{
+					CommandID: "manual-calibration", Action: agentstructural.Compact,
+					Ref: agentrun.ContextCompactionRef{Force: true},
+				})
+				if err != nil || !manual.Compaction.Triggered {
+					t.Fatalf("manual compaction before reopen: %+v %v", manual, err)
+				}
+				checkpointRevision := manual.Compaction.Revision
+				summariesBeforeReopen := model.summaries
+				if err := runtime.Close(ctx); err != nil {
+					t.Fatal(err)
+				}
+				runtime = newRuntime()
+				model.resume = true
+				resumed, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: cycle("Report the verified budget and evidence.", "cold-continuation")})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if outcome := resumed.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
+					t.Fatalf("cold continuation failed: %+v", outcome)
+				}
+				latest := model.inputs[len(model.inputs)-1]
+				if !containsMessageContent(latest, "Incremental evidence checkpoint") || !containsMessageContent(latest, "72519") {
+					t.Fatal("cold continuation lost checkpoint facts")
+				}
+				if model.summaries != summariesBeforeReopen {
+					t.Fatal("manual compaction caused another summary on cold continuation")
+				}
+				var previousUsage *agent.ResponseMeta
+				for index := len(latest) - 1; index >= 0; index-- {
+					if latest[index].ResponseMeta != nil && latest[index].ResponseMeta.Usage != nil {
+						previousUsage = latest[index].ResponseMeta
+						break
+					}
+				}
+				// Game materializes its final narrative separately, so the latest
+				// retained provider usage may belong to the preceding tool response.
+				previousEstimates := model.inputEstimates[:len(model.inputEstimates)-1]
+				if previousUsage == nil || previousUsage.InputEstimate == nil || previousUsage.InputEstimate.Version != agent.InputEstimateVersion || previousUsage.InputEstimate.Model != identity || previousUsage.Usage.PromptTokens != previousUsage.InputEstimate.Tokens || !slices.Contains(previousEstimates, previousUsage.InputEstimate.Tokens) {
+					if previousUsage != nil {
+						t.Fatalf("product journal lost the original request/usage pair after compaction and reopen: usage=%+v estimate=%+v; original estimates=%v", previousUsage.Usage, previousUsage.InputEstimate, previousEstimates)
+					}
+					t.Fatal("product journal lost provider usage after compaction and reopen")
+				}
+				status, err = runtime.RuntimeStatusProjection(ctx, options)
+				if err != nil || status.Compaction == nil || status.Compaction.Revision != checkpointRevision {
+					t.Fatalf("cold checkpoint changed: %+v %v", status.Compaction, err)
+				}
 			})
-			if err != nil || !manual.Compaction.Triggered {
-				t.Fatalf("manual compaction before reopen: %+v %v", manual, err)
-			}
-			checkpointRevision := manual.Compaction.Revision
-			summariesBeforeReopen := model.summaries
-			if err := runtime.Close(ctx); err != nil {
-				t.Fatal(err)
-			}
-			runtime = newRuntime()
-			model.resume = true
-			resumed, err := runtime.Start(ctx, agentexecution.StartRequest{Cycle: cycle("Report the verified budget and evidence.", "cold-continuation")})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if outcome := resumed.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
-				t.Fatalf("cold continuation failed: %+v", outcome)
-			}
-			latest := model.inputs[len(model.inputs)-1]
-			if !containsMessageContent(latest, "Incremental evidence checkpoint") || !containsMessageContent(latest, "72519") {
-				t.Fatal("cold continuation lost checkpoint facts")
-			}
-			if model.summaries != summariesBeforeReopen {
-				t.Fatal("manual compaction caused another summary on cold continuation")
-			}
-			var previousUsage *agent.ResponseMeta
-			for index := len(latest) - 1; index >= 0; index-- {
-				if latest[index].ResponseMeta != nil && latest[index].ResponseMeta.Usage != nil {
-					previousUsage = latest[index].ResponseMeta
-					break
-				}
-			}
-			// Game materializes its final narrative separately, so the latest
-			// retained provider usage may belong to the preceding tool response.
-			previousEstimates := model.inputEstimates[:len(model.inputEstimates)-1]
-			if previousUsage == nil || previousUsage.InputEstimate == nil || previousUsage.InputEstimate.Version != agent.InputEstimateVersion || previousUsage.InputEstimate.Model != identity || previousUsage.Usage.PromptTokens != previousUsage.InputEstimate.Tokens || !slices.Contains(previousEstimates, previousUsage.InputEstimate.Tokens) {
-				if previousUsage != nil {
-					t.Fatalf("product journal lost the original request/usage pair after compaction and reopen: usage=%+v estimate=%+v; original estimates=%v", previousUsage.Usage, previousUsage.InputEstimate, previousEstimates)
-				}
-				t.Fatal("product journal lost provider usage after compaction and reopen")
-			}
-			status, err = runtime.RuntimeStatusProjection(ctx, options)
-			if err != nil || status.Compaction == nil || status.Compaction.Revision != checkpointRevision {
-				t.Fatalf("cold checkpoint changed: %+v %v", status.Compaction, err)
-			}
-		})
+		}
 	}
 }

@@ -10,7 +10,7 @@ export function compactionControl(requestURL, response, writeJSON) {
 
 export function compactionCompletion(body) {
   const serialized = JSON.stringify(body.messages ?? [])
-  const marker = ['E2E_COMPACTION_WRITING', 'E2E_COMPACTION_GAME', 'E2E_IMAGE_COMPACTION_WRITING', 'E2E_IMAGE_COMPACTION_GAME'].find(value => serialized.includes(value))
+  const marker = ['E2E_COMPACTION_WRITING', 'E2E_COMPACTION_GAME', 'E2E_MANUAL_COMPACTION_WRITING', 'E2E_MANUAL_COMPACTION_GAME', 'E2E_IMAGE_COMPACTION_WRITING', 'E2E_IMAGE_COMPACTION_GAME'].find(value => serialized.includes(value))
   if (!marker) return null
   const captured = runs.get(marker) ?? []
   captured.push(body)
@@ -25,7 +25,8 @@ export function compactionCompletion(body) {
     const turn = input.match(/TURN_(\d+)/)?.[1] ?? 'continue'
     return { content: images.length > 0 ? `${marker} ${turn} accepted.` : `${marker} native images missing.` }
   }
-  if (input.includes('[Runtime context compaction request]') || body.stream !== true) {
+  if (input.includes('[Runtime context compaction request]') || input.includes('CONTEXT CHECKPOINT COMPACTION')
+    || serialized.includes('Summarize the supplied conversation history for continuation.') || body.stream !== true) {
     return { content: `${marker} checkpoint: Preserve the archive facts and continue the current task using live evidence.`, summary: true }
   }
   if (input.includes(`${marker}_SEED`)) {

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { animate, motion, useMotionValue, useReducedMotionConfig } from 'motion/react'
 import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, Gauge, Globe2, LayoutDashboard, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { novaEase } from '@/features/motion/motion-tokens'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -101,7 +103,6 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
       <section
         aria-label={t('storyStage.state.current')}
         data-state-panel-mode={panelMode}
-        data-nova-chat-after-content-height-scope={panelMode}
         className="story-state-ledger mt-3 overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
       >
         <header className="flex h-10 min-w-0 items-center gap-2 px-2.5">
@@ -156,22 +157,24 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
         </header>
 
         {isMobile && collapsed && model.changes.length > 0 ? <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} /> : null}
-        <CollapsibleContent>
-          {model.changes.length > 0 ? (
-            <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} />
-          ) : null}
-          <StateEntityPanels
-            actorLedgers={actorLedgers}
-            actorTabs={actorTabs}
-            worldLedger={worldLedger}
-            showWorld={hasWorldFacts}
-            selectedTab={selectedTab}
-            layouts={layouts}
-            panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
-            onSelectedTabChange={setSelectedTab}
-            onPanelModeChange={setPanelMode}
-          />
-          <ActorArchiveList entries={model.archivedActors} />
+        <CollapsibleContent forceMount>
+          <StateReveal open={!collapsed}>
+            {model.changes.length > 0 ? (
+              <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} />
+            ) : null}
+            <StateEntityPanels
+              actorLedgers={actorLedgers}
+              actorTabs={actorTabs}
+              worldLedger={worldLedger}
+              showWorld={hasWorldFacts}
+              selectedTab={selectedTab}
+              layouts={layouts}
+              panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+              onSelectedTabChange={setSelectedTab}
+              onPanelModeChange={setPanelMode}
+            />
+            <ActorArchiveList entries={model.archivedActors} />
+          </StateReveal>
         </CollapsibleContent>
         {selectedLedger ? (
           <StateLayoutEditor
@@ -294,31 +297,70 @@ function StateEntityPanels({
   onSelectedTabChange: (tab: string) => void
   onPanelModeChange: (mode: StoryStatePanelMode) => void
 }) {
+  const reducedMotion = useReducedMotionConfig()
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const height = useMotionValue<number | 'auto'>('auto')
+
+  useLayoutEffect(() => {
+    if (height.get() === 'auto' || !contentRef.current) return
+    // Animate real layout height so the chat footer can follow each frame.
+    // Return to intrinsic sizing afterward to avoid nesting height animations
+    // when sections expand, content changes, or the viewport resizes.
+    const controls = animate(height, contentRef.current.getBoundingClientRect().height, {
+      type: 'tween', duration: reducedMotion ? 0 : 0.16, ease: novaEase,
+    })
+    let cancelled = false
+    void controls.then(() => { if (!cancelled) height.set('auto') })
+    return () => { cancelled = true; controls.stop() }
+  }, [selectedTab, reducedMotion, height])
+
+  const selectTab = (tab: string) => {
+    if (tab === selectedTab) return
+    if (viewportRef.current) height.set(viewportRef.current.getBoundingClientRect().height)
+    onSelectedTabChange(tab)
+  }
   if (actorLedgers.length === 0 && !showWorld) return null
 
   return (
-    <Tabs value={selectedTab} onValueChange={onSelectedTabChange} className="gap-0">
+    <Tabs value={selectedTab} onValueChange={selectTab} className="gap-0">
       <StateEntityTabs actors={actorTabs} showWorld={showWorld} />
-      {actorLedgers.map((ledger) => (
-        <TabsContent key={ledger.id} value={ledger.id} forceMount hidden={selectedTab !== ledger.id} className="mt-0">
-          <ActorLedgerBody
-            ledger={ledger}
-            layout={layouts[ledger.templateId]}
-            panelMode={panelMode}
-            onPanelModeChange={onPanelModeChange}
-          />
-        </TabsContent>
-      ))}
-      {showWorld ? (
-        <TabsContent value={WORLD_STATE_TAB} forceMount hidden={selectedTab !== WORLD_STATE_TAB} className="mt-0">
-          <WorldLedgerBody
-            ledger={worldLedger}
-            layout={layouts[worldLedger.templateId]}
-            panelMode={panelMode}
-            onPanelModeChange={onPanelModeChange}
-          />
-        </TabsContent>
-      ) : null}
+      <motion.div ref={viewportRef} style={{ height, overflow: 'hidden' }}>
+        <div ref={contentRef}>
+          {actorLedgers.map((ledger) => (
+            <TabsContent key={ledger.id} value={ledger.id} forceMount hidden={selectedTab !== ledger.id} className="mt-0">
+              <motion.div
+                initial={false}
+                animate={{ opacity: selectedTab === ledger.id ? 1 : 0 }}
+                transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
+              >
+                <ActorLedgerBody
+                  ledger={ledger}
+                  layout={layouts[ledger.templateId]}
+                  panelMode={panelMode}
+                  onPanelModeChange={onPanelModeChange}
+                />
+              </motion.div>
+            </TabsContent>
+          ))}
+          {showWorld ? (
+            <TabsContent value={WORLD_STATE_TAB} forceMount hidden={selectedTab !== WORLD_STATE_TAB} className="mt-0">
+              <motion.div
+                initial={false}
+                animate={{ opacity: selectedTab === WORLD_STATE_TAB ? 1 : 0 }}
+                transition={{ duration: reducedMotion ? 0 : 0.14, ease: novaEase }}
+              >
+                <WorldLedgerBody
+                  ledger={worldLedger}
+                  layout={layouts[worldLedger.templateId]}
+                  panelMode={panelMode}
+                  onPanelModeChange={onPanelModeChange}
+                />
+              </motion.div>
+            </TabsContent>
+          ) : null}
+        </div>
+      </motion.div>
     </Tabs>
   )
 }
@@ -461,13 +503,20 @@ function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGro
   // Keep the already-visible preview sections anchored in place. Sections
   // revealed by the user's action append after them even when their schema
   // order originally placed them above the preview set.
-  const visibleGroups = expanded ? [...preview, ...hidden] : preview
   const decorated = groups.length > 1
   return (
     <div className="story-state-ledger__sections">
-      {visibleGroups.map((group) => (
+      {preview.map((group) => (
         <LedgerSectionBlock key={group.key} group={group} decorated={decorated} />
       ))}
+      {hidden.length > 0 ? (
+        // Offset the extra flex gap while closed; include group spacing in the animated height.
+        <StateReveal open={expanded} className="-my-1">
+          <div className="flex flex-col gap-2 py-1">
+            {hidden.map((group) => <LedgerSectionBlock key={group.key} group={group} decorated={decorated} />)}
+          </div>
+        </StateReveal>
+      ) : null}
       {!expanded && hidden.length > 0 ? (
         <button
           type="button"
@@ -489,6 +538,27 @@ function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGro
         </button>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * Animate intrinsic content with grid tracks so opening and closing share the same
+ * path without temporarily expanding to measure an auto height in the virtualized list.
+ */
+function StateReveal({ open, children, className }: { open: boolean; children: ReactNode; className?: string }) {
+  const reducedMotion = useReducedMotionConfig()
+  return (
+    <motion.div
+      initial={false}
+      animate={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
+      transition={{ type: 'tween', duration: reducedMotion ? 0 : 0.16, ease: novaEase }}
+      aria-hidden={!open}
+      inert={!open}
+      className={className}
+      style={{ display: 'grid' }}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </motion.div>
   )
 }
 

@@ -72,6 +72,10 @@ func (engine *definitionEngine) RunStructural(
 		return runstate.EngineResult{}, ErrCapabilityUnsupported
 	}
 	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
+	prepared.elision, err = elisionStateFrom(request.Capabilities)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
 	materialized, materializedErr := materializedDefinitionFingerprint(prepared)
 	if materializedErr != nil {
 		return runstate.EngineResult{}, materializedErr
@@ -126,7 +130,11 @@ func (engine *definitionEngine) RunStructural(
 				transcript.Messages, next, true,
 			)
 		}
-		contextMessages, contextErr := projectToolArtifactPaths(forkCtx, prepared.definition.Artifacts, transcript.Messages)
+		contextMessages, contextErr := elisionForHistory(prepared.elision, current, present).project(transcript.Messages)
+		if contextErr != nil {
+			return runstate.EngineResult{}, contextErr
+		}
+		contextMessages, contextErr = projectToolArtifactPaths(forkCtx, prepared.definition.Artifacts, contextMessages)
 		if contextErr != nil {
 			return runstate.EngineResult{}, contextErr
 		}
@@ -212,15 +220,18 @@ func prepareStructuralCompactionSnapshot(
 	}
 	prepared.contextState = nextContextState
 	raw = append(cloneMessages(raw), cloneMessages(stateMessages)...)
-	effective, err := effectiveCompactionMessages(
-		raw, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
+	effective, err := effectiveHistoryMessages(
+		raw, prepared.elision, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
 	)
 	checkpointVisible := err == nil
 	if err != nil {
 		if !errors.Is(err, ErrContextLimit) {
 			return nil, err
 		}
-		effective = cloneMessages(raw)
+		effective, err = elisionForHistory(prepared.elision, compaction, compactionPresent).project(raw)
+		if err != nil {
+			return nil, err
+		}
 	}
 	messages := make([]*Message, 0, len(effective)+len(prepared.fragments))
 	messages = append(messages, leadingContextMessages(prepared.fragments)...)

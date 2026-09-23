@@ -7,6 +7,7 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	interactiveapp "denova/internal/app/interactive"
 	apptask "denova/internal/app/task"
 	"encoding/hex"
 	"encoding/json"
@@ -218,7 +219,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	})
 	if request.ResumeInterruptionID != "" {
 		var pendingInterruption *session.Interruption
-		if pending, pendingErr := store.PendingTurnInterruption(request.StoryID, branchID); pendingErr != nil {
+		if pending, pendingErr := interactiveapp.ExternalTurnInterruption(store, request.StoryID, branchID); pendingErr != nil {
 			return interactiveStartIdentity{}, pendingErr
 		} else if pending != nil {
 			pendingInterruption = &session.Interruption{

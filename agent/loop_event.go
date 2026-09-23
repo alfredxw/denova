@@ -106,6 +106,8 @@ func newAsyncIteratorPair[T any]() (*asyncIterator[T], *asyncGenerator[T]) {
 
 // loopMessage carries either one complete message or an exclusive stream.
 type loopMessage struct {
+	// discarded responses still account for usage, but never enter display or history.
+	discarded     bool
 	previewOnly   bool
 	IsStreaming   bool
 	Message       *Message

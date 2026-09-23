@@ -47,7 +47,7 @@ func newTaskCompletionMailbox() taskCompletionMailbox {
 	}
 }
 
-// TrackTaskCompletion registers one attached child task before task.start
+// TrackTaskCompletion registers one attached child task before send delegate
 // returns. A parent model loop may not settle while any registered child has
 // not yet published a terminal completion.
 func (session *Session) TrackTaskCompletion(ctx context.Context, id string) (bool, error) {
@@ -328,9 +328,18 @@ func pendingTaskCompletionsFromContext(ctx context.Context) []TaskCompletion {
 	return session.pendingTaskCompletions()
 }
 
-// waitForTrackedTaskCompletionsFromContext is the model-boundary barrier for a
-// parent loop. Once child work is attached, the parent does not call the model
-// again until every tracked child has published a terminal completion. It
+func hasTrackedTaskCompletions(ctx context.Context) bool {
+	session, _ := ctx.Value(taskCompletionSessionContextKey{}).(*Session)
+	if session == nil {
+		return false
+	}
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	return len(session.taskCompletions.outstanding) != 0 || len(session.taskCompletions.pending) != 0
+}
+
+// waitForTrackedTaskCompletionsFromContext is the final-answer barrier for a
+// parent loop. Tool work remains concurrent with attached children. It
 // returns whether at least one completion is then ready for delivery, plus an
 // interrupt sentinel so the loop can apply its normal safe-point cancellation
 // semantics.

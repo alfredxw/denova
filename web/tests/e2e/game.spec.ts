@@ -151,7 +151,12 @@ test('queues a Game Follow Up and steers the active turn through the real runtim
     await expect.poll(async () => (await getModelStatus(request)).request_counts[gameFollowUpMarker] ?? 0).toBe(1)
     await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toEqual([
       expect.objectContaining({ narrative: expect.stringContaining(gameOpeningNarrative) }),
-      expect.objectContaining({ user: followUp, narrative: expect.stringContaining(gameFollowUpNarrative) }),
+      expect.objectContaining({
+        // Same-turn native steering retains the accepted original player
+        // input; the additional instruction lives in that turn's journal.
+        user: process.env.DENOVA_TEST_CODEX_EXE ? `先观察石门，等待下一步。${gameFollowUpDelayMarker}` : followUp,
+        narrative: expect.stringContaining(gameFollowUpNarrative),
+      }),
     ])
   } finally {
     await releaseDelayedRequest(request, gameFollowUpDelayMarker)

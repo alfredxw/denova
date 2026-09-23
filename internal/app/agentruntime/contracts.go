@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strings"
 
-	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
@@ -15,22 +14,10 @@ import (
 
 var (
 	ErrNoWorkspace         = errors.New("no workspace is selected / 尚未选择工作区")
-	ErrOperationActive     = errors.New("agent operation is already active")
 	ErrNoActiveOperation   = errors.New("no active agent operation")
 	ErrContextChanged      = errors.New("agent start context changed")
 	ErrWorkspaceTransition = errors.New("workspace runtime is transitioning")
 )
-
-// Command is the application-level command contract shared by every
-// conversation surface. Binding identity stays with the owning service.
-type Command struct {
-	Kind            agentexecution.CommandKind
-	CommandID       string
-	OperationID     agentrun.OperationID
-	TargetCommandID agentrun.CommandID
-	Reason          string
-	Input           agentchat.ChatRequest
-}
 
 // RecoveryRequest carries the exact live attachment selected by the caller.
 // Story and branch scope are used only by the interactive owner.
@@ -44,26 +31,6 @@ type RecoveryResult struct {
 	Task    *apptask.Task
 	Action  agentexecution.RuntimeRecoveryAction
 	Receipt agentrun.CommandReceipt
-}
-
-func RecoveryActionKey(action agentexecution.RuntimeRecoveryAction) string {
-	return strings.Join([]string{action.ActionID, string(action.Kind), string(action.CommandID), string(action.OperationID)}, "\x00")
-}
-
-func ValidateRecoveryAction(status agentrun.RuntimeStatus, selected agentexecution.RuntimeRecoveryAction) error {
-	for _, action := range agentexecution.RuntimeRecoveryActions(status) {
-		if action == selected {
-			return nil
-		}
-	}
-	return fmt.Errorf(
-		"%w: action_id=%q kind=%q command_id=%q operation_id=%q",
-		agentexecution.ErrRecoveryActionChanged,
-		selected.ActionID,
-		selected.Kind,
-		selected.CommandID,
-		selected.OperationID,
-	)
 }
 
 // RuntimeProjection reads live Run state without turning an unavailable

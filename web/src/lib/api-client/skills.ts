@@ -1,7 +1,7 @@
 import { jsonHeaders, requestJSON } from './client'
 import { GLOBAL_RESOURCE_TARGET, projectAPIPath, projectResourceTarget, resourceTargetKey } from './project-scope'
 import type { ResourceTarget } from './project-scope'
-import type { SkillCreateMetadata, SkillDocument, SkillFileDocument, SkillInstallPreview, SkillInstallResult, SkillScope, SkillSnapshot } from './types'
+import type { SkillCreateMetadata, SkillDocument, SkillFileDocument, SkillInstallPreview, SkillInstallResult, SkillScope, SkillSnapshot, SkillPreferenceChange, SkillUpdateResult, SkillSummary } from './types'
 
 export interface SkillSaveTarget {
   scope: SkillScope
@@ -39,7 +39,16 @@ export async function getSkills(target: SkillCatalogTarget): Promise<SkillSnapsh
   return {
     scopes: data.scopes || [],
     skills: data.skills || [],
+    shared_enabled: data.shared_enabled ?? false,
   }
+}
+
+export async function setSkillPreference(target: SkillCatalogTarget, change: SkillPreferenceChange): Promise<SkillSnapshot> {
+  return requestJSON(skillsPath(target, '/preferences'), { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(change) })
+}
+
+export async function refreshSkillUpdates(target: SkillCatalogTarget, action: 'check' | 'update', skill?: Pick<SkillSummary, 'scope' | 'name'>): Promise<SkillUpdateResult[]> {
+  return requestJSON(skillsPath(target, '/updates'), { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ action, scope: skill?.scope, name: skill?.name }) })
 }
 
 export async function getSkillDocument(target: SkillCatalogTarget, scope: SkillScope, name: string): Promise<SkillDocument> {

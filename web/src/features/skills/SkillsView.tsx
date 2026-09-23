@@ -22,6 +22,7 @@ import { SkillCreatePanel } from './SkillCreatePanel'
 import { SkillEditor } from './SkillEditor'
 import { SkillInstallPanel } from './SkillInstallPanel'
 import { SkillListPanel } from './SkillListPanel'
+import { SkillLibrary } from './SkillLibrary'
 import { keyOf, preferredBuiltinOverrideScope, scopeLabel, skillEntryFile, skillFilePath, skillHasSupportingFiles, type SkillContentViewMode, type SkillsMode } from './skill-utils'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
@@ -72,8 +73,8 @@ function skillContentSignature(value: Partial<SkillContentAutosaveDraft>) {
 }
 
 function skillSummaryOf(value: SkillSummary): SkillSummary {
-  const { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at } = value
-  return { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at }
+  const { name, description, category, capabilities, context, agent, model, scope, path, editable, active, enabled, remote, updated_at } = value
+  return { name, description, category, capabilities, context, agent, model, scope, path, editable, active, enabled, remote, updated_at }
 }
 
 export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
@@ -99,7 +100,7 @@ export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [mode, setMode] = useState<SkillsMode>('editor')
+  const [mode, setMode] = useState<SkillsMode>('library')
   const [agentOpen, setAgentOpen] = useResponsiveAgentOpen()
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
@@ -257,8 +258,7 @@ export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
       setSnapshot(data)
       setSelectedKey((current) => {
         if (current && data.skills.some((skill) => keyOf(skill) === current)) return current
-        const firstActive = data.skills.find((skill) => skill.active)
-        return firstActive ? keyOf(firstActive) : (data.skills[0] ? keyOf(data.skills[0]) : null)
+        return null
       })
       return data
     } catch (e) {
@@ -431,7 +431,7 @@ export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
       setDocument(null)
       setDraft('')
       resetFileState()
-      setMode('editor')
+      setMode('library')
       notifySkillsUpdated()
       return await load()
     } catch (e) {
@@ -530,6 +530,7 @@ export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
     if (!await flushActiveAutosave()) return
     setSelectedKey(key)
     setMode('editor')
+    setSidebarVisible(true)
     setError(null)
     closeMobilePanes()
   }
@@ -641,6 +642,7 @@ export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
               selectedKey={selectedKey}
               loading={loading}
               mode={mode}
+              onLibrary={() => void openMode('library')}
               onCreate={() => void openMode('create')}
               onInstall={() => void openMode('install')}
               onSelect={(key) => void selectSkill(key)}
@@ -682,7 +684,18 @@ export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
       >
         {() => (
           <main className="flex h-full min-h-0 flex-col">
-            {mode === 'create' ? (
+            {mode === 'library' ? (
+              <SkillLibrary
+                target={catalogTarget}
+                snapshot={snapshot}
+                loading={loading}
+                onSelect={(key) => void selectSkill(key)}
+                onChanged={async () => {
+                  window.dispatchEvent(new CustomEvent('nova:skills-updated', { detail: { source: eventSource, targetKey: 'global' } }))
+                  await load()
+                }}
+              />
+            ) : mode === 'create' ? (
               <SkillCreatePanel
                 target={catalogTarget}
                 scopes={writableScopes}
@@ -766,5 +779,5 @@ export function SkillsView({ target, toolNavigationIntent }: SkillsViewProps) {
 }
 
 function isSkillScope(value: string | undefined): value is SkillScope {
-  return value === 'builtin' || value === 'user' || value === 'workspace'
+  return value === 'builtin' || value === 'user' || value === 'workspace' || value === 'shared'
 }

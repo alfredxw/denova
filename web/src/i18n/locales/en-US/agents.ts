@@ -63,7 +63,7 @@ const agents = {
   'agents.tool.todo.title': 'Task List',
   'agents.tool.todo.subtitle': 'todo',
   'agents.tool.delegation.title': 'Task Delegation',
-  'agents.tool.delegation.subtitle': 'task · task_wait',
+  'agents.tool.delegation.subtitle': 'send · await · list_agents',
   'agents.tool.script.title': 'Script Orchestration',
   'agents.tool.script.subtitle': 'Run one JavaScript tool workflow',
   'agents.tool.trajectory.title': 'Trajectory evidence',

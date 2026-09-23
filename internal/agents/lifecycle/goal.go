@@ -14,8 +14,8 @@ import (
 )
 
 // NewGoalManager returns Denova's adapter for the public revisioned Goal
-// capability. The public manager remains the sole state authority; this
-// adapter only gives autonomous continuations valid product HostData.
+// capability. Native owns evaluation and state transitions; this adapter only
+// prepares Denova continuation HostData. External runtimes do not call it.
 func NewGoalManager() agent.GoalManager {
 	return denovaGoalManager{delegate: publicgoal.Standard()}
 }

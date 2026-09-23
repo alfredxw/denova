@@ -145,8 +145,8 @@ export function useLiveMessageAccumulator({ setMessages }: UseLiveMessageAccumul
 
   const appendContextCompaction = useCallback((data: Record<string, unknown>) => {
     flush()
-    const id = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
-    currentCompactionMessageIdRef.current = id
+    const id = (typeof data.id === 'string' && data.id) || currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
+    currentCompactionMessageIdRef.current = ['completed', 'success', 'failed', 'error'].includes(String(data.status)) ? null : id
     nonNarrativeStreamingRef.current = true
     setMessages((current) => upsertContextCompactionMessage(current, buildContextCompactionMessage(data, id)))
   }, [flush, setMessages])

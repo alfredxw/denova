@@ -42,6 +42,7 @@ type interactiveAgentCycle struct {
 	storyContext     interactive.StoryContext
 	tellerInput      prompts.InteractiveStorySystemInstructionInput
 	definition       agents.Definition
+	externalAssembly *agents.ExternalAssembly
 	systemPrompt     prompts.SystemPromptComposition
 	conversation     *interactiveapp.Conversation
 	request          agentchat.ChatRequest
@@ -106,6 +107,13 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	expectedHead := branch.Head
 	storyContext := canonicalContext
 	regenerateTurnID := strings.TrimSpace(request.RegenerateFromTurnID)
+	if request.ResumeInterruptionID != "" {
+		if target, err := interactiveapp.ExternalTurnReplacement(cycle.store, cycle.storyID, cycle.branchID, request.ResumeInterruptionID); err != nil {
+			return nil, err
+		} else if target != "" {
+			regenerateTurnID = target
+		}
+	}
 	if regenerateTurnID != "" {
 		storyContext, err = cycle.store.StoryContextAtTurnParent(cycle.storyID, cycle.branchID, regenerateTurnID)
 		if err != nil {
@@ -115,6 +123,21 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	cycle.storyContext = storyContext
 	if _, err := interactiveapp.ApplyConversationConfig(cycle.store, &cycle.runtimeCfg, cycle.storyID, cycle.branchID); err != nil {
 		return nil, err
+	}
+	if request.ResumeInterruptionID != "" && cycle.runtimeCfg.ActiveAgentRuntime != nil && cycle.runtimeCfg.ActiveAgentRuntime.Kind != config.RuntimeNative {
+		pending, err := interactiveapp.ExternalTurnInterruption(cycle.store, cycle.storyID, cycle.branchID)
+		if err != nil {
+			return nil, err
+		}
+		if pending != nil {
+			for _, input := range canonicalContext.Snapshot.PendingPlayerInputs {
+				if input.ID == pending.PlayerInputID && input.ContextOnly {
+					// Opening tools must be restored before assembly, even when
+					// the resume request comes from the ordinary player composer.
+					request.InputVisibility = agentrun.InputModelOnly
+				}
+			}
+		}
 	}
 
 	teller := interactiveapp.LoadGameTeller(cycle.novaDir, storyContext.Meta.StoryTellerID)
@@ -129,7 +152,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	}
 	ruleChecksEnabled := !storyRuntime.ModuleRefs.RuleSystemDisabled && len(storyRuntime.TRPGSystem.RuleTemplates) > 0
 	cycle.request = agentchat.ChatRequest{
-		Message: strings.TrimSpace(request.Message), ResumeInterruptionID: strings.TrimSpace(request.ResumeInterruptionID),
+		CommandID: request.CommandID, Message: strings.TrimSpace(request.Message), ResumeInterruptionID: strings.TrimSpace(request.ResumeInterruptionID),
 		StyleScenes:   append([]string(nil), request.StyleScenes...),
 		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
 		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
@@ -162,7 +185,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	builtAgent, err := appagentruntime.BuildInteractiveAgent(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentHost, agentinteractive.InteractiveStoryToolContext{
+	toolContext := agentinteractive.InteractiveStoryToolContext{
 		Store:                    cycle.store,
 		StoryID:                  cycle.storyID,
 		BranchID:                 cycle.branchID,
@@ -173,11 +196,20 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		TurnResultReady:          cycle.conversation.InteractiveNarrativeReady,
 		LoadNarrativeCandidate:   cycle.conversation.LoadNarrativeCandidate,
 		AcceptNarrativeCandidate: cycle.conversation.AcceptNarrativeCandidate,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build interactive story runner: %w", err)
 	}
-	cycle.definition, cycle.systemPrompt = builtAgent.Definition, builtAgent.Composition
+	if cycle.runtimeCfg.ActiveAgentRuntime != nil && cycle.runtimeCfg.ActiveAgentRuntime.Kind != config.RuntimeNative {
+		assembly, err := agents.BuildExternalGameAssembly(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentHost, toolContext)
+		if err != nil {
+			return nil, err
+		}
+		cycle.externalAssembly, cycle.systemPrompt = &assembly, assembly.Composition
+	} else {
+		builtAgent, err := appagentruntime.BuildInteractiveAgent(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentHost, toolContext)
+		if err != nil {
+			return nil, fmt.Errorf("build interactive story runner: %w", err)
+		}
+		cycle.definition, cycle.systemPrompt = builtAgent.Definition, builtAgent.Composition
+	}
 	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] prepared workspace=%s story_id=%s branch_id=%s message_bytes=%d style_rules=%d", cycle.workspace, cycle.storyID, cycle.branchID, len(cycle.request.Message), len(styleRules)))
 	return cycle, nil
 }

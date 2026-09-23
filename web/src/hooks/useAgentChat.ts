@@ -406,6 +406,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           await loadSessions()
           return true
         }
+        if (command === 'compact') await loadHistory()
         appendDataMessage(setUIMessages, 'data-agent-system', {
           content: result,
         })

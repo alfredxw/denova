@@ -6,6 +6,7 @@ import type { StoryStateDisplayPreference } from '../story-state/display-prefere
 
 /** Stable integration surface between the interactive workspace and the story stage. */
 export interface StoryStageProps {
+  active?: boolean
   projectId: string
   workspace?: string
   styleSceneSuggestions?: string[]
@@ -37,6 +38,6 @@ export interface StoryStageProps {
   onOpenDirectorState?: () => void
   onRequestCreateBranch?: (source: BranchCreationSource) => void
   onStateDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void
-  onTurnPersisted?: (event: InteractiveTurnPersistedEvent) => Snapshot | void
+  onTurnPersisted?: (event: InteractiveTurnPersistedEvent, options?: { replayed: boolean }) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
 }

@@ -698,10 +698,10 @@ func TestLoadLayeredPublishesResolvedAgentToolCatalogAndManifests(t *testing.T) 
 		t.Fatalf("resolved shell tools = %#v, want [%s]", shell.ToolNames, wantShell)
 	}
 	delegation, found := resolvedManifestCapability(ide, AgentToolDelegation)
-	if !found || strings.Join(delegation.ToolNames, ",") != "task,task_wait" {
+	if !found || strings.Join(delegation.ToolNames, ",") != "send,await,list_agents" {
 		t.Fatalf("resolved delegation tools = %#v", delegation)
 	}
-	waitDescriptor, found := delegation.ToolDescriptors["task_wait"]
+	waitDescriptor, found := delegation.ToolDescriptors["await"]
 	if !found || waitDescriptor.Execution != agent.ToolExecutionInteractiveWait ||
 		waitDescriptor.Steering != agent.SteeringInterruptibleWait ||
 		waitDescriptor.Recovery != agent.ToolRecoveryReadOnly {

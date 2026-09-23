@@ -77,11 +77,12 @@ type sessionObserver struct {
 // capability updates, and settled turn records may cross process boundaries;
 // all live coordination is intentionally kept here in memory.
 type Session struct {
-	agent   *Agent
-	key     SessionKey
-	binding runstate.BindingRef
-	engine  runstate.Engine
-	log     agentsession.Log
+	agent    *Agent
+	key      SessionKey
+	binding  runstate.BindingRef
+	engine   runstate.Engine
+	log      agentsession.Log
+	recovery *RecoveryIndex
 
 	mu                  sync.RWMutex
 	closed              bool
@@ -121,9 +122,15 @@ func (session *Session) Key() SessionKey {
 	return key
 }
 
-func (session *Session) replay(ctx context.Context) error {
+func (session *Session) replay(ctx context.Context, access sessionAccess) error {
+	if err := session.loadRecovery(ctx); err != nil {
+		return err
+	}
+	if err := session.restoreRecent(ctx); err != nil {
+		return err
+	}
 	var unfinished *persistedTurn
-	stats, err := session.log.Replay(ctx, func(record agentsession.Record) error {
+	apply := func(record agentsession.Record) error {
 		session.revision = record.Revision
 		switch record.Kind {
 		case sessionInputRecord, sessionInputUpdateRecord:
@@ -224,17 +231,22 @@ func (session *Session) replay(ctx context.Context) error {
 			return fmt.Errorf("unsupported Agent Session record %q", record.Kind)
 		}
 		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("replay Agent Session transcript: %w", err)
 	}
-	_ = stats
+	for _, record := range session.recovery.ReplayRecords() {
+		if err := apply(record); err != nil {
+			return fmt.Errorf("replay Agent Session transcript: %w", err)
+		}
+	}
+	session.revision = session.recovery.Revision
 	if unfinished != nil {
 		if run := session.runs[unfinished.RunID]; run != nil {
 			run.result = Result{Status: ResultSuspended, Reason: "Agent Run requires explicit resume"}
 			run.cancel()
 			run.endHandle()
 			close(run.executionDone)
+			if access == sessionInspection {
+				return nil
+			}
 			return run.restoreEffectInteractions()
 		}
 		interrupted := *unfinished
@@ -338,29 +350,60 @@ func (session *Session) Active(_ context.Context) (*Run, bool, error) {
 	return session.active, session.active != nil, nil
 }
 
-func (session *Session) AttachRun(_ context.Context, runID string) (*Run, bool, error) {
+func (session *Session) AttachRun(ctx context.Context, runID string) (*Run, bool, error) {
 	if err := session.usable(); err != nil {
 		return nil, false, err
 	}
 	session.mu.RLock()
 	run := session.runs[strings.TrimSpace(runID)]
 	session.mu.RUnlock()
-	return run, run != nil, nil
+	if run != nil {
+		return run, true, nil
+	}
+	snapshot, found, err := session.RunSnapshot(ctx, runID)
+	if err != nil || !found {
+		return nil, found, err
+	}
+	return session.settledHandle(snapshot), true, nil
 }
 
-func (session *Session) RunInput(_ context.Context, runID string) (Input, bool, error) {
-	run, found, err := session.AttachRun(context.Background(), runID)
+func (session *Session) RunInput(ctx context.Context, runID string) (Input, bool, error) {
+	run, found, err := session.AttachRun(ctx, runID)
 	if err != nil || !found {
 		return Input{}, false, err
 	}
 	run.mu.RLock()
-	defer run.mu.RUnlock()
 	if run.cycle > 0 && !run.settled {
-		input, err := decodeInput(run.snapshot.Input)
-		input.IdempotencyKey = string(run.snapshot.CommandID)
+		saved := run.snapshot.Input
+		commandID := string(run.snapshot.CommandID)
+		run.mu.RUnlock()
+		input, err := decodeInput(saved)
+		input.IdempotencyKey = commandID
 		return input, err == nil, err
 	}
-	return cloneInput(run.input), true, nil
+	if !run.settled {
+		input := cloneInput(run.input)
+		run.mu.RUnlock()
+		return input, true, nil
+	}
+	run.mu.RUnlock()
+	session.mu.RLock()
+	entry, found := session.recovery.Inputs[run.commandID]
+	session.mu.RUnlock()
+	if !found {
+		return Input{}, false, nil
+	}
+	record, err := session.readRecord(ctx, entry.Revision)
+	if err != nil {
+		return Input{}, false, err
+	}
+	var stored persistedInput
+	if err := json.Unmarshal(record.Data, &stored); err != nil {
+		return Input{}, false, err
+	}
+	input, err := decodeInput(stored.Input)
+	input.IdempotencyKey = stored.Receipt.CommandID
+	return input, err == nil, err
 }
 
 func (session *Session) Observe(ctx context.Context, after Cursor) (Observation, error) {
@@ -615,6 +658,9 @@ func (session *Session) appendRecordsLocked(ctx context.Context, records ...agen
 		if errors.Is(err, agentsession.ErrCommitUnknown) || (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)) {
 			session.storageErr = err
 		}
+		return err
+	}
+	if err := session.recordCommittedLocked(records, session.revision+1); err != nil {
 		return err
 	}
 	session.revision = next

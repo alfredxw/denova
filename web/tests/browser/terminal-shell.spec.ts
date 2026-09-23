@@ -2,21 +2,6 @@ import { expect, test } from '../support/fixtures'
 import { createAgentChatSession, createAndOpenBook } from '../support/api'
 import { openAgentChatSession, openAgentChatWorkbench } from '../support/agent-chat'
 
-let originalSettings: { language?: string; theme?: string; terminal_shell?: string }
-
-test.beforeEach(async ({ request }) => {
-  originalSettings = (await (await request.get('/api/settings')).json()).user
-})
-
-test.afterEach(async ({ request }) => {
-  const restored = await request.patch('/api/settings', { data: { layer: 'user', changes: {
-    language: originalSettings.language ?? null,
-    theme: originalSettings.theme ?? null,
-    terminal_shell: originalSettings.terminal_shell ?? null,
-  } } })
-  expect(restored.ok(), await restored.text()).toBe(true)
-})
-
 test('Windows terminal shell choices persist across Writing and Game', async ({ page, request }, testInfo) => {
   test.setTimeout(90_000)
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -38,7 +23,9 @@ test('Windows terminal shell choices persist across Writing and Game', async ({ 
     await page.getByRole('button', { name: '终端', exact: true }).click()
     const selector = page.getByRole('combobox', { name: '终端 Shell', exact: true })
     await selector.click()
+    const shellSaved = page.waitForResponse(response => response.url().endsWith('/api/settings') && response.request().method() === 'PATCH')
     await page.getByRole('option', { name: label, exact: true }).click()
+    expect((await shellSaved).ok()).toBe(true)
     await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.terminal_shell).toBe(shell)
     await page.reload()
     await expect(selector).toHaveText(label)
@@ -54,7 +41,11 @@ test('Windows terminal shell choices persist across Writing and Game', async ({ 
     const theme = page.locator('[data-slot="field"]').filter({ has: page.getByText(english ? 'Theme' : '主题', { exact: true }) }).getByRole('combobox')
     await theme.scrollIntoViewIfNeeded()
     await theme.click()
+    // Theme rendering is optimistic. Await persistence before the next scenario
+    // changes settings through the API, otherwise their revisions can race.
+    const themeSaved = page.waitForResponse(response => response.url().endsWith('/api/settings') && response.request().method() === 'PATCH')
     await page.getByRole('option', { name: english ? 'Light' : '深色', exact: true }).click()
+    expect((await themeSaved).ok()).toBe(true)
     await expect(page.locator('html')).toHaveAttribute('data-theme', scenario.theme)
     const section = english ? 'Terminal' : '终端'
     if (scenario.width < 768) {

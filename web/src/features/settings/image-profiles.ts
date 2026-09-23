@@ -1,4 +1,22 @@
-import type { ImageAPIEndpointSettings, ImageAPIProfileSettings } from './types'
+import type { ImageAPIEndpointSettings, ImageAPIProfileSettings, Settings } from './types'
+
+/** Whether a configured image model has the connection and model/workflow needed for generation. */
+export function hasConfiguredImageModel(settings?: Settings): boolean {
+  if (!settings) return false
+  const endpoints = imageAPIEndpointsWithDefault(settings)
+  return imageAPIProfilesWithDefault(settings).some(profile => {
+    const endpoint = endpoints.find(item => item.id === (profile.endpoint_id?.trim() || DEFAULT_IMAGE_API_ENDPOINT_ID))
+    if (!endpoint) return false
+    const provider = imageAPIProvider(endpoint.provider)
+    const defaults = imageAPIEndpointDefaults(provider)
+    if (!(endpoint.base_url?.trim() || defaults.base_url)) return false
+    if (provider !== 'custom' && provider !== 'comfyui' && !endpoint.api_key?.trim()) return false
+    const protocol = endpoint.protocol || defaults.protocol
+    return protocol === 'comfyui-workflow'
+      ? Boolean(profile.comfyui?.workflow?.trim())
+      : Boolean(profile.model?.trim() || imageAPIProfileDefaults(provider).model)
+  })
+}
 
 export const DEFAULT_IMAGE_API_PROFILE_ID = 'default'
 export const DEFAULT_IMAGE_API_ENDPOINT_ID = 'default'

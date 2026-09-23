@@ -1,0 +1,15 @@
+name: Setup frontend
+description: Install the pinned frontend toolchain and locked dependencies.
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 11.15.1
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: web/pnpm-lock.yaml
+    - shell: bash
+      run: pnpm --dir web install --frozen-lockfile

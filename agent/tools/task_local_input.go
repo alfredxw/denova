@@ -26,7 +26,11 @@ func (tasks *LocalTasks) FollowUp(ctx context.Context, ref TaskRef, input agent.
 	if err != nil {
 		return Task{}, err
 	}
-	if snapshot.ActiveRunID == "" {
+	_, acceptedBefore, err := session.CommandSnapshot(ctx, input.IdempotencyKey)
+	if err != nil {
+		return Task{}, err
+	}
+	if snapshot.ActiveRunID == "" && !acceptedBefore {
 		if err := tasks.checkCapacity(ctx); err != nil {
 			return Task{}, err
 		}
@@ -37,22 +41,26 @@ func (tasks *LocalTasks) FollowUp(ctx context.Context, ref TaskRef, input agent.
 		return Task{}, err
 	}
 	ref.Run = receipt.RunID
+	accepted := Task{Ref: ref, Receipt: &receipt}
 	run, found, err := session.AttachRun(ctx, ref.Run)
 	if err != nil {
-		return Task{}, err
+		return accepted, err
 	}
 	if !found {
-		return Task{}, errors.New("accepted child Run was not found")
+		return accepted, errors.New("accepted child Run was not found")
 	}
 	if err := tasks.trackTaskCompletion(ctx, ref); err != nil {
-		return Task{}, err
+		return accepted, err
 	}
 	tasks.watchCompletion(ctx, run, ref)
 	snapshot, err = session.Snapshot(ctx)
 	if err != nil {
-		return Task{}, err
+		return accepted, err
 	}
 	task, err := taskFromSnapshot(ref, snapshot)
+	if err != nil {
+		return accepted, err
+	}
 	task.Receipt = &receipt
 	return task, err
 }
@@ -96,7 +104,13 @@ func (tasks *LocalTasks) Resume(ctx context.Context, ref TaskRef, request agent.
 	if err != nil {
 		return Task{}, err
 	}
-	if snapshot.ActiveStatus == agent.ResultSuspended || snapshot.ActiveRunID == "" {
+	if _, accepted := session.AcceptedControl(request.IdempotencyKey); !accepted {
+		if snapshot.ActiveRunID != ref.Run {
+			return Task{}, agent.ErrNoActiveRun
+		}
+		if snapshot.ActiveStatus != agent.ResultSuspended {
+			return Task{}, ErrTaskInvalidState
+		}
 		if err := tasks.checkCapacity(ctx); err != nil {
 			return Task{}, err
 		}
@@ -105,19 +119,28 @@ func (tasks *LocalTasks) Resume(ctx context.Context, ref TaskRef, request agent.
 		return Task{}, errors.New("resume Run ID does not match the task ref")
 	}
 	request.RunID = ref.Run
-	run, err := session.ResumeRun(ctx, request)
+	run, receipt, err := session.ResumeRunWithReceipt(ctx, request)
 	if err != nil {
 		return Task{}, err
 	}
+	accepted := Task{Ref: ref, Receipt: &receipt}
+	if run == nil {
+		return accepted, nil
+	}
 	if err := tasks.trackTaskCompletion(ctx, ref); err != nil {
-		return Task{}, err
+		return accepted, err
 	}
 	tasks.watchCompletion(ctx, run, ref)
 	snapshot, err = session.Snapshot(ctx)
 	if err != nil {
-		return Task{}, err
+		return accepted, err
 	}
-	return taskFromSnapshot(ref, snapshot)
+	task, err := taskFromSnapshot(ref, snapshot)
+	if err != nil {
+		return accepted, err
+	}
+	task.Receipt = &receipt
+	return task, err
 }
 
 func (tasks *LocalTasks) checkCapacity(ctx context.Context) error {

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sort"
 
-	externaljournal "denova/internal/agents/external/journal"
+	externaljournal "denova/internal/agents/runtime/external/journal"
 )
 
 // External tool cards are derived from execution facts. They are never written
@@ -56,7 +56,7 @@ func appendExternalRecordLine(sess *Session, line []byte, lineNumber int) error 
 			return err
 		}
 		return appendDisplayRecordLine(sess, body, lineNumber)
-	case externaljournal.OperationAccepted, externaljournal.ContextCheckpoint:
+	case externaljournal.OperationAccepted, externaljournal.ContextCheckpoint, externaljournal.GuidanceDelivered:
 		// Product messages and execution metadata have their own projections.
 	}
 	return nil

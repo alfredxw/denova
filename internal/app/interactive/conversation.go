@@ -61,6 +61,11 @@ type Conversation struct {
 	openingStateSchemaDraft     *interactive.ActorStateSchemaBatchDraft
 	openingStateSchemaAudit     interactive.ActorStateSchemaBatchAudit
 	requireProtagonistSelection bool
+
+	// draftCommit is supplied by a product execution host before admission.
+	// Native uses its atomic checkpoint callback; external turns commit only
+	// product-owned Story facts and never enter the Native lifecycle.
+	draftCommit func(context.Context, interactive.TurnDraft, *agent.ToolResult) error
 }
 
 var _ novaskills.ExplicitResolver = (*Conversation)(nil)

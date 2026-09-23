@@ -4,6 +4,7 @@ package compaction
 // model and cache measurements remain available through Agent diagnostics.
 type Result struct {
 	Triggered          bool   `json:"triggered"`
+	RuntimeManaged     bool   `json:"runtime_managed,omitempty"`
 	SkippedReason      string `json:"skipped_reason,omitempty"`
 	Revision           uint64 `json:"revision"`
 	Summary            string `json:"summary"`

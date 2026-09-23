@@ -11,6 +11,28 @@ import { APIError } from './api-client'
 import { agentViewToRenderMessage, buildAgentMessageViews } from './agent-message-view'
 
 describe('agent-ui', () => {
+  it('projects provider plans without synthetic tools and removes a cleared plan', () => {
+    const plan = (id: string, items: unknown[]): AgentUIMessage => ({
+      id, role: 'assistant', metadata: { run_id: 'run' },
+      parts: [{ type: 'data-agent-todo', id, data: { schema: 'agent.todo.v1', items } }],
+    })
+    const pending = plan('pending', [{ id: '1', text: 'Verify', status: 'pending' }])
+    const completed = plan('done', [{ id: '1', text: 'Verify', status: 'completed' }])
+    const views = buildAgentMessageViews([pending, completed])
+    expect(views).toHaveLength(1)
+    expect(views[0].kind).toBe('todo')
+    expect(agentViewToRenderMessage(views[0])?.role).toBe('todo_updated')
+    expect(buildAgentMessageViews([pending, completed, plan('clear', [])])).toEqual([])
+  })
+  it('renders runtime compaction without requiring a summary or invented metrics', () => {
+    const messages: AgentUIMessage[] = [{ id: 'compact', role: 'assistant', parts: [{
+      type: 'data-agent-context-compaction', id: 'compact',
+      data: { status: 'completed', phase: 'model_step', runtime_managed: true },
+    }] }]
+    expect(buildAgentMessageViews(messages).map(view => agentViewToRenderMessage(view))).toMatchObject([
+      { role: 'context_compaction', status: 'success', runtime_managed: true, content: '', phase: 'model_step' },
+    ])
+  })
   it('retracts failed streamed parts while retaining confirmed tools across later deltas', () => {
     const normalizer = new AgentUIMessageNormalizer()
     const message: AgentUIMessage = { id: 'run', role: 'assistant', parts: [

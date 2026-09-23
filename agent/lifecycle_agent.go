@@ -64,6 +64,11 @@ func WithCacheKeyGenerator(generate CacheKeyGenerator) Option {
 	}
 }
 
+type sessionOpening struct {
+	key  SessionKey
+	done chan struct{}
+}
+
 // Agent owns Session handles and serializes task-tree admission. Journals own
 // accepted inputs and execution facts; handles and waiters are process-local.
 type Agent struct {
@@ -77,6 +82,7 @@ type Agent struct {
 
 	mu          sync.RWMutex
 	sessions    map[string]*Session
+	opening     map[string]sessionOpening
 	closed      bool
 	admissionMu sync.Mutex
 }
@@ -181,27 +187,75 @@ func (agent *Agent) Session(ctx context.Context, key SessionKey) (*Session, erro
 	if err != nil {
 		return nil, err
 	}
-	agent.mu.Lock()
-	if agent.closed {
-		agent.mu.Unlock()
-		return nil, ErrAgentClosed
-	}
-	if existing := agent.sessions[canonical]; existing != nil {
-		agent.mu.Unlock()
-		return existing, nil
-	}
-	// Session creation is intentionally serialized. It keeps the ownership
-	// model obvious and prevents two callers from competing for the same Store
-	// lease before either handle has entered the registry.
-	defer agent.mu.Unlock()
-
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	for {
+		agent.mu.Lock()
+		if agent.closed {
+			agent.mu.Unlock()
+			return nil, ErrAgentClosed
+		}
+		if existing := agent.sessions[canonical]; existing != nil {
+			agent.mu.Unlock()
+			return existing, nil
+		}
+		if pending, found := agent.opening[canonical]; found {
+			agent.mu.Unlock()
+			select {
+			case <-pending.done:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		if agent.opening == nil {
+			agent.opening = make(map[string]sessionOpening)
+		}
+		done := make(chan struct{})
+		agent.opening[canonical] = sessionOpening{key: key, done: done}
+		agent.mu.Unlock()
+		// Serialize only this identity. A slow journal must not hold the Agent
+		// registry lock or prevent unrelated Sessions from being obtained.
+		openCtx, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(agent.ctx, cancel)
+		session, err := agent.openSession(openCtx, key)
+		stop()
+		cancel()
+		agent.mu.Lock()
+		closed := agent.closed
+		if err == nil && !closed {
+			agent.sessions[canonical] = session
+		}
+		agent.mu.Unlock()
+		if err == nil && closed {
+			err = errors.Join(ErrAgentClosed, session.closeWriter())
+			session = nil
+		}
+		agent.mu.Lock()
+		delete(agent.opening, canonical)
+		close(done)
+		agent.mu.Unlock()
+		return session, err
+	}
+}
+
+func (agent *Agent) openSession(ctx context.Context, key SessionKey) (*Session, error) {
 	log, err := agent.store.Open(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("open Agent Session transcript: %w", err)
 	}
+	return agent.loadSession(ctx, key, log, sessionWriter)
+}
+
+type sessionAccess uint8
+
+const (
+	sessionWriter sessionAccess = iota
+	sessionInspection
+)
+
+func (agent *Agent) loadSession(ctx context.Context, key SessionKey, log agentsession.Log, access sessionAccess) (*Session, error) {
 	binding := runstate.BindingRef{Kind: key.Namespace, Key: key.ID, Labels: maps.Clone(key.Attributes)}
 	engine, err := (&definitionEngineFactory{
 		source: agent.source, trace: agent.trace, cacheKeys: agent.cacheKeys,
@@ -222,13 +276,52 @@ func (agent *Agent) Session(ctx context.Context, key SessionKey) (*Session, erro
 	if canonical, ok := log.(agentsession.CanonicalMessageLog); ok {
 		session.canonicalMessages = canonical.CanonicalMessages()
 	}
-	if err := session.replay(ctx); err != nil {
+	if err := session.replay(ctx, access); err != nil {
 		_ = log.Close()
 		return nil, err
 	}
 
-	agent.sessions[canonical] = session
 	return session, nil
+}
+
+// InspectSession reads live state or replays an existing journal without
+// registering an execution handle, taking a writer lease, or resuming work.
+func (agent *Agent) InspectSession(ctx context.Context, key SessionKey) (SessionSnapshot, error) {
+	canonical, err := agentsession.CanonicalKey(key)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	agent.mu.RLock()
+	live, closed := agent.sessions[canonical], agent.closed
+	agent.mu.RUnlock()
+	if closed {
+		return SessionSnapshot{}, ErrAgentClosed
+	}
+	if live != nil {
+		live.mu.RLock()
+		snapshot := live.snapshotLocked()
+		live.mu.RUnlock()
+		return snapshot, nil
+	}
+	reader, ok := agent.store.(agentsession.ReaderStore)
+	if !ok {
+		return SessionSnapshot{}, ErrCapabilityUnsupported
+	}
+	log, err := reader.OpenReader(ctx, key)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	defer log.Close()
+	session, err := agent.loadSession(ctx, key, log, sessionInspection)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	defer func() {
+		for _, run := range session.runs {
+			run.cancel()
+		}
+	}()
+	return session.snapshotLocked(), nil
 }
 
 func (agent *Agent) ListSessions(ctx context.Context, selector SessionSelector) ([]SessionKey, error) {
@@ -291,6 +384,28 @@ func (agent *Agent) CloseSessions(ctx context.Context, selector SessionSelector)
 	if err := selector.Validate(); err != nil {
 		return err
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		agent.mu.RLock()
+		var waiting <-chan struct{}
+		for _, pending := range agent.opening {
+			if sessionSelectorMatchesTree(selector, pending.key) {
+				waiting = pending.done
+				break
+			}
+		}
+		agent.mu.RUnlock()
+		if waiting == nil {
+			break
+		}
+		select {
+		case <-waiting:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	agent.mu.RLock()
 	open := make([]*Session, 0, len(agent.sessions))
 	for _, session := range agent.sessions {
@@ -320,8 +435,15 @@ func (agent *Agent) Close(ctx context.Context) error {
 	for _, session := range agent.sessions {
 		sessions = append(sessions, session)
 	}
+	opening := make([]chan struct{}, 0, len(agent.opening))
+	for _, pending := range agent.opening {
+		opening = append(opening, pending.done)
+	}
 	agent.mu.Unlock()
 	agent.cancel()
+	for _, done := range opening {
+		<-done
+	}
 	var result error
 	for _, session := range sessions {
 		result = errors.Join(result, session.Close(ctx))

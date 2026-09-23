@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
-import { buildContextCompactionMessage, createContextCompactionMessageId, settleContextCompactionMessages } from '@/components/Chat/context-compaction-message'
 import { createAgentCommandID, type AgentRuntimeQueuedCommand } from '@/lib/api'
 import { localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
 import type { AgentUIMessage } from '@/lib/agent-ui'
@@ -61,7 +60,7 @@ interface UseStoryStageRuntimeOptions {
   setActivity: (content: string) => void
   setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
   clearComposer: () => void
-  onTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | void
+  onTurnPersisted: (event: InteractiveTurnPersistedEvent, options?: { replayed: boolean }) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
 }
 
@@ -98,7 +97,6 @@ export function useStoryStageRuntime({
   const [commandSubmitting, setCommandSubmitting] = useState(false)
   const [queueActionPendingCommandID, setQueueActionPendingCommandID] = useState('')
   const commandSubmittingRef = useRef(false)
-  const compactionIdCounterRef = useRef(0)
   const initialStartCommandIDsRef = useRef(new Map<string, string>())
   const commandIDsRef = useRef(new Map<string, string>())
   const streamConsumer = createStoryStageStreamConsumer({
@@ -287,19 +285,16 @@ export function useStoryStageRuntime({
     if (!storyId || streaming) return
     clearComposer()
     setStreaming(true)
-    setActivity('')
+    setActivity(t('chat.contextCompaction.status.running'))
     liveAccumulator.resetCompaction()
-    setMessages([buildContextCompactionMessage({ status: 'started', phase: 'pre_run' }, createContextCompactionMessageId(compactionIdCounterRef))])
+    setMessages([])
     try {
       await compactInteractiveContext(storyId, branchId)
-      setMessages((current) => [
-        ...settleContextCompactionMessages(current, 'success'),
-        systemMessage(t('storyStage.contextCompaction.done')),
-      ])
       await onDone()
+      // Completed maintenance is projected from the canonical Story journal.
+      setMessages([])
     } catch (error) {
-      setMessages((current) => [
-        ...settleContextCompactionMessages(current, 'error'),
+      setMessages([
         errorMessage(error instanceof Error ? error.message : t('storyStage.contextCompaction.failed')),
       ])
     } finally {

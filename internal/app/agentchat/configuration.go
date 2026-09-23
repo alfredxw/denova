@@ -33,9 +33,6 @@ func (service *Service) PatchConversationConfig(
 		return conversationconfig.Snapshot{}, err
 	}
 	if !project.store.Exists(resolved.SessionID) {
-		if patch.Runtime != nil {
-			return conversationconfig.Snapshot{}, fmt.Errorf("%w: runtime can only be applied to an existing conversation", conversationconfig.ErrRevisionConflict)
-		}
 		current, err := agentconversation.PreviewSession(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)
 		if err != nil {
 			return conversationconfig.Snapshot{}, err
@@ -46,6 +43,13 @@ func (service *Service) PatchConversationConfig(
 		next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
 		if err != nil {
 			return conversationconfig.Snapshot{}, err
+		}
+		if patch.Runtime != nil && next.Engine().Kind != config.RuntimeNative {
+			_, release, err := service.host.AgentEngines().Acquire(ctx, next.Engine(), runtimeCfg)
+			if err != nil {
+				return conversationconfig.Snapshot{}, err
+			}
+			release()
 		}
 		sess, err := project.store.GetOrCreateWithRuntimeConfig(resolved.SessionID, next)
 		if err != nil {

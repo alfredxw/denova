@@ -305,6 +305,8 @@ func (s *Session) History() []HistoryEntry {
 				ID:                   record.display.ID,
 				DisplaySegmentID:     record.display.ID,
 				DisplayPhase:         record.display.DisplayPhase,
+				Phase:                record.display.Phase,
+				RuntimeManaged:       record.display.RuntimeManaged,
 				AgentCycle:           record.display.AgentCycle,
 				Role:                 record.display.Role,
 				Content:              record.display.Content,
@@ -342,7 +344,7 @@ func (s *Session) History() []HistoryEntry {
 		}
 	}
 	if s.projection != nil {
-		if err := applyJournalAskAnswers(result, &s.projection.AgentSessions); err != nil {
+		if err := applyJournalAskAnswers(result, &s.projection.AgentSessions, s.journal); err != nil {
 			slog.Error("Project Agent interaction answers failed", "session_id", s.ID, "error", err)
 		}
 		if err := s.applyExternalHistoryOutcomesLocked(context.Background(), result); err != nil {

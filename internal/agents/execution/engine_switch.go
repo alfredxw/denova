@@ -7,9 +7,10 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// RequireIdleForEngineSwitch includes detached children and unfinished Goals.
+// ReleaseIdleForEngineSwitch checks detached children and unfinished Goals,
+// then evicts the idle actors so the next execution reloads the canonical journal.
 // The caller excludes new product admissions until the selection is committed.
-func (runtime *Runtime) RequireIdleForEngineSwitch(ctx context.Context, options agentrun.Options) error {
+func (runtime *Runtime) ReleaseIdleForEngineSwitch(ctx context.Context, options agentrun.Options) error {
 	if runtime == nil || runtime.public == nil {
 		return ErrRuntimeProjectionUnavailable
 	}
@@ -37,5 +38,6 @@ func (runtime *Runtime) RequireIdleForEngineSwitch(ctx context.Context, options 
 			return agent.ErrSessionBusy
 		}
 	}
-	return nil
+	key := root.Key()
+	return runtime.public.closeSessions(ctx, agent.SessionSelector{Namespace: key.Namespace, ID: key.ID})
 }

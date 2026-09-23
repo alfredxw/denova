@@ -12,9 +12,9 @@ import (
 	chatagent "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
-	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
 	"denova/internal/book"
@@ -27,7 +27,7 @@ const RuntimeMode = "agent_chat"
 // by one Project runtime. Project identity and session state stay in Service.
 type Host interface {
 	BaseRuntime() (config.Config, *agentexecution.Runtime)
-	AgentEngines() *appagentruntime.Engines
+	AgentEngines() *agentruntime.Engines
 	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string
 	OnVerifiedMutations(context.Context, string, *book.VersionService, config.Config, []agenttool.Mutation, agenttool.Verification)

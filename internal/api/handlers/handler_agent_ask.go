@@ -8,7 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/agents/external"
+	"denova/internal/agents/runtime/external"
 	appsvc "denova/internal/app"
 )
 

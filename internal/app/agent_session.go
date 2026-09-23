@@ -167,7 +167,7 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	if err != nil {
 		return AgentAskResolution{}, err
 	}
-	if result, owned, err := a.AgentEngines().Operations.ResolveAsk(ctx, projectID, sess, askID, status, answers, cancelReason); owned {
+	if result, owned, err := a.AgentEngines().Operations.ResolveAsk(ctx, projectID, sess, askID, status, answers, cancelReason); owned || err != nil {
 		return result, err
 	}
 	return executionRuntime.ResolveAsk(ctx, agentrun.Options{

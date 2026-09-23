@@ -63,7 +63,7 @@ const agents = {
   'agents.tool.todo.title': '任务清单',
   'agents.tool.todo.subtitle': 'todo',
   'agents.tool.delegation.title': '委派任务',
-  'agents.tool.delegation.subtitle': 'task · task_wait',
+  'agents.tool.delegation.subtitle': 'send · await · list_agents',
   'agents.tool.script.title': '脚本编排',
   'agents.tool.script.subtitle': '即时运行一段 JavaScript 工具流程',
   'agents.tool.trajectory.title': '轨迹证据',

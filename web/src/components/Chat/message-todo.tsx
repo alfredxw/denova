@@ -1,6 +1,6 @@
 import { CheckCircle2, Circle, CircleDot, ListTodo } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ToolCallChatMessage } from '@/lib/api'
+import type { TodoChatMessage, ToolCallChatMessage } from '@/lib/api'
 import { stripToolResultMetadata } from './message-tool'
 import { ToolInspectorButton } from './ToolInspector'
 
@@ -11,11 +11,12 @@ interface TodoItem {
 }
 
 /** Tolerates partial streamed arguments, then trusts the structured final result. */
-export function TodoListBlock({ message }: { message: ToolCallChatMessage }) {
+export function TodoListBlock({ message }: { message: ToolCallChatMessage | TodoChatMessage }) {
   const { t } = useTranslation()
-  const args = message.args || ''
-  const status = message.status || 'running'
-  const resultPlan = status === 'success' ? parseTodoPlanResult(stripToolResultMetadata(message.result || '')) : null
+  const tool = message.role === 'tool_call' ? message : null
+  const args = tool?.args || ''
+  const status = tool ? tool.status || 'running' : 'success'
+  const resultPlan = status === 'success' ? parseTodoPlanResult(tool ? stripToolResultMetadata(tool.result || '') : message.content || '') : null
   const todos = resultPlan ?? parseTodoPlanFromArgs(args)
   const total = todos.length
   const completed = todos.filter(t => t.status === 'completed').length
@@ -36,7 +37,7 @@ export function TodoListBlock({ message }: { message: ToolCallChatMessage }) {
             </span>
           )}
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">{headline}</span>
-          <ToolInspectorButton />
+          {tool && <ToolInspectorButton />}
         </div>
         {todos.length > 0 && (
           <ul className="grid gap-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">

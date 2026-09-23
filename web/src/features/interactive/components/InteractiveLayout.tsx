@@ -266,8 +266,8 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   }, [active, reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.story_id])
 
   useEffect(() => {
-    if (!isMobile || submode !== 'story') setMobileSnapshotOpen(false)
-  }, [isMobile, submode])
+    if (!active || !isMobile || submode !== 'story') setMobileSnapshotOpen(false)
+  }, [active, isMobile, submode])
 
   const handleCreateStory = async (input: StoryCreateInput) => {
     const story = await createInteractiveStory(input)
@@ -463,6 +463,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const directorPanelVisible = isMobile ? mobileSnapshotOpen : rightPanelVisible
   const storyStage = (
     <StoryStage
+      active={active}
       projectId={projectId}
       workspace={workspace}
       styleSceneSuggestions={styleSceneSuggestions}
@@ -520,6 +521,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                   onMobileConsoleOpenChange={setMobileSnapshotOpen}
                   story={storyStage}
                   console={<DirectorPanel
+                      projectId={projectId}
                       storyId={currentStoryId}
                       story={currentStory}
                       planningTemplates={planningTemplates}

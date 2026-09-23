@@ -3,13 +3,13 @@ import type { AgentViewDefinition, VisibleAgentKey } from '@/features/agents/age
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { SkillDocument, SkillFile, SkillInstallCandidate, SkillScope, SkillScopeInfo, SkillSummary } from '@/lib/api'
 
-export type SkillsMode = 'editor' | 'create' | 'config' | 'install'
+export type SkillsMode = 'library' | 'editor' | 'create' | 'config' | 'install'
 export type SkillInstallSource = 'remote' | 'zip'
 export type SkillContentViewMode = 'preview' | 'raw'
 
 export const skillNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 export const skillEntryFile = 'SKILL.md'
-export const skillScopes: SkillScope[] = ['user', 'workspace', 'builtin']
+export const skillScopes: SkillScope[] = ['user', 'workspace', 'builtin', 'shared']
 export const skillAgentOptions = AGENTS.filter((agent) => agent.capabilityMode === 'tools')
 export const skillCategoryOptions = ['general', 'writing', 'image', 'research', 'configuration'] as const
 export const writingWorkflowCapability = 'writing-workflow'
@@ -175,6 +175,7 @@ function yamlString(value: string) {
 }
 
 export function scopeLabel(scope: SkillScope, t: (key: string) => string) {
+  if (scope === 'shared') return t('skills.scope.shared')
   if (scope === 'workspace') return t('skills.scope.workspace')
   if (scope === 'user') return t('skills.scope.user')
   return t('skills.scope.builtin')

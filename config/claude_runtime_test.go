@@ -24,7 +24,7 @@ func TestClaudePreferencesPreserveOtherEnginesAndReplaceWholeModel(t *testing.T)
 	if next.AgentRuntimes.IDE.Claude.Model != "sonnet" || parent.AgentRuntimes.IDE.Claude.Model != "opus" {
 		t.Fatal("selection mutated saved preferences")
 	}
-	for _, kind := range []string{AgentKindInteractiveStory, AgentKindImage} {
+	for _, kind := range []string{AgentKindImage} {
 		if _, err := next.AgentRuntimes.IDE.Selection(kind); err == nil {
 			t.Fatalf("external execution allowed for %s", kind)
 		}

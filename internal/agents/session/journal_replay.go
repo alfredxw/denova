@@ -12,7 +12,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/conversationjournal"
-	externaljournal "denova/internal/agents/external/journal"
+	externaljournal "denova/internal/agents/runtime/external/journal"
 	"denova/internal/agents/sessionjournal"
 )
 

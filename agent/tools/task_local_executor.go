@@ -29,6 +29,8 @@ type LocalTaskOptions struct {
 	Parallelism      int
 	CompletionParent *agent.Session
 	MaxResultBytes   int
+	// Self identifies the caller for scoped instance discovery; it has no Run.
+	Self TaskRef
 }
 
 // LocalTaskAgent binds one stable selector to an Agent owner. Different
@@ -61,8 +63,9 @@ type LocalTasks struct {
 	identity         agent.CapabilityIdentity
 	completionParent *agent.Session
 	maxResultBytes   int
+	self             TaskRef
 	watchMu          sync.Mutex
-	watched          map[string]struct{}
+	watched          map[string]*agent.Run
 }
 
 // Admission spans the count and accepted Run across all executor instances.
@@ -113,9 +116,9 @@ func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*Loc
 		ordered[index] = TaskAgentInfo{Name: candidate.Name, Description: candidate.Description}
 	}
 	return &LocalTasks{
-		agents: resolved, ordered: ordered, parallelism: options.Parallelism,
+		agents: resolved, ordered: ordered, parallelism: options.Parallelism, self: options.Self,
 		completionParent: options.CompletionParent, maxResultBytes: options.MaxResultBytes,
-		watched: make(map[string]struct{}),
+		watched: make(map[string]*agent.Run),
 		identity: toolsetIdentity("tasks.local", struct {
 			Parallelism    int
 			MaxResultBytes int
@@ -131,12 +134,7 @@ func (tasks *LocalTasks) Identity() agent.CapabilityIdentity {
 	return tasks.identity
 }
 
-func (tasks *LocalTasks) TaskAgents() []TaskAgentInfo {
-	if tasks == nil {
-		return nil
-	}
-	return append([]TaskAgentInfo(nil), tasks.ordered...)
-}
+func (tasks *LocalTasks) ResultLimit() int { return tasks.maxResultBytes }
 
 func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, error) {
 	candidate, err := tasks.agent(request.Agent)
@@ -162,7 +160,7 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		return Task{}, existingErr
 	} else if found {
 		if completionErr := tasks.resumeCompletionTracking(ctx, existing); completionErr != nil {
-			return Task{}, completionErr
+			return existing, completionErr
 		}
 		return existing, nil
 	}
@@ -184,13 +182,14 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		return Task{}, fmt.Errorf("start task Run: %w", err)
 	}
 	ref := TaskRef{Agent: candidate.Name, Session: sessionID, Run: run.ID()}
+	receipt := run.Receipt()
+	accepted := Task{Ref: ref, Status: "running", Receipt: &receipt}
 	if completionErr := tasks.trackTaskCompletion(ctx, ref); completionErr != nil {
 		_, _ = run.Abort(context.Background(), agent.AbortRequest{Reason: "parent task completion tracking failed"})
-		return Task{}, completionErr
+		return accepted, completionErr
 	}
 	tasks.watchCompletion(ctx, run, ref)
-	receipt := run.Receipt()
-	return Task{Ref: ref, Status: "running", Receipt: &receipt}, nil
+	return accepted, nil
 }
 
 func (tasks *LocalTasks) Observe(ctx context.Context, ref TaskRef, cursor string) (TaskObservation, error) {
@@ -212,7 +211,7 @@ func (tasks *LocalTasks) observe(ctx context.Context, ref TaskRef, cursor string
 	if err != nil {
 		return TaskObservation{}, err
 	}
-	task, err := taskFromSnapshot(ref, observation.Snapshot)
+	task, err := tasks.taskFromSessionSnapshot(ctx, session, ref, observation.Snapshot)
 	if err != nil {
 		return TaskObservation{}, err
 	}
@@ -236,25 +235,24 @@ func (tasks *LocalTasks) observe(ctx context.Context, ref TaskRef, cursor string
 	return result, err
 }
 
-func (tasks *LocalTasks) Steer(ctx context.Context, ref TaskRef, input agent.Input) error {
+func (tasks *LocalTasks) Steer(ctx context.Context, ref TaskRef, input agent.Input) (agent.CommandReceipt, error) {
 	_, session, err := tasks.open(ctx, ref)
 	if err != nil {
-		return err
+		return agent.CommandReceipt{}, err
 	}
 	run, found, err := session.AttachRun(ctx, ref.Run)
 	if err != nil || !found {
 		if err == nil {
-			err = errors.New("task Run was not found")
+			err = ErrTaskNotFound
 		}
-		return err
+		return agent.CommandReceipt{}, err
 	}
 	original, _, err := session.RunInput(ctx, ref.Run)
 	if err != nil {
-		return err
+		return agent.CommandReceipt{}, err
 	}
 	input.HostData = original.HostData
-	_, err = run.Steer(ctx, input)
-	return err
+	return run.Steer(ctx, input)
 }
 
 func (tasks *LocalTasks) Respond(
@@ -270,27 +268,26 @@ func (tasks *LocalTasks) Respond(
 	run, found, err := session.AttachRun(ctx, ref.Run)
 	if err != nil || !found {
 		if err == nil {
-			err = errors.New("task Run was not found")
+			err = ErrTaskNotFound
 		}
 		return err
 	}
 	return run.Respond(ctx, strings.TrimSpace(interactionID), response)
 }
 
-func (tasks *LocalTasks) Abort(ctx context.Context, ref TaskRef, request agent.AbortRequest) error {
+func (tasks *LocalTasks) Abort(ctx context.Context, ref TaskRef, request agent.AbortRequest) (agent.CommandReceipt, error) {
 	_, session, err := tasks.open(ctx, ref)
 	if err != nil {
-		return err
+		return agent.CommandReceipt{}, err
 	}
 	run, found, err := session.AttachRun(ctx, ref.Run)
 	if err != nil || !found {
 		if err == nil {
-			err = errors.New("task Run was not found")
+			err = ErrTaskNotFound
 		}
-		return err
+		return agent.CommandReceipt{}, err
 	}
-	_, err = run.Abort(ctx, request)
-	return err
+	return run.Abort(ctx, request)
 }
 
 func (tasks *LocalTasks) existingTask(
@@ -315,42 +312,32 @@ func (tasks *LocalTasks) existingTask(
 	if err != nil {
 		return Task{}, false, err
 	}
+	exact, found, err := session.CommandSnapshot(ctx, commandID)
+	if err != nil {
+		return Task{}, false, err
+	}
+	if !found {
+		return Task{}, false, errors.New("task Session idempotency identity is inconsistent")
+	}
+	ref := TaskRef{Agent: candidate.Name, Session: sessionID, Run: exact.Receipt.RunID}
+	original, found, err := session.RunInput(ctx, ref.Run)
+	if err != nil {
+		return Task{}, false, err
+	}
+	if !found || original.Text != prompt {
+		return Task{}, false, agent.ErrIdempotencyConflict
+	}
 	snapshot, err := session.Snapshot(ctx)
 	if err != nil {
 		return Task{}, false, err
 	}
-	ref := TaskRef{Agent: candidate.Name, Session: sessionID}
-	if snapshot.ActiveCommandID == commandID {
-		ref.Run = snapshot.ActiveRunID
-		original, _, err := session.RunInput(ctx, ref.Run)
-		if err != nil {
-			return Task{}, false, err
+	task, taskErr := tasks.taskFromSessionSnapshot(ctx, session, ref, snapshot)
+	if exact.Result != nil && snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 {
+		if closeErr := session.Close(context.Background()); closeErr != nil {
+			taskErr = errors.Join(taskErr, closeErr)
 		}
-		if original.Text != prompt {
-			return Task{}, false, agent.ErrIdempotencyConflict
-		}
-		task, taskErr := taskFromSnapshot(ref, snapshot)
-		return task, true, taskErr
 	}
-	for index := len(snapshot.RecentRuns) - 1; index >= 0; index-- {
-		if snapshot.RecentRuns[index].CommandID != commandID {
-			continue
-		}
-		ref.Run = snapshot.RecentRuns[index].ID
-		if original, found, err := session.RunInput(ctx, ref.Run); err != nil {
-			return Task{}, false, err
-		} else if found && original.Text != prompt {
-			return Task{}, false, agent.ErrIdempotencyConflict
-		}
-		task, taskErr := tasks.taskFromSessionSnapshot(ctx, session, ref, snapshot)
-		if snapshot.ActiveRunID == "" && len(snapshot.QueuedRuns) == 0 {
-			if closeErr := session.Close(context.Background()); closeErr != nil {
-				taskErr = errors.Join(taskErr, closeErr)
-			}
-		}
-		return task, true, taskErr
-	}
-	return Task{}, false, errors.New("task Session idempotency identity is inconsistent")
+	return task, true, taskErr
 }
 
 func (tasks *LocalTasks) activeTaskCount(ctx context.Context) (int, error) {
@@ -415,7 +402,7 @@ func (tasks *LocalTasks) openExisting(
 		return nil, err
 	}
 	if len(keys) == 0 {
-		return nil, errors.New("task Session was not found")
+		return nil, ErrTaskNotFound
 	}
 	if len(keys) != 1 {
 		return nil, errors.New("task Session identity is ambiguous")
@@ -454,7 +441,7 @@ func (tasks *LocalTasks) agent(name string) (LocalTaskAgent, error) {
 	}
 	candidate, ok := tasks.agents[name]
 	if !ok {
-		return LocalTaskAgent{}, fmt.Errorf("task Agent %q was not found", name)
+		return LocalTaskAgent{}, fmt.Errorf("%w: Agent %q", ErrTaskNotFound, name)
 	}
 	return candidate, nil
 }

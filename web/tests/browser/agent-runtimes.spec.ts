@@ -1,12 +1,8 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 import { openWritingAgent } from '../support/agent-chat'
-
-test.afterEach(async ({ request }) => {
-  const current = await (await request.get('/api/settings')).json()
-  const response = await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user, changes: { language: 'zh-CN', agent_runtimes: { ide: { selected: 'native' } } } } })
-  expect(response.ok(), await response.text()).toBe(true)
-})
+import enRuntime from '../../src/i18n/locales/en-US/agentRuntime'
+import zhRuntime from '../../src/i18n/locales/zh-CN/agentRuntime'
 
 for (const engine of ['codex', 'claude'] as const) {
 for (const language of ['zh-CN', 'en-US']) {
@@ -19,10 +15,11 @@ for (const language of ['zh-CN', 'en-US']) {
     } })
     expect(saved.ok(), await saved.text()).toBe(true)
     let checked = false
+    const catalogResponse = await request.get('/api/agent-runtimes')
+    expect(catalogResponse.ok()).toBe(true)
+    const catalog = await catalogResponse.json()
     await page.route('**/api/agent-runtimes', async route => {
-      const response = await route.fetch()
-      const body = await response.json()
-      await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === engine
+      await route.fulfill({ json: { items: catalog.items.map((item: { id: string }) => item.id === engine
         ? { ...item, status: 'auth_required' } : item) } })
     })
     await page.route(`**/api/agent-runtimes/${engine}/check`, async route => {
@@ -37,6 +34,8 @@ for (const language of ['zh-CN', 'en-US']) {
     await page.goto('/')
     await page.getByRole('button', { name: 'Agents', exact: true }).click()
     const runtime = page.locator('[data-agent-configuration-section="runtime"]')
+    const messages = language === 'zh-CN' ? zhRuntime : enRuntime
+    await expect(runtime.getByText(messages['agentRuntime.defaultsOnly'], { exact: true })).toBeVisible()
     const hint = engine === 'claude'
       ? (language === 'zh-CN' ? '请在运行 Denova 的电脑上执行 claude auth login，然后重新检查连接。' : 'Run claude auth login on the computer running Denova, then check the connection again.')
       : language === 'zh-CN'
@@ -73,10 +72,11 @@ for (const theme of ['dark', 'light']) {
     expect(seeded.ok(), await seeded.text()).toBe(true)
     // Exercise the product settings API and UI without signing a real account
     // in. Engine protocol execution has separate actual-CLI integration tests.
+    const catalogResponse = await request.get('/api/agent-runtimes')
+    expect(catalogResponse.ok()).toBe(true)
+    const catalog = await catalogResponse.json()
     await page.route('**/api/agent-runtimes', async (route) => {
-      const response = await route.fetch()
-      const body = await response.json()
-      await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === 'codex' ? { ...item, status: 'ready' } : item) } })
+      await route.fulfill({ json: { items: catalog.items.map((item: { id: string }) => item.id === 'codex' ? { ...item, status: 'ready' } : item) } })
     })
     await page.route('**/api/agent-runtimes/codex/models', (route) => route.fulfill({ json: { items: [{ id: 'engine-model', display_name: 'Engine model', efforts: ['medium', 'high'] }] } }))
     await page.goto('/')
@@ -118,7 +118,6 @@ for (const theme of ['dark', 'light']) {
       { id: 'shared.input_budget', owner: 'shared', state: 'editable' },
       { id: 'native.context_policy', owner: 'native', state: 'inactive', reason_key: 'agentRuntime.configuration.otherRuntime' },
     ]) })
-    await expect(page.getByRole('button', { name: '应用到此会话', exact: true })).toHaveCount(0)
     const inactive = page.locator('[data-agent-configuration-section="inactive-runtime"]')
     await inactive.getByRole('button', { name: '已保存的其他引擎配置', exact: true }).click()
     await expect(inactive.getByText('Native 的权限、上下文压缩、检查点指引和 Subagents 配置已保留，当前不生效。切回 Native 后恢复使用。')).toBeVisible()
@@ -190,25 +189,29 @@ test('restores parallel external questions and routes each answer or cancellatio
   await expect(page.getByRole('textbox', { name: /^Choose / })).toHaveCount(0)
 })
 
-test('English runtime settings retain long model names while the engine is unavailable', async ({ page, request }) => {
-  await createAndOpenBook(request, 'Unavailable runtime')
+for (const engine of ['codex', 'claude'] as const) {
+test(`${engine} runtime settings show version and upgrade guidance while unavailable`, async ({ page, request }) => {
+  await createAndOpenBook(request, `${engine} unavailable runtime`)
   const initial = await (await request.get('/api/settings')).json()
   const model = `engine-${'long-model-name-'.repeat(12)}`
-  const saved = await request.patch('/api/settings', { data: { layer: 'user', base_revision: initial.revisions.user, changes: { language: 'en-US', agent_runtimes: { ide: { selected: 'codex', codex: { model } } } } } })
+  const saved = await request.patch('/api/settings', { data: { layer: 'user', base_revision: initial.revisions.user, changes: { language: 'en-US', agent_runtimes: { ide: { selected: engine, [engine]: { model } } } } } })
   expect(saved.ok(), await saved.text()).toBe(true)
   expect((await request.get('/api/agent-runtimes/unknown/models')).status()).toBe(404)
   let incompatible = false
+  // The directory is fixed for this UI journey. Reloads must not re-probe host
+  // CLIs through a forwarded request that navigation can interrupt.
+  const catalogResponse = await request.get('/api/agent-runtimes')
+  expect(catalogResponse.ok()).toBe(true)
+  const catalog = await catalogResponse.json()
   await page.route('**/api/agent-runtimes', async route => {
-    const response = await route.fetch()
-    const body = await response.json()
-    await route.fulfill({ response, json: { items: body.items.map((item: { id: string }) => item.id === 'codex' ? {
+    await route.fulfill({ json: { items: catalog.items.map((item: { id: string }) => item.id === engine ? {
       ...item, status: incompatible ? 'incompatible' : 'not_installed',
-      reason_key: incompatible ? 'agentRuntime.incompatibleVersion' : 'agentRuntime.notInstalled',
+      reason_key: incompatible ? (engine === 'codex' ? 'agentRuntime.incompatibleVersion' : 'agentRuntime.claudeIncompatibleVersion') : 'agentRuntime.notInstalled',
     } : item) } })
   })
   await page.goto('/')
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
-  await expect(page.getByRole('combobox', { name: 'Execution engine', exact: true })).toHaveText('Codex')
+  await expect(page.getByRole('combobox', { name: 'Execution engine', exact: true })).toHaveText(engine === 'codex' ? 'Codex' : 'Claude Code')
   await expect(page.getByRole('combobox', { name: 'Engine model', exact: true })).toBeDisabled()
   await expect(page.getByText('Not installed', { exact: true })).toBeVisible()
   for (const width of [1280, 390]) {
@@ -220,16 +223,20 @@ test('English runtime settings retain long model names while the engine is unava
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.reload()
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
-  await expect(page.getByText('The Codex CLI version is too old or unrecognized. Use version 0.130.0 or newer.', { exact: true })).toBeVisible()
+  await expect(page.getByText(engine === 'codex' ? 'The Codex CLI version is too old or unrecognized. Minimum supported version: 0.130.0. Run codex update on the computer running Denova (for npm installations, use npm install -g @openai/codex@latest), then click Check connection.' : 'The Claude Code version is too old or unrecognized. Minimum supported version: 2.1.259. Run claude update on the computer running Denova (for Homebrew installations, use brew upgrade claude-code), then click Check connection.', { exact: true })).toBeVisible()
   await page.setViewportSize({ width: 390, height: 900 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: test.info().outputPath('runtime-minimum-version-en.png'), animations: 'disabled' })
   const current = await (await request.get('/api/settings')).json()
-  const localized = await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user, changes: { language: 'zh-CN' } } })
+  const localized = await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user, changes: { language: 'zh-CN', theme: 'light' } } })
   expect(localized.ok(), await localized.text()).toBe(true)
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.reload()
   await page.getByRole('button', { name: 'Agents', exact: true }).click()
-  await expect(page.getByText('Codex CLI 版本过旧或无法识别，请使用 0.130.0 或更新版本。', { exact: true })).toBeVisible()
+  await expect(page.getByText(engine === 'codex' ? 'Codex CLI 版本过旧或无法识别，最低支持版本为 0.130.0。请在运行 Denova 的电脑上执行 codex update（npm 安装可执行 npm install -g @openai/codex@latest），更新后点击「检查连接」。' : 'Claude Code 版本过旧或无法识别，最低支持版本为 2.1.259。请在运行 Denova 的电脑上执行 claude update（Homebrew 安装使用 brew upgrade claude-code），更新后点击「检查连接」。', { exact: true })).toBeVisible()
   await page.setViewportSize({ width: 390, height: 900 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: test.info().outputPath('runtime-minimum-version-zh.png'), animations: 'disabled' })
 })
+
+}

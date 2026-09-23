@@ -1,3 +1,4 @@
+import type { SpeechContentSettings } from '@/features/speech/text'
 import type { SSEEvent } from '@/lib/api'
 import type { ChatAttachment } from '@/lib/api-client/types'
 
@@ -5,6 +6,10 @@ export type InteractiveSubmode = 'story' | 'timeline'
 
 export type StoryPlanningMode = 'enabled' | 'disabled'
 export type StoryTitleSource = 'pending' | 'generated' | 'user'
+
+export interface StorySpeechSettings extends SpeechContentSettings {
+  auto_read: boolean
+}
 
 export interface StorySummary {
   id: string
@@ -18,6 +23,7 @@ export interface StorySummary {
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
   choice_count: number
+  speech_settings?: StorySpeechSettings
   image_settings?: StoryImageSettings
   check_settings?: Partial<StoryCheckSettings>
   opening: StoryOpeningConfig
@@ -203,6 +209,7 @@ export interface InteractiveStoryUpdateInput {
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars?: number
   choice_count?: number
+  speech_settings?: StorySpeechSettings
   image_settings?: StoryImageSettings
   check_settings?: StoryCheckSettings
   opening?: StoryOpeningConfig
@@ -399,9 +406,11 @@ export interface TurnResult {
 }
 
 export interface TurnDisplayEvent {
+  phase?: string
+  runtime_managed?: boolean
   agent_cycle?: number
   id?: string
-  role: 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'narrative'
+  role: 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'narrative' | 'context_compaction' | 'todo_updated'
   content?: string
   name?: string
   args?: string
@@ -725,6 +734,7 @@ export interface RuleResolutionRerollInput {
 }
 
 export interface Snapshot {
+  pending_display_events?: TurnDisplayEvent[]
   story_id: string
   branch_id: string
   context_revision?: number
@@ -749,6 +759,7 @@ export interface Snapshot {
 // Keep this wire DTO separate from Snapshot because the UI also merges SSE
 // deltas into its local projection.
 export interface InteractiveSnapshotResponse {
+  pending_display_events?: TurnDisplayEvent[]
   story_id: string
   branch_id: string
   context_revision?: number
@@ -963,6 +974,8 @@ export interface StoryGraph {
 }
 
 export interface InteractiveTurnPersistedEvent {
+  /** Transport replay restores history without automatic playback. */
+  replayed?: boolean
   story_id: string
   branch_id: string
   turn_count: number

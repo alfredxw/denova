@@ -13,7 +13,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-const taskCompletionTruncatedMarker = "\n[Task result truncated. Use task observe with the TaskRef for a bounded replay.]"
+const taskCompletionTruncatedMarker = "\n[Task result truncated. Use await with timeout_ms=0 and the Run ref for bounded output.]"
 
 // ReconcileTaskCompletions rebuilds the volatile parent mailbox from durable
 // child Session terminal records. Per-session corruption is logged and skipped
@@ -141,16 +141,20 @@ func (tasks *LocalTasks) watchCompletion(ctx context.Context, run *agent.Run, re
 	}
 	completionID := taskCompletionID(ref)
 	tasks.watchMu.Lock()
-	if _, watching := tasks.watched[completionID]; watching {
+	if tasks.watched[completionID] == run {
 		tasks.watchMu.Unlock()
 		return
 	}
-	tasks.watched[completionID] = struct{}{}
+	// Resume retains the Run ID but creates a fresh execution handle. Its
+	// watcher must not be suppressed by the retiring suspended handle.
+	tasks.watched[completionID] = run
 	tasks.watchMu.Unlock()
 	go func() {
 		defer func() {
 			tasks.watchMu.Lock()
-			delete(tasks.watched, completionID)
+			if tasks.watched[completionID] == run {
+				delete(tasks.watched, completionID)
+			}
 			tasks.watchMu.Unlock()
 		}()
 		defer func() {
@@ -165,7 +169,20 @@ func (tasks *LocalTasks) watchCompletion(ctx context.Context, run *agent.Run, re
 		streamErr := tasks.forwardTaskRun(ctx, run, ref)
 		result, waitErr := run.Wait(context.Background())
 		if result.Status == agent.ResultSuspended {
-			_ = tasks.completionParent.UntrackTaskCompletion(context.Background(), completionID)
+			// Coordinate with Resume admission, including other executor instances.
+			// A late suspended watcher cannot detach a newer execution of this Run.
+			err := func() error {
+				localTaskAdmissionMu.Lock()
+				defer localTaskAdmissionMu.Unlock()
+				current, err := tasks.taskSnapshot(context.Background(), ref)
+				if err == nil && current.Status == string(agent.ResultSuspended) {
+					err = tasks.completionParent.UntrackTaskCompletion(context.Background(), completionID)
+				}
+				return err
+			}()
+			if err != nil {
+				slog.Warn("could not detach a suspended child completion", "agent", ref.Agent, "session", ref.Session, "run", ref.Run, "error", err)
+			}
 			return
 		}
 		task, snapshotErr := tasks.taskSnapshot(context.Background(), ref)

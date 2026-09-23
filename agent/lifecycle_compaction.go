@@ -188,6 +188,10 @@ func (session *Session) prepareStructuralDefinition(ctx context.Context, command
 	}
 	prepared.materializedFingerprint = materialized
 	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
+	prepared.elision, err = elisionStateFrom(capabilities)
+	if err != nil {
+		return failed(err)
+	}
 	return structuralDefinitionPreparation{
 		prepared: prepared, transcript: transcript, cursor: cursor, state: state, capabilities: capabilities,
 		compaction: current, compactionPresent: present,

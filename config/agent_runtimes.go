@@ -65,11 +65,12 @@ type RuntimePreferences struct {
 	Claude   *ClaudeRuntimeSettings `toml:"claude,omitempty" json:"claude,omitempty"`
 }
 
-// AgentRuntimeSettings deliberately has no default applying to game, image, or
-// background agents. A missing role preference inherits the parent layer.
+// AgentRuntimeSettings selects defaults for creator-facing conversations only.
+// A missing role preference inherits the parent layer.
 type AgentRuntimeSettings struct {
-	IDE     *RuntimePreferences `toml:"ide,omitempty" json:"ide,omitempty"`
-	General *RuntimePreferences `toml:"general,omitempty" json:"general,omitempty"`
+	IDE              *RuntimePreferences `toml:"ide,omitempty" json:"ide,omitempty"`
+	General          *RuntimePreferences `toml:"general,omitempty" json:"general,omitempty"`
+	InteractiveStory *RuntimePreferences `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 }
 
 // RuntimeSelection is the resolved, immutable engine branch of a conversation.
@@ -145,7 +146,7 @@ func (selection RuntimeSelection) Validate(agentKind string) error {
 			return fmt.Errorf("%w: Native selection contains external settings", ErrInvalidAgentRuntime)
 		}
 	case RuntimeCodex:
-		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral {
+		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral && agentKind != AgentKindInteractiveStory {
 			return fmt.Errorf("%w: external runtime does not support Agent kind %q", ErrInvalidAgentRuntime, agentKind)
 		}
 		if selection.Codex == nil || selection.Claude != nil {
@@ -153,7 +154,7 @@ func (selection RuntimeSelection) Validate(agentKind string) error {
 		}
 		return selection.Codex.validate()
 	case RuntimeClaude:
-		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral {
+		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral && agentKind != AgentKindInteractiveStory {
 			return fmt.Errorf("%w: external runtime does not support Agent kind %q", ErrInvalidAgentRuntime, agentKind)
 		}
 		if selection.Claude == nil || selection.Codex != nil {
@@ -189,8 +190,9 @@ func (preferences RuntimePreferences) Selection(agentKind string) (RuntimeSelect
 // An engine model/effort object replaces its whole parent branch.
 func MergeAgentRuntimeSettings(parent, child AgentRuntimeSettings) AgentRuntimeSettings {
 	return AgentRuntimeSettings{
-		IDE:     mergeRuntimePreferences(parent.IDE, child.IDE),
-		General: mergeRuntimePreferences(parent.General, child.General),
+		IDE:              mergeRuntimePreferences(parent.IDE, child.IDE),
+		General:          mergeRuntimePreferences(parent.General, child.General),
+		InteractiveStory: mergeRuntimePreferences(parent.InteractiveStory, child.InteractiveStory),
 	}
 }
 
@@ -231,6 +233,8 @@ func (settings AgentRuntimeSettings) ForAgent(agentKind string) RuntimePreferenc
 		preferences = settings.IDE
 	case AgentKindGeneral:
 		preferences = settings.General
+	case AgentKindInteractiveStory:
+		preferences = settings.InteractiveStory
 	}
 	if preferences == nil {
 		return RuntimePreferences{}
@@ -239,7 +243,7 @@ func (settings AgentRuntimeSettings) ForAgent(agentKind string) RuntimePreferenc
 }
 
 func (settings AgentRuntimeSettings) Validate() error {
-	for _, preferences := range []*RuntimePreferences{settings.IDE, settings.General} {
+	for _, preferences := range []*RuntimePreferences{settings.IDE, settings.General, settings.InteractiveStory} {
 		if preferences != nil {
 			if err := preferences.Validate(); err != nil {
 				return err
@@ -261,7 +265,7 @@ func validateSettingsRuntimes(settings Settings) error {
 			return fmt.Errorf("custom Agent %q: %w", definition.ID, err)
 		}
 		kind := CustomAgentRuntimeKind(definition)
-		if (definition.Runtime.Selected == RuntimeCodex || definition.Runtime.Selected == RuntimeClaude) && kind != AgentKindIDE && kind != AgentKindGeneral {
+		if (definition.Runtime.Selected == RuntimeCodex || definition.Runtime.Selected == RuntimeClaude) && kind != AgentKindIDE && kind != AgentKindGeneral && kind != AgentKindInteractiveStory {
 			return fmt.Errorf("%w: custom Agent %q does not support external execution", ErrInvalidAgentRuntime, definition.ID)
 		}
 	}

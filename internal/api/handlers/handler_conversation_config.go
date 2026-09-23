@@ -9,10 +9,9 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/internal/agents/conversationconfig"
-	"denova/internal/agents/external/codex"
-	externaljournal "denova/internal/agents/external/journal"
+	agentruntime "denova/internal/agents/runtime"
+	externaljournal "denova/internal/agents/runtime/external/journal"
 	appsvc "denova/internal/app"
-	"denova/internal/app/agentruntime"
 )
 
 func (h *Handlers) HandleConversationConfigGet(ctx context.Context, c *app.RequestContext) {
@@ -62,7 +61,7 @@ func (h *Handlers) writeConversationConfigSnapshot(c *app.RequestContext, snapsh
 			conversationconfig.Snapshot
 			Capabilities agentruntime.EngineCapabilities `json:"runtime_capabilities"`
 			Status       string                          `json:"runtime_status"`
-		}{snapshot, descriptor.Capabilities, descriptor.Status})
+		}{snapshot, descriptor.ForAgent(snapshot.AgentKind), descriptor.Status})
 		return
 	}
 	writeErrorKey(c, consts.StatusNotFound, "agentRuntime.notFound")
@@ -98,9 +97,9 @@ func writeConversationConfigError(c *app.RequestContext, err error) {
 		writeErrorKey(c, consts.StatusNotFound, "agentRuntime.notFound")
 	case errors.Is(err, agentruntime.ErrEngineNotInstalled):
 		writeErrorKey(c, consts.StatusServiceUnavailable, "agentRuntime.notInstalled")
-	case errors.Is(err, codex.ErrVersionUnsupported):
-		writeErrorKey(c, consts.StatusServiceUnavailable, "agentRuntime.incompatibleVersion")
-	case errors.Is(err, agentruntime.ErrOperationActive), errors.Is(err, externaljournal.ErrBusy):
+	case agentruntime.VersionUnsupportedReasonKey(err) != "":
+		writeErrorKey(c, consts.StatusServiceUnavailable, agentruntime.VersionUnsupportedReasonKey(err))
+	case errors.Is(err, agentruntime.ErrOperationActive), errors.Is(err, appsvc.ErrAgentOperationActive), errors.Is(err, externaljournal.ErrBusy):
 		writeErrorKey(c, consts.StatusConflict, "agentRuntime.busy")
 	case errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported):
 		writeErrorKey(c, consts.StatusBadRequest, "agentRuntime.capabilityUnsupported")

@@ -11,7 +11,7 @@ import (
 	"denova/config"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
-	externaljournal "denova/internal/agents/external/journal"
+	externaljournal "denova/internal/agents/runtime/external/journal"
 	agent "github.com/alfredxw/denova/agent"
 )
 
@@ -19,11 +19,12 @@ import (
 // Session lock. Mutations also use the journal's optimistic commit fence.
 // Read resolves content from this same journal, never a sidecar.
 type ExternalState struct {
-	Incarnation string
-	Cursor      conversationjournal.Cursor
-	Config      conversationconfig.Snapshot
-	Projection  externaljournal.Projection
-	Read        func(externaljournal.Locator) (externaljournal.Record, error)
+	Incarnation     string
+	Cursor          conversationjournal.Cursor
+	ContextRevision uint64
+	Config          conversationconfig.Snapshot
+	Projection      externaljournal.Projection
+	Read            func(externaljournal.Locator) (externaljournal.Record, error)
 	// ScanContext visits the complete active canonical source interval in bounded
 	// physical pages. Invoke only inside the read/prepare callback; never retain it.
 	ScanContext func(func(ExternalContextRecord) error) error
@@ -115,6 +116,14 @@ func (s *Session) UpdateExternal(ctx context.Context, expectedRevision uint64, p
 
 func validateExternalMessagePair(change ExternalTransaction, record externaljournal.Record) error {
 	switch record.Kind {
+	case externaljournal.GuidanceDelivered:
+		var delivered externaljournal.DeliveredGuidance
+		if err := json.Unmarshal(record.Data, &delivered); err != nil {
+			return err
+		}
+		if change.Message == nil || change.Message.Role != agent.User || delivered.MessageID != change.Metadata.MessageID {
+			return errors.New("external guidance must atomically publish its exact user message")
+		}
 	case externaljournal.OperationAccepted:
 		var accepted externaljournal.Accepted
 		if err := json.Unmarshal(record.Data, &accepted); err != nil {
@@ -169,7 +178,7 @@ func (s *Session) externalStateLocked(ctx context.Context) (ExternalState, error
 		return ExternalState{}, err
 	}
 	selection, _ := s.runtimeConfigLocked()
-	return ExternalState{Incarnation: s.journalIncarnation, Cursor: s.materializedCursor, Config: selection, Projection: projection, ScanContext: func(visit func(ExternalContextRecord) error) error { return s.scanExternalContextLocked(ctx, visit) }, Read: func(locator externaljournal.Locator) (externaljournal.Record, error) {
+	return ExternalState{Incarnation: s.journalIncarnation, Cursor: s.materializedCursor, ContextRevision: s.contextRevision, Config: selection, Projection: projection, ScanContext: func(visit func(ExternalContextRecord) error) error { return s.scanExternalContextLocked(ctx, visit) }, Read: func(locator externaljournal.Locator) (externaljournal.Record, error) {
 		if locator.Cursor == 0 || locator.Index < 0 {
 			return externaljournal.Record{}, errors.New("invalid external journal locator")
 		}

@@ -1,7 +1,7 @@
 {
   "name": "web",
   "private": true,
-  "version": "0.4.5",
+  "version": "0.5.0",
   "packageManager": "pnpm@11.15.1",
   "type": "module",
   "scripts": {
@@ -76,6 +76,7 @@
     "jsonc-parser": "^3.3.1",
     "katex": "^0.16.27",
     "lucide-react": "^1.16.0",
+    "mdast-util-from-markdown": "^2.0.3",
     "monaco-editor": "^0.55.1",
     "motion": "^12.40.0",
     "nanoid": "^5.1.16",

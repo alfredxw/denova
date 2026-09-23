@@ -115,7 +115,7 @@ func TestChildEffectVerificationRoutesAfterRootCompletionWithoutExecution(t *tes
 				t.Cleanup(func() { _ = owner.Close(context.Background()) })
 				backend = &publicBackend{agent: owner}
 				runtime := &Runtime{public: backend}
-				if err := runtime.RequireIdleForEngineSwitch(ctx, options); !errors.Is(err, agent.ErrSessionBusy) {
+				if err := runtime.ReleaseIdleForEngineSwitch(ctx, options); !errors.Is(err, agent.ErrSessionBusy) {
 					t.Fatalf("engine switch ignored the detached child's unknown effect: %v", err)
 				}
 				status, err := backend.status(ctx, options)

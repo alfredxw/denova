@@ -1,8 +1,9 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { access, mkdtemp, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type Page } from '../support/fixtures'
 import { createAgentChatSession, registerAgentChatProject, setAgentChatApprovalMode } from '../support/api'
-import { openAgentChatSession, openAgentChatWorkbench, submitAgentChatMessage } from '../support/agent-chat'
+import { expectAgentChatReply, openAgentChatSession, openAgentChatWorkbench, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus, releaseDelayedRequest } from '../support/model'
 
 const sessionADelayMarker = 'E2E_SESSION_A_DELAY'
@@ -19,8 +20,8 @@ const multiAgentExpectations = [
 
 test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
   const [alphaPath, betaPath] = await Promise.all([
-    mkdtemp(path.resolve('test-results', 'runtime', 'general-project-alpha-')),
-    mkdtemp(path.resolve('test-results', 'runtime', 'general-project-beta-')),
+    mkdtemp(path.join(runtimeRoot, 'general-project-alpha-')),
+    mkdtemp(path.join(runtimeRoot, 'general-project-beta-')),
   ])
   const [alpha, beta] = await Promise.all([
     registerAgentChatProject(request, alphaPath),
@@ -49,7 +50,7 @@ test('runs General Agent tools in ordinary directories without crossing Project 
 })
 
 test('keeps concurrent sessions independent and delivers Follow Up to its exact session', async ({ page, request }) => {
-  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'parallel-session-project-'))
+  const projectPath = await mkdtemp(path.join(runtimeRoot, 'parallel-session-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const [sessionA, sessionB] = await Promise.all([
     createAgentChatSession(request, project.id, 'Parallel Session A'),
@@ -78,18 +79,18 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
     await openAgentChatSession(page, project.id, sessionA.title)
     await releaseDelayedRequest(request, sessionADelayMarker)
     await expect(page.getByText('Session A initial response completed.', { exact: true }).filter({ visible: true })).toBeVisible()
-    await expect(page.getByText('Session A follow-up reached only Session A.', { exact: true }).filter({ visible: true })).toHaveCount(1)
-    await expect(page.getByText('Session A initial response completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expectAgentChatReply(page, 'Session A follow-up reached only Session A.')
+    await expectAgentChatReply(page, 'Session A initial response completed.')
     await expect(page.getByText('Session B response completed independently.', { exact: true }).filter({ visible: true })).toHaveCount(0)
 
     await page.reload()
     await openAgentChatWorkbench(page)
     await openAgentChatSession(page, project.id, sessionA.title)
-    await expect(page.getByText('Session A initial response completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
-    await expect(page.getByText('Session A follow-up reached only Session A.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expectAgentChatReply(page, 'Session A initial response completed.')
+    await expectAgentChatReply(page, 'Session A follow-up reached only Session A.')
 
     await openAgentChatSession(page, project.id, sessionB.title)
-    await expect(page.getByText('Session B response completed independently.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expectAgentChatReply(page, 'Session B response completed independently.')
     await expect(page.getByText('Session A follow-up reached only Session A.', { exact: true }).filter({ visible: true })).toHaveCount(0)
   } finally {
     await Promise.allSettled([
@@ -103,7 +104,7 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
   // Inspect all three children live, after reload, and after completion. Nine
   // detail visits plus two full hydrations need a larger total CI budget.
   test.setTimeout(180_000)
-  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'multi-agent-display-project-'))
+  const projectPath = await mkdtemp(path.join(runtimeRoot, 'multi-agent-display-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Multi-Agent Display Session')
   await setAgentChatApprovalMode(request, project.id, session.id, 'full_access')
@@ -120,9 +121,8 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
     )).toBe(3)
 
     const activeProcess = page.locator('[data-agent-execution-process]').last()
-    // Attached tasks synchronize before the next model call, so no explicit
-    // task_wait call is needed while the children are still streaming.
-    await expect(activeProcess.getByText('委派任务', { exact: true })).toBeVisible()
+    // The parent reaches an explicit dependency while child streams remain active.
+    await expect(activeProcess.getByText('协调 SubAgent', { exact: true })).toBeVisible()
     await releaseDelayedRequest(request, multiAgentStreamGateMarker)
     streamsReleased = true
     await expect.poll(async () => {
@@ -143,7 +143,7 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
       const status = await getModelStatus(request)
       return multiAgentExpectations.map(item => status.delayed_waiting_by_marker[item.marker] ?? 0)
     }).toEqual([0, 0, 0])
-    await expect(page.getByText('All three delegated results completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expectAgentChatReply(page, 'All three delegated results completed.')
     const process = page.locator('[data-agent-execution-process]').filter({ hasText: 'SubAgent' }).last()
     await expect(process.locator('[data-slot="collapsible-trigger"]').first()).toContainText('执行过程')
     await expect(composer).toBeVisible()
@@ -163,7 +163,7 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
 })
 
 test('restores an accepted Follow Up after reload and delivers it exactly once', async ({ page, request }) => {
-  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'queue-reload-project-'))
+  const projectPath = await mkdtemp(path.join(runtimeRoot, 'queue-reload-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Queue Reload Session')
   const initialFollowUpCount = (await getModelStatus(request)).request_counts[queueReloadFollowUpMarker] ?? 0
@@ -188,8 +188,8 @@ test('restores an accepted Follow Up after reload and delivers it exactly once',
     await expect(queue).toContainText(queueReloadFollowUpMarker)
 
     await releaseDelayedRequest(request, queueReloadDelayMarker)
-    await expect(page.getByText('Reloaded queue initial response completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
-    await expect(page.getByText('Reloaded queued follow-up completed exactly once.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expectAgentChatReply(page, 'Reloaded queue initial response completed.')
+    await expectAgentChatReply(page, 'Reloaded queued follow-up completed exactly once.')
     await expect.poll(async () => (await getModelStatus(request)).request_counts[queueReloadFollowUpMarker] ?? 0)
       .toBe(initialFollowUpCount + 1)
   } finally {
@@ -244,6 +244,12 @@ async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
     }
     await expect(panel.getByRole('button', { name: '关闭 SubAgent 详情', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: '关闭 general-purpose', exact: true }).click()
+    await expect(panel).toBeHidden()
+    // Closing the detail pane reflows the parent conversation. Wait for its
+    // final width before aiming the next click at another child card.
+    const secondaryPane = page.locator('[data-nova-panel-motion="resizable"][data-nova-panel-side="right"]')
+      .filter({ has: page.locator('[data-agent-chat-group="secondary"]') })
+    await expect(secondaryPane).toHaveCSS('width', '0px')
   }
   expect([...seen].sort()).toEqual(multiAgentExpectations.map(item => item.marker).sort())
 }

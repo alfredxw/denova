@@ -75,14 +75,10 @@ const handledEventSchemas = {
   tool_progress: toolIdentitySchema,
   tool_result: toolIdentitySchema.extend({ content: z.string().default('') }),
   context_compaction: z.object({ status: z.string().optional() }).passthrough(),
+  todo_updated: z.object({ schema: z.literal('agent.todo.v1'), items: z.array(z.object({ id: z.string(), text: z.string(), status: z.enum(['pending', 'in_progress', 'completed']) })) }).passthrough(),
   token_usage: z.object({ run_id: z.string().optional() }).passthrough(),
   interactive_turn_persisted: z.custom<InteractiveTurnPersistedEvent>(isInteractiveTurnPersistedEvent),
   runtime_recovery_required: z.object({}).passthrough(),
-  goal_evaluation_failed: z.object({
-    code: z.literal('agent_runtime.goal_evaluation_failed'),
-    detail: z.string().optional(),
-    message: z.string().optional(),
-  }).passthrough(),
   error: z.object({
     code: z.string().optional(),
     error: z.string().optional(),

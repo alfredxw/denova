@@ -117,6 +117,20 @@ func cloneStrings(values []string) []string {
 	return append([]string(nil), values...)
 }
 
+// Request restores editable caller input without carrying a previous immutable
+// admission identity or server-resolved context into a new command.
+func (input CallerInput) Request() ChatRequest {
+	return ChatRequest{
+		CommandID: input.CommandID, Message: input.Message, DisplayMessage: input.DisplayMessage,
+		ResumeInterruptionID: input.ResumeInterruptionID, AttachmentIDs: cloneStrings(input.AttachmentIDs),
+		References: cloneStrings(input.References), LoreReferences: cloneStrings(input.LoreReferences),
+		StyleScenes: cloneStrings(input.StyleScenes), Selections: cloneTextSelectionRefs(input.Selections),
+		IDEContext:     prompts.IDEContextRef{CurrentFile: input.IDEContext.CurrentFile, OpenFiles: cloneStrings(input.IDEContext.OpenFiles)},
+		ReviewFeedback: input.ReviewFeedback.Clone(), PlanMode: input.PlanMode,
+		WritingSkill: input.WritingSkill, ImagePresetID: input.ImagePresetID, TellerID: input.TellerID, Locale: input.Locale,
+	}
+}
+
 func cloneTextSelectionRefs(values []TextSelectionRef) []TextSelectionRef {
 	return append([]TextSelectionRef(nil), values...)
 }

@@ -38,17 +38,33 @@ func SnapshotFor(ctx context.Context, dirs []Directory) (Snapshot, error) {
 		}
 		return scopeRank(summaries[i].Scope) > scopeRank(summaries[j].Scope)
 	})
-	return Snapshot{Scopes: scopeInfos(dirs), Skills: summaries}, nil
+	sharedEnabled := false
+	for _, dir := range dirs {
+		if dir.Scope == ScopeShared {
+			sharedEnabled = !configureDirectory(ctx, dir).disabled
+		}
+	}
+	return Snapshot{Scopes: scopeInfos(dirs), Skills: summaries, SharedEnabled: sharedEnabled}, nil
 }
 
 func (b *Backend) activeRecords(ctx context.Context) []record {
-	records := loadRecords(ctx, b.dirs)
+	dirs := make([]Directory, 0, len(b.dirs))
+	for _, dir := range b.dirs {
+		// A disabled shared library must not be parsed by an Agent at all.
+		if !configureDirectory(ctx, dir).disabled {
+			dirs = append(dirs, dir)
+		}
+	}
+	records := loadRecords(ctx, dirs)
 	active := make(map[string]record)
 	for _, rec := range records {
 		active[rec.skill.Name] = rec
 	}
 	out := make([]record, 0, len(active))
 	for _, rec := range active {
+		if !rec.summary.Enabled {
+			continue
+		}
 		if !skillAllowedForAgent(rec, b.agentKind, b.overrides, b.explicitOnly) {
 			continue
 		}
@@ -109,6 +125,7 @@ func normalizeOverrideMap(overrides map[string]bool) map[string]bool {
 func loadRecords(ctx context.Context, dirs []Directory) []record {
 	var records []record
 	for _, dir := range dedupeDirectories(dirs) {
+		dir = configureDirectory(ctx, dir)
 		entries, err := os.ReadDir(dir.Path)
 		if err != nil {
 			if !os.IsNotExist(err) {
@@ -120,7 +137,10 @@ func loadRecords(ctx context.Context, dirs []Directory) []record {
 			if ctx.Err() != nil {
 				return records
 			}
-			if !entry.IsDir() {
+			if strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
+			if !entry.IsDir() && !(dir.Scope == ScopeShared && entry.Type()&os.ModeSymlink != 0) {
 				continue
 			}
 			path := filepath.Join(dir.Path, entry.Name(), SkillFileName)
@@ -136,6 +156,7 @@ func loadRecords(ctx context.Context, dirs []Directory) []record {
 				slog.ErrorContext(ctx, fmt.Sprintf("[skills] parse skill failed scope=%s path=%s err=%v", dir.Scope, path, parseErr))
 				continue
 			}
+			decorateRecord(ctx, &rec)
 			records = append(records, rec)
 		}
 	}
@@ -158,6 +179,11 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 	fm.Description = strings.TrimSpace(fm.Description)
 	fm.Category = normalizeCategory(fm.Category)
 	fm.Capabilities = normalizeCapabilities(fm.Capabilities)
+	if dir.Scope == ScopeShared {
+		// In shared Skills, `agent` names another tool's execution target; it is
+		// not Denova's per-Agent availability allowlist.
+		fm.Agent = ""
+	}
 	if err := ValidateName(fm.Name); err != nil {
 		return record{}, err
 	}
@@ -188,6 +214,7 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 			Scope:        dir.Scope,
 			Path:         path,
 			Editable:     dir.Writable,
+			Enabled:      !dir.disabled && !dir.disabledSkills[string(dir.Scope)+":"+fm.Name],
 			UpdatedAt:    updatedAt,
 		},
 	}, nil
@@ -196,6 +223,9 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 func activeRecordKeys(records []record) map[string]bool {
 	activeByName := make(map[string]record)
 	for _, rec := range records {
+		if rec.directory.disabled {
+			continue
+		}
 		activeByName[rec.skill.Name] = rec
 	}
 	keys := make(map[string]bool, len(activeByName))

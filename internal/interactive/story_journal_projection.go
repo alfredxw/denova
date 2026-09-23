@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	// Version 14 rebuilds locators after the canonical context-batch protocol
-	// replaced its unreleased kind/hash fields with one sequence.
+	// Version 16 rebuilds compact Agent recovery state and historical locators.
 	storyProjectionVersion      = 16
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
@@ -126,7 +125,7 @@ func (projection *storyJournalProjection) Checkpoint() (json.RawMessage, error) 
 
 func (projection *storyJournalProjection) Apply(record conversationjournal.Record) error {
 	projection.rememberCursor(record.Location.Cursor)
-	if handled, err := projection.AgentSessions.Apply(record.Payload); handled || err != nil {
+	if handled, err := projection.AgentSessions.Apply(record); handled || err != nil {
 		return err
 	}
 	meta, events, err := decodeStoryProjectionPayload(record.Payload)

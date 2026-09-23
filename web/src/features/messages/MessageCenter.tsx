@@ -241,8 +241,8 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
                       setOpen(false)
                     }}><ArrowUpRight />{t(activeItem.action_required ? 'messages.openAutomationAction' : 'messages.openAutomation')}</Button>
                   )}
+                  {activeItem.type === 'changelog' && <div className="mb-5"><GitHubStarPrompt /><DonationPrompt /></div>}
                   <MarkdownRenderer content={activeItem.body} />
-                  {activeItem.type === 'changelog' && <div className="mt-8 border-t pt-5"><GitHubStarPrompt /><DonationPrompt /></div>}
                 </article>
               ) : <Empty className="h-full"><EmptyHeader><EmptyMedia variant="icon"><Bell /></EmptyMedia><EmptyTitle>{t('messages.selectEmpty')}</EmptyTitle></EmptyHeader></Empty>}
             </div>

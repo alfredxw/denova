@@ -46,6 +46,8 @@ func (h *Handlers) HandleCommand(ctx context.Context, c *app.RequestContext) {
 		compaction, err := h.app.CompactContext(ctx)
 		if err != nil {
 			result = localizer.T("api.command.compactFailed", "detail", err.Error())
+		} else if compaction.RuntimeManaged {
+			result = localizer.T("api.command.runtimeCompacted")
 		} else {
 			result = localizer.T("api.command.compacted", "epoch", compaction.Revision, "before", compaction.TokensBefore, "after", compaction.TokensAfter)
 		}

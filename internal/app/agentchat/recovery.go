@@ -8,6 +8,7 @@ import (
 
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
 )
@@ -21,9 +22,12 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 		return appagentruntime.RecoveryResult{}, err
 	}
 	if existing := service.activeRun(binding); existing != nil && existing.task != nil {
+		if receipt, ok := existing.recoveryActions[agentruntime.RecoveryActionKey(request.Action)]; ok {
+			return appagentruntime.RecoveryResult{Task: existing.task, Action: request.Action, Receipt: receipt}, nil
+		}
 		if existing.recovery == nil {
 			if !existing.task.Finished() {
-				return appagentruntime.RecoveryResult{}, appagentruntime.ErrOperationActive
+				return appagentruntime.RecoveryResult{}, agentruntime.ErrOperationActive
 			}
 		} else {
 			return service.resumeExistingRecovery(ctx, existing, request.Action)
@@ -38,11 +42,17 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 		return appagentruntime.RecoveryResult{}, err
 	}
 	options := runtimeOptions(binding, "")
+	if control, selected, err := service.externalController(ctx, binding); selected || err != nil {
+		if err != nil {
+			return appagentruntime.RecoveryResult{}, err
+		}
+		return service.recoverExternal(ctx, binding, control, request.Action)
+	}
 	recovery, err := project.executionRuntime.OpenRecoveryObservation(ctx, options)
 	if err != nil {
 		return appagentruntime.RecoveryResult{}, err
 	}
-	if err := appagentruntime.ValidateRecoveryAction(recovery.InitialStatus(), request.Action); err != nil {
+	if err := agentruntime.ValidateRecoveryAction(recovery.InitialStatus(), request.Action); err != nil {
 		recovery.Close()
 		return appagentruntime.RecoveryResult{}, err
 	}
@@ -65,7 +75,7 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 		service.releaseActiveRun(active)
 		return appagentruntime.RecoveryResult{}, err
 	}
-	active.recoveryActions[appagentruntime.RecoveryActionKey(request.Action)] = receipt
+	active.recoveryActions[agentruntime.RecoveryActionKey(request.Action)] = receipt
 	active.commandID = runtimeCommandID(recovery.InitialStatus())
 	if err := task.Start(func(taskCtx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer service.releaseActiveRun(active)
@@ -88,7 +98,7 @@ func (service *Service) resumeExistingRecovery(ctx context.Context, active *run,
 	if active == nil || active.task == nil || active.recovery == nil {
 		return appagentruntime.RecoveryResult{}, appagentruntime.ErrNoActiveOperation
 	}
-	key := appagentruntime.RecoveryActionKey(action)
+	key := agentruntime.RecoveryActionKey(action)
 	if receipt, ok := active.recoveryActions[key]; ok {
 		return appagentruntime.RecoveryResult{Task: active.task, Action: action, Receipt: receipt}, nil
 	}

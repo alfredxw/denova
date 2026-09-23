@@ -162,6 +162,7 @@ func (run *Run) finish(result Result, err error) {
 			run.session.active = next
 		}
 	}
+	run.session.retireRunLocked(run)
 	storageErr := run.session.storageErr
 	run.session.mu.Unlock()
 	if storageErr != nil {

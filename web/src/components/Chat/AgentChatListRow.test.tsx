@@ -9,6 +9,33 @@ import { buildAgentRunPresentation } from './agent-run-presentation'
 
 beforeEach(async () => { await i18next.changeLanguage('en-US') })
 
+it('keeps historical turn media actions available without allowing narrative mutations', () => {
+  const view = buildAgentMessageViews([{
+    id: 'old-reply', role: 'assistant', metadata: { turn_id: 'old-turn', agent_kind: 'interactive_story', display_phase: 'final' },
+    parts: [{ type: 'text', text: 'An earlier scene', state: 'done' }],
+  }])[0]
+  const generateImage = vi.fn()
+  const readAloud = vi.fn()
+  const renderRow = (streaming: boolean) => (
+    <AgentChatListRow item={{ kind: 'message', key: view.key, view, sourceIndex: 0 }}
+      executionTimings={new Map()} isStreaming={streaming} tailFollowActive={false}
+      activeTraceDisplay="collapsed" subAgentPresentation="card" highlightDialogue={false}
+      canMutateMessage={() => false} onEditAssistantReply={vi.fn()} onRegenerateMessage={vi.fn()}
+      onGenerateInteractiveImage={generateImage} onReadAloud={readAloud} />
+  )
+  const { rerender } = render(renderRow(false))
+  fireEvent.click(screen.getByRole('button', { name: 'Generate interactive image' }))
+  fireEvent.click(screen.getByRole('button', { name: i18next.t('speech.read') }))
+  expect(generateImage).toHaveBeenCalledWith(view)
+  expect(readAloud).toHaveBeenCalledWith(view)
+  expect(screen.queryByRole('button', { name: 'Edit AI reply' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Regenerate this turn' })).not.toBeInTheDocument()
+
+  rerender(renderRow(true))
+  expect(screen.queryByRole('button', { name: 'Generate interactive image' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: i18next.t('speech.read') })).toBeInTheDocument()
+})
+
 function runItem(messages: AgentUIMessage[], active: boolean): AgentChatListItem {
   const run = buildAgentRunPresentation(buildAgentMessageViews(messages), 0, active)!
   return { kind: 'run', key: run.key, runId: run.runID, sections: run.sections, sourceIndex: 0 }

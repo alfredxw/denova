@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"sort"
 	"sync"
 )
@@ -32,6 +33,20 @@ type memoryEntry struct {
 	key   Key
 	data  *memoryData
 	lease chan struct{}
+}
+
+func (store *memoryStore) OpenReader(_ context.Context, key Key) (Log, error) {
+	canonical, err := CanonicalKey(key)
+	if err != nil {
+		return nil, err
+	}
+	store.mu.Lock()
+	entry := store.entries[canonical]
+	store.mu.Unlock()
+	if entry == nil {
+		return nil, os.ErrNotExist
+	}
+	return ReadOnlyLog{Reader: &memoryLog{data: entry.data}}, nil
 }
 
 func (store *memoryStore) Open(ctx context.Context, key Key) (Log, error) {
@@ -243,4 +258,20 @@ func (log *memoryLog) usable() error {
 		return ErrLogClosed
 	}
 	return nil
+}
+
+// ReadRecord returns one canonical record without copying the entire history.
+func (log *memoryLog) ReadRecord(ctx context.Context, revision Revision) (Record, error) {
+	if err := log.usable(); err != nil {
+		return Record{}, err
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return Record{}, ctx.Err()
+	}
+	log.data.mu.Lock()
+	defer log.data.mu.Unlock()
+	if revision == 0 || revision > Revision(len(log.data.records)) {
+		return Record{}, fmt.Errorf("Agent record revision %d is missing", revision)
+	}
+	return cloneRecord(log.data.records[revision-1]), nil
 }

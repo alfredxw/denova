@@ -11,8 +11,9 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
-	"denova/internal/agents/external"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
+	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolruntime"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -21,10 +22,38 @@ import (
 )
 
 func prepareExternal(ctx context.Context, runtime Runtime, request agentchat.ChatRequest, conversation *agentconversation.SessionConversation, assembly agents.ExternalAssembly, options agentrun.Options, emit func(agentrun.Event)) (external.StartRequest, error) {
+	state, err := agentruntime.SessionState(options, runtime.Session)
+	if err != nil {
+		return external.StartRequest{}, err
+	}
+	goalContext, err := state.GoalContext(ctx)
+	if err != nil {
+		return external.StartRequest{}, err
+	}
+	plan, err := state.Plan(ctx)
+	if err != nil {
+		return external.StartRequest{}, err
+	}
 	history, err := external.ReadHistory(ctx, runtime.Session)
 	if err != nil {
 		return external.StartRequest{}, err
 	}
+	input, err := prepareExternalInput(ctx, runtime, request, conversation, assembly, options, emit)
+	if err != nil {
+		return external.StartRequest{}, err
+	}
+	input.Revision, input.PreparedCursor, input.ContinuesOperationID = history.Revision, history.Cursor, history.ContinuesOperationID
+	input.SourceBoundary = fmt.Sprint(history.ContextRevision)
+	input.Input.Selection, input.Input.History, input.Input.Plan = history.Selection, history.Messages, plan
+	input.Input.Text = goalContext + input.Input.Text
+	input.ObservePlan, input.Checkpoint, input.PriorMutations = state.ObservePlan, history.Checkpoint, history.PriorMutations
+	return input, nil
+}
+
+// prepareExternalInput is shared by initial input and live native steering.
+// It assembles product context without reading an idle-only runtime checkpoint
+// or committing a second operation while the current one is still running.
+func prepareExternalInput(ctx context.Context, runtime Runtime, request agentchat.ChatRequest, conversation *agentconversation.SessionConversation, assembly agents.ExternalAssembly, options agentrun.Options, emit func(agentrun.Event)) (external.StartRequest, error) {
 	prepared, err := agentchat.PrepareAgentContext(ctx, conversation, request, runtime.BookService, runtime.Workspace, time.Now().UTC())
 	if err != nil {
 		return external.StartRequest{}, err
@@ -41,7 +70,6 @@ func prepareExternal(ctx context.Context, runtime Runtime, request agentchat.Cha
 		fragments = append(fragments, shared...)
 	}
 	var instruction strings.Builder
-	instruction.WriteString(assembly.Composition.Instruction())
 	for _, fragment := range fragments {
 		switch fragment.Placement {
 		case agent.ContextLeadingMessage, agent.ContextStateMessage:
@@ -70,19 +98,18 @@ func prepareExternal(ctx context.Context, runtime Runtime, request agentchat.Cha
 	}
 	return external.StartRequest{
 		ProjectID: runtime.ProjectID, AttachmentRoot: runtime.ProjectStore, Session: runtime.Session, CommandID: request.CommandID,
-		Fingerprint: agentexecution.RequestSemanticFingerprint(request), Revision: history.Revision,
-		PreparedCursor: history.Cursor, ContinuesOperationID: history.ContinuesOperationID,
-		Input:   external.Input{Selection: history.Selection, Instructions: instruction.String(), History: history.Messages, Text: text, Attachments: request.AttachedFiles},
-		Message: agent.Message{Role: agent.User, Content: request.Message, Attachments: request.AttachedFiles},
+		Fingerprint: agentexecution.RequestSemanticFingerprint(request),
+		Input:       external.Input{Instructions: assembly.Composition.Instruction(), Text: instruction.String() + "\n\n" + text, Attachments: request.AttachedFiles},
+		Message:     agent.Message{Role: agent.User, Content: request.Message, Attachments: request.AttachedFiles},
 		Metadata: session.MessageMetadata{MessageID: request.CommandID + "-input", AgentKind: runtime.AgentKind,
+			ContextOnly:    request.InputVisibility == agentrun.InputModelOnly,
 			DisplayContent: request.DisplayMessage, UserReferences: agentchat.UserMessageReferences(request)},
 		Definitions: assembly.Tools, ReviewThreadID: options.ReviewThreadID, Emit: emit,
 		ToolPolicy: toolruntime.OrchestratorConfig{AgentKind: runtime.AgentKind, PolicyKind: runtime.AgentKind,
 			Workspace: runtime.Workspace, ToolSettings: assembly.ToolSettings, EnforceToolSettings: true,
 			ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtime.Config)},
 		InputCommitEffect: options.InputCommitEffect, BookService: runtime.BookService, OnMutationsVerified: options.OnMutationsVerified,
-		Checkpoint: history.Checkpoint, ProviderInputMaxBytes: config.ResolveAgentContext(&runtime.Config, runtime.AgentKind).MaxProviderInputBytes,
-		Locale:         runtime.Config.Language,
-		PriorMutations: history.PriorMutations,
+		ProviderInputMaxBytes: config.ResolveAgentContext(&runtime.Config, runtime.AgentKind).MaxProviderInputBytes,
+		Locale:                runtime.Config.Language,
 	}, nil
 }

@@ -42,15 +42,6 @@ export function resolveRuntimePreferences(parent?: RuntimePreferences, own?: Run
   return { selected: own?.selected ?? parent?.selected ?? 'native', codex: own?.codex ?? parent?.codex, claude: own?.claude ?? parent?.claude }
 }
 
-/** Project only the selected branch; retained settings never enter execution. */
-export function runtimeSelection(preferences: RuntimePreferences): RuntimeSelection | null {
-  switch (preferences.selected ?? 'native') {
-    case 'native': return { kind: 'native' }
-    case 'codex': return preferences.codex ? { kind: 'codex', codex: preferences.codex } : null
-    case 'claude': return preferences.claude ? { kind: 'claude', claude: preferences.claude } : null
-  }
-}
-
 export function runtimeModel(selection?: RuntimeSelection) {
   if (!selection || selection.kind === 'native') return undefined
   return selection.kind === 'codex' ? selection.codex : selection.claude

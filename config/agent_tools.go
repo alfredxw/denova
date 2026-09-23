@@ -106,7 +106,6 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolWebFetch,
 			AgentToolBrowser,
 			AgentToolAsk,
-			AgentToolTodo,
 			AgentToolDelegation,
 			AgentToolScript,
 			AgentToolTrajectory,

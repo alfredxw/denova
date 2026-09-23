@@ -51,6 +51,8 @@ type HistoryEntry struct {
 	// canonical message ID when both are projected as ordinary history rows.
 	DisplaySegmentID string                  `json:"display_segment_id,omitempty"`
 	DisplayPhase     string                  `json:"display_phase,omitempty"`
+	Phase            string                  `json:"phase,omitempty"`
+	RuntimeManaged   bool                    `json:"runtime_managed,omitempty"`
 	Role             string                  `json:"role,omitempty"`
 	Content          string                  `json:"content,omitempty"`
 	Attachments      []agent.Attachment      `json:"attachments,omitempty"`
@@ -147,6 +149,8 @@ type messageRecord struct {
 
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
 type DisplayEvent struct {
+	Phase            string                  `json:"phase,omitempty"`
+	RuntimeManaged   bool                    `json:"runtime_managed,omitempty"`
 	AgentCycle       int                     `json:"agent_cycle,omitempty"`
 	ID               string                  `json:"id,omitempty"`
 	Role             string                  `json:"role"`

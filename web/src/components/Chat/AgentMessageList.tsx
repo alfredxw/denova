@@ -72,6 +72,7 @@ interface MessageListProps {
   onSwitchMessageVersion?: (view: AgentMessageView, direction: -1 | 1) => void
   onOpenSubAgentSession?: (view: AgentMessageView) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onReadAloud?: (message: AgentMessageView) => void
   onGenerateInteractiveImage?: (view: AgentMessageView) => void
   generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
@@ -123,7 +124,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ projectId, attachmentScope, messages, projection, isStreaming, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ projectId, attachmentScope, messages, projection, isStreaming, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -133,17 +134,25 @@ export function MessageList({ projectId, attachmentScope, messages, projection, 
   const initialPosition = projection?.initialPosition ?? 'end'
   const subAgentPresentation = projection?.subAgentPresentation ?? 'card'
   const executionTimings = useMemo(() => selectAgentExecutionTimings(views), [views])
-  const hasActiveResponse = views.some((view) =>
+  // Historical tool cards can retain an interrupted running state. Only this
+  // reply can replace the waiting shimmer, including turns without text yet.
+  const replyStart = views.findLastIndex(view => view.kind === 'user' || view.kind === 'clear') + 1
+  const replyViews = views.slice(replyStart)
+  const hasActiveResponse = replyViews.some((view) =>
     view.kind !== 'user' &&
     !isAgentRunMetadataView(view) &&
     view.kind !== 'clear' &&
+    (!activeRunId || !view.metadata.run_id || view.metadata.run_id === activeRunId || view.metadata.subagent) &&
     (view.streaming || view.status === 'running'),
   )
-  // 真实 thinking / tool / 正文行已经承担进度展示；额外 activity 行会重复展示，
-  // 并在内容增高时被底部锁定反复拉动。没有真实输出时则统一使用 Shimmer 填充等待态。
+  // A committed final reply can replace streaming prose before the transport
+  // closes. Do not turn that handoff back into a model-waiting indicator.
+  const hasFinalResponse = replyViews.some(view => view.kind === 'assistant' &&
+    !view.metadata.subagent && (!activeRunId || view.metadata.run_id === activeRunId) &&
+    view.metadata.display_phase === 'final' && agentViewContent(view).trim())
   const visibleActivityContent = hasActiveResponse
     ? ''
-    : activityContent || (isStreaming ? t('chat.activity.thinking') : '')
+    : activityContent || (isStreaming && !hasFinalResponse ? t('chat.activity.thinking') : '')
   const listItems = useMemo(
     () => buildAgentChatListItems({
       views,
@@ -299,6 +308,7 @@ export function MessageList({ projectId, attachmentScope, messages, projection, 
         onSwitchMessageVersion={onSwitchMessageVersion}
         onOpenSubAgentSession={onOpenSubAgentSession}
         onInsertIllustration={onInsertIllustration}
+        onReadAloud={onReadAloud}
         onGenerateInteractiveImage={onGenerateInteractiveImage}
         generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
         activeSubAgentSessionKey={activeSubAgentSessionKey}
@@ -311,7 +321,7 @@ export function MessageList({ projectId, attachmentScope, messages, projection, 
         syncStreamingTailLayout={tailFollowActive ? scrollLock.syncStreamingTailLayout : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, executionTimings, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, subAgentPresentation, tailFollowActive])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, executionTimings, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onReadAloud, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, subAgentPresentation, tailFollowActive])
 
   useLayoutEffect(() => {
     if (initialPosition !== 'end' || !visible || !hasInitialContent || positionedKey === initialPositionKey) return

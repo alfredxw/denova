@@ -13,6 +13,7 @@ interface AgentMessageItemProps {
   messageStyle?: CSSProperties
   onOpenSubAgentSession?: (view: AgentMessageView) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onReadAloud?: (message: AgentMessageView) => void
   onGenerateInteractiveImage?: (view: AgentMessageView) => void
   generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
@@ -37,6 +38,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
   messageStyle,
   onOpenSubAgentSession,
   onInsertIllustration,
+  onReadAloud,
   onGenerateInteractiveImage,
   generatingInteractiveImageTurnId,
   activeSubAgentSessionKey,
@@ -76,6 +78,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
       onSwitchVersion={onSwitchMessageVersion ? (_message, direction) => onSwitchMessageVersion(view, direction) : undefined}
       onOpenSubAgentSession={openSubAgentSessionFromMessage}
       onInsertIllustration={onInsertIllustration}
+      onReadAloud={onReadAloud ? () => onReadAloud(view) : undefined}
       onGenerateInteractiveImage={onGenerateInteractiveImage ? () => onGenerateInteractiveImage(view) : undefined}
       generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
       activeSubAgentSessionKey={activeSubAgentSessionKey}

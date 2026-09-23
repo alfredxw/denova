@@ -11,8 +11,8 @@ import (
 
 	"denova/config"
 	"denova/internal/agentprofiles"
+	agentruntime "denova/internal/agents/runtime"
 	appsvc "denova/internal/app"
-	"denova/internal/app/agentruntime"
 	appsettings "denova/internal/app/settings"
 )
 

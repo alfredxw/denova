@@ -86,7 +86,7 @@ func TestConversationCodexModelEditsStayLocalAndInitializeDrafts(t *testing.T) {
 	}
 }
 
-func TestExternalConversationRejectsNativeGoalAndCreationRuntimeOverride(t *testing.T) {
+func TestExternalConversationUsesSharedGoalAndAllowsDraftRuntimeSelection(t *testing.T) {
 	application := newExecutionProfileTestApp(t)
 	binding := ConversationConfigBinding{Mode: ConversationModeWriting, ProjectID: application.ProjectID(), SessionID: application.session.ID}
 	initial, err := application.ConversationConfig(t.Context(), binding)
@@ -100,13 +100,13 @@ func TestExternalConversationRejectsNativeGoalAndCreationRuntimeOverride(t *test
 	}
 	for _, mode := range []string{ConversationModeWriting, ConversationModeAgentChat} {
 		binding.Mode = mode
-		_, err := application.MutateConversationGoal(context.Background(), binding, ConversationGoalMutation{Action: "set", Objective: "Unsupported Native Goal"})
-		if !errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported) {
-			t.Fatalf("%s created an unsupported Goal: %v", mode, err)
+		_, err := application.MutateConversationGoal(context.Background(), binding, ConversationGoalMutation{Action: "set", Objective: "Complete the chapter"})
+		if err != nil {
+			t.Fatalf("%s failed to create a shared Goal: %v", mode, err)
 		}
 	}
-	_, err = application.AgentChat().PatchConversationConfig(t.Context(), agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: "uncreated"}, conversationconfig.Patch{Runtime: next.Runtime}, 0)
-	if !errors.Is(err, conversationconfig.ErrRevisionConflict) {
-		t.Fatalf("runtime override created a conversation: %v", err)
+	created, err := application.AgentChat().PatchConversationConfig(t.Context(), agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: "uncreated"}, conversationconfig.Patch{Runtime: &config.RuntimeSelection{Kind: config.RuntimeNative}}, 0)
+	if err != nil || created.Revision == 0 || created.Engine().Kind != config.RuntimeNative {
+		t.Fatalf("draft runtime selection failed: %+v, %v", created, err)
 	}
 }
