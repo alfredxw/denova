@@ -66,7 +66,7 @@ for (const theme of ['dark', 'light']) {
     const donationBox = (await donation.boundingBox())!
     expect(donationBox.y + donationBox.height).toBeLessThan(contentTop)
     expect(await inbox.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
-    await page.screenshot({ path: `test-results/mobile-ux/inbox-detail-${theme}-${test.info().project.name}.png` })
+    await page.screenshot({ path: test.info().outputPath(`inbox-detail-${theme}.png`) })
     // Desktop keeps side-by-side reading; the navigation shell changes at this breakpoint.
     await inbox.getByRole('button', { name: '关闭', exact: true }).click()
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -115,7 +115,7 @@ test('mobile Writing exposes touch tab actions and compact editing tools without
   const settings = page.getByRole('dialog', { name: '编辑器设置', exact: true })
   await expect(settings).toBeVisible()
   await settings.getByRole('button', { name: '关闭', exact: true }).click()
-  await page.screenshot({ path: `test-results/mobile-ux/writing-editor-320-${test.info().project.name}.png` })
+  await page.screenshot({ path: test.info().outputPath('writing-editor-320.png') })
   await page.getByRole('tab', { name: 'Agent', exact: true }).click()
   const composer = page.getByPlaceholder(/输入消息/)
   await composer.fill('Keep this Agent draft')
@@ -147,6 +147,11 @@ test('mobile inbox has a clear empty state and English controls', async ({ page,
     await route.fulfill({ response, json: { ...settings, effective: { ...settings.effective, language: 'en-US' } } })
   })
   await page.route(/\/api\/messages$/, (route) => route.fulfill({ json: { items: [], unread_count: 0 } }))
+  // The global badge and the opened list must describe the same empty inbox.
+  // A real activity refresh could otherwise overwrite the mocked unread count.
+  await page.route('**/api/activity/summary', (route) => route.fulfill({ json: {
+    message_unread_count: 0, automation_inbox_unread_count: 0, automation_running_count: 0,
+  } }))
   await page.goto('/')
   await page.getByRole('button', { name: 'Navigation', exact: true }).click()
   await page.getByRole('button', { name: 'Open message center', exact: true }).click()

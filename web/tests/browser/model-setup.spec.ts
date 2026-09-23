@@ -37,7 +37,7 @@ for (const theme of ['dark', 'light']) {
       await page.getByRole('button', { name: '添加连接', exact: true }).first().click()
       await page.getByRole('combobox', { name: '服务商', exact: true }).click()
       await page.getByRole('option', { name: /openai-compatible/i }).click()
-      await page.getByPlaceholder('Base URL', { exact: true }).fill('http://127.0.0.1:18081/v1')
+      await page.getByPlaceholder('Base URL', { exact: true }).fill(`http://127.0.0.1:${process.env.DENOVA_E2E_MODEL_PORT || '18081'}/v1`)
       await page.getByRole('button', { name: '手动添加', exact: true }).click()
       await page.getByPlaceholder('输入模型名，或从候选列表选择').fill('my-first-model')
       await expect.poll(async () => {

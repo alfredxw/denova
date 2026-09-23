@@ -1,3 +1,4 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { access, mkdtemp, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type Page } from '../support/fixtures'
@@ -19,8 +20,8 @@ const multiAgentExpectations = [
 
 test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
   const [alphaPath, betaPath] = await Promise.all([
-    mkdtemp(path.resolve('test-results', 'runtime', 'general-project-alpha-')),
-    mkdtemp(path.resolve('test-results', 'runtime', 'general-project-beta-')),
+    mkdtemp(path.join(runtimeRoot, 'general-project-alpha-')),
+    mkdtemp(path.join(runtimeRoot, 'general-project-beta-')),
   ])
   const [alpha, beta] = await Promise.all([
     registerAgentChatProject(request, alphaPath),
@@ -49,7 +50,7 @@ test('runs General Agent tools in ordinary directories without crossing Project 
 })
 
 test('keeps concurrent sessions independent and delivers Follow Up to its exact session', async ({ page, request }) => {
-  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'parallel-session-project-'))
+  const projectPath = await mkdtemp(path.join(runtimeRoot, 'parallel-session-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const [sessionA, sessionB] = await Promise.all([
     createAgentChatSession(request, project.id, 'Parallel Session A'),
@@ -103,7 +104,7 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
   // Inspect all three children live, after reload, and after completion. Nine
   // detail visits plus two full hydrations need a larger total CI budget.
   test.setTimeout(180_000)
-  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'multi-agent-display-project-'))
+  const projectPath = await mkdtemp(path.join(runtimeRoot, 'multi-agent-display-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Multi-Agent Display Session')
   await setAgentChatApprovalMode(request, project.id, session.id, 'full_access')
@@ -162,7 +163,7 @@ test('keeps three interleaved SubAgent streams responsive, isolated, and restora
 })
 
 test('restores an accepted Follow Up after reload and delivers it exactly once', async ({ page, request }) => {
-  const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'queue-reload-project-'))
+  const projectPath = await mkdtemp(path.join(runtimeRoot, 'queue-reload-project-'))
   const project = await registerAgentChatProject(request, projectPath)
   const session = await createAgentChatSession(request, project.id, 'Queue Reload Session')
   const initialFollowUpCount = (await getModelStatus(request)).request_counts[queueReloadFollowUpMarker] ?? 0

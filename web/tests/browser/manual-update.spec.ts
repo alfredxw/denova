@@ -110,9 +110,13 @@ test('automatic download still stages its streamed result after a failed attempt
 })
 
 test('release upload exceeds the former 72 MiB API limit and reaches localized validation', async ({ request }) => {
+  // Reach the same version validation in development and packaged backends on
+  // every supported host, without depending on the current release version.
+  const platform = process.platform === 'win32' ? 'windows' : process.platform
+  const extension = process.platform === 'win32' ? 'zip' : 'tar.gz'
   const response = await request.post('/api/update/upload', {
     headers: { 'X-Denova-Locale': 'en-US' },
-    multipart: { file: { name: 'denova-v0.5.0-windows-x64.zip', mimeType: 'application/zip', buffer: Buffer.alloc(73 * 1024 * 1024) } },
+    multipart: { file: { name: `denova-v0.0.0-${platform}-${process.arch}.${extension}`, mimeType: 'application/octet-stream', buffer: Buffer.alloc(73 * 1024 * 1024) } },
   })
   expect(response.status()).toBe(400)
   expect(await response.json()).toMatchObject({ error: 'Select a stable release newer than the running version. Development builds cannot update manually.' })

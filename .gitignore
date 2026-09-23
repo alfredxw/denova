@@ -26,6 +26,7 @@ docs/tests/*
 !docs/tests/large-change-regression-checklist.md
 !docs/automation-project-agent.md
 !docs/claude-runtime.md
+!docs/ci-performance.md
 !docs/skills-library.md
 !docs/resource-pack-import-export-design.md
 !docs/speech.md

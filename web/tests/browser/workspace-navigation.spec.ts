@@ -1,6 +1,8 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
+test.use({ reducedMotion: 'no-preference' })
+
 for (const theme of ['dark', 'light']) {
   test(`primary navigation responds without background trailing in ${theme} mode`, async ({ page, request }) => {
     // This journey hydrates six destinations on slower CI runners.

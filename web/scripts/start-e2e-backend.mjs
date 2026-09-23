@@ -2,17 +2,9 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
+import { runtimeRoot, webRoot } from './e2e-paths.mjs'
 
-const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repositoryRoot = path.resolve(webRoot, '..')
-const testResultsRoot = path.join(webRoot, 'test-results')
-const runtimeRoot = path.join(testResultsRoot, 'runtime')
-const relativeRuntime = path.relative(testResultsRoot, runtimeRoot)
-
-if (relativeRuntime.startsWith('..') || path.isAbsolute(relativeRuntime)) {
-  throw new Error(`Refusing to prepare E2E runtime outside ${testResultsRoot}`)
-}
 
 if (existsSync(runtimeRoot)) rmSync(runtimeRoot, { recursive: true, force: true })
 const denovaDir = path.join(runtimeRoot, 'denova')

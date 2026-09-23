@@ -1,5 +1,3 @@
-import { mkdir } from 'node:fs/promises'
-import path from 'node:path'
 import { expect, test, type Page, type APIRequestContext } from '../support/fixtures'
 import { createAndOpenBook, createProjectFile, createStartedStory, getStorySnapshot, getStoryBranches } from '../support/api'
 
@@ -39,16 +37,17 @@ async function expectInsideViewport(page: Page) {
 
 async function capture(page: Page, name: string) {
   await expect(page.locator('[data-slot=loading-state]:visible')).toHaveCount(0)
-  const directory = path.resolve('test-results/mobile-ux')
-  await mkdir(directory, { recursive: true })
-  await page.screenshot({ path: path.join(directory, `${name}.png`), animations: 'disabled' })
+  await page.screenshot({ path: test.info().outputPath(`${name}.png`), animations: 'disabled' })
 }
 
-for (const width of [320, 390, 768, 844, 1023]) {
+// Full navigation at the narrowest and last compact width covers the layout
+// boundaries. Intermediate portrait/landscape sizes are checked below without
+// repeating all nine destination journeys and their backend setup.
+for (const width of [320, 1023]) {
   test(`mobile destinations and sheets remain usable at ${width}px`, async ({ page, request }) => {
     test.setTimeout(60_000)
     await createMobileBook(request, `Mobile ${width} A long book title for navigation`)
-    await page.setViewportSize({ width, height: width === 844 ? 390 : 844 })
+    await page.setViewportSize({ width, height: 844 })
     await page.goto('/')
     await expect(page.locator('.nova-mobile-topbar')).toHaveCount(1)
     await expect(page.locator('.nova-mobile-nav')).toHaveCount(0)
@@ -75,6 +74,11 @@ for (const width of [320, 390, 768, 844, 1023]) {
       await expect(page.getByRole('button', { name: /^关闭(?:设置|书籍管理|版本管理|自动化| Agents)?$/ })).toHaveCount(0)
       await expectInsideViewport(page)
     }
+    for (const viewport of [{ width: 390, height: 844 }, { width: 768, height: 844 }, { width: 844, height: 390 }]) {
+      await page.setViewportSize(viewport)
+      await expectInsideViewport(page)
+    }
+    await page.setViewportSize({ width, height: 844 })
     await capture(page, `settings-${width}`)
   })
 }
@@ -473,9 +477,6 @@ test('mobile resource selections leave the directory and reveal the selected edi
 })
 
 test('mobile workbench keeps primary and secondary conversations in retained full-page views', async ({ page, request }) => {
-  // This journey switches viewport layouts, restores both drafts, and runs a
-  // real Native turn, so it needs the same total budget as the E2E journeys.
-  test.setTimeout(120_000)
   const { createAgentChatSession } = await import('../support/api')
   const book = await createMobileBook(request, 'Mobile split workbench')
   const session = await createAgentChatSession(request, book.projectId, `Primary conversation ${test.info().project.name}`)
@@ -515,22 +516,11 @@ test('mobile workbench keeps primary and secondary conversations in retained ful
   await expect(directory).toBeHidden()
   await expect(mainInput).toHaveText('主会话草稿')
   await expect(page.getByRole('tab', { name: '主工作区', exact: true })).toHaveAttribute('aria-selected', 'true')
-  const { getModelStatus, releaseDelayedRequest } = await import('../support/model')
-  try {
-    await mainInput.fill('Hold Session A. E2E_SESSION_A_DELAY')
-    await main.locator('[data-action="send"]').click()
-    await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker.E2E_SESSION_A_DELAY ?? 0).toBe(1)
-    await page.getByRole('tab', { name: '辅助工作区', exact: true }).click()
-    await expect(secondaryInput).toHaveText('辅助会话草稿')
-    await releaseDelayedRequest(request, 'E2E_SESSION_A_DELAY')
-    await page.getByRole('tab', { name: '主工作区', exact: true }).click()
-    await expect(main.getByText('Session A initial response completed.', { exact: true })).toHaveCount(1)
-    await page.getByRole('tab', { name: '辅助工作区', exact: true }).click()
-    await expect(secondaryInput).toHaveText('辅助会话草稿')
-  } finally {
-    await releaseDelayedRequest(request, 'E2E_SESSION_A_DELAY')
-  }
-
+  // Native execution while a conversation is hidden is covered by the
+  // concurrent-session journey in e2e/agent-chat.spec.ts. This case owns mobile
+  // layout, retained drafts, and directory focus without repeating model work.
+  await page.getByRole('tab', { name: '辅助工作区', exact: true }).click()
+  await expect(secondaryInput).toHaveText('辅助会话草稿')
 })
 
 for (const language of ['zh-CN', 'en-US']) {
@@ -546,7 +536,9 @@ for (const language of ['zh-CN', 'en-US']) {
     const english = language === 'en-US'
     const navigationName = english ? 'Navigation' : '导航菜单'
     await page.getByRole('button', { name: navigationName, exact: true }).click()
-    await page.getByRole('dialog', { name: navigationName, exact: true }).getByRole('button', { name: english ? 'Automations' : '自动化', exact: true }).click()
+    const navigation = page.getByRole('dialog', { name: navigationName, exact: true })
+    await navigation.getByRole('button', { name: english ? 'Automations' : '自动化', exact: true }).click()
+    await expect(navigation).toBeHidden()
     const header = page.locator('.nova-mobile-topbar')
     const tabs = header.getByRole('tab')
     await expect(tabs).toHaveText(english ? ['Task', 'Inbox', 'Agent'] : ['任务', '收件箱', 'Agent'])
