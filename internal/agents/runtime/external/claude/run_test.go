@@ -187,20 +187,33 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", v["type"], body)
 		}
 		emit(map[string]any{"type": "message_start", "message": map[string]any{"id": fmt.Sprintf("msg_%d", n), "type": "message", "role": "assistant", "model": "claude-sonnet-4-5", "content": []any{}, "stop_reason": nil, "stop_sequence": nil, "usage": map[string]int{"input_tokens": 100, "output_tokens": 0}}})
+		index := 0
+		if block["type"] == "text" {
+			// Exercise the real CLI's split assistant wrappers after thinking.
+			emit(map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "thinking", "thinking": ""}})
+			emit(map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "thinking_delta", "thinking": "Check the saved draft."}})
+			emit(map[string]any{"type": "content_block_stop", "index": 0})
+			index = 1
+		}
 		initial := map[string]any{"type": block["type"]}
 		if block["type"] == "tool_use" {
 			initial["id"], initial["name"], initial["input"] = block["id"], block["name"], map[string]any{}
 		} else {
 			initial["text"] = ""
 		}
-		emit(map[string]any{"type": "content_block_start", "index": 0, "content_block": initial})
+		emit(map[string]any{"type": "content_block_start", "index": index, "content_block": initial})
 		delta := map[string]any{"type": "text_delta", "text": block["text"]}
 		if block["type"] == "tool_use" {
 			raw, _ := json.Marshal(block["input"])
 			delta = map[string]any{"type": "input_json_delta", "partial_json": string(raw)}
 		}
-		emit(map[string]any{"type": "content_block_delta", "index": 0, "delta": delta})
-		emit(map[string]any{"type": "content_block_stop", "index": 0})
+		emit(map[string]any{"type": "content_block_delta", "index": index, "delta": delta})
+		emit(map[string]any{"type": "content_block_stop", "index": index})
+		if block["type"] == "text" {
+			emit(map[string]any{"type": "content_block_start", "index": 2, "content_block": map[string]any{"type": "text", "text": ""}})
+			emit(map[string]any{"type": "content_block_delta", "index": 2, "delta": map[string]any{"type": "text_delta", "text": " Verified."}})
+			emit(map[string]any{"type": "content_block_stop", "index": 2})
+		}
 		emit(map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": stop, "stop_sequence": nil}, "usage": map[string]int{"output_tokens": 10}})
 		emit(map[string]any{"type": "message_stop"})
 	}))
@@ -254,7 +267,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if err != nil {
 		t.Fatalf("run: %v; requests=%d; calls=%#v; result=%#v", err, requests, host.calls, result)
 	}
-	if result.Text != "Draft saved." || len(host.calls) != 2 || host.calls[0].Name != "ask" || host.calls[0].ID != "ask_1" || host.calls[1].Name != "write" || host.calls[1].ID != "write_1" {
+	if result.Text != "Draft saved. Verified." || host.text != result.Text || len(host.calls) != 2 || host.calls[0].Name != "ask" || host.calls[0].ID != "ask_1" || host.calls[1].Name != "write" || host.calls[1].ID != "write_1" {
 		t.Fatalf("unexpected tool loop: %#v calls=%#v", result, host.calls)
 	}
 	if result.Usage == nil || result.Usage.TotalTokens == 0 {

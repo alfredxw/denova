@@ -83,6 +83,8 @@ type streamOutput struct {
 	order            []string
 	text             map[string]string
 	complete         map[string]bool
+	wrapperOffsets   map[string]int
+	seenWrappers     map[string]bool
 	terminal         bool
 	usage            *agent.TokenUsage
 	plan             []agent.TodoItem
@@ -104,6 +106,8 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 	if s.text == nil {
 		s.text = map[string]string{}
 		s.complete = map[string]bool{}
+		s.wrapperOffsets = map[string]int{}
+		s.seenWrappers = map[string]bool{}
 	}
 	if s.terminal {
 		return nil
@@ -131,6 +135,17 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 		if f.Message.ID == "" {
 			return errors.New("Claude assistant message lacks ID")
 		}
+		if f.UUID != "" {
+			if s.seenWrappers[f.UUID] {
+				return nil
+			}
+			s.seenWrappers[f.UUID] = true
+		}
+		// CLI wrappers contain newly completed blocks, not a cumulative message.
+		// Include thinking and tool blocks in the offset so wrapper positions
+		// match the original stream indices. Text equality is not block identity.
+		offset := s.wrapperOffsets[f.Message.ID]
+		s.wrapperOffsets[f.Message.ID] += len(f.Message.Content)
 		for i, block := range f.Message.Content {
 			if block.Type == "tool_use" && slices.Contains([]string{"TaskCreate", "TaskUpdate", "TaskList", "TaskGet"}, block.Name) {
 				if s.planCalls == nil {
@@ -139,7 +154,7 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 				s.planCalls[block.ID] = block
 			}
 			if block.Type == "text" {
-				if err := s.append(host, fmt.Sprintf("%s:%d", f.Message.ID, i), block.Text, true); err != nil {
+				if err := s.append(host, fmt.Sprintf("%s:%d", f.Message.ID, offset+i), block.Text, true); err != nil {
 					return err
 				}
 			}

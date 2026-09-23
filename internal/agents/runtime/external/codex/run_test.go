@@ -121,3 +121,21 @@ func TestCancelBeforeTurnStartReplyInterruptsAcceptedTurn(t *testing.T) {
 	default:
 	}
 }
+
+func TestMessageOutputMergesRepeatedCompletionByItemID(t *testing.T) {
+	output := messageOutput{items: map[string]string{}}
+	host := &testHost{}
+	for _, id := range []string{"first", "second"} {
+		if err := output.append(host, id, "Same "); err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			if err := output.complete(host, id, "Same text."); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if got := output.text(); got != "Same text.\n\nSame text." || host.output.String() != got {
+		t.Fatalf("canonical=%q displayed=%q", got, host.output.String())
+	}
+}
