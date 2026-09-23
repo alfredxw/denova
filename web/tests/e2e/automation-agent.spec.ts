@@ -1,3 +1,4 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { mkdtemp } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from '../support/fixtures'
@@ -9,7 +10,7 @@ for (const projectType of ['book', 'general'] as const) {
   test(`automation uses the ${projectType} Project Agent pause and continuation lifecycle`, async ({ page, request }) => {
     const projectId = projectType === 'book'
       ? (await createAndOpenBook(request, 'Automation Project lifecycle')).projectId
-      : (await registerAgentChatProject(request, await mkdtemp(path.resolve('test-results', 'runtime', 'automation-general-')))).id
+      : (await registerAgentChatProject(request, await mkdtemp(path.join(runtimeRoot, 'automation-general-')))).id
     const marker = 'E2E_DELAYED_AGENT_REPLY'
     const title = `Automation ${projectType} lifecycle conversation`
     const theme = projectType === 'book' ? 'dark' : 'light'

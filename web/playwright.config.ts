@@ -9,7 +9,10 @@ const baseURL = `http://127.0.0.1:${packaged ? backendPort : frontendPort}`
 export default defineConfig({
   testDir: './tests',
   outputDir: './test-results/artifacts',
-  fullyParallel: false,
+  // Shard individual cases instead of keeping large files on one runner.
+  // Each runner still owns one backend and runs one test at a time because
+  // user settings and the current workspace are shared within that backend.
+  fullyParallel: true,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
@@ -22,9 +25,11 @@ export default defineConfig({
     serviceWorkers: 'block',
     locale: 'zh-CN',
     colorScheme: 'dark',
+    // Functional journeys do not need to wait for every transition. Tests of
+    // navigation motion explicitly opt back into the normal animation path.
+    reducedMotion: 'reduce',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
   },
   expect: {
     timeout: 10_000,
@@ -46,6 +51,11 @@ export default defineConfig({
       expect: { timeout: 30_000 },
       use: { ...devices['Desktop Chrome'] },
     },
+    ...(packaged ? [{
+      name: 'production',
+      testMatch: /production\/.*\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    }] : []),
   ],
   webServer: [
     {

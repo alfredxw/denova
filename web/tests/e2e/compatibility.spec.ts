@@ -1,10 +1,11 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from '../support/fixtures'
 import { getCurrentWorkspace, getProjectLoreItems, getStorySnapshot } from '../support/api'
 import { submitAgentChatMessage } from '../support/agent-chat'
 
-const legacyWorkspace = path.resolve('test-results/runtime/denova/projects/Legacy E2E Book')
+const legacyWorkspace = path.join(runtimeRoot, 'denova/projects/Legacy E2E Book')
 const legacyLorePath = path.join(legacyWorkspace, '.nova', 'lore', 'items.json')
 const legacyWritingSessionPath = path.join(
   legacyWorkspace,

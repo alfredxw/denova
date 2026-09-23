@@ -1,3 +1,4 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { mkdtemp } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from '../support/fixtures'
@@ -19,7 +20,7 @@ for (const kind of ['writing', 'general', 'game'] as const) {
       let storyId = ''
       if (kind === 'game') storyId = (await createStartedStory(request, `Runtime ${theme}`)).id
       else if (kind === 'general') {
-        projectId = (await registerAgentChatProject(request, await mkdtemp(path.resolve('test-results', 'runtime', 'switch-')))).id
+        projectId = (await registerAgentChatProject(request, await mkdtemp(path.join(runtimeRoot, 'switch-')))).id
         sessionId = (await createAgentChatSession(request, projectId, 'Runtime switching')).id
       } else {
         const created = await request.post('/api/sessions', { data: { title: 'Runtime switching' } })
@@ -105,8 +106,12 @@ for (const kind of ['writing', 'general', 'game'] as const) {
         }).toBe(true)
         await page.screenshot({ path: test.info().outputPath(`${kind}-${theme}-${width}-${engine}.png`), animations: 'disabled' })
         await option.click()
-        await expect(page.getByRole('menuitem', { name: `运行时：${engine}`, exact: true })).toBeVisible()
-        await page.keyboard.press('Escape')
+        const currentRuntime = page.getByRole('menuitem', { name: `运行时：${engine}`, exact: true })
+        await expect(currentRuntime).toBeVisible()
+        // Target the parent menu after the asynchronous selection update; an
+        // Escape still focused in the submenu only dismisses that submenu.
+        await currentRuntime.press('Escape')
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false')
         await expect(editor).toHaveText('Keep this draft / 保留这段草稿')
         await page.getByRole('button', { name: '输入动作', exact: true }).filter({ visible: true }).click()
         await expect(page.getByText('切换运行时', { exact: true })).toHaveCount(0)

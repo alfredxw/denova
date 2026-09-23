@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
+import { runtimeRoot } from './e2e-paths.mjs'
 import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
 import { responsesRequest, responsesControl, captureNativeRequest, runtimeCompletion, writeCompletionFrame, finishCompletion } from './e2e-responses-fixture.mjs'
 
@@ -46,7 +47,7 @@ const regeneratedNarrative = '重试后，月台广播给出了全新的撤离�
 const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
 const gameBranchPlanNarrative = '你在站台地图上发现一条通往钟楼的维护通道。'
 const externalSecret = 'DENOVA_E2E_EXTERNAL_SECRET'
-const externalSecretPath = path.resolve('test-results', 'runtime', 'e2e-external-secret.txt')
+const externalSecretPath = path.join(runtimeRoot, 'e2e-external-secret.txt')
 const agentEditArguments = JSON.stringify({
   path: 'chapters/e2e-agent-chapter.md',
   edits: [{ old_string: 'Agent 修改前。', new_string: 'Agent 已通过工具完成修改。' }],

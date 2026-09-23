@@ -1,3 +1,4 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { mkdtemp } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from '../support/fixtures'
@@ -12,7 +13,7 @@ for (const product of ['writing', 'general'] as const) {
     if (product === 'writing') {
       projectId = (await createAndOpenBook(request, 'Runtime stop')).projectId
     } else {
-      const directory = await mkdtemp(path.resolve('test-results', 'runtime', 'runtime-stop-'))
+      const directory = await mkdtemp(path.join(runtimeRoot, 'runtime-stop-'))
       projectId = (await registerAgentChatProject(request, directory)).id
       await createAgentChatSession(request, projectId, 'Runtime stop')
     }

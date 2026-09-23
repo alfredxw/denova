@@ -76,6 +76,12 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := strings.Repeat("historical-body-", 512)
+			// Hundreds of journal records across multiple transactions are enough
+			// to exercise old range reads and both index recovery paths. Repeating
+			// 1,000 large outputs made this a throughput test without adding a
+			// distinct recovery boundary.
+			const batches, runsPerBatch = 10, 10
+			const completedRuns = batches * runsPerBatch
 			var revision agentsession.Revision
 			makeRecord := func(kind string, value any) agentsession.Record {
 				encoded, err := json.Marshal(value)
@@ -84,10 +90,10 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 				}
 				return agentsession.Record{Kind: kind, Version: 1, Data: encoded}
 			}
-			for batch := range 10 {
+			for batch := range batches {
 				var records []agentsession.Record
-				for n := range 100 {
-					i := batch*100 + n
+				for n := range runsPerBatch {
+					i := batch*runsPerBatch + n
 					runID, commandID := fmt.Sprint("run-", i), fmt.Sprint("command-", i)
 					records = append(records,
 						makeRecord("session.input", map[string]any{"receipt": agent.CommandReceipt{RunID: runID, CommandID: commandID, Cursor: agent.Cursor(i + 1)}, "kind": "run", "hash": "retained-original-hash", "input": map[string]any{"text": body}}),
@@ -102,7 +108,7 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			queued := makeRecord("session.input", map[string]any{"receipt": agent.CommandReceipt{CommandID: "pending", Cursor: 1001}, "kind": "queue", "hash": "pending-hash", "input": map[string]any{"text": "Keep this unfinished input"}})
+			queued := makeRecord("session.input", map[string]any{"receipt": agent.CommandReceipt{CommandID: "pending", Cursor: completedRuns + 1}, "kind": "queue", "hash": "pending-hash", "input": map[string]any{"text": "Keep this unfinished input"}})
 			if _, err := log.Append(ctx, revision, queued); err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +137,7 @@ func TestProductRecoveryDoesNotRetainSettledExecutionBodies(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, id := range []string{"command-0", "command-999"} {
+				for _, id := range []string{"command-0", fmt.Sprint("command-", completedRuns-1)} {
 					snapshot, found, err := sess.CommandSnapshot(ctx, id)
 					if err != nil || !found || snapshot.Output != body || snapshot.Result == nil || snapshot.Result.Status != agent.ResultCompleted {
 						t.Fatalf("old result %s: %+v %v %v", id, snapshot, found, err)
