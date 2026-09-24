@@ -23,6 +23,9 @@
 
 # Agent 与模型上下文
 
+- `agent/` 是独立的 Native Agent Runtime，不感知外部 runtime、产品运行时选择或多 runtime 调度。Native、Codex、Claude 等运行时的选择、适配、能力差异和共通产品控制由 Denova 应用层承担；不得通过给 `agent.Definition`、Session 或其执行循环注入外部 runtime 来实现切换。共通 UI 和产品 journal 可以复用，但不能因此把应用层编排职责下沉到 `agent/`。
+- 应用层的多 runtime 能力聚合在 `internal/agents/runtime` 独立 package 中，不新增 Go module，也不以搬进 `internal/app` 代替抽象分层。产品层通过绑定会话的统一接口使用控制和状态；Native 执行与外部协议适配保持隔离，产品上下文准备和领域提交仍由产品层负责。运行时已有的 Plan/Todo 由运行时执行，应用只保存已确认的快照并复用展示组件，不提供第二套可写 Todo 工具。原生能力优先，但应权衡协议适配成本，不能为了统一表面行为扩大实现范围。
+- 游戏不支持 Goal，UI、API 与执行层均不得开启 Goal。写作和通用对话可统一 Goal 的产品入口与状态展示，但 Native Goal 的执行和验收由独立 Native runtime 负责，不能与外部 runtime 的执行实现混合。
 - Denova 内置的提示词、上下文片段、工具与 schema 描述、模型可见工具反馈统一使用英文，不重复注入双语；保持产品中立，不提及或类比其他 Agent 产品、CLI 或品牌。对照研究仅放在审计文档中。
 - 上下文改动优先保护缓存前缀匹配；每个注入片段必须有明确来源、用途和容量上限，上限应覆盖合理使用规模，并明确超限处理，避免随意截断。
 - 模型输出与工具输入 schema 应容忍可修正的错误；列表操作尽量支持逐项成功或失败，避免局部错误导致整批昂贵重试。

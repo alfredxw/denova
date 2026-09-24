@@ -9,7 +9,10 @@ const baseURL = `http://127.0.0.1:${packaged ? backendPort : frontendPort}`
 export default defineConfig({
   testDir: './tests',
   outputDir: './test-results/artifacts',
-  fullyParallel: false,
+  // Shard individual cases instead of keeping large files on one runner.
+  // Each runner still owns one backend and runs one test at a time because
+  // user settings and the current workspace are shared within that backend.
+  fullyParallel: true,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
@@ -18,11 +21,15 @@ export default defineConfig({
     : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
+    // Keep all requests observable by the deterministic network fixture.
+    serviceWorkers: 'block',
     locale: 'zh-CN',
     colorScheme: 'dark',
+    // Functional journeys do not need to wait for every transition. Tests of
+    // navigation motion explicitly opt back into the normal animation path.
+    reducedMotion: 'reduce',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
   },
   expect: {
     timeout: 10_000,
@@ -39,8 +46,16 @@ export default defineConfig({
       // Real journeys include route hydration, multiple model/tool rounds, and
       // reloads. Budget the whole journey separately from assertion deadlines.
       timeout: 120_000,
+      // Full-suite CI includes tool rounds and conversation hydration with a
+      // populated workspace. Allow those asynchronous results time to render.
+      expect: { timeout: 30_000 },
       use: { ...devices['Desktop Chrome'] },
     },
+    ...(packaged ? [{
+      name: 'production',
+      testMatch: /production\/.*\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    }] : []),
   ],
   webServer: [
     {
@@ -67,6 +82,7 @@ export default defineConfig({
       env: {
         DENOVA_BACKEND_PORT: backendPort,
         DENOVA_FRONTEND_PORT: frontendPort,
+        DENOVA_TEST_VITE_CACHE_DIR: `node_modules/.vite-playwright-${frontendPort}`,
       },
     }] : []),
   ],

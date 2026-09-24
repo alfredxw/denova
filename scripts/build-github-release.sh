@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${ROOT_DIR}/dist/github-release"
 BUILD_DIR="${DIST_DIR}/build"
 VERSION="${1:-${GITHUB_REF_NAME:-}}"
+TARGET="${2:-all}"
+# CI owns verification. Packaging consumes its exact-revision frontend artifact;
+# standalone builds prepare the frontend once but do not rerun the test suites.
+FRONTEND_DIR="${DENOVA_RELEASE_FRONTEND_DIR:-${ROOT_DIR}/web/dist}"
 
 if [[ -z "${VERSION}" ]]; then
   if git -C "${ROOT_DIR}" describe --tags --exact-match >/dev/null 2>&1; then
@@ -22,14 +26,9 @@ TARGETS=(
   "windows-x64:windows:amd64:denova.exe:denova-updater.exe:zip"
 )
 
-GO_MODULES=(
-  "."
-  "agent"
-)
-
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "错误: 未找到命令 $1" >&2
+    echo "Error: command not found: $1" >&2
     exit 1
   fi
 }
@@ -91,34 +90,29 @@ validate_release_metadata() {
   release_tag="v${expected}"
   web_version="$(node -p "require('./web/package.json').version")"
   if [[ "${web_version}" != "${expected}" ]]; then
-    echo "错误: Release ${release_tag} 与包版本不一致（web=${web_version}）" >&2
+    echo "Error: release ${release_tag} does not match web version ${web_version}" >&2
     exit 1
   fi
   if ! grep -Fq "## [${release_tag}]" CHANGELOG.md; then
-    echo "错误: CHANGELOG.md 缺少 ${release_tag} 章节" >&2
+    echo "Error: CHANGELOG.md is missing ${release_tag}" >&2
     exit 1
   fi
   extract_release_brief "${release_tag}" < CHANGELOG.md >/dev/null
   if ! grep -Fq "<strong>${release_tag}</strong>" README.md || ! grep -Fq "<strong>${release_tag}</strong>" README.en.md; then
-    echo "错误: README.md 与 README.en.md 的当前版本必须同步为 ${release_tag}" >&2
+    echo "Error: both README files must identify ${release_tag} as the current version" >&2
     exit 1
   fi
 }
 
-verify_go_modules() {
-  local module
-  for module in "${GO_MODULES[@]}"; do
-    echo "==> 校验 Go module: ${module}"
-    (
-      cd "${ROOT_DIR}/${module}"
-      go mod tidy -diff
-      go test ./...
-      go vet ./...
-    )
-  done
-}
-
 write_release_notes() {
+  if [[ "${VERSION}" == "dev" ]]; then
+    cat > "${DIST_DIR}/RELEASE_NOTES.md" <<'EOF'
+# Denova development build
+
+Built from the current working tree for local validation. See the Unreleased section of CHANGELOG.md for changes. This archive has not been published as a release.
+EOF
+    return
+  fi
   local release_tag
   release_tag="v$(release_version_without_prefix)"
   {
@@ -131,11 +125,11 @@ write_release_notes() {
 
 ## Verification / 验证
 
-- Backend: all Go modules passed `go mod tidy -diff`, `go test ./...`, and `go vet ./...`.
-- Frontend: complete test suite, i18n key check, TypeScript check, production Vite build, and built-bundle startup smoke test.
+- The release workflow requires successful CI for the exact tagged commit, including both Go modules, frontend unit tests, translations, and browser journeys against the built distribution.
+- Packaging reuses the frontend from that CI run; platform archives are compiled in parallel without repeating the test suites.
 - Packaging: five platform archives are generated from the same source revision and listed in `checksums.txt`.
 
-后端已通过完整 Go 测试、静态检查与依赖一致性检查；前端已通过完整测试、双语键检查、TypeScript 检查、生产构建和构建产物启动烟测；五个平台压缩包均由同一源码版本生成并写入 `checksums.txt`。
+发布流程要求标签对应提交的 CI 成功，覆盖两个 Go module、前端单测、双语键检查、生产构建及构建产物上的浏览器流程；复用该次 CI 的前端产物，并行生成五个平台压缩包及 `checksums.txt`。
 
 ## Install / 安装
 
@@ -172,36 +166,55 @@ require_command go
 require_command node
 require_command tar
 
-echo "==> 构建 GitHub Release 产物 version=${VERSION}"
+if [[ ! "${VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "Error: invalid release version: ${VERSION}" >&2
+  exit 1
+fi
+if [[ "${TARGET}" != all ]]; then
+  selected=()
+  for target in "${TARGETS[@]}"; do
+    if [[ "${target%%:*}" == "${TARGET}" ]]; then selected+=("${target}"); fi
+  done
+  if [[ ${#selected[@]} -ne 1 ]]; then
+    echo "Error: unsupported release target: ${TARGET}" >&2
+    exit 1
+  fi
+  TARGETS=("${selected[@]}")
+fi
+
+echo "==> Building GitHub Release assets version=${VERSION} target=${TARGET}"
 cd "${ROOT_DIR}"
 validate_release_metadata
-rm -rf "${DIST_DIR}"
+if [[ -z "${DENOVA_RELEASE_FRONTEND_DIR:-}" ]]; then
+  echo "==> Preparing frontend (run CI separately before publishing)"
+  run_pnpm -C "${ROOT_DIR}/web" install --frozen-lockfile
+  run_pnpm -C "${ROOT_DIR}/web" check:i18n
+  run_pnpm -C "${ROOT_DIR}/web" build
+fi
+if [[ ! -s "${FRONTEND_DIR}/index.html" ]]; then
+  echo "Error: missing built frontend: ${FRONTEND_DIR}/index.html" >&2
+  exit 1
+fi
 mkdir -p "${DIST_DIR}" "${BUILD_DIR}"
 cp "${ROOT_DIR}/scripts/install.sh" "${DIST_DIR}/install.sh"
 chmod 0755 "${DIST_DIR}/install.sh"
+# Match the normal distribution: serve external assets and retain the embedded
+# fallback. Only generated directories below this checkout are replaced.
+rm -rf "${ROOT_DIR}/internal/webfs/dist"
+cp -R "${FRONTEND_DIR}" "${ROOT_DIR}/internal/webfs/dist"
 
-echo "==> 安装前端依赖并执行发布校验"
-run_pnpm -C "${ROOT_DIR}/web" install --frozen-lockfile
-run_pnpm -C "${ROOT_DIR}/web" exec playwright install --with-deps chromium
-verify_go_modules
-run_pnpm -C "${ROOT_DIR}/web" test
-run_pnpm -C "${ROOT_DIR}/web" check:i18n
-
-echo "==> 构建前端"
-run_pnpm -C "${ROOT_DIR}/web" build
-run_pnpm -C "${ROOT_DIR}/web" smoke:production
-
-echo "==> 交叉编译并打包"
+echo "==> Compiling and packaging"
 for target in "${TARGETS[@]}"; do
   IFS=":" read -r key goos goarch exe updater_exe archive_type <<<"${target}"
   package_name="denova-${VERSION}-${key}"
   package_dir="${BUILD_DIR}/${package_name}/denova"
+  rm -rf "${BUILD_DIR}/${package_name}"
   mkdir -p "${package_dir}"
 
   echo "  -> ${key}"
   binary_version="${VERSION#v}"
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
-    go build -trimpath -ldflags "-s -w -X denova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${exe}" ./cmd/denova
+    go build -tags embedweb -trimpath -ldflags "-s -w -X denova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${exe}" ./cmd/denova
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
     go build -trimpath -ldflags "-s -w -X denova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${updater_exe}" ./cmd/denova-updater
 
@@ -214,7 +227,7 @@ for target in "${TARGETS[@]}"; do
     chmod 0755 "${package_dir}/${updater_exe}"
   fi
 
-  cp -R "${ROOT_DIR}/web/dist" "${package_dir}/web"
+  cp -R "${FRONTEND_DIR}" "${package_dir}/web"
   cp -R "${ROOT_DIR}/skills" "${package_dir}/skills"
   copy_if_exists "${ROOT_DIR}/config.toml" "${package_dir}/"
   copy_if_exists "${ROOT_DIR}/README.md" "${package_dir}/"
@@ -223,14 +236,17 @@ for target in "${TARGETS[@]}"; do
   copy_if_exists "${ROOT_DIR}/LICENSE" "${package_dir}/"
 
   if [[ "${archive_type}" == "zip" ]]; then
+    rm -f "${DIST_DIR}/${package_name}.zip"
     (
       cd "${BUILD_DIR}/${package_name}"
       if command -v zip >/dev/null 2>&1; then
         zip -qr "${DIST_DIR}/${package_name}.zip" denova
       elif command -v python3 >/dev/null 2>&1; then
         python3 -m zipfile -c "${DIST_DIR}/${package_name}.zip" denova
+      elif command -v python >/dev/null 2>&1; then
+        python -m zipfile -c "${DIST_DIR}/${package_name}.zip" denova
       else
-        echo "错误: 未找到命令 zip 或 python3，无法生成 Windows zip 包" >&2
+        echo "Error: zip or Python is required to create the Windows archive" >&2
         exit 1
       fi
     )
@@ -242,13 +258,13 @@ for target in "${TARGETS[@]}"; do
   fi
 done
 
-echo "==> 生成 checksums.txt"
+echo "==> Writing checksums.txt"
 : > "${DIST_DIR}/checksums.txt"
-for file in "${DIST_DIR}"/denova-*; do
+for file in "${DIST_DIR}"/denova-"${VERSION}"-*; do
   checksum_file "${file}" >> "${DIST_DIR}/checksums.txt"
 done
 
 write_release_notes
 
-echo "==> GitHub Release 产物已生成: ${DIST_DIR}"
+echo "==> GitHub Release assets ready: ${DIST_DIR}"
 find "${DIST_DIR}" -maxdepth 1 -type f -print | sort

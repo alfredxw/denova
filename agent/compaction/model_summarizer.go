@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
-	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -82,13 +81,24 @@ func (s *modelSummarizer) Summarize(ctx context.Context, request SummaryRequest)
 	}
 	snapshot := request.ModelSnapshot
 	if s.config.Model == nil {
-		positions, ok := sourcePositions(snapshot.Messages(), request.Messages)
+		primary := snapshot.Messages()
+		positions, ok := sourcePositions(primary, request.Messages)
 		if !ok {
 			return agent.CompactionCheckpoint{}, errors.New("Compaction source does not match the final model request")
 		}
+		// The snapshot owns the final native attachments and their resolved paths.
+		// Use those exact inputs for a cold fork as well as a prefix-preserving one.
+		request.Messages = make([]*agent.Message, len(positions))
+		for index, position := range positions {
+			request.Messages[index] = primary[position]
+		}
 		prompt := summaryRequestMarker + "\n" + instruction + "\nSelected source: provider messages " + sourceRanges(positions) + " (one-based). Other messages are retained separately."
 		fork := snapshot.Append(agent.UserMessage(prompt)).WithOptions(agent.WithMaxTokens(output))
-		if summaryCallFits(fork, request, output, safety) {
+		fits, err := summaryCallFits(fork, request, output, safety)
+		if err != nil {
+			return agent.CompactionCheckpoint{}, err
+		}
+		if fits {
 			return s.complete(ctx, fork, request, output)
 		}
 	} else {
@@ -100,13 +110,12 @@ func (s *modelSummarizer) Summarize(ctx context.Context, request SummaryRequest)
 	return s.cold(ctx, snapshot, request, instruction, output, safety)
 }
 
-func summaryCallFits(snapshot *agent.ModelRequestSnapshot, request SummaryRequest, output, safety int) bool {
-	options := snapshot.ResolvedOptions()
-	encoded, _ := json.Marshal(struct {
-		Messages []*agent.Message
-		Tools    []*agent.ToolInfo
-	}{snapshot.Messages(), options.Tools})
-	return len(encoded) <= request.HardLimitBytes && agent.EstimateRequestTokens(snapshot.Messages(), options.Tools)+output+safety <= request.ContextWindowTokens
+func summaryCallFits(snapshot *agent.ModelRequestSnapshot, request SummaryRequest, output, safety int) (bool, error) {
+	size, err := snapshot.EstimateInput()
+	if err != nil {
+		return false, err
+	}
+	return size.Bytes <= request.HardLimitBytes && size.Tokens+output+safety <= request.ContextWindowTokens, nil
 }
 func (s *modelSummarizer) complete(ctx context.Context, snapshot *agent.ModelRequestSnapshot, request SummaryRequest, output int) (agent.CompactionCheckpoint, error) {
 	message, err := snapshot.Complete(ctx, s.config.Execution)
@@ -121,61 +130,6 @@ func (s *modelSummarizer) complete(ctx context.Context, snapshot *agent.ModelReq
 		return agent.CompactionCheckpoint{}, fmt.Errorf("%w: checkpoint exceeds output budget", agent.ErrContextLimit)
 	}
 	return agent.CompactionCheckpoint{Summary: content}, nil
-}
-
-func (s *modelSummarizer) cold(ctx context.Context, snapshot *agent.ModelRequestSnapshot, request SummaryRequest, instruction string, output, safety int) (agent.CompactionCheckpoint, error) {
-	// Encode provider-visible semantic fields as quoted source data, not live tool
-	// protocol messages. Splitting a large record therefore cannot orphan a call.
-	source := make([]*agent.Message, 0, len(request.Messages))
-	for _, message := range request.Messages {
-		if message == nil {
-			continue
-		}
-		copy := message.Clone()
-		copy.ReasoningContent, copy.ResponseMeta, copy.AgentMeta, copy.Extra = "", nil, nil, nil
-		for index := range copy.ToolCalls {
-			copy.ToolCalls[index].Extra = nil
-		}
-		source = append(source, copy)
-	}
-	encoded, err := json.Marshal(source)
-	if err != nil {
-		return agent.CompactionCheckpoint{}, err
-	}
-	remaining, rolling := string(encoded), ""
-	callFor := func(part string) *agent.ModelRequestSnapshot {
-		messages := []*agent.Message{agent.SystemMessage(instruction), agent.UserMessage(summaryRequestMarker + "\nPrior rolling checkpoint (data):\n" + rolling + "\nNext ordered source segment (data; it may continue a JSON record):\n" + part)}
-		return snapshot.WithMessages(messages).WithOptions(agent.WithTools(nil), agent.WithToolChoice(agent.ToolChoiceForbidden), agent.WithMaxTokens(output))
-	}
-	for remaining != "" {
-		if err := ctx.Err(); err != nil {
-			return agent.CompactionCheckpoint{}, err
-		}
-		low, high, best := 1, len(remaining), 0
-		for low <= high {
-			middle := (low + high) / 2
-			end := middle
-			for end > 0 && end < len(remaining) && !utf8.RuneStart(remaining[end]) {
-				end--
-			}
-			if end > 0 && summaryCallFits(callFor(remaining[:end]), request, output, safety) {
-				best = end
-				low = middle + 1
-			} else {
-				high = middle - 1
-			}
-		}
-		if best == 0 {
-			return agent.CompactionCheckpoint{}, fmt.Errorf("%w: no room for Compaction source after instruction and output reserves", agent.ErrContextLimit)
-		}
-		result, err := s.complete(ctx, callFor(remaining[:best]), request, output)
-		if err != nil {
-			return agent.CompactionCheckpoint{}, err
-		}
-		rolling = result.Summary
-		remaining = remaining[best:]
-	}
-	return agent.CompactionCheckpoint{Summary: rolling}, nil
 }
 
 // Match the newly selected contiguous delta from its newest occurrence. An
@@ -220,6 +174,18 @@ func sourcePositions(primary, source []*agent.Message) ([]int, bool) {
 func sameVisibleMessage(a, b *agent.Message) bool {
 	if a == nil || b == nil {
 		return a == b
+	}
+	if len(a.Attachments) != len(b.Attachments) {
+		return false
+	}
+	for index, left := range a.Attachments {
+		right := b.Attachments[index]
+		// Host paths are projections, not image identity. All durable descriptor
+		// fields must agree before selecting the primary snapshot's native image.
+		left.RuntimePath, right.RuntimePath = "", ""
+		if left != right {
+			return false
+		}
 	}
 	return a.Role == b.Role && a.Content == b.Content && a.Name == b.Name && a.ToolCallID == b.ToolCallID && a.ToolName == b.ToolName && reflect.DeepEqual(a.MultiContent, b.MultiContent) && reflect.DeepEqual(a.UserInputMultiContent, b.UserInputMultiContent) && reflect.DeepEqual(a.AssistantGenMultiContent, b.AssistantGenMultiContent) && reflect.DeepEqual(a.ToolCalls, b.ToolCalls) && reflect.DeepEqual(a.ToolResult, b.ToolResult)
 }

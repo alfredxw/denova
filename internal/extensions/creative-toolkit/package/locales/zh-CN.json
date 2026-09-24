@@ -1,0 +1,6 @@
+{
+  "settings.ignoreWhitespace": "忽略空白字符",
+  "settings.ignoreWhitespaceHelp": "统计时不计入空格、制表符和换行。",
+  "illustrator": "插图模型",
+  "errors.requestFailed": "插件请求失败。"
+}

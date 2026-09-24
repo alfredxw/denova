@@ -1,0 +1,1 @@
+{ "title": "你的游戏", "description": "游戏项目已就绪。在 game.mjs 中开发界面与交互，DEVELOPMENT.md 说明了可用的平台接口。", "start": "测试交互", "ready": "已连接 Denova。", "started": "交互已生效，可以继续开发你的游戏。" }

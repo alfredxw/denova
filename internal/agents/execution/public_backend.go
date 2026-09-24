@@ -31,6 +31,9 @@ type publicBackend struct {
 	permissionRuleStore PermissionRuleStore
 	childDefinitions    ChildDefinitionResolver
 
+	// Input routing and durable admission share one boundary. Execution and
+	// event projection never hold this lock.
+	inputMu       sync.Mutex
 	mu            sync.RWMutex
 	registrations map[string]*publicCycleRegistration
 	cycles        map[string]map[int]*publicCycleRegistration
@@ -60,11 +63,12 @@ type pendingPublicRunStart struct {
 }
 
 type publicRunHandle struct {
-	session      *agent.Session
-	run          *agent.Run
-	registration *publicCycleRegistration
-	trace        *publicAgentRunTrace
-	done         chan struct{}
+	session                *agent.Session
+	run                    *agent.Run
+	registration           *publicCycleRegistration
+	trace                  *publicAgentRunTrace
+	done                   chan struct{}
+	completedRegistrations []publicCycleRegistrationAt
 }
 
 // NewAgentRuntime constructs the Denova host on the public Agent -> Session ->
@@ -583,46 +587,6 @@ func publicCapabilityIdentity(kind string, value any) agent.CapabilityIdentity {
 
 func denovaCanonicalIdentity(key agent.SessionKey) agent.CapabilityIdentity {
 	return publicCapabilityIdentity("denova.canonical", key)
-}
-
-func (backend *publicBackend) registration(key agent.SessionKey, commandID string) *publicCycleRegistration {
-	backend.mu.RLock()
-	defer backend.mu.RUnlock()
-	return backend.registrations[publicRegistrationKey(key, commandID)]
-}
-
-func (backend *publicBackend) rememberRegistration(key agent.SessionKey, commandID string, registration *publicCycleRegistration) {
-	backend.mu.Lock()
-	backend.registrations[publicRegistrationKey(key, commandID)] = registration
-	backend.mu.Unlock()
-}
-
-func (backend *publicBackend) bindRecoveryRoute(
-	key agent.SessionKey,
-	commandID string,
-	options agentrun.Options,
-	emit func(agentrun.Event),
-) *publicCycleRegistration {
-	registration := backend.registration(key, commandID)
-	if registration == nil {
-		registration = &publicCycleRegistration{options: options, emit: emit}
-		backend.rememberRegistration(key, commandID, registration)
-		return registration
-	}
-	registration.mu.Lock()
-	registration.options = options
-	registration.emit = emit
-	projector := registration.projector
-	registration.mu.Unlock()
-	if projector != nil {
-		projector.SetEmit(emit)
-	}
-	return registration
-}
-
-func publicRegistrationKey(key agent.SessionKey, commandID string) string {
-	encoded, _ := json.Marshal(key)
-	return string(encoded) + "\x00" + strings.TrimSpace(commandID)
 }
 
 func publicResultOutcome(result agent.Result, err error, content, thinking string) agentrun.Outcome {

@@ -303,7 +303,7 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 		// Older traces already contain durable task.start receipts. Expose their
 		// exact child identity even when child diagnostics were never captured.
 		content, _ := record.Data["content"].(map[string]any)
-		if stringField(content, "tool_name") == "task" {
+		if name := stringField(content, "tool_name"); name == "send" || name == "task" {
 			for _, child := range TaskRunTraceReferences(stringField(content, "result")) {
 				child.ParentCallID = stringField(content, "execution_id")
 				appendChildRunReference(summary, child)

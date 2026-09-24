@@ -1,206 +1,112 @@
 # Denova 游戏开发手册
 
-状态：目标体验与契约草案；游戏开发模板、公开 SDK 和第三方游戏运行宿主尚未实现。更新：2026-09-06。
+更新：2026-09-15。接口以当前代码和运行实例的 OpenAPI 为准。
 
-配套：[插件开发手册](plugin-developer-guide.md) · [系统设计](plugin-platform-design.md) · [API 参考](plugin-platform-api.md)。
+配套：[扩展能力开发手册](extension-development.md) · [插件开发手册](plugin-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
 
-第一版完成静态前端／Node 后端游戏的开发、安装、开局、Agent 和插件工具调用、自管存档、退出与继续。通信使用 HTTP + JSON，运行事件使用 SSE；SDK 可选。第三方托管状态、flow／planner、完整回档、更多后端环境和需要转换存档格式的升级属于后续能力，本文相应章节描述其职责边界。
+游戏是游戏页中独立的可玩作品。第三方游戏拥有独立前端和可选 Node 后端，既可以自行管理状态，也可以复用内置「互动故事」的 Story 与生成、分支、版本机制。两种方式共用现有游戏安装、授权和运行容器。
 
-## 1. 游戏是可以开始和继续游玩的作品
+## 开发与游玩
 
-**一个游戏是 Denova 游戏页中的一部具体作品**，拥有自己的名称、介绍、入口、玩法、内容和开局方式。玩家安装或添加游戏后，可以开始新游戏、继续已有进度、退出和管理存档。
+在「扩展 → 创建扩展」选择「开发游戏」，填写名称和可选需求，创建独立 Project 后进入工作台。创建时直接生成通用游戏骨架，包含界面入口、宿主连接、双语资源和开发说明。工作台提供普通 Agent 会话、文件、版本、「试运行」和「发布到本机」；发布确认基本信息后安装，模型和测试参数只属于试运行。安装包从扩展详情页导出。源码编辑不改变已安装发行。扩展页只管理已安装作品，通过「打开源码」继续原项目与会话；未安装的源码草稿只在工作台显示。
 
-游戏作者拥有完整前端和可选后端，可使用 HTML、React、Canvas、WebGL／Three.js 等实现界面。第一版提供 Node 后端运行，Python、Go 等运行环境随后续需求增加。Denova 提供平台外壳、运行管理与开放能力；游戏选择需要的能力，并决定如何组织体验。
+游戏页直接展示当前故事线与游戏内容。点击新建故事线时，内置互动故事与已启用且依赖可用的游戏一起出现在「游戏类型」中；只有一种可用游戏时隐藏选择器。用户可在这里设置默认游戏，默认失效时回退内置互动故事。偏好按用户保存在 games/preferences.json，只影响新建故事线。
 
-| 游戏实现 | 作者负责 | Denova 与插件可提供 |
-| --- | --- | --- |
-| 纯前端 + 平台能力 | 舞台、交互和玩法代码 | Agent、图像、资产、实例文件、可选托管状态 |
-| 纯前端 + 平台插件 | 舞台、具体角色与内容、能力组合 | NPC、规划、回合规则等可复用能力 |
-| 自定义前端 + 自定义后端 | 游戏服务、规则、数据库和页面 | 按需调用公开 HTTP 能力，保留游戏自己的业务路由 |
+新故事线绑定当前书籍 Project、所选游戏的准确发行、依赖、模型及独立实例 ID。改变默认游戏或新建时的选择不转换已有故事线。已有存档在同一个故事线选择器中继续，也可重命名、导出、删除和显式切换发行。
 
-插件提供通用能力，游戏负责具体作品。同一个 NPC 插件可以支撑多部游戏；游戏可以完全不依赖第三方插件。游戏私有的 Agent 定义、工具或剧情算法可直接随游戏交付，只有需要作为平台扩展独立复用时才拆成插件。
+游戏占用内容区，宿主保留故事线切换、退出停止、全屏、导航与设置。切换一级菜单不停止游戏；扩展页停用游戏或依赖只阻止新启动，已有实例可继续至正常停止。修改实际授权会先停止受影响的实例，游戏开局参数仍在故事线中配置。开发预览和测试存档统一在工作台管理；重置测试存档会先备份。
 
-## 2. 创建、开发与预览（G1）
+## 独立游戏引擎
 
-目标路径为“**游戏 → 开发中 → 创建游戏**”。插件管理位于共通能力，两者入口分开。
+具体游戏引擎通过扩展安装流程接入，不随平台默认安装。已安装发行和存档继续按原身份使用；平台提供的 Story、资料库、图像和资源能力见[扩展能力开发手册](extension-development.md)。
 
-1. 选择“纯前端游戏”或“带后端游戏”模板，也可从现有游戏模板派生。
-2. 在普通 Project 的空目录中创建源码，填写稳定 gameId、名称、介绍和游戏入口。
-3. 使用已有文件、终端和 Agent 工作台开发前后端；游戏开发不新增 Project 身份或第二套 IDE。
-4. 检查游戏清单、产物、内容、插件依赖和权限；需要构建或准备环境时，在可见终端执行已展示命令。
-5. 创建独立测试开局，配置模型与插件。使用持久 Agent 或其他项目能力时，在开局阶段选择并绑定测试 Project，不能默认读取真实书籍或正式存档，也不在每次 NPC 对话时重新选择项目。
-6. 预览与正式游戏使用相同容器和 HTTP API，SDK 可选，预览显示开发标识。前端可以热更新，后端或能力变化先结束旧激活再重载。
+## 自管游戏的角色聊天组合
 
-“停止预览”保留测试进度，“重置测试开局”单独展示删除范围并提供备份。源码位置、测试目标和正式存档互相独立。
+自定义角色聊天游戏可以通过独立 HTML／CSS 界面、私有 Agent 定义和平台会话组成，不要求 Node 后端。更换角色时同步修改私有定义、game.uses.agents、联系人和两份语言资源；改变已有角色定义应使用新的会话 key。历史可按 50 条分页继续读取；模型回复没有总运行时长限制，应保留玩家停止入口。以下说明适用于自管游戏的 Agent 组合；复用 Story 的游戏由原生 Story 执行剧情。
 
-## 3. 一个纯前端 NPC 城镇（G2）
+模板使用已有 HTTP/JSON API，不依赖单独发布的 SDK。通用 client.mjs 仅负责凭证握手和 fetch；可以直接用其他 HTTP 客户端实现相同协议。
 
-假设目标平台的示例库已提供 `alice.npc` 插件，它贡献 `character` Agent；下面的游戏复用它，同时提供自己的场景与交互。这个插件和公开 HTTP 接口都是拟建示例，目前不可直接安装运行。
+### 角色聊天如何使用平台
 
-```text
-moonlit-town/
-  denova.game.json
-  package.json
-  src/main.ts
-  locales/zh-CN.json
-  locales/en-US.json
-  dist/index.html
-  dist/assets/...
+```js
+const client = await connect();
+const session = await client.request('/agents/sessions', {
+  method: 'POST',
+  body: JSON.stringify({
+    projectId: client.context.scope.projectId,
+    definition: 'local:character', key: 'messages-v1:lamplighter',
+  }),
+});
+const history = await client.request(`/agents/sessions/${session.ref.sessionId}/history?limit=50`);
+// Persist commandId and exact input with a revision-checked game-data write first.
+const result = await client.request(`/agents/sessions/${session.ref.sessionId}/runs`, {
+  method: 'POST', body: JSON.stringify({ commandId, input: { text } }),
+});
+// Subscribe to /agents/runs/{runId}/events with the scoped bearer token.
+// POST /agents/runs/{runId}/cancel lets the player stop a reply.
 ```
 
-### 3.1 声明一部游戏
+平台负责模型配置、调用、角色会话及历史持久化；游戏负责联系人呈现、剧情设计和自身状态。模板通过 stream.mjs 消费 SSE，按 snapshot 替换当前文本、按 delta 追加对白，按 result 完成请求。断流时保留待处理请求并显示恢复入口，重连使用新 snapshot，避免重复追加；无需轮询或限制模型总运行时间。角色聊天只是起点：需要物品、任务或关系数值时，可在 gameData 保存游戏状态；需要可复用业务能力时，可声明工具依赖并调用 tools API。纯提示词角色不会自动更新结构化数值，作者应明确工具或状态更新协议。
+
+## 游戏清单
+
+扩展详情页的「开始游戏」会进入游戏页并预选此游戏的新故事线表单；提交表单前不会创建存档，也不会修改默认游戏。
+
+游戏可在 `game.cover` 声明封面图片的源码相对路径，例如 `"cover": "cover.png"`，同时将该文件加入 `distribution.files`。支持 PNG、JPEG、WebP、GIF，最大 4 MiB，建议 3:4 竖版。宿主从已安装的冻结发行读取封面，不启动游戏、不加载远程图片或 SVG。未声明或加载失败时使用游戏图标；插件不展示封面。源码清单编辑器提供可选路径输入。
+
+游戏可通过扩展设置保存文字大小、静音和总音量。预览只在当前页面应用，不写正式用户配置。拥有 settings.write 的运行视图可以经 `/settings` 原生 CAS 保存，并将返回值立即应用到自己的界面；其他已打开视图仍保留原配置直到重新加载。宿主语言、主题和显隐变化通过受来源校验的消息交付。
+
+denova.game.json 至少声明 manifestVersion: 1、id、version、apiMajor: 1、中英文 name、permissions、views 和 game。不能包含公共 contributes；私有能力放在 definitions。
 
 ```json
 {
   "manifestVersion": 1,
-  "id": "alice.moonlit-town",
-  "version": "0.1.0",
+  "id": "author.garden",
+  "version": "1.0.0",
   "apiMajor": 1,
-  "name": { "zh-CN": "月下小镇", "en-US": "Moonlit Town" },
-  "description": {
-    "zh-CN": "探索小镇，与居民交谈。",
-    "en-US": "Explore a small town and talk to its residents."
-  },
-  "development": { "build": { "command": "pnpm", "args": ["build"] } },
-  "distribution": { "files": ["dist", "locales"] },
-  "views": [{ "id": "stage", "source": { "kind": "static", "path": "dist/index.html" } }],
+  "name": { "zh-CN": "花园", "en-US": "Garden" },
+  "distribution": { "files": ["index.html", "client.mjs"] },
+  "views": [{ "id": "stage", "source": { "kind": "static", "path": "index.html" } }],
   "game": {
     "viewId": "stage",
-    "storage": { "kind": "self" },
-    "uses": { "agents": ["alice.npc/character"] }
+    "storage": { "kind": "self", "saveFormat": "garden-v1" }
   },
-  "requires": [{ "pluginId": "alice.npc", "versionRange": "^1.0.0", "contributions": ["character"] }],
-  "permissions": { "required": ["agents.run", "gameData"], "optional": ["images.generate"] },
-  "locales": { "zh-CN": "locales/zh-CN.json", "en-US": "locales/en-US.json" }
+  "permissions": { "required": ["gameData"], "optional": [] }
 }
 ```
 
-`denova.game.json` 声明游戏，`denova.plugin.json` 声明扩展。一个产物根目录只能选择其中一种。同一仓库可以有 `games/moonlit-town` 与 `plugins/npc` 两个目录，分别检查、打包和版本化。
+静态页面只读取入口所在目录的分发文件。backend 视图由隔离来源代理到声明的后端路径，支持作品自己的 HTTP 业务接口。后端启动协议见插件手册。
 
-`game.uses` 选择会用到的公共能力，`requires` 声明提供这些能力的插件版本。安装时固定准确发行，创建开局时记录实际依赖和模型配置。游戏不自动获得插件的全部权限，也不能随加载顺序替换别的游戏的 Agent。
+game.uses.agents 只能选择 builtin/assistant 或本游戏的 local:id；game.uses.toolsets 可以选择工具插件能力，requires 声明对应插件版本与贡献。私有模型槽在开局配置中使用 local:slotId。游戏 ID 与插件 ID 即使相同也不是同一身份。
 
-模型用途来自所选 Agent 和游戏自己的 `modelSlots`（如有）。宿主列出完整的“提供方／用途”，由用户映射已有连接；不把所有插件的同名模型槽合并成一个隐含全局设置。
+## 页面连接
 
-此例 `storage.kind: self` 表示地图等业务状态由游戏保存。是否有后端与这个选择无关：纯前端也能用 `gameData` 保存自己的 JSON 存档。
+游戏在独立 loopback 来源的 iframe 中运行。宿主根据实际 frame window、origin 与随机 nonce 验证 denova:ready，再回复 denova:bootstrap，内容包含 connection 与 context。页面不能读取宿主 DOM，也不使用宿主内部 API。
 
-### 3.2 对话逻辑
+connection 包含临时 baseUrl 与 bearer token。context 包含准确 source、绑定 scope、locale、theme、environment、settings 与 setup。凭证重启后失效，不写进存档。宿主在外观变化时发送 denova:appearance，模板更新单语文案和主题。
 
-模板处理宿主握手，提供 HTTP base URL、临时范围凭证和已绑定的 Project。base URL 已包含 `/api/platform/v1`；这些连接信息仅用于当前运行，不写入存档。下面直接使用 fetch，创建／复用 NPC 会话后启动对话，不依赖 SDK：
+## 存档与请求恢复
 
-```ts
-async function startNPCConversation(
-  connection: { apiBaseUrl: string; token: string; projectId: string },
-  intent: { npcId: string; commandId: string; text: string },
-) {
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${connection.token}`,
-  };
-  const sessionResponse = await fetch(`${connection.apiBaseUrl}/agents/sessions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      projectId: connection.projectId,
-      definition: "alice.npc/character",
-      key: intent.npcId,
-    }),
-  });
-  if (!sessionResponse.ok) return { error: await sessionResponse.json() };
-  const session = await sessionResponse.json();
-  const runResponse = await fetch(
-    `${connection.apiBaseUrl}/agents/sessions/${encodeURIComponent(session.ref.sessionId)}/runs`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ commandId: intent.commandId, input: { text: intent.text } }),
-    },
-  );
-  if (!runResponse.ok) return { error: await runResponse.json() };
-  return { run: await runResponse.json() };
-}
-```
+纯前端游戏通过 game-data/file 使用规范相对路径。写入或删除必须提交 expectedRevision：null 只允许创建；修改已有内容必须使用上次读取的 revision。冲突时重新读取，不能盲目覆盖。
 
-当前游戏开局来自授权通道。同一开局内稳定 key 重用同一 NPC 会话；另一次新游戏不会共享上一局记忆。每个会话一次一个主动 Run，不同 NPC 可以并行。
+Node 后端直接管理自己的 dataDir；这类游戏不能同时用文件 API 覆盖该目录，以免破坏数据库事务。导出或删除前先停止后台。业务文件必须满足跨平台名称规则，不能含符号链接、特殊文件和大小写冲突。
 
-完整页面需要处理：
+角色聊天示例先将角色 ID、稳定 commandId 和完整玩家输入保存到 messages.json，再提交 Agent 请求；请求结束后从平台读取聊天历史，再清除待处理请求。回答与完成收据留在平台 canonical journal，不在游戏文件另存一份聊天正文。刷新或重启后重用同一个 commandId 找回原请求。状态为 incomplete 时历史仍保留，不自动重做可能产生外部副作用的调用。保存冲突或网络错误会显示重新连接入口，重新读取最新 revision 后恢复请求；同一时间只发送一条消息，但仍可切换联系人查看历史。
 
-1. `GET /capabilities` 查询可用能力；宿主在开局时完成模型与所需 Project 绑定。纯自管且不用 Agent 的游戏不必创建空 Session／Story。
-2. 玩家提交动作时生成 commandId，先保存输入与这个 ID，再调用。重复提交和重连沿用同一 ID，新的玩家意图才创建新 ID。
-3. `GET /agents/runs/{runId}/events` 以 SSE 展示流式内容和状态；waiting 转到宿主问答，取消使用 `POST /agents/runs/{runId}/cancel`。平台权限不能由游戏替玩家批准，关闭事件连接不等于取消 Agent。
-4. 用 `GET /agents/runs/{runId}` 查询状态与结果。断线或重启先按会话与 commandId 查回运行，不要盲目重复生成；incomplete 显示给玩家决定下一步。HTTP 错误按返回的 messageKey 展示当前语言，网络错误由页面处理。
-5. 游戏保存结果时记录 commandId，防止“模型已完成、游戏保存响应丢失”导致重复采纳。
+一个 Agent 会话只使用其 Product Session JSONL 保存正文、运行记录、配置与请求收据。索引可以删除后重建，runs 目录和浏览器存储不是恢复事实源。自管存档引用完成记录不等于支持任意回档或删除未来 NPC 记忆。Story 游戏可从原生正文解析演出，用确切分支、回合和正文修订绑定扩展记录，不另建呈现 Agent 会话；创作 Agent 只负责资料与作品草稿。
 
-对话历史由 Denova 保存，游戏只记录会话引用和业务结果。平台事件 cursor 不能当作永久存档位置。
+## 更换发行和备份
 
-游戏也可直接向 Denova 的 `POST /tools/{providerId}/{toolId}/invoke` 提交 `{input}`，调用已选择且授权的插件工具；无需为确定性的工具操作额外调用模型。平台转发到已绑定的插件 HTTP 端点，游戏不自行寻找插件进程端口。
+游戏与插件共用[GitHub 安装和更新流程](plugin-developer-guide.md#从-github-安装与更新)。同版本号可以安装不同源码快照，兼容性由作者保证；扩展详情只展示当前安装，不提供历史发行管理。
 
-## 4. 自定义后端（G3）
+安装更新不会改动已有存档。存档页只提供「使用已安装的更新」，不列出历史发行。显式切换必须保持同一非空 saveFormat、API 主版本、可用依赖及有效配置。切换先停止运行并保存 ZIP 备份，再用存档副本检查目标后台能否启动；失败保留原绑定与原存档。通过后原子写入新绑定。
 
-给游戏增加以下 runtime，并将 stage 的来源改为 backend，即可由自己的服务提供整个页面：
+默认保留存档已固定的插件版本，不随目录中的新版本自动更新。新的依赖范围不再接受这些版本时，切换会明确失败；改变依赖和角色定义需要作者一起处理其逻辑会话 key。
 
-```json
-{
-  "runtime": {
-    "backend": {
-      "launch": { "kind": "runtime", "runtime": "node", "entry": "dist/server.mjs", "args": [] },
-      "protocol": "denova-runtime-v1"
-    }
-  },
-  "views": [{ "id": "stage", "source": { "kind": "backend", "path": "/" } }]
-}
-```
+已有 Agent 会话保留原定义，不能用相同会话 key 偷换定义。需要改变角色定义或模型绑定时，作者应使用新的逻辑 key；存档格式转换与跨定义迁移不属于本版。
 
-也可以保留静态 stage，仅用后端处理业务。模板启动器接收宿主分配的监听信息和临时连接，服务报告 readiness 后才打开页面。HTTP／WebSocket 路由保持自己的协议，Denova API 只承担平台能力调用。
+备份位于各游戏的 backups 目录，可手动保留或导出。卸载游戏不级联卸载插件，受引用发行与存档不会自动清理。平台不承诺任意数据库在线快照、云部署、多人同步或多个独立 Agent 会话之间的原子回档。
 
-自管存储时，宿主给出可写 dataDir；数据库、事务和迁移由游戏实现。发行目录不可写，临时依赖与缓存放设备本地，不把本机端口、绝对路径、解释器路径和临时 URL 写进存档。数据库打开时不能再让文件 API 覆盖它。
+## 游戏独有设置
 
-纯前端游戏调用一个插件提供的后台能力，仍然是纯前端游戏；该插件进程归插件激活，游戏自己的后端归游戏运行。二者独立版本化，不用为了共用一套进程管理代码合并身份。
-
-退出默认停止游戏及仅由它使用的插件激活。需要离开页面后继续工作的游戏明确声明后台需求，经用户选择后留在可见运行列表，并始终可停止。只关闭面板不等于关闭整局游戏。
-
-本地程序按宿主账户权限运行，进程隔离不是 OS 沙箱。缺少 Node／Python、平台产物不匹配或启动失败时展示准确原因，不暗中安装完整开发环境。
-
-## 5. 存储归属与后续托管恢复（G4）
-
-第一版第三方游戏使用自管存储，提供保存与继续，不承诺同时回退世界状态和 NPC 记忆。既有内置游戏继续使用 Story；下表的第三方托管接入在阶段 C 提供。
-
-| 方式 | 状态事实源 | 能力边界 |
-| --- | --- | --- |
-| 游戏自管 | 该开局的游戏文件或数据库 | 作者负责 schema、事务、保存与加载；平台负责运行、目录和停止后的导出 |
-| Denova 托管 | 既有 Story journal | 使用状态 schema、动作提交、规划和包含 NPC 记忆的分支恢复 |
-
-**两种方式都是游戏实现方式**，在游戏页使用相同的“开始／继续”入口。它们不划分成“应用”和“游戏模式”两个产品类别。
-
-托管方式在 `game.storage` 中声明 schema、初始状态、选定 flow 和可选 plan document。GameInstance 直接绑定既有 Story／分支，发行与依赖等恢复配置写入该 Story journal；不另存一份 authoritative instance.json 或游戏进度。
-
-玩法 flow 可以来自内置能力、插件，也可以由游戏后端实现私有逻辑。游戏自己的 Agent、工具和 flow 定义放在 `definitions`，只在本游戏的运行范围可见；它们不会自动成为其他游戏可选的插件贡献。
-
-托管动作依次读取状态、调用角色／规划、暂存候选变化，最后由宿主一次提交。NPC 的完成位置需被明确采纳，未成功采纳的记忆不能进入下一轮。默认小说 RPG 的导演协议只是一个内置实现，不是所有游戏都必须调用的入口。
-
-自管地图加 Denova NPC 历史是合法组合，但不承诺跨数据库与 journal 的原子恢复。作者只有在世界和 NPC 会话前缀均已协调恢复后才能提供完整回档；未支持时明确展示恢复范围。纯前端照样可以选择托管方式，不能用“没有后端”推导出“不能保存”。
-
-## 6. 内容、表现与游戏身份
-
-角色卡、世界书、团本和素材是游戏可以使用的内容。它们可以随游戏提供或从资料库选择，通过 format 和 formatVersion 声明语义。角色卡本身不授予工具权限，内容导入不执行其中脚本。
-
-通用规则或渲染引擎可作为插件；具体人物、目标、开局与表现组合出可游玩的作品时，就形成游戏。只装一个引擎不在游戏页自动创建作品或存档。
-
-游戏前端控制布局、演出、CG、3D 场景、音效和交互，宿主保留返回、全屏、设置、权限和停止入口。使用平台生图时保存资产引用，游戏决定如何演出；语音也可以由游戏或插件接外部服务，未实现的内置语音接口不能被当成可用。
-
-导航、设置、错误和空状态维护中英文资源，跟随宿主语言；作品正文保留原语言。游戏美术由作者决定，仍需适配主题信号、窄屏、宽屏及长文本。
-
-## 7. 交付并在游戏页运行（G5）
-
-1. 构建并从发行白名单生成不可变游戏候选包，排除密钥、测试存档和私人历史。
-2. 在干净环境安装同一产物，验证依赖、开局、交互、取消、退出、继续、导出和错误反馈。
-3. 第一版导出和导入本地游戏包；GitHub 等固定来源在后续接入。游戏安装器只接受游戏产物；插件依赖单独列出，安装和授权可在同一向导完成但记录仍分开。
-4. 玩家在游戏页打开作品详情，开始新游戏或继续某个已有存档；一个游戏发行可对应多个独立开局。
-5. 更新安装提供新的游戏发行；旧存档保留原绑定。第一版可显式选择开发者声明兼容原存档格式的游戏／插件适配发行，先停止、备份并检查 API 与依赖，失败恢复原绑定和数据；需要转换存档格式的升级后续由开发者提供必要的数据迁移。
-
-游戏与插件均通过 apiMajor 声明适用的平台 API 主版本。Denova 出现不兼容变更时，开发者根据接口文档、示例和变更说明发布适配版本；宿主对不兼容产物明确报错并保留存档，不维护多版本兼容层。固定旧发行不保证它能继续调用新宿主已删除的 API。
-
-是否分发源码、是否使用 Agent 开发由作者决定。游戏可仅交付运行产物，平台不要求源码，不提供自动改写作品的修复流程。
-
-卸载游戏不卸载其他作品仍在使用的插件；卸载插件前显示受影响的游戏。存档默认保留，依赖不可用时说明原因，不静默切换算法。复制或导出必须匹配存档所需的代码和内容版本，在线数据库一致备份需要专门适配。
-
-开发工作台和游戏运行容器复用平台基础设施。插件的验收是扩展能力可用，游戏的验收是作品可以开始、游玩、保存和继续；两条链路都必须独立成立。
+游戏与插件共用[扩展设置标准](extension-settings.md)。扩展页的 settings 应用于绑定同一发行的故事线，在下次启动时生效；game.setup 在新建故事线时生成开局表单。自管游戏保存于 instance.json；复用 Story 的游戏随绑定记录写入该 Story journal。运行时分别读取 context.settings 和 context.setup。发行设置修改不会改写存档进度或开局参数。

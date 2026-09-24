@@ -163,8 +163,12 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	if isAgentSessionID(sessionID) {
 		return AgentAskResolution{}, fmt.Errorf("cannot resolve a fixed Agent ask through the Writing Agent session endpoint: %s", sessionID)
 	}
-	if _, err := store.Get(sessionID); err != nil {
+	sess, err := store.Get(sessionID)
+	if err != nil {
 		return AgentAskResolution{}, err
+	}
+	if result, owned, err := a.AgentEngines().Operations.ResolveAsk(ctx, projectID, sess, askID, status, answers, cancelReason); owned || err != nil {
+		return result, err
 	}
 	return executionRuntime.ResolveAsk(ctx, agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE, ProjectID: projectID, StateRoot: stateRoot,

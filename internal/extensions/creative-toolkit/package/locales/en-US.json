@@ -1,0 +1,6 @@
+{
+  "settings.ignoreWhitespace": "Ignore whitespace",
+  "settings.ignoreWhitespaceHelp": "Exclude spaces, tabs and newlines from the character count.",
+  "illustrator": "Illustration model",
+  "errors.requestFailed": "The plugin request failed."
+}

@@ -61,7 +61,7 @@ import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import type { InputAreaSendOptions } from './InputArea'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
-import type { ConversationConfigBinding } from '@/features/conversation-config/types'
+import { supportsRuntimeOperation, type ConversationConfigBinding } from '@/features/conversation-config/types'
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
@@ -626,7 +626,7 @@ function AgentPanelComponent({
     onResolveAsk: resolveAsk,
     activeRunId: runtimeProjection?.active_operation_id,
     afterContent: <>
-      <AgentTaskControls active={isExecutionActive} suspended={runtimeProjection?.phase === 'suspended'} pending={commandSubmitting || abortPending} onSuspend={onSuspend} onResume={onResumeTask} onAbort={onStop} />
+      <AgentTaskControls suspended={runtimeProjection?.phase === 'suspended'} pending={commandSubmitting || abortPending} onResume={onResumeTask} onAbort={onStop} />
       {lastRuntimeFailure ? (
       <div
         role="alert"
@@ -640,7 +640,9 @@ function AgentPanelComponent({
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
     attachmentsEnabled: true,
-    onStop,
+    // Preserve resumable output only when the selected engine supports pause.
+    onStop: runtimeRecovering || recoveryPaused || !supportsRuntimeOperation(agentSelectionConfig.snapshot, 'pause')
+      ? onStop : onSuspend || onStop,
     disabled: sessionTransitionPending,
     sendBlocked: persistedSettings.loading || sessionTransitionPending,
     generationActive: isStreaming,

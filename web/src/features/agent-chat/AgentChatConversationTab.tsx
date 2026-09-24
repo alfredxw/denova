@@ -50,6 +50,7 @@ export interface AgentChatConversationTabProps {
   onPendingActionConsumed?: (id: string) => void
   /** Adds host-owned model context while keeping the user's message as the transcript projection. */
   messageTransform?: (message: string) => string
+  quickPromptScope?: AgentPanelProps['quickPromptScope']
   onConversationStateChange?: (state: AgentChatConversationState) => void
   activeSubAgentSession?: AgentSubAgentSessionTarget | null
   onSubAgentSessionOpen?: (target: AgentSubAgentSessionTarget) => void | Promise<void>
@@ -129,6 +130,7 @@ function AgentChatConversationTabComponent({
   pendingAction,
   onPendingActionConsumed,
   messageTransform,
+  quickPromptScope,
   onConversationStateChange,
   activeSubAgentSession,
   onSubAgentSessionOpen,
@@ -222,7 +224,9 @@ function AgentChatConversationTabComponent({
   )
 
   useEffect(() => {
-    if (!pendingAction || !initialContentReady || chat.isExecutionActive || submittedActionRef.current === pendingAction.id) return
+    // Startup recovery is temporarily streaming without an active operation. Wait for
+    // that inspection before submitting the initial instruction to the idle session.
+    if (!pendingAction || !initialContentReady || chat.isStreaming || chat.isExecutionActive || submittedActionRef.current === pendingAction.id) return
     submittedActionRef.current = pendingAction.id
     void Promise.resolve(send(pendingAction.message, { displayMessage: pendingAction.displayMessage }))
       .then((accepted) => {
@@ -241,7 +245,7 @@ function AgentChatConversationTabComponent({
           error,
         })
       })
-  }, [chat.isExecutionActive, initialContentReady, onPendingActionConsumed, pendingAction, projectId, send, sessionId])
+  }, [chat.isExecutionActive, chat.isStreaming, initialContentReady, onPendingActionConsumed, pendingAction, projectId, send, sessionId])
 
   useEffect(() => {
     onRunningChange?.(projectId, sessionId, chat.isExecutionActive)
@@ -340,7 +344,7 @@ function AgentChatConversationTabComponent({
       sessionRailVisible={host?.sessionRailVisible}
       onSessionRailVisibleChange={host?.onSessionRailVisibleChange}
       initializing={!initialContentReady}
-      quickPromptScope={host?.quickPromptScope}
+      quickPromptScope={host?.quickPromptScope ?? quickPromptScope}
       composerDraftScope={host?.composerDraftScope}
       composerSettings={composerSettings}
       currentChapter={host?.currentChapter}

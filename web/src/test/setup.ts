@@ -3,6 +3,12 @@ import { afterEach, beforeAll, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import { setConfiguredLocale } from '@/i18n'
 
+// jsdom does not implement the legacy clipboard capability probe used by Monaco.
+Object.defineProperty(document, 'queryCommandSupported', {
+  configurable: true,
+  value: () => false,
+})
+
 class ResizeObserverMock {
   observe() {}
   unobserve() {}

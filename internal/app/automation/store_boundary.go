@@ -108,7 +108,7 @@ func (s *Service) newRunRecord(snap *automationWorkspaceSnapshot, task automatio
 		Scope:           task.Scope,
 		Workspace:       snap.workspace,
 		Trigger:         normalizeAutomationTrigger(trigger),
-		Status:          automation.RunStatusRunning,
+		DeliveryStatus:  automation.DeliveryPending,
 		StartedAt:       time.Now().UTC(),
 	}
 	run.SessionID = automationSessionID(task, run.ID)

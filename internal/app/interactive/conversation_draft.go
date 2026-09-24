@@ -44,6 +44,9 @@ func (c *Conversation) loadTurnDraft() error {
 	c.branchID = branchID
 	if found {
 		c.turnDraft = draft
+		for _, event := range draft.DisplayEvents {
+			c.displayEvents = appendOrReplaceDisplayEvent(c.displayEvents, event)
+		}
 		c.ruleResolution = draft.RuleResolution
 		if draft.Submission != nil {
 			c.turnProtocol.update(draft.Submission.Prepared())
@@ -51,6 +54,27 @@ func (c *Conversation) loadTurnDraft() error {
 	} else {
 		c.turnDraft = interactive.TurnDraft{Identity: identity}
 	}
+	return nil
+}
+
+// persistDraftDisplay keeps terminal observations visible even when the process
+// stops before the accepted Game turn has enough modules to commit.
+func (c *Conversation) persistDraftDisplay(event interactive.DisplayEvent) error {
+	c.turnCheckMu.Lock()
+	defer c.turnCheckMu.Unlock()
+	if err := c.loadTurnDraft(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	draft := c.turnDraft
+	c.mu.Unlock()
+	draft.DisplayEvents = appendOrReplaceDisplayEvent(draft.DisplayEvents, event)
+	if err := c.commitTurnDraft(context.Background(), draft, nil); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.turnDraft = draft
+	c.mu.Unlock()
 	return nil
 }
 
@@ -109,6 +133,9 @@ func (c *Conversation) PendingOutput(ctx context.Context, identity agent.CommitI
 func (c *Conversation) commitTurnDraft(ctx context.Context, draft interactive.TurnDraft, result *agent.ToolResult) error {
 	if draft.Identity.CommandID == "" {
 		return errors.New("Game draft acceptance requires a bound Agent cycle")
+	}
+	if c.draftCommit != nil {
+		return c.draftCommit(ctx, draft, result)
 	}
 	return agent.CommitProductAcceptance(ctx, result, func(checkpoint agent.CanonicalCheckpoint) error {
 		return c.store.SaveTurnDraft(c.storyID, c.branchID, draft, checkpoint)

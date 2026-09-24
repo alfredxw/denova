@@ -17,6 +17,15 @@ func (tasks *LocalTasks) taskFromSessionSnapshot(
 	snapshot agent.SessionSnapshot,
 ) (Task, error) {
 	task, err := taskFromSnapshot(ref, snapshot)
+	if errors.Is(err, ErrTaskNotFound) {
+		exact, found, lookupErr := session.RunSnapshot(ctx, ref.Run)
+		if lookupErr != nil {
+			return Task{}, lookupErr
+		}
+		if found && exact.Result != nil {
+			return Task{Ref: ref, Status: string(exact.Result.Status), Reason: exact.Result.Reason, Output: exact.Output, Receipt: &exact.Receipt}, nil
+		}
+	}
 	if err != nil || task.Output != "" || !isTaskTerminal(task.Status) {
 		return task, err
 	}
@@ -29,13 +38,27 @@ func taskFromSnapshot(ref TaskRef, snapshot agent.SessionSnapshot) (Task, error)
 	status := taskStatus(snapshot, ref.Run)
 	switch status {
 	case "unknown":
-		return Task{}, errors.New("task Run was not found")
+		return Task{}, ErrTaskNotFound
 	case "running", "waiting_input", "aborting", "queued", string(agent.ResultSuspended),
 		string(agent.ResultCompleted), string(agent.ResultFailed), string(agent.ResultIncomplete),
 		string(agent.ResultBlocked), string(agent.ResultAborted):
+		receipt := agent.CommandReceipt{RunID: ref.Run}
+		if snapshot.ActiveRunID == ref.Run {
+			receipt.CommandID, receipt.Cursor = snapshot.ActiveCommandID, snapshot.ActiveReceiptCursor
+		}
+		for _, queued := range snapshot.QueuedRuns {
+			if queued.ID == ref.Run {
+				receipt.CommandID, receipt.Cursor = queued.CommandID, queued.ReceiptCursor
+			}
+		}
+		for _, recent := range snapshot.RecentRuns {
+			if recent.ID == ref.Run {
+				receipt.CommandID, receipt.Cursor = recent.CommandID, recent.ReceiptCursor
+			}
+		}
 		return Task{
 			Ref: ref, Status: status, Reason: taskSnapshotReason(snapshot, ref.Run),
-			Output: taskSnapshotOutput(snapshot, ref.Run),
+			Output: taskSnapshotOutput(snapshot, ref.Run), Receipt: &receipt,
 		}, nil
 	default:
 		return Task{}, fmt.Errorf("unsupported task status %q", status)

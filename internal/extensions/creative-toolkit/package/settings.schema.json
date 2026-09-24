@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ignoreWhitespace": {
+      "type": "boolean",
+      "x-titleKey": "settings.ignoreWhitespace",
+      "x-descriptionKey": "settings.ignoreWhitespaceHelp"
+    }
+  }
+}

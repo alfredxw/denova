@@ -77,11 +77,14 @@ func TestIDEContextAnalysisIncludesTheSameExplicitSkillBodiesAsRuntime(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	analysis := BuildInspectedContextAnalysis(&config.Config{}, config.AgentKindIDE, "ide", composition, agent.Inspection{
+	analysis, err := BuildInspectedContextAnalysis(&config.Config{}, config.AgentKindIDE, "ide", composition, agent.Inspection{
 		ModelRequest: agent.ModelRequestInspection{Messages: append(
 			[]*agent.Message{agent.SystemMessage(composition.Instruction())}, prepared.ModelContext.Messages...,
 		)},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	runtimeFinal := lastUserMessageContent(prepared.ModelContext.Messages)
 	analysisFinal := analysis.ContextMessages[len(analysis.ContextMessages)-1].Content
 	for _, want := range []string{"# Skill: alpha", "ALPHA_ANALYSIS_BODY", "# Skill: beta", "BETA_ANALYSIS_BODY"} {

@@ -20,7 +20,7 @@ func BuildInspectedContextAnalysis(
 	agentKind, mode string,
 	composition prompts.SystemPromptComposition,
 	inspection agent.Inspection,
-) ContextAnalysis {
+) (ContextAnalysis, error) {
 	messages := inspection.ModelRequest.Messages
 	stablePrefix := min(max(0, inspection.ModelRequest.StablePrefixMessages), len(messages))
 	systemMessages := make([]*agent.Message, 0, 1)
@@ -52,7 +52,11 @@ func BuildInspectedContextAnalysis(
 	}
 
 	systemPrompt, systemParts := inspectedSystemPrompt(composition, systemMessages)
-	tokens := agent.EstimateRequestTokens(messages, inspection.ModelRequest.Options.Tools)
+	size, err := inspection.ModelRequest.EstimateInput()
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
+	tokens := size.Tokens
 	completionReserve, toolResultReserve := agentcompaction.EstimateProjectionReserves(cfg, agentKind, 0)
 	window := config.ResolveAgentModel(cfg, agentKind).ContextWindowTokens
 	threshold := config.ResolveAgentContext(cfg, agentKind).CompactionThreshold
@@ -91,7 +95,7 @@ func BuildInspectedContextAnalysis(
 		CompactionActive:   inspection.Compaction != nil,
 		WouldCompact:       window > 0 && threshold > 0 && ratio >= threshold,
 		Compaction:         compaction,
-	}
+	}, nil
 }
 
 // inspectedContextProvenanceParts explains the exact model request without
@@ -135,12 +139,15 @@ func BuildInteractiveInspectedContextAnalysis(
 	cfg *config.Config,
 	composition prompts.SystemPromptComposition,
 	inspection agent.Inspection,
-) ContextAnalysis {
-	analysis := BuildInspectedContextAnalysis(
+) (ContextAnalysis, error) {
+	analysis, err := BuildInspectedContextAnalysis(
 		cfg, config.AgentKindInteractiveStory, "interactive", composition, inspection,
 	)
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
 	if len(analysis.ContextMessages) == 0 {
-		return analysis
+		return analysis, nil
 	}
 	last := len(analysis.ContextMessages) - 1
 	analysis.ContextMessages[last].Source = "Current interactive turn / 本轮互动"
@@ -149,7 +156,7 @@ func BuildInteractiveInspectedContextAnalysis(
 		analysis.ContextMessages[last].Content,
 	)
 	analysis.ContextParts = append([]ContextAnalysisPart(nil), analysis.ContextMessages...)
-	return analysis
+	return analysis, nil
 }
 
 func inspectedSystemPrompt(

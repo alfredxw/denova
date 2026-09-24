@@ -39,6 +39,8 @@ export function agentCommandErrorMessage(error: unknown, t: TFunction) {
     ? (error as { code: string }).code
     : ''
   switch (code) {
+    case 'agent_runtime.capability_unsupported':
+      return withErrorLogID(t('agentRuntime.capabilityUnsupported'), error)
     case 'agent_runtime.target_operation_mismatch':
       return withErrorLogID(t('chat.runtime.operationChanged'), error)
     case 'agent_runtime.queue_conflict':

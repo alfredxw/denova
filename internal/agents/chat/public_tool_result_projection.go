@@ -10,13 +10,12 @@ import (
 	workspacechange "denova/internal/workspace/change"
 )
 
-// projectPublicToolResult derives Denova-only display data from the bounded
-// public ToolResult. The projection never feeds data back into model context;
-// public Agent remains the sole owner of tool execution and durable receipts.
-func projectPublicToolResult(
-	options agentrun.Options,
+// ProjectToolResult derives product display data and change notifications from
+// a confirmed tool receipt. Runtime adapters own execution and persistence;
+// this projection only enriches display data, never model context.
+func ProjectToolResult(
+	projectID string,
 	toolName, payload string,
-	eventMeta agentEventMetadata,
 	data map[string]any,
 	emit func(agentrun.Event),
 ) []error {
@@ -51,14 +50,14 @@ func projectPublicToolResult(
 	if receipt, ok := workspacechange.ParseToolReceipt(toolName, payload); ok {
 		data["workspace_change"] = receipt
 		if emit != nil {
-			emit(agentrun.Event{Type: "workspace_change", Data: eventMeta.appendTo(map[string]any{
-				"id": receipt.ChangeSetID, "project_id": options.ProjectID,
+			emit(agentrun.Event{Type: "workspace_change", Data: map[string]any{
+				"id": receipt.ChangeSetID, "project_id": projectID,
 				"change_group_id": receipt.ChangeGroupID, "review_thread_id": receipt.ReviewThreadID,
 				"change_set_id": receipt.ChangeSetID, "path": receipt.Path,
 				"affected_paths": []string{receipt.Path}, "base_revision": receipt.BaseRevision,
 				"revision": receipt.Revision, "review_status": receipt.ReviewStatus,
 				"apply_state": receipt.ApplyState, "workspace_change": receipt,
-			})})
+			}})
 		}
 	}
 	return warnings

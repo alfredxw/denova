@@ -12,6 +12,7 @@ import (
 	chatagent "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	conversationapp "denova/internal/app/conversation"
@@ -26,6 +27,7 @@ const RuntimeMode = "agent_chat"
 // by one Project runtime. Project identity and session state stay in Service.
 type Host interface {
 	BaseRuntime() (config.Config, *agentexecution.Runtime)
+	AgentEngines() *agentruntime.Engines
 	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string
 	OnVerifiedMutations(context.Context, string, *book.VersionService, config.Config, []agenttool.Mutation, agenttool.Verification)
@@ -56,7 +58,7 @@ type ActiveView struct {
 	Runtime               agentrun.RuntimeStatus
 	RuntimeProjectionOK   bool
 	StreamAttached        bool
-	PendingAsk            *session.AskInteraction
+	PendingAsks           []*session.AskInteraction
 	PendingInterruptionID string
 }
 
@@ -109,17 +111,6 @@ type ChatRequest = chatagent.ChatRequest
 
 const TurnOriginAutomation = "automation"
 
-type TurnBusyPolicy string
-
-const (
-	// TurnBusyReject preserves interactive AgentChat's immediate feedback when
-	// another operation already owns the conversation.
-	TurnBusyReject TurnBusyPolicy = "reject"
-	// TurnBusyWait serializes durable background turns behind the current
-	// conversation operation without imposing an LLM timeout.
-	TurnBusyWait TurnBusyPolicy = "wait"
-)
-
 // TurnPolicy narrows one project-Agent turn without creating another Agent
 // kind. DisabledCapabilities is an invocation ceiling: it can remove project
 // capabilities but can never enable a capability disabled by project settings.
@@ -129,14 +120,13 @@ type TurnPolicy struct {
 	TraceID              string
 	SessionTitle         string
 	ModelProfileID       string
-	BusyPolicy           TurnBusyPolicy
 	DisabledCapabilities []string
 }
 
 // TurnRequest is the complete admission input shared by interactive AgentChat
 // and background project automation. Task is optional; callers that already
-// own a reconnectable display task may supply it so one task identity spans
-// automation accounting and AgentChat execution.
+// own a reconnectable display task may supply it. Admission never waits for
+// another execution while holding the common AgentChat admission lock.
 type TurnRequest struct {
 	Binding Binding
 	ChatRequest

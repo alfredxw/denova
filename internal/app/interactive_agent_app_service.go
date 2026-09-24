@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
+	"denova/internal/agents/conversationconfig"
 	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 )
@@ -56,6 +58,9 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}
+	if cycle.externalAssembly != nil {
+		return agentchat.ContextAnalysis{}, conversationconfig.ErrRuntimeCapabilityUnsupported
+	}
 	inspection, err := cycle.executionRuntime.Inspect(ctx, agentexecution.Cycle{
 		Definition: cycle.definition, Conversation: cycle.conversation,
 		BookService: cycle.bookService, Request: cycle.request, Options: cycle.options(""),
@@ -65,7 +70,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	}
 	return agentchat.BuildInteractiveInspectedContextAnalysis(
 		&cycle.runtimeCfg, cycle.systemPrompt, inspection,
-	), nil
+	)
 }
 
 func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agentcompaction.Result, error) {
@@ -162,7 +167,9 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	resolvedRequest := cycle.request
 	cycle.request = identity.chatRequest
 	cycle.request.StyleRules = resolvedRequest.StyleRules
-	var accepted *agentexecution.Operation
+	var accepted interface {
+		Wait(context.Context) agentrun.Outcome
+	}
 	runAccepted := func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] run begin id=%s command_id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), identity.request.CommandID, cycle.storyID, cycle.branchID, identity.request.RegenerateFromTurnID, len(identity.request.Message), len(identity.request.StyleScenes)))
@@ -194,16 +201,29 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	options := cycle.options(task.ID())
 	options.TurnID = identity.request.RegenerateFromTurnID
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	accepted, err = cycle.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
-		Cycle: agentexecution.Cycle{
-			Definition:   cycle.definition,
-			Conversation: cycle.conversation,
-			BookService:  cycle.bookService,
-			Request:      cycle.request,
-			Options:      options,
-		},
-		Emit: task.Emit,
-	})
+	if cycle.externalAssembly != nil {
+		state, stateErr := agentruntime.GameState(options, cycle.store)
+		if stateErr == nil {
+			var control *agentruntime.ExternalController
+			control, err = a.AgentEngines().ExternalControl(options, state)
+			if err == nil {
+				accepted, err = control.Start(acceptCtx, agentruntime.ExternalCycleInput{Request: cycle.request, RegenerateFromTurnID: identity.request.RegenerateFromTurnID}, s.externalGameFactory(cycle, task.ID()), task.Emit)
+			}
+		} else {
+			err = stateErr
+		}
+	} else {
+		accepted, err = cycle.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
+			Cycle: agentexecution.Cycle{
+				Definition:   cycle.definition,
+				Conversation: cycle.conversation,
+				BookService:  cycle.bookService,
+				Request:      cycle.request,
+				Options:      options,
+			},
+			Emit: task.Emit,
+		})
+	}
 	releaseAcceptance()
 	if err != nil {
 		task.RejectStart(err)

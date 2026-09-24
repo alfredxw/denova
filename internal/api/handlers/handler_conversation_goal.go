@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"errors"
+
+	"denova/internal/agents/conversationconfig"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -48,6 +51,8 @@ func (h *Handlers) HandleConversationGoalMutate(ctx context.Context, c *app.Requ
 
 func writeConversationGoalError(c *app.RequestContext, err error) {
 	switch {
+	case errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported):
+		writeErrorKey(c, consts.StatusBadRequest, "agentRuntime.capabilityUnsupported")
 	case appsvc.IsConversationGoalRevisionConflict(err):
 		writeErrorKey(c, consts.StatusConflict, "api.goal.revisionConflict")
 	case appsvc.IsConversationGoalStateChanged(err):

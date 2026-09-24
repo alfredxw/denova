@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { vi } from 'vitest'
@@ -168,8 +169,14 @@ vi.mock('@/components/layout/adaptive-surface', () => ({
   ),
 }))
 
+vi.mock('@/features/platform/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/features/platform/api')>(),
+  management: vi.fn().mockResolvedValue([]),
+}))
+
 export function renderView(ui: ReactNode) {
-  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={client}><TooltipProvider delayDuration={0}>{ui}</TooltipProvider></QueryClientProvider>)
 }
 
 export function project(path: string, name: string, sessionId: string, title: string): AgentChatProject {

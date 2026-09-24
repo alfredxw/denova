@@ -121,7 +121,7 @@ func (c *runTokenUsageCollector) EmitIfAny(emit func(agentrun.Event), generatedB
 	if stats.PromptTokens > 0 {
 		stats.CacheHitRate = roundRatio(float64(stats.CachedPromptTokens) / float64(stats.PromptTokens))
 	}
-	emit(agentrun.Event{Type: "token_usage", Data: map[string]any{
+	data := map[string]any{
 		"created_at":             time.Now().UTC().Format(time.RFC3339Nano),
 		"run_id":                 stats.RunID,
 		"agent_kind":             stats.AgentKind,
@@ -135,7 +135,8 @@ func (c *runTokenUsageCollector) EmitIfAny(emit func(agentrun.Event), generatedB
 		"model_calls":            stats.ModelCalls,
 		"generated_bytes":        stats.GeneratedBytes,
 		"usage_calls":            stats.Calls,
-	}})
+	}
+	emit(agentrun.Event{Type: "token_usage", Data: data})
 }
 
 func toolNamesFromCalls(calls []agent.ToolCall) []string {

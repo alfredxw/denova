@@ -177,7 +177,9 @@ type cachedBookVersioning struct {
 }
 
 func supportsVersions(projectType projectdomain.Type) bool {
-	return projectType == projectdomain.TypeBook || projectType == projectdomain.TypeAgents
+	// Source Projects use the same Store-owned history as other workbench Projects.
+	// Their own .git directory remains excluded and is never repurposed.
+	return projectType == projectdomain.TypeBook || projectType == projectdomain.TypeAgents || projectType == projectdomain.TypeGeneral
 }
 
 func (service *Service) mutationVersioning(runtime projectRuntime) MutationVersioning {

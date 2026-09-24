@@ -559,7 +559,32 @@ func projectFilesTestServiceWithOptions(t *testing.T, options ...ServiceOption) 
 	if _, err := registry.EnsureStore(record); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(registry, options...), record.ID, workspace
+	service := NewService(registry, options...)
+	t.Cleanup(service.Close)
+	return service, record.ID, workspace
+}
+
+func TestGeneralProjectVersionsPreserveSourceAndUserGit(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	mustWriteProjectFile(t, workspace, "denova.game.json", "original source")
+	mustWriteProjectFile(t, workspace, ".git/config", "user repository")
+	created, err := service.CreateVersion(context.Background(), projectID, "Initial source", book.VersionSourceManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Version == nil {
+		t.Fatal("source version was not created")
+	}
+	mustWriteProjectFile(t, workspace, "denova.game.json", "changed source")
+	if _, err := service.RestoreVersion(context.Background(), projectID, created.Version.ID, []string{"denova.game.json"}); err != nil {
+		t.Fatal(err)
+	}
+	for relative, expected := range map[string]string{"denova.game.json": "original source", ".git/config": "user repository"} {
+		data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(relative)))
+		if err != nil || string(data) != expected {
+			t.Fatalf("restored %s = %q, %v", relative, data, err)
+		}
+	}
 }
 
 func mustWriteProjectFile(t *testing.T, root, relative, content string) {

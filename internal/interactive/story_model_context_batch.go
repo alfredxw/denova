@@ -116,9 +116,16 @@ func newAgentContextBatchIntent(
 }
 
 func validateAgentContextMessages(messages []ModelContextMessage) error {
-	values := make([]*agent.Message, len(messages))
-	for index, message := range messages {
-		values[index] = AgentMessageFromModelContext(message)
+	values := make([]*agent.Message, 0, len(messages))
+	for _, message := range messages {
+		value := AgentMessageFromModelContext(message)
+		if UserGuidanceCommand(value) != "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	if len(values) == 0 {
+		return nil
 	}
 	if err := agent.ValidateContextCommitMessages(values); err != nil {
 		return fmt.Errorf("%w: %v", ErrModelContextBatchIdentityConflict, err)

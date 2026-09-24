@@ -87,7 +87,7 @@ func (processor *standardProcessor) Process(
 	batchSize := max(1, request.BatchSize)
 	limit = min(limit, max(1, processor.policy.MaxBytes/batchSize))
 	envelope := agent.ToolMessage(agent.TextToolResult(""), request.ProviderCallID, agent.WithToolName(request.ToolName))
-	tokenLimit := processor.policy.BatchTokenLimit()/batchSize - agent.EstimateMessageTokens(envelope)
+	tokenLimit := processor.policy.BatchTokenLimit()/batchSize - agent.EstimateMessageTextTokens(envelope)
 	descriptor.MaxResultBytes = limit
 	result := request.Result
 	result.ModelContent = strings.ToValidUTF8(result.ModelContent, "\uFFFD")
@@ -215,7 +215,7 @@ func canonicalArtifact(artifact agent.ToolArtifactRef) agent.ToolArtifactRef {
 	artifact.Purpose = agent.ToolArtifactPurpose(strings.TrimSpace(string(artifact.Purpose)))
 	artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.ReadablePath, "\uFFFD"))
 	artifact.ContentType = strings.TrimSpace(artifact.ContentType)
-	if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 {
+	if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 && !agent.IsNativeImageMediaType(artifact.ContentType) {
 		artifact.EstimatedTokens = estimatedTokens(artifact.EstimatedBytes)
 	}
 	return artifact

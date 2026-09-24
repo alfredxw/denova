@@ -41,7 +41,7 @@ func (manager structuralTestCompaction) Compact(_ context.Context, request agent
 	manager.t.Helper()
 	found := false
 	for _, tool := range request.ModelSnapshot.ResolvedOptions().Tools {
-		found = found || tool.Name == "task"
+		found = found || tool.Name == "send"
 	}
 	if !found {
 		manager.t.Fatal("structural preparation omitted delegated tool schemas")
@@ -140,15 +140,28 @@ func TestWritingStructuralOperationsRebuildCanonicalSession(t *testing.T) {
 				}
 				runtime = newRuntime()
 			}
-			before := sess.History()
+			before, err := sess.ReadCanonicalMessages(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
 			result, err := runtime.ExecuteStructuralOperation(ctx, newCycle(), agentstructural.Spec{
 				Action: agentstructural.Compact, CommandID: "writing-compact", Ref: agentrun.ContextCompactionRef{Force: true},
 			})
 			if err != nil || !result.Compaction.Triggered {
 				t.Fatalf("writing compaction failed: %v", err)
 			}
-			if !reflect.DeepEqual(before, sess.History()) {
+			after, err := sess.ReadCanonicalMessages(ctx)
+			if err != nil || !reflect.DeepEqual(before, after) {
 				t.Fatal("manual compaction changed canonical writing messages")
+			}
+			cards := 0
+			for _, entry := range sess.History() {
+				if entry.Role == "context_compaction" && entry.Phase == "agent" && entry.Status == "success" && entry.Content == result.Compaction.Summary {
+					cards++
+				}
+			}
+			if cards != 1 {
+				t.Fatalf("manual compaction cards = %d, want 1", cards)
 			}
 			if err := runtime.Close(ctx); err != nil {
 				t.Fatal(err)

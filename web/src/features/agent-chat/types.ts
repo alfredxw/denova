@@ -22,7 +22,7 @@ export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore'
 
 const BOOK_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore']
 const AGENTS_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = ['versions']
-const GENERAL_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = []
+const GENERAL_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = ['versions']
 
 /** Declares page availability independently from tab-menu presentation. */
 export function agentChatPageIdsForProjectType(projectType: AgentChatProjectType): readonly AgentChatPageId[] {

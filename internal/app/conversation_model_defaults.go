@@ -18,6 +18,10 @@ var ErrConversationModelDefaultsNotSaved = errors.New("conversation model defaul
 // Only explicit model controls update the user-wide new-conversation defaults.
 // Restoring, running or creating a conversation must never remember its snapshot.
 func (a *App) rememberConversationModel(snapshot conversationconfig.Snapshot, patch conversationconfig.Patch) error {
+	if patch.Runtime != nil {
+		// Applying saved Agent preferences changes this conversation only.
+		return nil
+	}
 	if snapshot.AgentKind != config.AgentKindIDE && snapshot.AgentKind != config.AgentKindInteractiveStory {
 		return nil
 	}

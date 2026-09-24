@@ -71,6 +71,9 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 		if record.Envelope.Type == StoryEventTypeTurnDraft {
 			upgrade = "resilience-v1"
 		}
+		if record.Envelope.Type == StoryEventTypeExtensionRecord {
+			upgrade = "extensions-v1"
+		}
 		eventRecords = append(eventRecords, record)
 		payload, err := json.Marshal(record.Raw)
 		if err != nil {

@@ -12,6 +12,29 @@ import (
 	"denova/internal/localfs"
 )
 
+func TestCanonicalMutationPanicDoesNotStrandTheSessionLock(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sess, err := store.GetOrCreate("panic-recovery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("mutation did not propagate the panic to its worker boundary")
+			}
+		}()
+		_ = sess.withCanonicalMutation(context.Background(), "test panic cleanup", func() error { panic("fixture") })
+	}()
+	if err := sess.Append(agent.UserMessage("The session remains usable.")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDisplayMutationRefreshesDomainCommitFromAnotherSession(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

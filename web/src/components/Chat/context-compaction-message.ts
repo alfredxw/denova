@@ -18,6 +18,7 @@ export function buildContextCompactionMessage(data: Record<string, unknown>, id:
       status: messageStatus,
       content: readString(data.summary) || readString(data.delta),
       phase: readString(data.phase),
+      runtime_managed: data.runtime_managed === true,
       attempt: readNumber(data.attempt),
       tokens_before: readNumber(data.tokens_before),
       tokens_after: readNumber(data.tokens_after),

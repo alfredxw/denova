@@ -7,11 +7,9 @@ import (
 	"strings"
 
 	"denova/config"
-	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
 	agentchatapp "denova/internal/app/agentchat"
 	automationapp "denova/internal/app/automation"
-	appTask "denova/internal/app/task"
 	"denova/internal/automation"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
@@ -92,12 +90,17 @@ func (host automationHost) ResolveTarget(target automation.ExecutionTarget) (aut
 		return automation.ExecutionTarget{}, fmt.Errorf("project registry is unavailable")
 	}
 	if projectID := strings.TrimSpace(target.ProjectID); projectID != "" {
-		if record, _, err := host.app.resolveProject(projectID, true); err == nil {
-			return automation.ExecutionTarget{
-				Kind: automation.TargetKindWorkspace, ProjectID: record.ID, Workspace: record.WorkspacePath,
-			}, nil
+		record, _, err := host.app.resolveProject(projectID, true)
+		if err == nil {
+			return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: record.ID, Workspace: record.WorkspacePath}, nil
+		}
+		// Only released directory-derived locators may resolve by their path.
+		// A missing stable Project must never silently select another Project.
+		if !strings.HasPrefix(projectID, "workspace-") || strings.TrimSpace(target.Workspace) == "" {
+			return automation.ExecutionTarget{}, err
 		}
 	}
+
 	record, _, err := host.app.resolveProjectByWorkspace(target.Workspace)
 	if err != nil {
 		return automation.ExecutionTarget{}, err
@@ -178,9 +181,7 @@ func (host automationHost) AcquireWorkspaceOperation(ctx context.Context, worksp
 
 func (host automationHost) AcceptProjectConversationTurn(
 	ctx context.Context,
-	task *appTask.Task,
 	turn automationapp.ProjectConversationTurn,
-	emit func(agentrun.Event),
 ) (automationapp.ProjectConversationExecution, error) {
 	if host.app == nil {
 		return nil, fmt.Errorf("application runtime is unavailable")
@@ -189,52 +190,22 @@ func (host automationHost) AcceptProjectConversationTurn(
 	if projectID == "" {
 		return nil, fmt.Errorf("automation execution requires a target Project")
 	}
-	busyPolicy := agentchatapp.TurnBusyReject
-	if turn.SessionStrategy == automation.SessionStrategyPerTask {
-		busyPolicy = agentchatapp.TurnBusyWait
-	}
 	return host.app.AgentChat().AcceptTurn(ctx, agentchatapp.TurnRequest{
 		Binding: agentchatapp.Binding{ProjectID: projectID, SessionID: turn.SessionID},
 		ChatRequest: agentchatapp.ChatRequest{
 			CommandID: turn.CommandID,
 			Message:   turn.Message,
 		},
-		Task: task,
 		Policy: agentchatapp.TurnPolicy{
 			Origin:         agentchatapp.TurnOriginAutomation,
 			OriginID:       turn.AutomationTaskID,
 			TraceID:        turn.RunID,
 			SessionTitle:   turn.SessionTitle,
 			ModelProfileID: turn.ModelProfileID,
-			BusyPolicy:     busyPolicy,
 		},
-		Emit: emit,
 	})
 }
 
-func (host automationHost) RegisterTask(task *appTask.Task, workspace string) error {
-	if host.app == nil {
-		return fmt.Errorf("application runtime is unavailable")
-	}
-	host.app.mu.Lock()
-	defer host.app.mu.Unlock()
-	if strings.TrimSpace(workspace) != "" {
-		return host.app.registerWorkspaceTaskLocked(task, workspace, false)
-	}
-	if err := host.app.initializeLifecycleLocked(); err != nil {
-		return err
-	}
-	return host.app.registerOwnedTaskLocked(task, "", host.app.rootScope)
-}
-
-func (host automationHost) UnregisterTask(task *appTask.Task) {
-	if host.app != nil {
-		host.app.unregisterWorkspaceTask(task)
-	}
-}
-
-// automationMutationCallback is notification-only. Durable HostEffect
-// reconciliation remains the sole trigger authority for tool mutations.
 func (a *App) automationMutationCallback(_ string) func(context.Context, []agenttool.Mutation, agenttool.Verification) {
 	return func(context.Context, []agenttool.Mutation, agenttool.Verification) {
 		a.Automation().SignalReconciliation()

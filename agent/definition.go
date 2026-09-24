@@ -216,7 +216,8 @@ type Definition struct {
 	ModelIdentity CapabilityIdentity
 	Instructions  string
 	// AttachmentRoot is the current host's absolute owner root for durable
-	// slash-relative Attachment paths. It is runtime routing, not behavior
+	// slash-relative user Attachment paths. Tool images use Artifacts' resolver.
+	// It is runtime routing, not behavior
 	// identity, and is therefore excluded from Definition fingerprints.
 	AttachmentRoot string
 
@@ -231,6 +232,7 @@ type Definition struct {
 	Context     ContextSource
 	Goal        GoalManager
 	Compaction  CompactionManager
+	Elision     *ElisionPolicy
 	Permission  PermissionPolicy
 	Interaction InteractionPolicy
 	Canonical   CanonicalAdapter
@@ -356,6 +358,11 @@ func validateDefinition(definition Definition) error {
 }
 
 func initializeDefinition(ctx context.Context, definition Definition) (Definition, error) {
+	var err error
+	definition.Elision, err = normalizeElisionPolicy(definition.Elision)
+	if err != nil {
+		return Definition{}, err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -433,6 +440,7 @@ type preparedDefinition struct {
 	clearRevision           uint64
 	contextState            contextStateSnapshot
 	contextSequence         int
+	elision                 elisionRecord
 }
 
 func prepareDefinition(
@@ -501,6 +509,7 @@ func definitionBehaviorIdentity(definition Definition) (string, error) {
 		Toolset: identityOfToolset(definition.Tools), ResultProcessor: identityOfToolResultProcessor(definition.ResultProcessor),
 		Artifacts: identityOfToolArtifactStorage(definition.Artifacts), Context: identityOfContext(definition.Context),
 		Goal: identityOfGoal(definition.Goal), Compaction: identityOfCompaction(definition.Compaction),
+		Elision:    definition.Elision,
 		Permission: identityOfPermission(definition.Permission), Interaction: identityOfInteraction(definition.Interaction),
 		Canonical:   identityOfCanonical(definition.Canonical),
 		Effects:     identityOfEffects(definition.Effects),
@@ -619,6 +628,7 @@ type definitionIdentity struct {
 	Context         CapabilityIdentity
 	Goal            CapabilityIdentity
 	Compaction      CapabilityIdentity
+	Elision         *ElisionPolicy `json:",omitempty"`
 	Permission      CapabilityIdentity
 	Interaction     CapabilityIdentity
 	Canonical       CapabilityIdentity

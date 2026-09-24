@@ -8,17 +8,14 @@ import (
 )
 
 const (
-	bindingKindWriting    = "writing"
-	bindingKindProject    = "project"
-	bindingKindGame       = "game"
-	bindingKindAutomation = "automation"
-	bindingKindUser       = "user"
+	bindingKindWriting = "writing"
+	bindingKindProject = "project"
+	bindingKindGame    = "game"
 
-	bindingProfileWriting    = "writing"
-	bindingProfileAgentChat  = "agent_chat"
-	bindingProfileGame       = "game"
-	bindingProfileAutomation = "automation"
-	bindingProfileImage      = "image"
+	bindingProfileWriting   = "writing"
+	bindingProfileAgentChat = "agent_chat"
+	bindingProfileGame      = "game"
+	bindingProfileImage     = "image"
 
 	bindingLabelWorkspace = "workspace"
 	bindingLabelProject   = "project_id"
@@ -26,7 +23,6 @@ const (
 	bindingLabelSession   = "session_id"
 	bindingLabelStory     = "story_id"
 	bindingLabelBranch    = "branch_id"
-	bindingLabelTask      = "task_id"
 )
 
 // ModeAgentChat identifies user-level project conversations that reuse a
@@ -48,7 +44,6 @@ type RuntimeBinding struct {
 	SessionID string
 	StoryID   string
 	BranchID  string
-	TaskID    string
 }
 
 // SessionStorageScope is the stable Project and product-journal scope carried
@@ -93,8 +88,7 @@ func StorageScopeFromSessionSelector(selector agent.SessionSelector) (SessionSto
 		switch selector.Namespace {
 		case agentSessionNamespacePrefix + bindingKindWriting + "." + bindingProfileWriting,
 			agentSessionNamespacePrefix + bindingKindWriting + "." + bindingProfileImage,
-			agentSessionNamespacePrefix + bindingKindProject + "." + bindingProfileAgentChat,
-			agentSessionNamespacePrefix + bindingKindAutomation + "." + bindingProfileAutomation:
+			agentSessionNamespacePrefix + bindingKindProject + "." + bindingProfileAgentChat:
 			scope.Journal = SessionJournalProduct
 		case agentSessionNamespacePrefix + bindingKindGame + "." + bindingProfileGame:
 			scope.Journal = SessionJournalStory
@@ -129,7 +123,6 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 	appendAttribute(bindingLabelSession, binding.SessionID)
 	appendAttribute(bindingLabelStory, binding.StoryID)
 	appendAttribute(bindingLabelBranch, binding.BranchID)
-	appendAttribute(bindingLabelTask, binding.TaskID)
 	projectID := attributes[bindingLabelProject]
 	dropRuntimeWorkspace := func() { delete(attributes, bindingLabelWorkspace) }
 
@@ -137,7 +130,7 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 	var identity bindingIdentity
 	switch strings.TrimSpace(binding.AgentKind) {
 	case AgentKindIDE:
-		if projectID == "" || attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
+		if projectID == "" || attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" {
 			return invalid()
 		}
 		dropRuntimeWorkspace()
@@ -153,7 +146,7 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 		identity = bindingIdentity{kind: bindingKindWriting, profile: profile, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
 	case AgentKindGeneral:
 		if strings.TrimSpace(binding.Mode) != bindingProfileAgentChat || projectID == "" ||
-			attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
+			attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" {
 			return invalid()
 		}
 		dropRuntimeWorkspace()
@@ -164,7 +157,7 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 		}
 	case AgentKindInteractiveStory:
 		if projectID == "" || attributes[bindingLabelStory] == "" ||
-			attributes[bindingLabelBranch] == "" || binding.TaskID != "" {
+			attributes[bindingLabelBranch] == "" {
 			return invalid()
 		}
 		dropRuntimeWorkspace()
@@ -174,17 +167,11 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 		}
 	case AgentKindImage:
 		if projectID == "" || attributes[bindingLabelSession] == "" ||
-			binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
+			binding.StoryID != "" || binding.BranchID != "" {
 			return invalid()
 		}
 		dropRuntimeWorkspace()
 		identity = bindingIdentity{kind: bindingKindWriting, profile: bindingProfileImage, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
-	case AgentKindAutomation:
-		if projectID == "" || attributes[bindingLabelSession] == "" || attributes[bindingLabelTask] == "" || binding.StoryID != "" || binding.BranchID != "" {
-			return invalid()
-		}
-		dropRuntimeWorkspace()
-		identity = bindingIdentity{kind: bindingKindAutomation, profile: bindingProfileAutomation, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
 	default:
 		return bindingIdentity{}, fmt.Errorf("%w: unsupported agent profile %q", ErrInvalidBinding, binding.AgentKind)
 	}
@@ -220,8 +207,6 @@ func BindingSelector(agentKind, projectID string) (agent.SessionSelector, error)
 		kind, profile = bindingKindGame, bindingProfileGame
 	case AgentKindImage:
 		kind, profile = bindingKindWriting, bindingProfileImage
-	case AgentKindAutomation:
-		kind, profile = bindingKindAutomation, bindingProfileAutomation
 	default:
 		return agent.SessionSelector{}, fmt.Errorf("%w: unsupported agent profile %q", ErrInvalidBinding, agentKind)
 	}
@@ -279,7 +264,6 @@ func ForegroundProjectBindingSelectors(projectID string) ([]agent.SessionSelecto
 		{bindingKindWriting, bindingProfileWriting},
 		{bindingKindWriting, bindingProfileImage},
 		{bindingKindGame, bindingProfileGame},
-		{bindingKindAutomation, bindingProfileAutomation},
 	}
 	selectors := make([]agent.SessionSelector, 0, len(profiles))
 	for _, candidate := range profiles {

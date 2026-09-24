@@ -86,6 +86,14 @@ func (agent *modelToolLoop) beforeModelCall(ctx context.Context, call *ModelCall
 			return ctx, nil, errors.New("before model call middleware returned nil model call")
 		}
 	}
+	call.modelIdentity = agent.modelIdentity
+	call.inputEstimator = inputEstimatorForModel(agent.model)
+	if model, ok := call.Model.(DefinitionModel); ok {
+		call.modelIdentity = model.ModelIdentity()
+	}
+	if model, ok := call.Model.(ModelInputEstimator); ok {
+		call.inputEstimator = model.InputEstimator()
+	}
 	call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
 	return ctx, call, nil
 }

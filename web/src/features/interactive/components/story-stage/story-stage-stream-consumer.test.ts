@@ -36,21 +36,31 @@ function consumerFixture(initialMessages: AgentUIMessage[] = []) {
     resetForCheckpoint: vi.fn(() => setMessages([])),
   } as unknown as LiveMessageAccumulator
   const setActivity = vi.fn()
+  const onTurnPersisted = vi.fn()
   const consumer = createStoryStageStreamConsumer({
     liveAccumulator,
     liveTurnNavigationAnchorId: 'live-turn',
     onRuntimeRecoveryRequired: vi.fn().mockResolvedValue(undefined),
-    onTurnPersisted: vi.fn(),
+    onTurnPersisted,
     setActivity,
     setMessages,
     setStageRuntime: vi.fn(),
     t: ((key: string) => key) as unknown as TFunction,
     updateStageRun: vi.fn(),
   })
-  return { consumer, liveAccumulator, messages: () => messages, setActivity }
+  return { consumer, liveAccumulator, messages: () => messages, setActivity, onTurnPersisted }
 }
 
 describe('story stage stream event contract', () => {
+  it('distinguishes replayed commits from fresh commits for automatic playback', async () => {
+    const fixture = consumerFixture()
+    const data = { story_id: 'story', branch_id: 'main', turn_count: 1, turn: { id: 'turn' } }
+    await fixture.consumer.consume(eventStream([
+      { id: '1', event: 'interactive_turn_persisted', data: JSON.stringify({ ...data, replayed: true }) },
+      { id: '2', event: 'interactive_turn_persisted', data: JSON.stringify(data) },
+    ]), fixture.consumer.initialOutcome())
+    expect(fixture.onTurnPersisted.mock.calls.map(call => call[1])).toEqual([{ replayed: true }, { replayed: false }])
+  })
   it('ends a paused stream without requiring a final game turn or reporting failure', async () => {
     const fixture = consumerFixture()
     const outcome = await fixture.consumer.consume(eventStream([
@@ -107,6 +117,7 @@ describe('story stage stream event contract', () => {
       .filter(([, handling]) => handling === 'ignored')
       .map(([event]) => event)
     expect(ignored).toEqual([
+      'goal_evaluation_failed',
       'context_cleanup',
       'context_normalizer',
       'post_run_verification',
@@ -123,7 +134,7 @@ describe('story stage stream event contract', () => {
     await fixture.consumer.consume(
       eventStream([
         ...ignored.map((event, index) => ({ id: String(index + 1), event, data: '{}' })),
-        { id: '10', event: 'done', data: '{}' },
+        { id: String(ignored.length + 1), event: 'done', data: '{}' },
       ]),
       fixture.consumer.initialOutcome(),
     )
@@ -234,24 +245,6 @@ describe('story stage stream event contract', () => {
     expect(error?.content).toBe('common.modelOutputTruncated')
   })
 
-  it('shows a Goal evaluation failure without failing the completed primary turn', async () => {
-    const fixture = consumerFixture()
-    const outcome = await fixture.consumer.consume(
-      eventStream([
-        {
-          id: '1',
-          event: 'goal_evaluation_failed',
-          data: JSON.stringify({ code: 'agent_runtime.goal_evaluation_failed', detail: 'invalid JSON' }),
-        },
-        { id: '2', event: 'done', data: '{}' },
-      ]),
-      fixture.consumer.initialOutcome(),
-    )
-
-    const warning = buildAgentMessageViews(fixture.messages()).find((view) => view.kind === 'error')
-    expect(warning?.content).toBe('storyStage.activity.goalEvaluationFailed')
-    expect(outcome).toMatchObject({ streamFailed: false, finishedNormally: true, terminalEventReceived: true })
-  })
 })
 
 describe('story stage display checkpoint recovery', () => {

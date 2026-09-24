@@ -98,7 +98,10 @@ func (s *Session) ReadHistoryPage(ctx context.Context, before, limit int) (Histo
 		from = to
 	}
 	pageEntries := append([]HistoryEntry(nil), entries[from:to]...)
-	if err := applyJournalAskAnswers(pageEntries, &s.projection.AgentSessions); err != nil {
+	if err := applyJournalAskAnswers(pageEntries, &s.projection.AgentSessions, s.journal); err != nil {
+		return HistoryPage{}, err
+	}
+	if err := s.applyExternalHistoryOutcomesLocked(ctx, pageEntries); err != nil {
 		return HistoryPage{}, err
 	}
 	return HistoryPage{Entries: pageEntries, NextBefore: start, HasMore: start > 0, Total: total}, nil

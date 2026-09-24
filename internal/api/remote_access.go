@@ -34,6 +34,13 @@ func newRemoteAccessGate(readConfig func() config.RemoteAccessConfig, port strin
 }
 
 func (g *remoteAccessGate) middleware(ctx context.Context, c *app.RequestContext) {
+	// Isolated plugin/game views must not read legacy APIs through the host's
+	// cookies or embed private resources as images, frames, or scripts.
+	c.Response.Header.Set("Cross-Origin-Resource-Policy", "same-origin")
+	if strings.HasPrefix(string(c.Path()), "/api/") && (len(c.GetHeader("Origin")) > 0 || len(c.GetHeader("Referer")) > 0) && !sameOriginRequest(c) {
+		abortWithLocalizedError(c, consts.StatusForbidden, "api.access.originRejected")
+		return
+	}
 	// Cookies also accompany browser-initiated writes and WebSocket upgrades.
 	if needsOriginCheck(c) && !sameOriginRequest(c) {
 		abortWithLocalizedError(c, consts.StatusForbidden, "api.access.originRejected")
@@ -94,6 +101,15 @@ func sameOriginRequest(c *app.RequestContext) bool {
 		}
 		if forwarded := string(c.GetHeader("X-Forwarded-Proto")); forwarded != "" {
 			scheme = forwarded
+		}
+	}
+	// HTTP proxy WebSocket upgrades report ws/wss, while the browser Origin
+	// remains the embedding page's http/https origin.
+	if strings.EqualFold(string(c.GetHeader("Upgrade")), "websocket") {
+		if scheme == "ws" {
+			scheme = "http"
+		} else if scheme == "wss" {
+			scheme = "https"
 		}
 	}
 	return strings.EqualFold(parsed.Host, host) && strings.EqualFold(parsed.Scheme, scheme)

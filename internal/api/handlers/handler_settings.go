@@ -11,6 +11,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agentprofiles"
+	agentruntime "denova/internal/agents/runtime"
 	appsvc "denova/internal/app"
 	appsettings "denova/internal/app/settings"
 )
@@ -22,7 +23,7 @@ func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext)
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, layered)
+	writeSettingsSnapshot(c, layered)
 }
 
 // HandleAgentApprovalRuleDelete atomically revokes one server-generated user
@@ -38,7 +39,7 @@ func (h *Handlers) HandleAgentApprovalRuleDelete(ctx context.Context, c *app.Req
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, layered)
+	writeSettingsSnapshot(c, layered)
 }
 
 // HandleSettingsPatch applies only fields present in changes. Omitted fields
@@ -83,7 +84,16 @@ func (h *Handlers) HandleSettingsPatch(ctx context.Context, c *app.RequestContex
 		}
 		return
 	}
-	writeJSON(c, consts.StatusOK, layered)
+	writeSettingsSnapshot(c, layered)
+}
+
+// Runtime-owned UI metadata stays outside persisted Settings and the public
+// Agent module. All settings mutations return the same inspection contract.
+func writeSettingsSnapshot(c *app.RequestContext, layered config.LayeredSettings) {
+	writeJSON(c, consts.StatusOK, struct {
+		config.LayeredSettings
+		AgentConfiguration map[string]agentruntime.AgentConfiguration `json:"agent_configuration"`
+	}{layered, agentruntime.ProjectAgentConfiguration(layered.Effective)})
 }
 
 func settingsTarget(c *app.RequestContext) appsettings.Target {

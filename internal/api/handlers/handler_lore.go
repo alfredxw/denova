@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	imageapp "denova/internal/app/image"
 	loreapp "denova/internal/app/lore"
 	"denova/internal/book/lore"
 	imageasset "denova/internal/image/asset"
@@ -65,7 +66,21 @@ func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.Reque
 	}
 	item, err := h.app.Lore().GenerateItemImage(ctx, scope.ProjectID, c.Param("id"), body)
 	if err != nil {
-		writeProjectBookError(c, err, "api.projectBook.loreFailed")
+		var toolErr *imageapp.ImageToolError
+		switch {
+		case errors.Is(err, imageapp.ErrImageToolNotCalled):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageAgentNotCalled")
+		case errors.Is(err, imageapp.ErrImageOutputMissing):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageAgentOutputMissing")
+		case errors.As(err, &toolErr):
+			if toolErr.Detail == "" {
+				writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageAgentToolFailed")
+			} else {
+				writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageAgentToolFailedWithDetail", "detail", toolErr.Detail)
+			}
+		default:
+			writeProjectBookError(c, err, "api.projectBook.loreFailed")
+		}
 		return
 	}
 	writeJSON(c, consts.StatusOK, item)

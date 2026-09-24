@@ -22,7 +22,7 @@ export type AgentChatListItem =
   | { kind: 'run'; key: string; runId: string; sections: AgentRunPresentationSection[]; sourceIndex: number }
   | { kind: 'attachment'; key: string; runId: string; content: ReactNode }
 
-export function AgentChatListRow({ projectId, item, nextItem, executionTimings, isStreaming, tailFollowActive, activeTraceDisplay, subAgentPresentation, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
+export function AgentChatListRow({ projectId, item, nextItem, executionTimings, isStreaming, tailFollowActive, activeTraceDisplay, subAgentPresentation, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
   executionTimings: ReadonlyMap<string, AgentExecutionTiming>
@@ -42,6 +42,7 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
   onSwitchMessageVersion?: (view: AgentMessageView, direction: -1 | 1) => void
   onOpenSubAgentSession?: (view: AgentMessageView) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onReadAloud?: (message: AgentMessageView) => void
   onGenerateInteractiveImage?: (view: AgentMessageView) => void
   generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
@@ -76,7 +77,8 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
         onSwitchMessageVersion={isStreaming || !mutationsAllowed ? undefined : onSwitchMessageVersion}
         onOpenSubAgentSession={onOpenSubAgentSession}
         onInsertIllustration={onInsertIllustration}
-        onGenerateInteractiveImage={isStreaming || !mutationsAllowed ? undefined : onGenerateInteractiveImage}
+        onReadAloud={onReadAloud}
+        onGenerateInteractiveImage={isStreaming ? undefined : onGenerateInteractiveImage}
         generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
         activeSubAgentSessionKey={activeSubAgentSessionKey}
         subAgentPresentation={subAgentPresentation}
@@ -110,9 +112,11 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
     ? (item.sections.find(section => section.kind === 'process' && section.active)?.key ||
       item.sections.find(section => section.kind === 'process')?.key)
     : undefined
-  // Terminal replies own their actions. A run with only progress/tools still
-  // needs an accessible reference while running, cancelled, or awaiting input.
+  // Terminal replies own their actions. Progress/tool-only runs expose their
+  // reference after output stops, following the same timing as reply actions.
   const needsRunActions = item.kind === 'run'
+    && !isStreaming
+    && !item.sections.some(section => section.kind === 'process' && section.active)
     && !item.sections.some(section => section.kind === 'message' && section.view.kind === 'assistant')
     && !(nextItem?.kind === 'message' && nextItem.view.kind === 'error' && nextItem.view.metadata.run_id === item.runId)
   useLayoutEffect(() => {
@@ -146,14 +150,7 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
           </div>
         </div>
       ) : item.kind === 'activity' ? (
-        <div>
-          <AgentActivityShimmer content={item.content} />
-          {item.runId ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
-              <AgentRunActions projectId={projectId} runID={item.runId} />
-            </div>
-          ) : null}
-        </div>
+        <AgentActivityShimmer content={item.content} />
       ) : item.kind === 'clear' ? (
         <ContextClearDivider createdAt={item.createdAt} />
       ) : item.kind === 'trace' ? (

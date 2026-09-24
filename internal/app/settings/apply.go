@@ -62,6 +62,7 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	config.ApplyModelEnvironment(cfg)
 	config.ApplyImageAPIEnvironment(cfg)
 	cfg.AgentModels = effective.AgentModels
+	cfg.AgentRuntimes = effective.AgentRuntimes
 	cfg.AgentTools = effective.AgentTools
 	cfg.AgentPrompts = effective.AgentPrompts
 	cfg.AgentSkills = effective.AgentSkills
@@ -205,6 +206,7 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	}
 	config.ApplyImageAPIEnvironment(cfg)
 	cfg.AgentModels = config.MergeAgentModelSettings(cfg.AgentModels, settings.AgentModels)
+	cfg.AgentRuntimes = config.MergeAgentRuntimeSettings(cfg.AgentRuntimes, settings.AgentRuntimes)
 	cfg.AgentTools = config.MergeAgentToolSettings(cfg.AgentTools, settings.AgentTools)
 	cfg.AgentPrompts = config.MergeAgentPromptSettings(cfg.AgentPrompts, settings.AgentPrompts)
 	cfg.AgentSkills = config.MergeAgentSkillSettings(cfg.AgentSkills, settings.AgentSkills)

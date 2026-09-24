@@ -1,4 +1,12 @@
 const automations = {
+  'automations.runs.status.pending': 'Waiting for delivery',
+  'automations.runs.status.accepted': 'Delivered to Project Agent',
+  'automations.runs.status.queued': 'Queued',
+  'automations.runs.status.running': 'Running',
+  'automations.runs.status.suspended': 'Paused',
+  'automations.runs.status.success': 'Completed',
+  'automations.runs.status.failed': 'Failed',
+  'automations.runs.status.aborted': 'Cancelled',
   'automations.title': 'Automations',
   'automations.error': 'Automation error',
   'automations.newTask': 'New automation',

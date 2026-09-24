@@ -3,11 +3,13 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/agents/conversationconfig"
 	novaApp "denova/internal/app"
 )
 
@@ -74,7 +76,7 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 		Reason:          body.Reason, Input: body.Input,
 	})
 	if err != nil {
-		h.writeAgentCommandError(c, err, body.TargetOperationID)
+		h.writeAgentCommandError(ctx, c, err, body.TargetOperationID)
 		return
 	}
 	c.JSON(consts.StatusAccepted, agentCommandReceiptResponse{
@@ -103,9 +105,12 @@ func writingAgentCommandKind(value string) (novaApp.CommandKind, error) {
 	}
 }
 
-func (h *Handlers) writeAgentCommandError(c *app.RequestContext, err error, target string) {
+func (h *Handlers) writeAgentCommandError(ctx context.Context, c *app.RequestContext, err error, target string) {
 	details := map[string]any{"target_operation_id": strings.TrimSpace(target)}
 	switch {
+	case errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported):
+		slog.WarnContext(ctx, "agent_command_unsupported", "target_operation_id", target, "error", err)
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.capability_unsupported", messageKey(c, "agentRuntime.capabilityUnsupported"), details)
 	case errors.Is(err, novaApp.ErrNoActiveAgentOperation):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.invalid_phase", "当前没有运行中的 Agent / No agent operation is running", details)
 	case errors.Is(err, novaApp.ErrStaleAgentOperation):
@@ -125,7 +130,8 @@ func (h *Handlers) writeAgentCommandError(c *app.RequestContext, err error, targ
 	case errors.Is(err, novaApp.ErrNoWorkspace):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.no_workspace", "尚未选择工作区 / No workspace is open", nil)
 	default:
-		writeAgentRuntimeError(c, consts.StatusInternalServerError, "agent_runtime.failed", "Agent 命令提交失败 / Failed to submit agent command", details)
+		slog.ErrorContext(ctx, "agent_command_submit_failed", "target_operation_id", target, "error", err)
+		writeAgentRuntimeError(c, consts.StatusInternalServerError, "agent_runtime.failed", messageKey(c, "api.agent.commandFailed"), details)
 	}
 }
 

@@ -1,7 +1,9 @@
 package agentrun
 
 import (
+	"os"
 	"testing"
+	"time"
 )
 
 func TestRunTraceResolvesChildrenOutsideCatalogAndDetailCaps(t *testing.T) {
@@ -15,6 +17,12 @@ func TestRunTraceResolvesChildrenOutsideCatalogAndDetailCaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := child.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Keep the child outside the newest-file catalog even when both ledgers
+	// are written within the filesystem's timestamp resolution.
+	older := time.Unix(1, 0)
+	if err := os.Chtimes(child.Path(), older, older); err != nil {
 		t.Fatal(err)
 	}
 	parent, err := NewLedgerForRun(workspace, DefaultLoopPolicy().RunLedger, Options{}, "parent")

@@ -7,10 +7,118 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
+	"denova/internal/agents/conversationconfig"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	apptask "denova/internal/app/task"
 	"denova/internal/interactive"
 )
+
+func TestGameDoesNotExposeGoalForAnyRuntime(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Game without Goal", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: story.ID, BranchID: "main"}
+	for _, kind := range []config.RuntimeID{config.RuntimeNative, config.RuntimeCodex, config.RuntimeClaude} {
+		t.Run(string(kind), func(t *testing.T) {
+			current, err := application.ConversationConfig(t.Context(), binding)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next := current.Config
+			next.Runtime = &config.RuntimeSelection{Kind: kind}
+			if kind == config.RuntimeCodex {
+				next.Runtime.Codex = &config.CodexRuntimeSettings{Model: "fixture"}
+			}
+			if kind == config.RuntimeClaude {
+				next.Runtime.Claude = &config.ClaudeRuntimeSettings{Model: "fixture"}
+			}
+			if _, err := application.interactive.SetBranchRuntimeConfig(story.ID, "main", next, current.Revision); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := application.ConversationGoal(t.Context(), binding); !errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported) {
+				t.Fatalf("Game Goal read was not rejected: %v", err)
+			}
+			if _, err := application.MutateConversationGoal(t.Context(), binding, ConversationGoalMutation{Action: "set", Objective: "Continue automatically"}); !errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported) {
+				t.Fatalf("Game Goal mutation was not rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestGameRuntimeSwitchAdmissionAndCrashProjection(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Game switch admission", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: story.ID, BranchID: "main"}
+	initial, err := application.ConversationConfig(t.Context(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalConfig := initial.Config
+	externalConfig.Runtime = &config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "test"}}
+	saved, err := application.interactive.SetBranchRuntimeConfig(story.ID, "main", externalConfig, initial.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := ConversationConfigPatch{Runtime: &config.RuntimeSelection{Kind: config.RuntimeNative}}
+	task, err := apptask.NewDeferred(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.mu.Lock()
+	application.activeInteractiveRun = &interactiveTaskRun{task: task, info: InteractiveTaskInfo{ProjectID: binding.ProjectID, Workspace: application.workspace, StoryID: story.ID, BranchID: "main"}}
+	application.mu.Unlock()
+	if _, err := application.PatchConversationConfig(t.Context(), binding, selection, saved.Revision); !errors.Is(err, ErrAgentOperationActive) {
+		t.Fatalf("active Game switch: %v", err)
+	}
+	task.RejectStart(errors.New("test finished"))
+	if _, err := application.PatchConversationConfig(t.Context(), binding, selection, initial.Revision); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
+		t.Fatalf("stale Game switch: %v", err)
+	}
+	native, err := application.PatchConversationConfig(t.Context(), binding, selection, saved.Revision)
+	if err != nil || native.Engine().Kind != config.RuntimeNative {
+		t.Fatalf("idle Game switch: %+v %v", native, err)
+	}
+	saved, err = application.interactive.SetBranchRuntimeConfig(story.ID, "main", externalConfig, native.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate process loss immediately after input acceptance, before an
+	// interruption can be written. Recovery derives from the existing input.
+	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{CommandID: "crashed", OperationID: "external-game-crashed", Cycle: 1}, "main", "Continue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err = intent.WithContextOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.interactive.CommitPlayerInput(story.ID, intent); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.PatchConversationConfig(t.Context(), binding, selection, saved.Revision); !errors.Is(err, agentruntime.ErrOperationActive) {
+		t.Fatalf("unfinished Game switch: %v", err)
+	}
+	view := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	if !view.RuntimeProjectionOK || view.PendingInterruptionID == "" {
+		t.Fatalf("crash is not recoverable: %+v", view)
+	}
+	if _, err := application.interactiveService().resolveInteractiveStart(InteractiveAgentStartRequest{CommandID: "resume", Message: "Continue", StoryID: story.ID, BranchID: "main", ResumeInterruptionID: view.PendingInterruptionID}); err != nil {
+		t.Fatalf("resume admission: %v", err)
+	}
+	cycle, err := application.interactiveService().prepareInteractiveAgentCycle(t.Context(), interactiveAgentCycleRequest{CommandID: "resume", Message: "Continue", StoryID: story.ID, BranchID: "main", ResumeInterruptionID: view.PendingInterruptionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cycle.externalAssembly == nil || cycle.definition.Model != nil || cycle.request.InputVisibility != "model_only" {
+		t.Fatal("opening resume lost its product context or constructed a Native model")
+	}
+}
 
 func TestConversationConfigUpdateDoesNotMutatePreparedCycle(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())

@@ -13,6 +13,7 @@ import (
 	"denova/config"
 	"denova/internal/agents/canonicalstore"
 	agentexecution "denova/internal/agents/execution"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
 	activityapp "denova/internal/app/activity"
@@ -23,6 +24,7 @@ import (
 	imageapp "denova/internal/app/image"
 	loreapp "denova/internal/app/lore"
 	modelsapp "denova/internal/app/models"
+	platformapp "denova/internal/app/platform"
 	projectbookapp "denova/internal/app/projectbook"
 	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
@@ -32,6 +34,7 @@ import (
 	"denova/internal/concurrency"
 	"denova/internal/interactive"
 	"denova/internal/localfs"
+	"denova/internal/platform"
 	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	"denova/internal/terminal"
@@ -49,6 +52,7 @@ type App struct {
 	sessionStore                    *session.Store
 	session                         *session.Session
 	executionRuntime                *agentexecution.Runtime
+	agentEngines                    *agentruntime.Engines
 	projectRegistry                 *projectdomain.Registry
 	bookMetaStore                   *book.MetaStore
 	versionService                  *book.VersionService
@@ -95,6 +99,7 @@ type App struct {
 	projectBook        *projectbookapp.Service
 	projectFiles       *projectfilesapp.Service
 	servicesOnce       sync.Once
+	platform           *platform.Manager
 
 	mu sync.RWMutex
 	// Keep concurrent manual selections ordered across their conversation and
@@ -195,6 +200,10 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize canonical Agent Session Store: %w", err)
 	}
+	app.platform = platform.New(dataDir, registry)
+	app.platform.ConfigureAgents(canonicalSessions, platformapp.NewModels(platformHost{app}).Resolve)
+	app.platform.ConfigureResources(platformapp.NewResources(platformHost{app}))
+	app.platform.ConfigureStories(platformapp.NewStories(platformHost{app}))
 	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,
@@ -241,6 +250,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		slog.InfoContext(ctx, "[app] No workspace or previously opened book at startup; waiting for frontend selection")
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
+		app.startSkillUpdates(ctx)
 		return app, nil
 	}
 
@@ -271,6 +281,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
 	app.Automation().StartScheduler(ctx)
+	app.startSkillUpdates(ctx)
 	return app, nil
 }
 
@@ -287,7 +298,7 @@ var ErrNoWorkspaceOpen = settingsapp.ErrProjectRequired
 // ErrAgentOperationActive rejects implicit replacement. Callers must target
 // the running operation with Follow Up, Steer, or Abort before starting a new
 // root operation.
-var ErrAgentOperationActive = appagentruntime.ErrOperationActive
+var ErrAgentOperationActive = agentruntime.ErrOperationActive
 
 // ErrWorkspaceTransition prevents a task from binding half to an old
 // workspace and half to a newly constructed runtime.
@@ -299,6 +310,7 @@ var ErrAgentContextChanged = appagentruntime.ErrContextChanged
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {
+		a.agentEngines = agentruntime.NewEngines()
 		a.workspaceApp = &workspaceService{app: a}
 		a.chatApp = &ChatAppService{
 			app: a, starts: apptask.NewStartRegistry(apptask.StartRegistryOptions{Label: "Writing"}),
@@ -345,6 +357,13 @@ func (a *App) chat() *ChatAppService {
 func (a *App) AgentChat() *agentchatapp.Service {
 	a.ensureServices()
 	return a.agentChatApp
+}
+
+// AgentEngines exposes host-local optional runtimes. Access is lazy and does
+// not discover executables or start a connection until an explicit operation.
+func (a *App) AgentEngines() *agentruntime.Engines {
+	a.ensureServices()
+	return a.agentEngines
 }
 
 // ProjectBook exposes Book resources through stable Project identity without
@@ -477,6 +496,11 @@ func (a *App) Close() {
 		if a.terminals != nil {
 			a.terminals.CloseAll()
 		}
+		if a.platform != nil {
+			if err := a.platform.Close(context.Background()); err != nil {
+				slog.Error("platform_close_failed", "error", err)
+			}
+		}
 		// Admission closes before cancellation so no task can slip between the
 		// final registry snapshot and the resource barrier.
 		if rootScope != nil {
@@ -515,6 +539,11 @@ func (a *App) Close() {
 		if a.executionRuntime != nil {
 			if err := a.executionRuntime.Close(context.Background()); err != nil {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close durable agent runtime failed: %v", err))
+			}
+		}
+		if a.agentEngines != nil {
+			if err := a.agentEngines.Close(); err != nil {
+				slog.Error("Close external Agent connections failed", "error", err)
 			}
 		}
 	})

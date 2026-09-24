@@ -1,7 +1,10 @@
 import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
+import { runtimeRoot } from './e2e-paths.mjs'
 import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
+import { extensionImage, extensionOpening, extensionScene } from './e2e-extension-fixture.mjs'
+import { responsesRequest, responsesControl, captureNativeRequest, runtimeCompletion, writeCompletionFrame, finishCompletion } from './e2e-responses-fixture.mjs'
 
 const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
@@ -45,7 +48,7 @@ const regeneratedNarrative = '重试后，月台广播给出了全新的撤离�
 const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
 const gameBranchPlanNarrative = '你在站台地图上发现一条通往钟楼的维护通道。'
 const externalSecret = 'DENOVA_E2E_EXTERNAL_SECRET'
-const externalSecretPath = path.resolve('test-results', 'runtime', 'e2e-external-secret.txt')
+const externalSecretPath = path.join(runtimeRoot, 'e2e-external-secret.txt')
 const agentEditArguments = JSON.stringify({
   path: 'chapters/e2e-agent-chapter.md',
   edits: [{ old_string: 'Agent 修改前。', new_string: 'Agent 已通过工具完成修改。' }],
@@ -188,20 +191,25 @@ function taskRefKey(ref) {
 }
 
 function remainingMultiAgentTaskRefs(body) {
-  const started = toolResultMessages(body, 'task')
+  const started = toolResultMessages(body, 'send')
     .flatMap(message => parseToolResult(message).results ?? [])
-    .map(result => result?.task?.ref)
+    .map(result => result?.ref)
     .filter(ref => ref?.agent && ref?.session && ref?.run)
-  const ready = new Set(toolResultMessages(body, 'task_wait')
+  const ready = new Set(toolResultMessages(body, 'await')
     .flatMap(message => parseToolResult(message).results ?? [])
     .filter(result => result?.ready === true)
-    .map(result => taskRefKey(result?.task?.ref)))
+    .map(result => taskRefKey(result?.run?.ref)))
   return started.filter(ref => !ready.has(taskRefKey(ref)))
 }
 
 function requestIncludesImageAttachment(body, name) {
   const messages = JSON.stringify(body.messages ?? [])
-  return messages.includes(name) && messages.includes('data:image/png;base64,')
+  const images = (body.messages ?? []).flatMap(message => Array.isArray(message.content) ? message.content : [])
+    .filter(part => part.type === 'image_url' && part.image_url?.url?.startsWith('data:image/png;base64,'))
+  const expected = messages.includes('E2E_TWO_IMAGES') ? 2 : 1
+  return messages.includes(name) && images.length === expected
+    && new Set(images.map(part => part.image_url.url)).size === expected
+    && (expected === 1 || JSON.stringify(body).length > 4 * 1024 * 1024)
 }
 
 function recordRequest(marker) {
@@ -246,12 +254,12 @@ function writeChatCompletion(response, frames) {
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   })
-  for (const frame of frames) response.write(`data: ${JSON.stringify(frame)}\n\n`)
-  response.end('data: [DONE]\n\n')
+  for (const frame of frames) writeCompletionFrame(response, frame)
+  finishCompletion(response)
 }
 
 async function writeGatedMultiAgentCompletion(response, child) {
-  // Keep every child silent until the parent has entered task_wait. Without
+  // Keep every child silent until the parent has entered await. Without
   // this handshake a fast mock response can finish its initial frames before
   // the wait subscription exists, so the test exercises timing rather than
   // the live interleaving contract.
@@ -297,6 +305,7 @@ function writeModelError(response, message) {
 
 const server = createServer(async (request, response) => {
   const requestURL = new URL(request.url || '/', 'http://127.0.0.1')
+  if (request.method === 'GET' && responsesControl(requestURL, response, writeJSON)) return
   if (request.method === 'GET' && compactionControl(requestURL, response, writeJSON)) return
   if (request.method === 'GET' && request.url === '/health') {
     writeJSON(response, 200, { status: 'ok' })
@@ -335,7 +344,13 @@ const server = createServer(async (request, response) => {
     writeJSON(response, 200, { allowed: true })
     return
   }
-  if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
+  if (request.method === 'POST' && request.url === '/v1/images/generations') {
+    const body = await readJSONBody(request)
+    recordRequest('E2E_EXTENSION_IMAGE')
+    writeJSON(response, 200, { data: [{ b64_json: extensionImage, revised_prompt: body.prompt }] })
+    return
+  }
+  if (request.method !== 'POST' || !['/v1/chat/completions', '/v1/responses'].includes(request.url)) {
     writeJSON(response, 404, { error: 'not found' })
     return
   }
@@ -343,6 +358,8 @@ const server = createServer(async (request, response) => {
   let body
   try {
     body = await readJSONBody(request)
+    if (request.url === '/v1/responses') body = responsesRequest(body, response)
+    else captureNativeRequest(body)
   } catch (error) {
     writeJSON(response, 400, { error: `invalid request body: ${error.message}` })
     return
@@ -354,7 +371,14 @@ const server = createServer(async (request, response) => {
     }
   }
 
-  const compaction = compactionCompletion(body)
+  const scene = extensionScene(body)
+  if (scene) {
+    recordRequest('E2E_EXTENSION_PRESENTER')
+    if (body.stream === true) writeChatCompletion(response, textCompletionFrames(scene))
+    else writeGeneratedCompletion(response, scene)
+    return
+  }
+  const compaction = runtimeCompletion(body) ?? compactionCompletion(body)
   if (compaction) {
     if (body.stream !== true) writeGeneratedCompletion(response, compaction.content)
     else if (compaction.tool) writeChatCompletion(response, toolCompletionFrames(compaction.tool, compaction.arguments, compaction.id))
@@ -365,6 +389,59 @@ const server = createServer(async (request, response) => {
 
   if (body.stream !== true) {
     writeGeneratedCompletion(response, '保存核心章节内容')
+    return
+  }
+
+  if (requestIncludesMarker(body, 'E2E_IMAGE_TRANSPORT_LIMIT')) {
+    response.writeHead(413, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ error: { type: 'request_too_large', message: 'image request exceeds gateway transfer limit' } }))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_TOOL_IMAGE_READ')) {
+    const callID = 'call-read-image-e2e'
+    const hasResult = (body.messages ?? []).some(message => message.role === 'tool' && message.tool_call_id === callID)
+    if (!hasResult) {
+      writeChatCompletion(response, toolCompletionFrames('read', JSON.stringify({ path: 'e2e-tool-image.png' }), callID))
+      return
+    }
+    const hasImage = (body.messages ?? []).some(message => message.role === 'user' && Array.isArray(message.content)
+      && message.content.some(part => part.type === 'text' && part.text.includes(`Image from tool call "${callID}"`))
+      && message.content.some(part => part.type === 'image_url' && part.image_url?.url?.startsWith('data:image/png;base64,')))
+    const game = requestIncludesTool(body, 'submit_interactive_turn')
+    const content = hasImage
+      ? (game ? '工具读取的图片已呈现，旧车站地图上的路线清晰可见。' : 'Tool image reached the model.')
+      : 'Tool image was not delivered to the model.'
+    writeChatCompletion(response, game ? chatCompletionFrames(content) : textCompletionFrames(content))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_COMPOSER_PAUSE')) {
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+    writeCompletionFrame(response, completionFrame({ role: 'assistant', content: '正在检查门后的脚印，接下来会继续核对沿途留下的线索。'.repeat(8) }))
+    await waitForDelayedRelease('E2E_COMPOSER_PAUSE')
+    writeCompletionFrame(response, completionFrame({ content: '检查完成。' }, 'stop'))
+    finishCompletion(response)
+    return
+  }
+  if (body.input && body.messages.at(-1)?.tool_call_id === 'call-submit-interactive-turn') {
+    writeChatCompletion(response, textCompletionFrames('Turn completed.'))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_GAME_TURN_ORDER')) {
+    const afterEarlySubmission = body.messages.at(-1)?.tool_call_id === 'call-early-submit'
+    await waitForDelayedRelease(afterEarlySubmission ? 'E2E_GAME_TURN_ORDER_AFTER_TOOL' : 'E2E_GAME_TURN_ORDER_START')
+    writeChatCompletion(response, afterEarlySubmission
+      ? chatCompletionFrames('The gate opens after the guard leaves.')
+      : toolCompletionFrames('submit_interactive_turn', turnSubmission, 'call-early-submit'))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_EXTENSION_OPENING') && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest('E2E_EXTENSION_OPENING')
+    const opening = extensionOpening(
+      toolResultMessages(body, 'initialize_story_state_schema').map(parseToolResult),
+      toolResultMessages(body, 'submit_interactive_turn').map(parseToolResult),
+    )
+    if (opening.tool) writeChatCompletion(response, toolCompletionFrames(opening.tool, JSON.stringify(opening.input), 'call-extension-opening-schema'))
+    else writeChatCompletion(response, chatCompletionFrames(opening.content, JSON.stringify(opening.submission)))
     return
   }
 
@@ -393,7 +470,10 @@ const server = createServer(async (request, response) => {
     }
     if (!gameRegenerationAllowed) {
       gameRegenerationFailureRequests += 1
-      writeModelError(response, 'Deterministic Game regeneration failure.')
+      // End the installed runtime's retry loop deterministically. Provider
+      // retry timing is independent of the product's regeneration contract.
+      if (body.input) writeJSON(response, 400, { error: { message: 'Deterministic Game regeneration failure.', type: 'invalid_request_error' } })
+      else writeModelError(response, 'Deterministic Game regeneration failure.')
       return
     }
     writeChatCompletion(response, chatCompletionFrames(regeneratedNarrative))
@@ -405,9 +485,49 @@ const server = createServer(async (request, response) => {
     return
   }
   if (requestIncludesMarker(body, gameFollowUpDelayMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
+    const callID = 'call-game-follow-up-read'
+    if (body.input && body.messages.some(message => message.tool_call_id === callID)) {
+      writeChatCompletion(response, chatCompletionFrames())
+      return
+    }
     recordRequest(gameFollowUpDelayMarker)
     await waitForDelayedRelease(gameFollowUpDelayMarker)
-    writeChatCompletion(response, chatCompletionFrames())
+    // Native steer interrupts generation; Codex accepts it for the following
+    // model step. A real host read supplies that boundary before submission.
+    writeChatCompletion(response, body.input
+      ? toolCompletionFrames('read', JSON.stringify({ path: 'CREATOR.md' }), callID)
+      : chatCompletionFrames())
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_PLUGIN_CHAIN')) {
+    const tool = body.tools?.find(item => item.function?.name?.startsWith('plugin_'))?.function?.name
+    if (!tool) {
+      writeChatCompletion(response, textCompletionFrames('No plugin tools are enabled.'))
+      return
+    }
+    const latestUser = body.messages.findLastIndex(message => message.role === 'user')
+    const results = toolResultMessages({ messages: body.messages.slice(latestUser) }, tool)
+    if (results.length === 0) {
+      writeChatCompletion(response, toolCompletionFrames(tool, JSON.stringify({ text: 'A🌷中' }), 'call-plugin-chain'))
+      return
+    }
+    const output = JSON.stringify(results)
+    const value = JSON.parse(results.at(-1).content.split('\n\nStructured result:\n').at(-1)).value
+    const content = typeof value === 'number' ? `Plugin result adopted: ${value}.` : `Unexpected plugin result: ${output}`
+    if (requestIncludesMarker(body, 'E2E_PLUGIN_WRITE') && toolResultMessages(body, 'write').length === 0) {
+      writeChatCompletion(response, toolCompletionFrames('write', JSON.stringify({ path: 'chapters/plugin-result.md', content: `# Plugin result\n\n${content}` }), 'call-plugin-chapter'))
+      return
+    }
+    writeChatCompletion(response, requestIncludesTool(body, 'submit_interactive_turn') ? chatCompletionFrames(content) : textCompletionFrames(content))
+    return
+  }
+  if (latestUserMessageIncludesMarker(body, 'E2E_GALGAME_STREAM') && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest('E2E_GALGAME_STREAM')
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+    response.write(`data: ${JSON.stringify(completionFrame({ role: 'assistant', content: '[lin|smile] The lamp' }))}\n\n`)
+    await waitForDelayedRelease('E2E_GALGAME_STREAM')
+    for (const frame of [completionFrame({ content: ' is still warm.\n[xu|neutral] Shall we read the letter?' }), ...toolCompletionFrames('submit_interactive_turn', turnSubmission, 'call-live-turn')]) response.write(`data: ${JSON.stringify(frame)}\n\n`)
+    response.end('data: [DONE]\n\n')
     return
   }
   if (requestIncludesTool(body, 'submit_interactive_turn')) {
@@ -415,30 +535,31 @@ const server = createServer(async (request, response) => {
     return
   }
   const multiAgentChild = multiAgentChildren.find(child => requestIncludesMarker(body, child.marker))
-  if (multiAgentChild && !requestIncludesTool(body, 'task')) {
+  if (multiAgentChild && !requestIncludesTool(body, 'send')) {
     recordRequest(multiAgentChild.marker)
     await writeGatedMultiAgentCompletion(response, multiAgentChild)
     return
   }
-  if (requestIncludesMarker(body, multiAgentDisplayMarker) && requestIncludesTool(body, 'task')) {
-    const taskResults = toolResultMessages(body, 'task')
+  if (requestIncludesMarker(body, multiAgentDisplayMarker) && requestIncludesTool(body, 'send')) {
+    const taskResults = toolResultMessages(body, 'send')
     if (taskResults.length === 0) {
       const starts = multiAgentChildren.map(child => ({
         agent: 'general-purpose',
-        prompt: `Return only the deterministic ${child.label} stream. ${child.marker}`,
+        action: 'delegate',
+        message: `Return only the deterministic ${child.label} stream. ${child.marker}`,
       }))
       writeChatCompletion(response, toolCompletionFrames(
-        'task',
-        JSON.stringify({ action: 'start', starts }),
+        'send',
+        JSON.stringify({ items: starts }),
         'call-e2e-multi-agent-start',
       ))
       return
     }
     const remaining = remainingMultiAgentTaskRefs(body)
     if (remaining.length > 0) {
-      const waitIndex = toolResultMessages(body, 'task_wait').length + 1
+      const waitIndex = toolResultMessages(body, 'await').length + 1
       writeChatCompletion(response, toolCompletionFrames(
-        'task_wait',
+        'await',
         JSON.stringify({ targets: remaining.map(ref => ({ ref })) }),
         `call-e2e-multi-agent-wait-${waitIndex}`,
       ))

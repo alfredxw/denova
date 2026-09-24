@@ -105,6 +105,15 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 	snapshot.TurnStart = loaded.turnStart
 	snapshot.HistoryBeforeCursor = loaded.page.BeforeCursor
 	snapshot.HasEarlierTurns = loaded.page.HasMore
+	for _, input := range snapshot.PendingPlayerInputs {
+		draft, found, err := s.loadTurnDraftLocked(storyID, snapshot.BranchID, DomainCommitIdentity{CommandID: input.AgentCommandID, OperationID: input.AgentOperationID, Cycle: input.AgentCycle})
+		if err != nil {
+			return StoryMeta{}, Snapshot{}, err
+		}
+		if found {
+			snapshot.PendingDisplayEvents = append(snapshot.PendingDisplayEvents, sanitizeDisplayEvents(draft.DisplayEvents)...)
+		}
+	}
 	if cachedMeta, cachedSnapshot, cloneErr := cloneStorySnapshotCache(loaded.meta, snapshot); cloneErr != nil {
 		return StoryMeta{}, Snapshot{}, cloneErr
 	} else {

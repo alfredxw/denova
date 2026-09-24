@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildConfigurationAgentMessage } from './configuration-message'
+import { buildDevelopmentMessage } from '@/features/platform/development-context'
 
 describe('buildConfigurationAgentMessage', () => {
   it('invokes the shared skill once and appends stable bounded page provenance', () => {
@@ -39,5 +40,19 @@ describe('buildConfigurationAgentMessage', () => {
 
   it('leaves built-in conversation commands untouched', () => {
     expect(buildConfigurationAgentMessage('/clear', { origin: 'lore' })).toBe('/clear')
+  })
+
+  it('routes extension work to development guidance and retains the latest bounded feedback', () => {
+    const source = { developmentId: 'source', projectId: 'project', projectName: 'Project', kind: 'game' as const, relativePath: '.' }
+    const message = buildDevelopmentMessage('Repair this game.', source, 'x'.repeat(20000) + 'latest failure')
+    expect(message).toContain('/extension-development')
+    expect(message).not.toContain('/configuration\n')
+    const metadata = JSON.parse(message.slice(message.indexOf('{')))
+    expect(metadata.source).toBe('Denova workbench')
+    expect(metadata.source_directory).toBe('.')
+    expect(metadata.latest_development_feedback).toMatch(/^\[Earlier output omitted\]/)
+    expect(metadata.latest_development_feedback).toMatch(/latest failure$/)
+    expect(metadata.latest_development_feedback.length).toBeLessThanOrEqual(16384)
+    expect(buildDevelopmentMessage('/status', source)).toBe('/status')
   })
 })

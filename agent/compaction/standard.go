@@ -48,9 +48,11 @@ func (s SummarizerFunc) Summarize(ctx context.Context, request SummaryRequest) (
 type StandardConfig struct {
 	Summarizer Summarizer
 	// Prompt adds domain guidance to the built-in summary instruction.
-	Prompt            string
-	Execution         agent.ExecutionPolicy
-	TriggerBytes      int
+	Prompt       string
+	Execution    agent.ExecutionPolicy
+	TriggerBytes int
+	// KeepRecentBytes is the soft history tail for byte-only policies. With a
+	// token window, the projected recovery target determines the retained tail.
 	KeepRecentBytes   int
 	KeepRecentGroups  int
 	HardLimitBytes    int
@@ -116,8 +118,8 @@ func newStandard(config StandardConfig) (*standardManager, error) {
 	if config.SummaryLimitBytes < 0 || config.SummaryLimitBytes > config.HardLimitBytes {
 		return nil, errors.New("Compaction SummaryLimitBytes must be positive and no larger than HardLimitBytes")
 	}
-	if config.KeepRecentBytes >= config.TriggerBytes || config.TriggerBytes >= config.HardLimitBytes {
-		return nil, errors.New("Compaction requires KeepRecentBytes < TriggerBytes < HardLimitBytes")
+	if config.TriggerBytes >= config.HardLimitBytes || config.ContextWindowTokens == 0 && config.KeepRecentBytes >= config.TriggerBytes {
+		return nil, errors.New("Compaction requires TriggerBytes < HardLimitBytes and, for byte-only policies, KeepRecentBytes < TriggerBytes")
 	}
 	if config.ContextWindowTokens < 0 || config.ReservedTokens < 0 || config.MinimumChangeTokens < 0 {
 		return nil, errors.New("Compaction token limits cannot be negative")
@@ -209,7 +211,7 @@ func (manager *standardManager) SummaryLimitBytes() int {
 	return manager.config.SummaryLimitBytes
 }
 
-func (manager *standardManager) Plan(_ context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
+func (manager *standardManager) Plan(ctx context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
 	if request.LifecycleReservedTokens < 0 || request.LifecycleReservedTokens > int(^uint(0)>>1)-manager.config.ReservedTokens {
 		return agent.CompactionPlan{}, errors.New("Compaction lifecycle token reserve is invalid")
 	}
@@ -221,8 +223,15 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 			)
 		}
 	}
-	bytes := messageBytes(request.ModelSnapshot.Messages())
-	metrics := compactionPlanMetrics(request)
+	size, err := request.ModelSnapshot.EstimateInput()
+	if err != nil {
+		return agent.CompactionPlan{}, err
+	}
+	bytes := size.Bytes
+	metrics, err := compactionPlanMetrics(request, size.Tokens)
+	if err != nil {
+		return agent.CompactionPlan{}, err
+	}
 	policy := agent.CompactionValidationPolicy{
 		ContextWindowTokens: manager.config.ContextWindowTokens,
 		ReservedTokens:      reservedTokens,
@@ -239,7 +248,7 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 	triggered := bytes > manager.config.TriggerBytes
 	if manager.config.ContextWindowTokens > 0 {
 		trigger := int(float64(manager.config.ContextWindowTokens) * manager.config.TriggerRatio)
-		triggered = metrics.ProjectedTokensBefore >= trigger
+		triggered = triggered || metrics.ProjectedTokensBefore >= trigger
 		if _, builtin := manager.config.Summarizer.(*modelSummarizer); builtin {
 			output, safety := summaryReserves(manager.config.ContextWindowTokens, manager.config.SummaryLimitBytes)
 			triggered = triggered || metrics.ProjectedTokensBefore+2048+output+safety >= manager.config.ContextWindowTokens
@@ -249,6 +258,13 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 		return agent.CompactionPlan{Action: agent.CompactionNone, SkippedReason: "below_trigger", Validation: policy, Metrics: metrics}, nil
 	}
 	count := max(0, len(request.Groups)-max(0, manager.config.KeepRecentGroups-1))
+	if count > 0 && manager.config.ContextWindowTokens > 0 {
+		count, err = manager.tokenGroupCount(ctx, request, policy, metrics, count)
+		if err != nil {
+			return agent.CompactionPlan{}, err
+		}
+		return agent.CompactionPlan{Action: agent.CompactionCreate, GroupCount: count, Validation: policy, Metrics: metrics}, nil
+	}
 	kept := request.RetainedBytes
 	for count > 0 && kept < manager.config.KeepRecentBytes {
 		size := messageBytes(request.Groups[count-1].Messages)
@@ -272,9 +288,42 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 	return agent.CompactionPlan{Action: agent.CompactionCreate, GroupCount: count, Validation: policy, Metrics: metrics}, nil
 }
 
-func compactionPlanMetrics(request agent.CompactionPlanRequest) agent.CompactionMetrics {
+// Select the smallest complete prefix that makes room for a checkpoint and
+// reaches the recovery band. Projections use the same middleware/model as the
+// final request, so hidden tool bodies, native images and protected active
+// inputs cannot be mistaken for reclaimable JSON bytes. A conservative summary
+// allowance may leave no predicted fit; the largest eligible prefix still gets
+// final validation with its actual (potentially much smaller) checkpoint.
+func (manager *standardManager) tokenGroupCount(ctx context.Context, request agent.CompactionPlanRequest, policy agent.CompactionValidationPolicy, metrics agent.CompactionMetrics, maximum int) (int, error) {
+	if request.EstimateAfter == nil {
+		return 0, errors.New("token-based Compaction requires a runtime request projection")
+	}
+	summaryTokens, _ := summaryReserves(policy.ContextWindowTokens, manager.config.SummaryLimitBytes)
+	summaryBytes := min(manager.config.SummaryLimitBytes, summaryTokens*4)
+	target := int(float64(int(float64(policy.ContextWindowTokens)*policy.Threshold)) * policy.RecoveryBand)
+	target = min(target, metrics.ProjectedTokensBefore-policy.MinimumChangeTokens)
+	best := maximum
+	for low, high := 1, maximum; low <= high; {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		middle := low + (high-low)/2
+		size, err := request.EstimateAfter(middle)
+		if err != nil {
+			return 0, fmt.Errorf("estimate Compaction prefix of %d groups: %w", middle, err)
+		}
+		projected := metrics.CalibratedTokens(size.Tokens+summaryTokens) + policy.ReservedTokens
+		if projected <= target && size.Bytes+summaryBytes <= policy.HardLimitBytes {
+			best, high = middle, middle-1
+		} else {
+			low = middle + 1
+		}
+	}
+	return best, nil
+}
+
+func compactionPlanMetrics(request agent.CompactionPlanRequest, estimated int) (agent.CompactionMetrics, error) {
 	messages := request.ModelSnapshot.Messages()
-	estimated := estimateSnapshotTokens(messages, request.ModelSnapshot)
 	observed, observedEstimate, cached := latestPromptUsage(messages, request.ModelSnapshot)
 	metrics := agent.CompactionMetrics{
 		EstimatedTokensBefore: estimated, ObservedPromptTokens: observed, ObservedEstimateTokens: observedEstimate,
@@ -283,21 +332,36 @@ func compactionPlanMetrics(request agent.CompactionPlanRequest) agent.Compaction
 	metrics.ProjectedTokensBefore = metrics.CalibratedTokens(estimated)
 	if request.ModelSnapshot != nil {
 		boundary := min(request.ModelSnapshot.StablePrefixMessages(), len(messages))
-		metrics.StablePrefixTokens = estimateSnapshotTokens(messages[:boundary], request.ModelSnapshot)
+		prefix, err := request.ModelSnapshot.WithMessages(messages[:boundary]).EstimateInput()
+		if err != nil {
+			return metrics, err
+		}
+		metrics.StablePrefixTokens = prefix.Tokens
 		metrics.CacheExpectedPrefixTokens = metrics.StablePrefixTokens
 	}
 	metrics.CandidateFingerprint, metrics.CandidateGeneration = candidateIdentity(messages)
-	return metrics
+	return metrics, nil
 }
 
 func latestPromptUsage(messages []*agent.Message, snapshot *agent.ModelRequestSnapshot) (prompt, estimated, cached int) {
+	identity := snapshot.ModelIdentity()
+	if validateIdentity(identity) != nil {
+		return 0, 0, 0
+	}
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
-		if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.PromptTokens <= 0 {
+		if message == nil || message.Role != agent.Assistant || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.PromptTokens <= 0 {
 			continue
 		}
+		// History and schemas may have changed since this response. Only its
+		// original request estimate is comparable to the provider usage. Older
+		// journals and other models safely fall back to the current local estimate.
+		estimate := message.ResponseMeta.InputEstimate
+		if estimate == nil || estimate.Version != agent.InputEstimateVersion || estimate.Tokens <= 0 || estimate.Model != identity {
+			return 0, 0, 0
+		}
 		return message.ResponseMeta.Usage.PromptTokens,
-			estimateSnapshotTokens(messages[:index], snapshot),
+			estimate.Tokens,
 			message.ResponseMeta.Usage.PromptTokenDetails.CachedTokens
 	}
 	return 0, 0, 0
@@ -386,11 +450,3 @@ func validateIdentity(identity agent.CapabilityIdentity) error {
 
 var _ agent.CompactionManager = (*standardManager)(nil)
 var _ agent.CompactionManager = (*disabledManager)(nil)
-
-func estimateSnapshotTokens(messages []*agent.Message, snapshot *agent.ModelRequestSnapshot) int {
-	var tools []*agent.ToolInfo
-	if snapshot != nil {
-		tools = snapshot.ResolvedOptions().Tools
-	}
-	return agent.EstimateRequestTokens(messages, tools)
-}

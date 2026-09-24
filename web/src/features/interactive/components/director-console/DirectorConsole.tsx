@@ -18,6 +18,7 @@ import { StoryTuningView } from './StoryTuningView'
 import type { DirectorConsoleTab } from './types'
 
 export interface DirectorConsoleProps {
+  projectId?: string
   storyId?: string
   story?: StorySummary
   planningTemplates?: GamePlanningTemplate[]
@@ -39,6 +40,7 @@ export interface DirectorConsoleProps {
 }
 
 export function DirectorConsole({
+  projectId,
   storyId,
   story,
   planningTemplates = [],
@@ -89,6 +91,7 @@ export function DirectorConsole({
   } else if (activeTab === 'controls') {
     activeView = (
       <StoryTuningView
+        projectId={projectId}
         story={story}
         planningTemplates={planningTemplates}
         tellers={tellers}

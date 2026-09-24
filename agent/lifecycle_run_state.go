@@ -121,8 +121,9 @@ func (run *Run) finish(result Result, err error) {
 	if result.Status != ResultCompleted && result.Status != ResultAborted {
 		kind = turnInterruptedRecord
 	}
+	finishedAt := time.Now().UTC()
 	if appendErr := run.session.appendRecordLocked(context.Background(), kind, persistedTurn{
-		RunID: run.id, CommandID: run.commandID, Status: result.Status, Reason: result.Reason, Output: output, At: time.Now().UTC(),
+		RunID: run.id, CommandID: run.commandID, Status: result.Status, Reason: result.Reason, Output: output, At: finishedAt,
 	}); appendErr != nil {
 		err = errors.Join(err, appendErr)
 		run.session.mu.Unlock()
@@ -141,7 +142,7 @@ func (run *Run) finish(result Result, err error) {
 	}
 	run.session.removePendingLocked(run)
 	run.mu.Lock()
-	run.settled, run.result, run.err = true, result, err
+	run.settled, run.result, run.err, run.finishedAt = true, result, err, finishedAt
 	run.mu.Unlock()
 	run.session.addRecentLocked(RunSummary{
 		ID: run.id, CommandID: run.commandID, ReceiptCursor: receiptCursor,
@@ -161,6 +162,7 @@ func (run *Run) finish(result Result, err error) {
 			run.session.active = next
 		}
 	}
+	run.session.retireRunLocked(run)
 	storageErr := run.session.storageErr
 	run.session.mu.Unlock()
 	if storageErr != nil {

@@ -9,8 +9,8 @@ import (
 	chatagent "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
-	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
 )
@@ -20,19 +20,25 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	if err != nil || service.host == nil {
 		return ActiveView{}
 	}
-	_, executionRuntime := service.host.BaseRuntime()
-	runtime, projected := appagentruntime.RuntimeProjection(ctx, executionRuntime, runtimeOptions(binding, ""))
+	var runtime agentrun.RuntimeStatus
+	projected := false
+	if bound, err := service.agentSession(ctx, binding, ""); err == nil {
+		runtime, err = bound.Status(ctx)
+		projected = err == nil
+	}
 	active := service.activeRun(binding)
 	var taskSnapshot *apptask.Snapshot
-	var pendingAsk *session.AskInteraction
+	var pendingAsks []*session.AskInteraction
 	streamAttached := false
 	if active != nil && active.task != nil {
 		snapshot := active.task.Snapshot()
 		taskSnapshot = &snapshot
 		streamAttached = !snapshot.Finished
 	}
-	if projected && len(runtime.PendingInteractions) > 0 {
-		pendingAsk = chatagent.ProjectPendingInteraction(runtime.PendingInteractions[0], runtime)
+	if projected {
+		for _, request := range runtime.PendingInteractions {
+			pendingAsks = append(pendingAsks, chatagent.ProjectPendingInteraction(request, runtime))
+		}
 	}
 	pendingInterruptionID := ""
 	if project, projectErr := service.projectRuntime(ctx, binding.ProjectID); projectErr == nil {
@@ -44,7 +50,7 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	}
 	return ActiveView{
 		Task: taskSnapshot, Runtime: runtime, RuntimeProjectionOK: projected,
-		StreamAttached: streamAttached, PendingAsk: pendingAsk, PendingInterruptionID: pendingInterruptionID,
+		StreamAttached: streamAttached, PendingAsks: pendingAsks, PendingInterruptionID: pendingInterruptionID,
 	}
 }
 
@@ -107,7 +113,7 @@ func (service *Service) AnalyzeContext(ctx context.Context, binding Binding, req
 	}
 	return chatagent.BuildInspectedContextAnalysis(
 		&runtime.Config, runtime.AgentKind, mode, inspected.Composition, inspected.Inspection,
-	), nil
+	)
 }
 
 func (service *Service) AnswerAsk(ctx context.Context, binding Binding, askID string, answers []agentconversation.HostAskAnswer) (agentconversation.HostAskResolution, error) {
@@ -133,6 +139,15 @@ func (service *Service) resolveAsk(
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
+	sess, err := project.store.Get(binding.SessionID)
+	if err != nil {
+		return agentconversation.HostAskResolution{}, err
+	}
+	if engines := service.host.AgentEngines(); engines != nil {
+		if result, owned, err := engines.Operations.ResolveAsk(ctx, binding.ProjectID, sess, askID, status, answers, cancelReason); owned || err != nil {
+			return result, err
+		}
+	}
 	return project.executionRuntime.ResolveAsk(ctx, runtimeOptions(binding, ""), askID, status, answers, cancelReason)
 }
 
@@ -145,7 +160,7 @@ func (service *Service) ClearSession(ctx context.Context, binding Binding) error
 		return err
 	}
 	if active := service.activeRun(binding); active != nil && active.task != nil && !active.task.Finished() {
-		return appagentruntime.ErrOperationActive
+		return agentruntime.ErrOperationActive
 	}
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
@@ -219,7 +234,7 @@ func (service *Service) Activity() []Binding {
 
 func (service *Service) requireIdle(binding Binding) error {
 	if service.SessionBusy(binding) {
-		return fmt.Errorf("%w: AgentChat conversation is running", appagentruntime.ErrOperationActive)
+		return fmt.Errorf("%w: AgentChat conversation is running", agentruntime.ErrOperationActive)
 	}
 	return nil
 }

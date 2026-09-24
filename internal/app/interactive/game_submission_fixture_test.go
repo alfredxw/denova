@@ -17,7 +17,9 @@ type gameSubmissionFixture struct {
 }
 
 func (fixture gameSubmissionFixture) BeforeAgent(ctx context.Context, run *agent.RunContext) (context.Context, *agent.RunContext, error) {
-	submitTestTurnResult(fixture.t, fixture.conversation, fixture.intent, fixture.goal)
+	if !agent.IsInspection(ctx) {
+		submitTestTurnResult(fixture.t, fixture.conversation, fixture.intent, fixture.goal)
+	}
 	return ctx, run, nil
 }
 

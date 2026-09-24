@@ -329,20 +329,6 @@ export function StorySetupAdvanced({
             })}
           />
         </TuningRow>
-        <TuningRow title={t('directorPanel.tuning.check.visibility')}>
-          <TuningSelect
-            value={value.checkSettings.rule_visibility_mode || 'audit_only'}
-            options={ruleVisibilityOptions(t)}
-            label={t('directorPanel.tuning.check.visibility')}
-            disabled={!ruleEnabled}
-            onChange={(ruleVisibilityMode) => patch({
-              checkSettings: {
-                ...value.checkSettings,
-                rule_visibility_mode: ruleVisibilityMode as StoryCheckSettings['rule_visibility_mode'],
-              },
-            })}
-          />
-        </TuningRow>
       </ControlSection>
 
       <ControlSection icon={<ImagePlus className="size-4" />} title={t('directorPanel.tuning.image.title')}>
@@ -437,13 +423,6 @@ function ruleStateConsumptionOptions(t: ReturnType<typeof useTranslation>['t']):
   return ['hybrid_auto', 'suggestions_only'].map((mode) => ({
     id: mode,
     label: t(`directorPanel.tuning.check.stateConsumption.${mode}`),
-  }))
-}
-
-function ruleVisibilityOptions(t: ReturnType<typeof useTranslation>['t']): TuningSelectOption[] {
-  return ['audit_only', 'public_roll'].map((mode) => ({
-    id: mode,
-    label: t(`directorPanel.tuning.check.visibility.${mode}`),
   }))
 }
 

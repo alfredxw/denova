@@ -217,8 +217,8 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 		response := map[string]interface{}{
 			"active": false,
 		}
-		if view.PendingAsk != nil {
-			response["pending_ask"] = view.PendingAsk
+		if len(view.PendingAsks) > 0 {
+			response["pending_asks"] = view.PendingAsks
 		}
 		if view.PendingInterruptionID != "" {
 			response["pending_interruption_id"] = view.PendingInterruptionID
@@ -235,8 +235,8 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 		"task_id":       view.Task.ID,
 		"stream_cursor": view.Task.Cursor,
 	}
-	if view.PendingAsk != nil {
-		response["pending_ask"] = view.PendingAsk
+	if len(view.PendingAsks) > 0 {
+		response["pending_asks"] = view.PendingAsks
 	}
 	if view.PendingInterruptionID != "" {
 		response["pending_interruption_id"] = view.PendingInterruptionID

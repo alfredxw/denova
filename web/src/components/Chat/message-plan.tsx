@@ -64,7 +64,9 @@ export function ContextCompactionBlock({ message }: { message: ContextCompaction
           data-nova-scroll-lock="context-compaction-summary"
           className="min-w-0 max-w-full max-h-40 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap [overflow-anchor:none] [overflow-wrap:anywhere]"
         >
-          {summary || (isRunning ? t('chat.contextCompaction.waiting') : t('chat.contextCompaction.empty'))}
+          {summary || (message.runtime_managed
+            ? t(isRunning ? 'chat.contextCompaction.runtimeRunning' : status === 'success' ? 'chat.contextCompaction.runtimeCompleted' : 'chat.contextCompaction.runtimeFailed')
+            : isRunning ? t('chat.contextCompaction.waiting') : t('chat.contextCompaction.empty'))}
         </div>
       </div>
     </div>

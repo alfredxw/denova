@@ -125,14 +125,10 @@ func NewAgentManagerForModel(
 	if trigger <= 0 || trigger >= hardLimit {
 		trigger = int(float64(hardLimit) * settings.CompactionThreshold)
 	}
-	keepRecent := max(64<<10, trigger/5)
-	if keepRecent >= trigger {
-		keepRecent = trigger / 2
-	}
 	manager := publiccompaction.Standard(publiccompaction.StandardConfig{
 		Prompt:       compactionDomainRequirements(policyKind) + "\n" + agentcontext.CompactionCheckpointSchema() + "\n" + settings.CheckpointGuidance,
 		Execution:    modelio.ModelExecutionPolicy(cfg),
-		TriggerBytes: trigger, KeepRecentBytes: keepRecent, HardLimitBytes: hardLimit,
+		TriggerBytes: trigger, HardLimitBytes: hardLimit,
 		SummaryLimitBytes:   summaryLimit,
 		ContextWindowTokens: contextWindowTokens,
 		ReservedTokens:      completionReserve + toolReserve,
@@ -141,6 +137,25 @@ func NewAgentManagerForModel(
 		MinimumChangeTokens: max(256, contextWindowTokens/100),
 	})
 	return newDenovaManager(manager, toolresult.ResolveContextPolicy(cfg, policyKind)), nil
+}
+
+// NewElisionPolicyForModel is the cheap first stage of automatic context
+// maintenance. It shares the existing per-Agent compaction switch and concrete
+// model budget; there is no independent product state or user-facing threshold.
+// The soft trigger scales with the summary trigger (60% before the default 85%).
+func NewElisionPolicyForModel(cfg *config.Config, policyKind string, contextWindowTokens int) *agent.ElisionPolicy {
+	if contextWindowTokens <= 0 {
+		return nil
+	}
+	settings := config.ResolveAgentContext(cfg, policyKind)
+	if !settings.CompactionEnabled {
+		return nil
+	}
+	completionReserve, toolReserve := EstimateProjectionReservesForModel(cfg, policyKind, 0, contextWindowTokens)
+	return &agent.ElisionPolicy{
+		ContextWindowTokens: contextWindowTokens, ReservedTokens: completionReserve + toolReserve,
+		TriggerRatio: settings.CompactionThreshold * (.60 / .85),
+	}
 }
 
 func capabilityIdentity(kind string, configuration any) agent.CapabilityIdentity {

@@ -77,6 +77,19 @@ type ResponseMeta struct {
 	FinishReason string      `json:"finish_reason,omitempty"`
 	Usage        *TokenUsage `json:"usage,omitempty"`
 	LogProbs     *LogProbs   `json:"logprobs,omitempty"`
+	// InputEstimate is recorded by Agent from this response's final request,
+	// including tool schemas. Providers do not send it back as model input.
+	InputEstimate *ModelInputEstimate `json:"input_estimate,omitempty"`
+}
+
+// ModelInputEstimate pairs provider usage with its original local estimate.
+// Model is the existing credential-free Definition model identity; an absent
+// estimate or different model cannot calibrate a later request. It survives
+// history projection and restart in the same canonical response record.
+type ModelInputEstimate struct {
+	Version uint16             `json:"version,omitempty"`
+	Tokens  int                `json:"tokens"`
+	Model   CapabilityIdentity `json:"model"`
 }
 
 // AgentMessageMeta contains provider-independent execution identity needed to
@@ -184,10 +197,11 @@ func ToolMessage(result ToolResult, toolCallID string, opts ...ToolMessageOption
 		}
 	}
 	return &Message{
-		Role:       ToolRole,
-		Content:    result.ModelContent,
-		ToolCallID: toolCallID,
-		ToolName:   options.toolName,
+		Role:        ToolRole,
+		Content:     result.ModelContent,
+		Attachments: cloneAttachments(result.Attachments),
+		ToolCallID:  toolCallID,
+		ToolName:    options.toolName,
 		ToolResult: &ToolResultSummary{
 			Status: result.Status, SyntheticReason: result.SyntheticReason,
 			ModelTruncated:      result.Metadata.ModelTruncated,
@@ -208,6 +222,7 @@ func (m *Message) EffectiveToolResult() ToolResult {
 		return ToolResult{}
 	}
 	result := TextToolResult(m.Content)
+	result.Attachments = cloneAttachments(m.Attachments)
 	if m.ToolResult != nil {
 		if m.ToolResult.Status != "" {
 			result.Status = m.ToolResult.Status
@@ -321,6 +336,10 @@ func cloneResponseMeta(meta *ResponseMeta) *ResponseMeta {
 	if meta.Usage != nil {
 		usage := *meta.Usage
 		clone.Usage = &usage
+	}
+	if meta.InputEstimate != nil {
+		estimate := *meta.InputEstimate
+		clone.InputEstimate = &estimate
 	}
 	if meta.LogProbs != nil {
 		logProbs := &LogProbs{Content: append([]LogProb(nil), meta.LogProbs.Content...)}
@@ -586,6 +605,10 @@ func mergeResponseMeta(target **ResponseMeta, incoming *ResponseMeta) {
 			(*target).Usage = &TokenUsage{}
 		}
 		mergeUsage((*target).Usage, incoming.Usage)
+	}
+	if incoming.InputEstimate != nil {
+		estimate := *incoming.InputEstimate
+		(*target).InputEstimate = &estimate
 	}
 	if incoming.LogProbs != nil {
 		if (*target).LogProbs == nil {

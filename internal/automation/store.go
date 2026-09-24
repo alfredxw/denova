@@ -380,14 +380,28 @@ func (s *Store) Delete(id string) error {
 				if listErr != nil {
 					return false, listErr
 				}
+
+				// Resolve write-ahead and history revisions before fencing
+				// deletion; a stale hot copy must not resurrect a delivery.
+				candidates := make(map[string]durableRunFile, len(entries))
 				for _, entry := range entries {
-					if durableRunMatchesTask(entry, tasks[index]) && RunHasRuntimeObligation(entry.Run) {
-						return false, fmt.Errorf("%w: task_id=%s run_id=%s", ErrTaskHasActiveRun, tasks[index].CatalogID, entry.Run.ID)
+					if durableRunMatchesTask(entry, tasks[index]) {
+						candidates[entry.Run.ID] = entry
 					}
 				}
 				for _, run := range tasks[index].RecentRuns {
-					if RunHasRuntimeObligation(run) {
-						return false, fmt.Errorf("%w: task_id=%s run_id=%s", ErrTaskHasActiveRun, tasks[index].CatalogID, run.ID)
+					if _, found := candidates[run.ID]; !found {
+						candidates[run.ID] = durableRunFile{Run: run}
+					}
+				}
+				for runID, candidate := range candidates {
+					history, found, err := location.store.readDurableRun(location.scope, runID)
+					if err != nil {
+						return false, err
+					}
+					current, _ := authoritativeDurableRun(candidate, true, history, found)
+					if RunHasRuntimeObligation(current.Run) {
+						return false, fmt.Errorf("%w: task_id=%s run_id=%s", ErrTaskHasActiveRun, tasks[index].CatalogID, runID)
 					}
 				}
 				now := time.Now().UTC()

@@ -9,7 +9,9 @@ import (
 	agentstructural "denova/internal/agents/context/structural"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	compactionapp "denova/internal/app/compaction"
+	interactiveapp "denova/internal/app/interactive"
 )
 
 func (s *InteractiveAppService) executeInteractiveContextCompaction(
@@ -48,10 +50,30 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(
 	if err != nil {
 		return agentcompaction.Result{}, err
 	}
-	cycle, err := s.prepareInteractiveStructuralCycle(ctx, fence, storyID, branchID)
+	prepared, err := s.prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{StoryID: storyID, BranchID: branchID})
 	if err != nil {
 		return agentcompaction.Result{}, err
 	}
+	s.app.mu.RLock()
+	err = fence.validateLocked(s.app)
+	s.app.mu.RUnlock()
+	if err != nil {
+		return agentcompaction.Result{}, err
+	}
+	if prepared.externalAssembly != nil {
+		state, err := agentruntime.GameState(prepared.options(""), prepared.store)
+		if err != nil {
+			return agentcompaction.Result{}, err
+		}
+		control, err := s.app.AgentEngines().ExternalControl(prepared.options(""), state)
+		if err != nil {
+			return agentcompaction.Result{}, err
+		}
+		return control.Maintain(ctx, commandID, func() (agentcompaction.Result, error) {
+			return interactiveapp.CompactExternal(ctx, interactiveapp.ExternalTurnConfig{Conversation: prepared.conversation, Request: prepared.request, Config: prepared.runtimeCfg, Assembly: *prepared.externalAssembly, BookService: prepared.bookService, Runtime: s.app.AgentEngines().ExternalRuntime(prepared.runtimeCfg), PrepareHistory: state.PrepareExternalHistory})
+		})
+	}
+	cycle := agentexecution.Cycle{Definition: prepared.definition, Conversation: prepared.conversation, BookService: prepared.bookService, Request: prepared.request, Options: prepared.options("")}
 	result, err := fence.chat.ExecuteStructuralOperation(ctx, cycle, agentstructural.Spec{
 		CommandID: commandID,
 		Action:    agentstructural.Compact,

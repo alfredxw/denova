@@ -8,6 +8,7 @@ import (
 
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentstructural "denova/internal/agents/context/structural"
+	productsession "denova/internal/agents/session"
 
 	agent "github.com/alfredxw/denova/agent"
 	agentsession "github.com/alfredxw/denova/agent/session"
@@ -93,6 +94,15 @@ func (backend *publicBackend) executeStructural(ctx context.Context, cycle Cycle
 			Force: spec.Ref.Force, IdempotencyKey: spec.CommandID,
 			ExpectedID: spec.Ref.CompactionID,
 		})
+		if err == nil && result.Changed {
+			if display, ok := cycle.Conversation.(interface {
+				AppendDisplayEvent(productsession.DisplayEvent) error
+			}); ok {
+				err = display.AppendDisplayEvent(productsession.DisplayEvent{
+					ID: result.State.ID, Role: "context_compaction", Status: "success", Phase: "agent", Content: result.State.Summary,
+				})
+			}
+		}
 		return agentstructural.Result{Compaction: projectPublicCompaction(result)}, err
 	case agentstructural.Remove:
 		removed, err := session.RemoveCompaction(ctx, agent.CompactionRemoveRequest{

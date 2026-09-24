@@ -98,7 +98,7 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 	}
 	parentModel := &publicBackendTestModel{responses: []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{ID: "delegate-chapter", Type: "function", Function: agent.FunctionCall{
-			Name: "task", Arguments: `{"action":"start","starts":[{"agent":"writer","idempotency_key":"chapter-once","prompt":"Write and revise the delegated chapter."}]}`,
+			Name: "send", Arguments: `{"items":[{"action":"delegate","message":"Write and revise the delegated chapter.","agent":"writer","idempotency_key":"chapter-once"}]}`,
 		}}}),
 		agent.AssistantMessage("Delegated chapter complete.", nil),
 	}}
@@ -193,6 +193,17 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 		t.Fatal("delegated Session is missing")
 	}
 	childRunID := string(committed[0].RuntimeOperation)
+	assertMutationSettlement := func(runtime *Runtime) {
+		t.Helper()
+		view, found, err := runtime.OperationProjection(ctx, agentrun.Options{
+			AgentKind: agentrun.AgentKindIDE, ProjectID: projectRecord.ID, SessionID: sess.ID,
+			Workspace: workspace, StateRoot: layout.StoreRoot,
+		}, childRunID)
+		if err != nil || !found || view.Outcome == nil || view.Outcome.Status != agentrun.OutcomeCompleted {
+			t.Fatalf("delegated mutation settlement = %#v, found = %v, error = %v", view, found, err)
+		}
+	}
+	assertMutationSettlement(runtime)
 	waitForChildTrace(t, runtime, childRunID)
 	location := agentrun.TraceLocation{Workspace: workspace, StateRoot: layout.StoreRoot}
 	childTrace, err := agentrun.ReadRunTrace(location, childRunID)
@@ -211,7 +222,7 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 		t.Fatalf("child boundary content = %v", contentRecords)
 	}
 	parentTrace, err := agentrun.ReadRunTrace(location, string(operation.Receipt().OperationID))
-	if err != nil || len(parentTrace.Children) != 1 || parentTrace.Children[0].ID != childRunID || parentTrace.Summary.LLMCalls != 2 || parentTrace.Summary.ToolCalls != 1 {
+	if err != nil || len(parentTrace.Children) != 1 || parentTrace.Children[0].ID != childRunID || parentTrace.Summary.LLMCalls != len(parentModel.inputs) || parentTrace.Summary.ToolCalls != 1 {
 		t.Fatalf("parent trace mixed or lost child execution: %#v, error = %v", parentTrace, err)
 	}
 	if err := runtime.Close(ctx); err != nil {
@@ -222,6 +233,7 @@ func TestDelegatedWorkspaceMutationCompletesAndKeepsItsOwnJournal(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer reopened.Close(ctx)
+	assertMutationSettlement(reopened)
 	childSession, err := reopened.public.agent.Session(ctx, childKey)
 	if err != nil {
 		t.Fatal(err)
@@ -301,7 +313,8 @@ func waitForChildTrace(t *testing.T, runtime *Runtime, runID string) {
 	handle := runtime.public.runs[runID]
 	runtime.public.mu.RUnlock()
 	if handle == nil {
-		t.Fatalf("child Run %s has no trace consumer", runID)
+		// Completed consumers leave the live registry only after flushing their trace.
+		return
 	}
 	select {
 	case <-handle.done:

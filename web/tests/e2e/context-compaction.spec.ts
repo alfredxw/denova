@@ -7,6 +7,28 @@ type WireMessage = { role: string; content?: unknown; tool_call_id?: string; too
 type WireRequest = { model: string; tools: unknown[]; messages: WireMessage[]; [key: string]: unknown }
 
 for (const mode of ['Writing', 'Game'] as const) {
+  test(`${mode} restores a manual compaction card from the selected conversation`, async ({ page, request }) => {
+    await createAndOpenBook(request, `Manual ${mode} Compaction E2E`)
+    if (mode === 'Game') await createStartedStory(request, 'Manual compact')
+    const marker = `E2E_MANUAL_COMPACTION_${mode.toUpperCase()}`
+    await page.goto('/')
+    const composer = await openComposer(page, mode)
+    await send(composer, `${marker}_SEED`)
+    await expect(page.getByText(`${marker} seed complete.`, { exact: true })).toBeVisible()
+    await send(composer, `${marker}_PAD`)
+    await expect(page.getByText(`${marker} recent turn complete.`, { exact: true })).toBeVisible()
+    const maintenance = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(mode === 'Writing' ? '/agent-chat/command' : '/context-compaction'))
+    await send(composer, '/compact')
+    const response = await maintenance
+    expect(response.ok(), await response.text()).toBe(true)
+    await expect(page.getByText('手动压缩', { exact: true })).toBeVisible()
+    await page.reload()
+    await openComposer(page, mode)
+    await expect(page.getByText('手动压缩', { exact: true })).toBeVisible()
+  })
+}
+
+for (const mode of ['Writing', 'Game'] as const) {
   test(`${mode} preserves the live tool tail through automatic compaction and reload`, async ({ page, request }) => {
     const marker = `E2E_COMPACTION_${mode.toUpperCase()}`
     const evidence = `LIVE_EVIDENCE_${mode.toUpperCase()}_91731`

@@ -5,6 +5,27 @@ import type { ConversationConfigController } from '@/features/conversation-confi
 import { AgentApprovalModeMenu } from './AgentApprovalModeMenu'
 
 describe('AgentApprovalModeMenu', () => {
+  for (const active of [false, true]) {
+    it(`shows Codex permissions and ${active ? 'locks the running selection' : 'saves the complete engine selection'}`, async () => {
+      const user = userEvent.setup()
+      const patch = vi.fn().mockResolvedValue(true)
+      const controller: ConversationConfigController = {
+        snapshot: { agent_kind: 'ide', profile_id: 'unused', thinking_level: 'medium', approval_mode: 'ask', revision: 2,
+          runtime: { kind: 'codex', codex: { model: 'test-model', effort: 'high' } } },
+        initialized: true, loading: false, saving: false, error: null, patch, reload: vi.fn(),
+      }
+      render(<AgentApprovalModeMenu runActive={active} conversationConfig={controller} />)
+      await user.click(screen.getByRole('button', { name: /工作区写入/ }))
+      const readOnly = screen.getByRole('menuitem', { name: /^只读/ })
+      if (active) {
+        expect(readOnly).toHaveAttribute('data-disabled')
+        expect(screen.getByText('请先停止当前运行，再修改权限。')).toBeVisible()
+      } else {
+        await user.click(readOnly)
+        expect(patch).toHaveBeenCalledWith({ codex: { model: 'test-model', effort: 'high', sandbox: 'read-only' } })
+      }
+    })
+  }
   it('saves a next-turn safety mode while a model turn is active', async () => {
     const user = userEvent.setup()
     const patch = vi.fn().mockResolvedValue(true)

@@ -64,7 +64,6 @@ const (
 	AgentKindIDE              = "ide"
 	AgentKindInteractiveStory = "interactive_story"
 	AgentKindImage            = "image"
-	AgentKindAutomation       = "automation"
 )
 
 const WriteModeReadOnly = "read_only"
@@ -76,8 +75,9 @@ type Options struct {
 	StateRoot     string
 	RootAgentName string
 	TaskID        string
-	// AutomationTaskID is the stable automation definition identity used by
-	// the durable binding. TaskID remains the individual run/trace identity.
+	// AutomationTaskID identifies the triggering automation for recovery and
+	// mutation effects. The owning Project conversation supplies session identity;
+	// TaskID remains the individual run/trace identity.
 	AutomationTaskID   string
 	SessionID          string
 	ReviewThreadID     string
@@ -153,8 +153,6 @@ func RootAgentName(kind string) string {
 		return "DenovaInteractiveStoryAgent"
 	case AgentKindImage:
 		return "DenovaImageAgent"
-	case AgentKindAutomation:
-		return "DenovaAutomationAgent"
 	default:
 		return ""
 	}

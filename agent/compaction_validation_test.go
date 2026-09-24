@@ -36,7 +36,7 @@ func TestCompactionPostValidationDistinguishesRecoveryBandAndHardPublishBand(t *
 		SystemMessage(strings.Repeat("checkpoint ", 210)),
 		UserMessage("continue"),
 	}, 2)
-	afterTokens := EstimateRequestTokens(degradedAfter.Messages(), nil)
+	afterTokens := EstimateRequestTextTokens(degradedAfter.Messages(), nil)
 	window := max(afterTokens+1, int(float64(afterTokens)/.80))
 	plan := CompactionPlan{
 		GroupCount: 1,
@@ -78,7 +78,7 @@ func TestCompactionPostValidationRejectsNoProgressAndInsignificantProgress(t *te
 
 	largeBefore := compactionValidationSnapshot([]*Message{UserMessage(strings.Repeat("history ", 100))}, 0)
 	slightlySmaller := compactionValidationSnapshot([]*Message{SystemMessage(strings.Repeat("checkpoint ", 50))}, 1)
-	progress := EstimateRequestTokens(largeBefore.Messages(), nil) - EstimateRequestTokens(slightlySmaller.Messages(), nil)
+	progress := EstimateRequestTextTokens(largeBefore.Messages(), nil) - EstimateRequestTextTokens(slightlySmaller.Messages(), nil)
 	plan.Validation.MinimumChangeTokens = progress + 1
 	if _, err := validateCompactionProjection(largeBefore, slightlySmaller, compactionExecutionPlan{CompactionPlan: plan, SourceTo: 1}); err == nil || !strings.Contains(err.Error(), "required minimum") {
 		t.Fatalf("minimum-progress error = %v progress=%d", err, progress)
@@ -96,8 +96,8 @@ func TestInteractiveCompactionCalibratesTruePostContextAfterStableReinjection(t 
 		SystemMessage("bounded checkpoint"),
 		UserMessage("continue"),
 	}, 2)
-	localBefore := EstimateRequestTokens(before.Messages(), nil)
-	localAfter := EstimateRequestTokens(after.Messages(), nil)
+	localBefore := EstimateRequestTextTokens(before.Messages(), nil)
+	localAfter := EstimateRequestTextTokens(after.Messages(), nil)
 	const reserve = 78
 	calibratedAfter := localAfter*2 + reserve
 	window := (calibratedAfter*100 + 83) / 84

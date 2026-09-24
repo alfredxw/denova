@@ -1,0 +1,6 @@
+{
+  "description": "Return the provided text. Replace this starter tool with the plugin's own behavior.",
+  "effect": "pure",
+  "inputSchema": { "type": "object", "properties": { "text": { "type": "string", "maxLength": 8000 } }, "required": ["text"], "additionalProperties": false },
+  "outputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"], "additionalProperties": false }
+}

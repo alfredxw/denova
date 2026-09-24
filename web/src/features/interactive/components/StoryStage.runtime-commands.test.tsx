@@ -162,7 +162,7 @@ describe('StoryStage active runtime commands', () => {
     }
   })
 
-  it('submits a targeted abort without tearing down the observation stream early', async () => {
+  it('pauses from the composer without tearing down the observation stream early', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -187,16 +187,16 @@ describe('StoryStage active runtime commands', () => {
       await waitFor(() =>
         expect(useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.runtime.operationId).toBe('operation-1'),
       )
+      expect(screen.queryByRole('button', { name: '暂停任务' })).not.toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: '中断 AI 执行' }))
 
       await waitFor(() =>
         expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith({
-          type: 'abort',
+          type: 'suspend',
           commandId: expect.any(String),
           targetOperationId: 'operation-1',
           storyId: 'story-1',
           branchId: 'main',
-          reason: 'user_requested',
         }),
       )
       act(() =>
@@ -211,7 +211,7 @@ describe('StoryStage active runtime commands', () => {
     }
   })
 
-  it('disables abort and send controls after an abort receipt until settlement', async () => {
+  it('disables composer controls while a pause command is pending', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -220,11 +220,13 @@ describe('StoryStage active runtime commands', () => {
       active_operation_id: 'operation-1',
       queue: [],
     })
-    submitInteractiveAgentCommandMock.mockResolvedValue({
+    let resolveSuspend!: (value: unknown) => void
+    submitInteractiveAgentCommandMock.mockImplementation(() => new Promise(resolve => { resolveSuspend = resolve }))
+    const receipt = {
       command_id: 'abort-1',
       operation_id: 'operation-1',
       cursor: 9,
-    })
+    }
 
     try {
       render(<StoryStageHarness />)
@@ -246,12 +248,13 @@ describe('StoryStage active runtime commands', () => {
       const input = getStageInput()
       const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
       await user.click(stopButton)
-      await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'abort' })))
+      await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'suspend' })))
 
       expect(stopButton).toBeDisabled()
       await user.type(input, '不能在中断后发送')
       expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeDisabled()
       expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+      await act(async () => resolveSuspend(receipt))
     } finally {
       stream.close()
     }

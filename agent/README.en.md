@@ -234,6 +234,7 @@ assistant, err := agent.New(ctx, agent.Definition{
 	Compaction: compaction.Standard(compaction.StandardConfig{
 		ContextWindowTokens: contextTokens,
 	}),
+	Elision: &agent.ElisionPolicy{ContextWindowTokens: contextTokens},
 	Execution: agent.ExecutionPolicy{ToolParallelism: 4},
 }, agent.WithSessionStore(store))
 if err != nil {
@@ -282,6 +283,8 @@ For writing, research, or support, primarily replace Instructions, Context, Skil
 
 Use the static Definition above for simple cases. Implement [`Source`](definition.go) when models and capabilities must vary by Session. For existing product conversation storage, integrate [`CanonicalAdapter`](canonical.go) and [`session.Store`](session/store.go) so product history and Agent recovery records share one journal.
 
+Query historical results with `Session.CommandSnapshot(ctx, commandID)` or `RunSnapshot(ctx, runID)`. These reads neither start work nor require historical Runs to remain resident. After durable settlement, Agent releases execution state while the canonical journal retains the full history. `AttachRun` returns a caller-owned terminal view for settled work; suspended work retains its recovery facts. Storage adapters may implement [`RecoveryLog`](session_recovery_index.go) with a rebuildable `RecoveryIndex` and revision-based record reads to accelerate cold recovery. Historical index entries contain no input, output, or tool-result bodies. Ordinary `session.Log` implementations still recover through streaming replay; the built-in file store collects transient record locations during replay, then reads only the target transaction for historical lookups.
+
 ### Three levels of compaction integration
 
 ```go
@@ -305,6 +308,20 @@ Compaction: myCompactionManager
 
 `Standard` retains the most recent complete interaction and generates summaries with the active model snapshot. If capacity is insufficient, it processes the source in ordered batches; model failures do not silently switch execution modes. `Prompt` adds domain guidance. `ModelSummarizer` supports a replacement model with a stable Identity.
 
-A custom manager's `Plan` receives complete interaction groups and the final model snapshot, then selects a prefix through `GroupCount`. `Compact` receives only the previous checkpoint and newly selected material. Both extension points return `CompactionCheckpoint{Summary, ContextData}`. Optional ContextData is typed, versioned JSON (at most 8 MiB), persisted atomically with the summary and never injected into the model automatically.
+A custom manager's `Plan` receives complete interaction groups and the final model snapshot, then selects a prefix through `GroupCount`. During that `Plan` call, `EstimateAfter(GroupCount)` measures the projected complete request, including protected inputs, tool schemas and images but excluding the new summary; reserve its budget separately. The built-in policy selects history against the token recovery target and preserves native image inputs in cold summary batches. The final request is validated again before checkpoint publication. `Compact` receives only the previous checkpoint and newly selected material. Both extension points return `CompactionCheckpoint{Summary, ContextData}`. Optional ContextData is typed, versioned JSON (at most 8 MiB), persisted atomically with the summary and never injected into the model automatically.
 
 Agent protects current user instructions, the newest complete tool group, and unfinished steps; measures final request capacity and actual progress; and owns journal commits, revision, cancellation, and recovery. Read the checkpoint view through `Session.Snapshot().Compaction`; detailed diagnostics live in `Inspect().CompactionMetrics` and compaction events. Runtime-issued views can `Project` effective history. Serialized display data does not carry history projection authority.
+
+### Tool-result elision before summarization
+
+`Definition.Elision` independently enables deterministic tool-result elision. At the default 60% window pressure, including request reserves, it replaces stale recoverable bodies and rebuilds the exact model request before Compaction decides whether a summary is still needed. It preserves the newest two complete steps, a recent history tail covering at least 30% of the window, user instructions, images, errors, protected results and unrecoverable outputs. Replay recovery requires complete, unredacted arguments and an available read-only tool. Complete artifacts use ordinary read access and retain operation receipts; recovering output must not repeat side effects.
+
+Selection starts with the newest eligible groups to retain a longer cache prefix. Each result must save at least 256 tokens and each batch at least `max(256, 1% of the window)`, verified on the rebuilt provider request with an unchanged stable prefix. Raw history is never rewritten. An `agent.elision` v1 record in the same canonical journal stores only message coordinates and source hashes (at most 4096 entries; a Compaction boundary ignores coordinates it has absorbed), without copied bodies or host paths. Pause, cold restart, manual compaction and inspection share the projection; Clear or canonical history replacement invalidates it. `Inspect().ElisionMetrics` reports the last committed savings and estimated cache prefix.
+
+Denova's native writing, game and persistent child Agents share the existing automatic-compaction switch. The soft trigger scales with the summary trigger: 60% elision before 85% summarization by default. SDK callers use `Elision: nil` to disable new elisions; committed projections remain active. Latest-release user data needs no migration; legacy Cleanup records remain historical diagnostics only.
+
+### Native image input
+
+[`Attachment`](attachment.go) carries user images and `ToolResult.Attachments` carries tool images. `InputSize.Tokens` includes visual tokens; `InputSize.Bytes` counts the JSON envelope without image Base64. Both compaction and final input checks share these estimates. Custom models can implement `ModelInputEstimator`; unknown models reserve 32K tokens per image.
+
+The `read` tool in `tools.Workspace` reads UTF-8 text and PNG, JPEG, GIF, or WebP images (up to 20 MiB each). Image reads require `Definition.Artifacts` with local path resolution: the tool saves an immutable snapshot before returning native image input. User attachment paths are relative to `AttachmentRoot`; tool image paths are relative to their artifact storage boundary. Journals retain relative references and SHA256, never runtime absolute paths or Base64. Responses and Anthropic include images inside tool results; Chat Completions projects image messages after the entire tool result batch to preserve call pairing.

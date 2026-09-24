@@ -27,6 +27,9 @@ func BuildConversationAgent(
 	agentKind string,
 	host agents.AgentHostCapabilities,
 ) (BuiltAgent, error) {
+	if cfg != nil && cfg.ActiveAgentRuntime != nil && cfg.ActiveAgentRuntime.Kind != config.RuntimeNative {
+		return BuiltAgent{}, fmt.Errorf("Native Agent builder cannot execute runtime %q", cfg.ActiveAgentRuntime.Kind)
+	}
 	host.Interactive = true
 	var definition agents.Definition
 	var composition prompts.SystemPromptComposition

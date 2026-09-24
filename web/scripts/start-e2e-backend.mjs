@@ -2,17 +2,9 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
+import { runtimeRoot, webRoot } from './e2e-paths.mjs'
 
-const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repositoryRoot = path.resolve(webRoot, '..')
-const testResultsRoot = path.join(webRoot, 'test-results')
-const runtimeRoot = path.join(testResultsRoot, 'runtime')
-const relativeRuntime = path.relative(testResultsRoot, runtimeRoot)
-
-if (relativeRuntime.startsWith('..') || path.isAbsolute(relativeRuntime)) {
-  throw new Error(`Refusing to prepare E2E runtime outside ${testResultsRoot}`)
-}
 
 if (existsSync(runtimeRoot)) rmSync(runtimeRoot, { recursive: true, force: true })
 const denovaDir = path.join(runtimeRoot, 'denova')
@@ -22,6 +14,15 @@ mkdirSync(binaryDir, { recursive: true })
 
 const backendPort = process.env.DENOVA_E2E_BACKEND_PORT || '18080'
 const modelPort = process.env.DENOVA_E2E_MODEL_PORT || '18081'
+// Opt-in product acceptance uses an installed CLI and an isolated home. Native
+// remains the default, and no test reads or changes the user's CLI credentials.
+const codexExecutable = process.env.DENOVA_TEST_CODEX_EXE
+const codexHome = path.join(runtimeRoot, 'codex')
+if (codexExecutable) {
+  if (!path.isAbsolute(codexExecutable) || !existsSync(codexExecutable)) throw new Error('DENOVA_TEST_CODEX_EXE must name an installed executable')
+  mkdirSync(codexHome, { recursive: true })
+  writeFileSync(path.join(codexHome, 'config.toml'), 'model_context_window = 100000\nmodel_auto_compact_token_limit = 80000\n[features]\nenable_request_compression = false\n', 'utf8')
+}
 // Release smoke tests use the extracted distribution, including its own assets.
 const packageDir = process.env.DENOVA_E2E_PACKAGE_DIR
   ? path.resolve(process.env.DENOVA_E2E_PACKAGE_DIR)
@@ -29,7 +30,7 @@ const packageDir = process.env.DENOVA_E2E_PACKAGE_DIR
 const binaryPath = packageDir
   ? path.join(packageDir, process.platform === 'win32' ? 'denova.exe' : 'denova')
   : path.join(binaryDir, process.platform === 'win32' ? 'denova-e2e.exe' : 'denova-e2e')
-const config = `language = "zh-CN"
+let config = `language = "zh-CN"
 update_check_enabled = false
 model_max_retries = 1
 
@@ -59,7 +60,42 @@ thinking_level = "off"
 [agent_models.interactive_story]
 profile_id = "e2e"
 thinking_level = "off"
+
+[[image_api_endpoints]]
+id = "e2e-image"
+name = "E2E image endpoint"
+provider = "openai"
+protocol = "openai-images"
+api_key = "e2e-test-key"
+base_url = "http://127.0.0.1:${modelPort}/v1"
+
+[[image_api_profiles]]
+id = "e2e-image"
+name = "E2E image model"
+endpoint_id = "e2e-image"
+model = "denova-e2e-image"
 `
+if (codexExecutable) config += `
+[[model_endpoints]]
+id = "e2e-responses"
+name = "E2E Responses model"
+provider = "openai-compatible"
+protocol = "openai-responses"
+api_key = "e2e-test-key"
+base_url = "http://127.0.0.1:${modelPort}/v1"
+
+[[model_profiles]]
+id = "e2e-codex"
+name = "E2E Codex model"
+endpoint_id = "e2e-responses"
+model = "gpt-5.5"
+context_window_tokens = 100000
+
+${['ide', 'general', 'interactive_story'].map(kind => `[agent_runtimes.${kind}]
+selected = "codex"
+[agent_runtimes.${kind}.codex]
+profile_id = "e2e-codex"
+`).join('\n')}`
 writeFileSync(path.join(denovaDir, 'config.toml'), config, 'utf8')
 
 const legacyWorkspace = path.join(denovaDir, 'projects', 'Legacy E2E Book')
@@ -217,6 +253,7 @@ const backend = spawn(binaryPath, ['--no-open', `--port=${backendPort}`], {
     ...process.env,
     DENOVA_DIR: denovaDir,
     DENOVA_SKILLS_DIR: path.join(packageDir || repositoryRoot, 'skills'),
+    ...(codexExecutable ? { CODEX_HOME: codexHome, PATH: `${path.dirname(codexExecutable)}${path.delimiter}${process.env.PATH ?? ''}` } : {}),
     ...(packageDir ? { DENOVA_WEB_DIR: path.join(packageDir, 'web') } : {}),
   },
   stdio: 'inherit',

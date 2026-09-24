@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildAgentSubAgentTimelineGroups, type AgentMessageView, type AgentMessageViewKind } from '@/lib/agent-message-view'
-import { buildSubAgentSummaryMessage, selectSubAgentSessionViews, subAgentStatusFromViews } from './subagent-session'
+import { taskSubAgentSessionKey, buildSubAgentSummaryMessage, selectSubAgentSessionViews, subAgentStatusFromViews } from './subagent-session'
 
 describe('selectSubAgentSessionViews', () => {
   it('isolates interleaved concurrent sessions of the same SubAgent type', () => {
@@ -69,3 +69,9 @@ function subAgentView(id: string, sessionID: string, options: { agentName?: stri
     streaming: false,
   } as AgentMessageView
 }
+
+it('links accepted new commands and released task history without guessing across runs', () => {
+  expect(taskSubAgentSessionKey(JSON.stringify({ results: [{ outcome: 'accepted', ref: { session: 'child', run: 'run' } }, { outcome: 'error', error: { code: 'invalid_input' } }] }))).toBe('child/run')
+  expect(taskSubAgentSessionKey(JSON.stringify({ results: [{ task: { ref: { session: 'old', run: 'old-run' } } }] }))).toBe('old/old-run')
+  expect(taskSubAgentSessionKey(JSON.stringify({ results: [{ ref: { session: 'child', run: 'one' } }, { ref: { session: 'child', run: 'two' } }] }))).toBe('')
+})

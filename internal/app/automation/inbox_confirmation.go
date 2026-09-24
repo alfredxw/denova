@@ -51,9 +51,7 @@ func (s *Service) confirmInboxItemWithStarter(ctx context.Context, store *automa
 	if err := validateAutomationRunRootReceipt(run); err != nil {
 		return automation.InboxActionResult{}, fmt.Errorf("automation inbox run %s has no valid durable root receipt: %w", run.ID, err)
 	}
-	if run.RuntimeRecoveryRequired {
-		return automation.InboxActionResult{}, fmt.Errorf("automation inbox run %s requires explicit runtime recovery", run.ID)
-	}
+
 	updated, err := store.CompleteInboxRun(ctx, claimed.ID, run.ID)
 	if err != nil {
 		return automation.InboxActionResult{}, err

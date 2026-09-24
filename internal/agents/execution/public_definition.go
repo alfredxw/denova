@@ -116,6 +116,7 @@ func (backend *publicBackend) bindDefinition(
 		executor, taskErr := publictools.NewLocalTasks(publictools.LocalTaskOptions{
 			Parallelism: taskCatalog.Parallelism(), CompletionParent: parentSession,
 			MaxResultBytes: taskCatalog.MaxResultBytes(),
+			Self:           publictools.TaskRef{Agent: definition.Name, Session: request.Session.Key.ID},
 		}, candidates...)
 		if taskErr != nil {
 			return agent.Definition{}, fmt.Errorf("bind delegated Agent executor: %w", taskErr)

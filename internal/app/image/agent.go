@@ -41,6 +41,20 @@ type AgentGenerateResult struct {
 	AssistantText    string
 	InteractiveImage *imageasset.InteractiveResult
 	BookCover        *imageasset.CoverResult
+	imageToolCalled  bool
+	imageToolError   *ImageToolError
+}
+
+// MissingImageError explains a missing output after the caller checks canonical
+// state. A recovered tool failure must never override a successfully saved image.
+func (result AgentGenerateResult) MissingImageError() error {
+	if result.imageToolError != nil {
+		return result.imageToolError
+	}
+	if !result.imageToolCalled {
+		return ErrImageToolNotCalled
+	}
+	return ErrImageOutputMissing
 }
 
 type imageAgentRunHooks struct {
@@ -104,6 +118,23 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 		Emit: func(ev agentrun.Event) {
 			switch ev.Type {
 			case "tool_result":
+				payload, ok := ev.Data.(map[string]any)
+				if ok && payload["name"] == agenttools.GenerateImageToolName {
+					result.imageToolCalled = true
+					status, _ := payload["status"].(string)
+					if status == "success" {
+						result.imageToolError = nil
+					} else {
+						detail, _ := payload["content"].(string)
+						detail = strings.TrimSpace(detail)
+						// Bound the HTTP diagnostic; the full result remains in the journal.
+						const maxImageToolErrorBytes = 4 * 1024
+						if len(detail) > maxImageToolErrorBytes {
+							detail = strings.ToValidUTF8(detail[:maxImageToolErrorBytes], "") + "..."
+						}
+						result.imageToolError = &ImageToolError{Detail: detail}
+					}
+				}
 				if image := eventInteractiveImage(ev.Data); image != nil {
 					result.InteractiveImage = image
 					if hooks.OnInteractiveImage != nil && hookErr == nil {

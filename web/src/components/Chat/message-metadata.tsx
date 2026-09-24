@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bot, Check, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, MoreHorizontal, Pencil, RefreshCw } from 'lucide-react'
+import { Bot, Check, ChevronLeft, ChevronRight, Copy, Dice5, GitBranch, ImagePlus, Loader2, MoreHorizontal, Pencil, RefreshCw, Volume2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { Button } from '@/components/ui/button'
@@ -106,7 +106,7 @@ function formatSignedRuleRollNumber(value: number) {
   return value > 0 ? `+${formatted}` : formatted
 }
 
-export function MessageInlineMeta({ projectId, message, content, align, reserveSpace = false, hideActions = false, onEdit, editLabelKey = 'chat.action.editTurn', onCreateBranch, onGenerateInteractiveImage, generatingInteractiveImage = false, interactiveImageGenerationDisabled = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { projectId?: string; message: ChatMessage; content: string; align: 'left' | 'right'; reserveSpace?: boolean; hideActions?: boolean; onEdit?: (message: ChatMessage) => void; editLabelKey?: 'chat.action.editTurn' | 'chat.action.editAssistantReply'; onCreateBranch?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; interactiveImageGenerationDisabled?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
+export function MessageInlineMeta({ projectId, message, content, align, reserveSpace = false, hideActions = false, onEdit, editLabelKey = 'chat.action.editTurn', onCreateBranch, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImage = false, interactiveImageGenerationDisabled = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { projectId?: string; message: ChatMessage; content: string; align: 'left' | 'right'; reserveSpace?: boolean; hideActions?: boolean; onEdit?: (message: ChatMessage) => void; editLabelKey?: 'chat.action.editTurn' | 'chat.action.editAssistantReply'; onCreateBranch?: (message: ChatMessage) => void; onReadAloud?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; interactiveImageGenerationDisabled?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const isMobile = useIsMobile()
@@ -114,8 +114,8 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
   const formatted = formatMessageHoverTime(message.created_at)
   const runID = message.run_id?.trim()
   const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
-  const hasRunActions = Boolean(runID && (message.role === 'assistant' || message.role === 'error'))
-  const hasMessageAction = hasRunActions || (!hideActions && Boolean(onEdit || onCreateBranch || onGenerateInteractiveImage || onRegenerate || canSwitchVersion))
+  const hasRunActions = !hideActions && Boolean(runID && (message.role === 'assistant' || message.role === 'error'))
+  const hasMessageAction = hasRunActions || (!hideActions && Boolean(onReadAloud || onEdit || onCreateBranch || onGenerateInteractiveImage || onRegenerate || canSwitchVersion))
   const showCopyAction = !hideActions && Boolean(content.trim())
   const metaTooltip = {
     tooltipSide: 'top' as const,
@@ -132,6 +132,7 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
   }
   if (isMobile) {
     const actions = [
+      ...(onReadAloud ? [{ label: t('speech.read'), icon: Volume2, run: () => onReadAloud(message) }] : []),
       ...(onEdit ? [{ label: t(editLabelKey), icon: Pencil, run: () => onEdit(message) }] : []),
       ...(onCreateBranch ? [{ label: t('chat.action.createBranch'), icon: GitBranch, run: () => onCreateBranch(message) }] : []),
       ...(onGenerateInteractiveImage ? [{ label: t(message.role === 'assistant' && (message.interactive_images?.length || message.interactive_image) ? 'chat.interactiveImage.regenerate' : 'chat.action.generateInteractiveImage'), icon: generatingInteractiveImage ? Loader2 : ImagePlus, disabled: interactiveImageGenerationDisabled, run: () => onGenerateInteractiveImage(message) }] : []),
@@ -189,6 +190,9 @@ export function MessageInlineMeta({ projectId, message, content, align, reserveS
           >
             <Pencil className="h-3 w-3" />
           </TooltipIconButton>
+        )}
+        {onReadAloud && (
+          <TooltipIconButton label={t('speech.read')} {...metaTooltip} className="size-5 text-muted-foreground" onClick={() => onReadAloud(message)}><Volume2 className="size-3" /></TooltipIconButton>
         )}
         {onCreateBranch && (
           <TooltipIconButton

@@ -116,6 +116,7 @@ export interface RuleRollChatMessage extends ChatMessageBase {
 }
 
 export interface ContextCompactionChatMessage extends ChatMessageBase {
+  runtime_managed?: boolean
   role: 'context_compaction'
   status?: ChatMessageStatus
   phase?: string
@@ -161,6 +162,10 @@ export interface SystemChatMessage extends ChatMessageBase {
   role: 'system'
 }
 
+export interface TodoChatMessage extends ChatMessageBase {
+  role: 'todo_updated'
+}
+
 export interface ErrorChatMessage extends ChatMessageBase {
   role: 'error'
 }
@@ -176,6 +181,7 @@ export type ChatMessage =
   | ContextCompactionChatMessage
   | TokenUsageChatMessage
   | ProposedPlanChatMessage
+  | TodoChatMessage
   | SystemChatMessage
   | ErrorChatMessage
 
@@ -861,7 +867,32 @@ export interface LoreItemImageGenerateRequest {
   profile_id?: string
 }
 
-export type SkillScope = 'builtin' | 'user' | 'workspace'
+export type SkillScope = 'builtin' | 'user' | 'workspace' | 'shared'
+
+export interface SkillRemoteState {
+  source: { url: string; ref?: string; subdir?: string }
+  source_path: string
+  digest: string
+  auto_update: boolean
+  checked_at: string
+  update_available: boolean
+  status?: 'current' | 'available' | 'modified' | 'updated' | 'error'
+}
+
+export interface SkillPreferenceChange {
+  scope?: SkillScope
+  name?: string
+  enabled?: boolean
+  shared_enabled?: boolean
+  auto_update?: boolean
+}
+
+export interface SkillUpdateResult {
+  scope: SkillScope
+  name: string
+  remote?: SkillRemoteState
+  error_key?: string
+}
 
 export interface SkillScopeInfo {
   scope: SkillScope
@@ -881,6 +912,8 @@ export interface SkillSummary {
   path: string
   editable: boolean
   active: boolean
+  enabled?: boolean
+  remote?: SkillRemoteState
   updated_at?: string
 }
 
@@ -900,6 +933,7 @@ export interface SkillFile {
 export interface SkillSnapshot {
   scopes: SkillScopeInfo[]
   skills: SkillSummary[]
+  shared_enabled?: boolean
 }
 
 export interface SkillDocument extends SkillSummary {
@@ -995,13 +1029,14 @@ export interface AutomationRunRecord {
   runtime_command_id?: string
   runtime_operation_id?: string
   runtime_receipt_cursor?: number
-  status: 'running' | 'success' | 'failed' | 'aborted'
+  delivery_status?: 'pending' | 'accepted'
+  status: 'pending' | 'accepted' | 'queued' | 'running' | 'suspended' | 'success' | 'failed' | 'aborted'
   started_at: string
   finished_at?: string
-  summary: string
+  summary?: string
   error?: string
   output_path?: string
-  tool_manifest: Array<{ source: string; allowed: boolean }>
+  tool_manifest?: Array<{ source: string; allowed: boolean }>
 }
 
 export interface AutomationTask {

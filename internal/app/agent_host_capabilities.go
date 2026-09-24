@@ -15,20 +15,31 @@ import (
 // no global state is injected into the prompt or context.
 func (a *App) AgentHostCapabilities(
 	_ context.Context,
-	_ *config.Config,
-	_ string,
+	cfg *config.Config,
+	agentKind string,
 ) (agents.AgentHostCapabilities, error) {
-	return agents.AgentHostCapabilities{Interactive: true}, nil
+	host := agents.AgentHostCapabilities{Interactive: true}
+	if a != nil && a.platform != nil {
+		var err error
+		host.PluginTools, err = a.platform.HostAgentTools(cfg, agentKind)
+		if err != nil {
+			return host, err
+		}
+	}
+	return host, nil
 }
 
 // AgentsProjectAgentHostCapabilities adds only the on-demand, read-only
 // trajectory:// adapter to the Agents Project's ordinary General Agent.
 func (a *App) AgentsProjectAgentHostCapabilities(
-	_ context.Context,
-	_ *config.Config,
-	_ string,
+	ctx context.Context,
+	cfg *config.Config,
+	agentKind string,
 ) (agents.AgentHostCapabilities, error) {
-	host := agents.AgentHostCapabilities{Interactive: true}
+	host, err := a.AgentHostCapabilities(ctx, cfg, agentKind)
+	if err != nil {
+		return host, err
+	}
 	if a == nil {
 		return host, nil
 	}

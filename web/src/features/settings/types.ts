@@ -3,7 +3,16 @@ import type { ToolPresentationKind } from '@/lib/api-client/types'
 
 export type { AgentApprovalMode } from '@/features/agent-approval/modes'
 
+export interface SpeechSettings {
+  endpoint: string
+  api_key: string
+  model: string
+  voice: string
+}
+
 export interface Settings {
+  speech?: SpeechSettings
+  agent_runtimes?: Partial<Record<'ide' | 'general' | 'interactive_story', import('@/features/agent-runtime/types').RuntimePreferences>>
   openai_api_key?: string
   openai_base_url?: string
   openai_model?: string
@@ -298,7 +307,6 @@ export interface AgentModelSettings {
   config_manager?: AgentModelOverride
   version_summary?: AgentModelOverride
   tool_agent?: AgentModelOverride
-  automation?: AgentModelOverride
 }
 
 export interface AgentModelOverride {
@@ -316,7 +324,6 @@ export interface AgentToolSettings {
   config_manager?: AgentToolOverride
   version_summary?: AgentToolOverride
   tool_agent?: AgentToolOverride
-  automation?: AgentToolOverride
 }
 
 export interface AgentSkillSettings {
@@ -328,7 +335,6 @@ export interface AgentSkillSettings {
   config_manager?: AgentSkillOverride
   version_summary?: AgentSkillOverride
   tool_agent?: AgentSkillOverride
-  automation?: AgentSkillOverride
 }
 
 export type AgentSkillOverride = Record<string, boolean>
@@ -342,7 +348,6 @@ interface AgentContextSettings {
   config_manager?: AgentContextOverride
   version_summary?: AgentContextOverride
   tool_agent?: AgentContextOverride
-  automation?: AgentContextOverride
 }
 
 export interface AgentContextOverride {
@@ -375,7 +380,6 @@ interface AgentGeneralSubAgentSettings {
   ide?: boolean | null
   interactive_story?: boolean | null
   config_manager?: boolean | null
-  automation?: boolean | null
 }
 
 export type AgentToolCapability =
@@ -446,6 +450,7 @@ export interface SubAgentConfig {
 
 /** Complete user-owned Agent definition inside one stable runtime contract. */
 export interface CustomAgentConfig {
+  runtime?: import('@/features/agent-runtime/types').RuntimePreferences
   id?: string
   name?: string
   description?: string
@@ -517,7 +522,6 @@ interface AgentPromptSettings {
   config_manager?: AgentPromptOverride
   version_summary?: AgentPromptOverride
   tool_agent?: AgentPromptOverride
-  automation?: AgentPromptOverride
 }
 
 export interface AgentPromptOverride {
@@ -547,7 +551,6 @@ interface AgentPromptSourceSettings {
   config_manager?: AgentPromptSourceList
   version_summary?: AgentPromptSourceList
   tool_agent?: AgentPromptSourceList
-  automation?: AgentPromptSourceList
 }
 
 export interface AgentPromptBlocks {
@@ -565,7 +568,6 @@ interface AgentPromptBlockSettings {
   config_manager?: AgentPromptBlocks
   version_summary?: AgentPromptBlocks
   tool_agent?: AgentPromptBlocks
-  automation?: AgentPromptBlocks
 }
 
 interface SettingsPaths {
@@ -591,6 +593,7 @@ interface SettingsRevisions {
 }
 
 export interface LayeredSettings {
+  agent_configuration?: Record<string, import('@/features/agent-runtime/types').AgentConfiguration>
   default: Settings
   global: Settings
   user: Settings

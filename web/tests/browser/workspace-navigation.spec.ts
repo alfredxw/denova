@@ -1,14 +1,19 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
+test.use({ reducedMotion: 'no-preference' })
+
 for (const theme of ['dark', 'light']) {
   test(`primary navigation responds without background trailing in ${theme} mode`, async ({ page, request }) => {
+    // This journey hydrates six destinations on slower CI runners.
+    test.setTimeout(60_000)
     await createAndOpenBook(request, `Navigation Feedback Book ${theme}`)
-    await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, async (route) => {
-      const response = await route.fetch()
-      const settings = await response.json()
-      await route.fulfill({ response, json: { ...settings, effective: { ...settings.effective, theme } } })
-    })
+    const settings = await (await request.get('/api/settings')).json()
+    // Navigation can abort a settings request before route.fetch returns.
+    // This journey only needs a fixed theme, so serve its snapshot directly.
+    await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
+      json: { ...settings, effective: { ...settings.effective, theme } },
+    }))
     await page.goto('/')
     const sidebar = page.getByLabel('工作台侧边栏')
     await expect(sidebar).toBeVisible()
@@ -43,12 +48,14 @@ for (const theme of ['dark', 'light']) {
 }
 
 test('keeps exactly one primary destination active across the normal workbench routes', async ({ page, request }) => {
+  // This journey hydrates twelve destinations; each assertion keeps its normal
+  // deadline, while the total budget includes cold route loads on CI runners.
+  test.setTimeout(90_000)
   await createAndOpenBook(request, 'Browser Navigation Book')
-  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, async (route) => {
-    const response = await route.fetch()
-    const settings = await response.json()
-    await route.fulfill({ response, json: { ...settings, effective: { ...settings.effective, labs: { ...settings.effective?.labs, developer_mode: true } } } })
-  })
+  const settings = await (await request.get('/api/settings')).json()
+  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
+    json: { ...settings, effective: { ...settings.effective, labs: { ...settings.effective?.labs, developer_mode: true } } },
+  }))
   // Exercise the developer destination's empty state without enabling trace collection in the test backend.
   await page.route(/\/api\/agent-runs(?:\?|$)/, (route) => route.fulfill({ json: { runs: [], issues: [] } }))
   await page.goto('/')
@@ -56,11 +63,13 @@ test('keeps exactly one primary destination active across the normal workbench r
   const sidebar = page.getByLabel('工作台侧边栏')
   await expect(sidebar).toBeVisible()
   for (const destination of ['写作', '游戏', '资料库', '方案预设', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '轨迹', '设置']) {
-    await sidebar.getByRole('button', { name: destination, exact: true }).click()
-    await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(1)
-    await expect(sidebar.getByRole('button', { name: destination, exact: true })).toHaveAttribute('aria-current', 'page')
-    await expect(page.locator('[data-slot=loading-state]:visible')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^关闭(?:设置|书籍管理|版本管理|自动化| Agents)?$/ })).toHaveCount(0)
+    await test.step(destination, async () => {
+      await sidebar.getByRole('button', { name: destination, exact: true }).click()
+      await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(1)
+      await expect(sidebar.getByRole('button', { name: destination, exact: true })).toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('[data-slot=loading-state]:visible')).toHaveCount(0)
+      await expect(page.getByRole('button', { name: /^关闭(?:设置|书籍管理|版本管理|自动化| Agents)?$/ })).toHaveCount(0)
+    })
   }
 })
 
@@ -70,14 +79,10 @@ test('exposes the same primary destinations in English on a narrow viewport', as
   await page.addInitScript(() => {
     window.localStorage.setItem('nova.locale.configured', 'en-US')
   })
-  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, async (route) => {
-    const response = await route.fetch()
-    const settings = await response.json() as { effective?: Record<string, unknown> }
-    await route.fulfill({
-      response,
-      json: { ...settings, effective: { ...settings.effective, language: 'en-US' } },
-    })
-  })
+  const settings = await (await request.get('/api/settings')).json()
+  await page.route(/\/api\/(?:projects\/[^/]+\/)?settings$/, route => route.fulfill({
+    json: { ...settings, effective: { ...settings.effective, language: 'en-US' } },
+  }))
   await page.goto('/')
 
   await page.getByRole('button', { name: 'Navigation', exact: true }).click()

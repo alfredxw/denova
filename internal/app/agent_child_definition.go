@@ -82,6 +82,9 @@ func (a *App) prepareChildDefinition(
 		if err != nil {
 			return agentexecution.ChildDefinition{}, err
 		}
+		if cycle.externalAssembly != nil {
+			return agentexecution.ChildDefinition{}, fmt.Errorf("%w: external Game does not support Native delegation", agentexecution.ErrCyclePreparationUnavailable)
+		}
 		return finalize(agentdelegation.ChildDefinition(cycle.definition, request.Child))
 	default:
 		return agentexecution.ChildDefinition{}, fmt.Errorf("%w: Agent kind %q does not support delegation", agentexecution.ErrCyclePreparationUnavailable, binding.AgentKind)

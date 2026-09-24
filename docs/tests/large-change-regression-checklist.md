@@ -7,7 +7,7 @@
 适用场景包括：
 
 - 改动 Writing、Game、AgentChat 等核心用户流程。
-- 改动被多个模式复用的 Agent runtime、会话、工具、上下文、工作区、导航、设置或 UI 组件。
+- 改动被多个产品入口复用的 Agent runtime、会话、工具、上下文、工作区、导航、设置或 UI 组件。
 - 改动 API、配置、Project 身份、持久化格式、版本恢复或用户内容目录。
 - 大量文件或多个 package 同时变化，局部测试不足以证明整体行为。
 - 准备合并重要变更，或准备正式发布版本。
@@ -22,6 +22,17 @@
 - 测试结论只对被验证的源码树有效。后续代码、依赖、配置或冲突修复改变相关行为后，需要重跑受影响条目。
 
 ## 2. 使用流程
+
+### 自动化测试的稳定性约束
+
+- 浏览器用例统一从 `web/tests/support/fixtures.ts` 导入 `test`。共用 fixture 阻止未模拟的公网请求；外部响应通过页面级 route 显式模拟，应用运行所需的静态资源随包提供。失败诊断随 Playwright 报告上传。
+- `createAndOpenBook` 每次调用生成独立书名与 Project，显示名断言使用返回的 `title`。不要用固定目录复用前一个用例的数据；`--repeat-each` 用于检验隔离性，不作为失败重试。
+- 共用 fixture 在关闭页面后恢复语言、主题、runtime 默认值、模型配置和终端 shell，并核对恢复结果。涉及认证凭据等其他全局状态的用例仍需明确自己的隔离与清理策略；Project 设置由该用例独立的 Project 承载。
+- 异步测试等待目标页面、接口回执、事件或最终状态，不使用固定 sleep。旅程总超时和单阶段等待预算分别设置；不让文件准备、fixture 初始化消耗后续异步阶段的预算。
+- Go 测试使用取消与清理保证后台任务先结束、日志先关闭，再删除临时目录。竞争条件通过可控事件或事务冲突复现，不能只依赖概率重跑。
+- CI 浏览器分片分别使用独立后端与数据目录，每片单 worker，保持零自动重试。最终 `Test and build` 必须汇总所有分片、Go/单测、构建与生产包冒烟；不能只看某个绿色分片。
+
+### 回归执行步骤
 
 1. 先阅读 Diff、调用链、配置和数据边界，填写第 3 节影响域。
 2. 为每个选中域确定正常路径、失败路径、刷新/重启路径和数据保护路径。
@@ -57,14 +68,14 @@
 | 回归域 | 何时必须选择 |
 | --- | --- |
 | 基础不变量 | 所有大范围变更，始终选择 |
-| 导航、布局与本地化 | 一级菜单、路由、模式、面板、Tab、共享组件、主题、字体、响应式或用户文案变化 |
+| 导航、布局与本地化 | 一级菜单、路由、面板、Tab、共享组件、主题、字体、响应式或用户文案变化 |
 | Agent runtime 与会话 | Agent 生命周期、流式事件、消息投影、工具执行、权限、Ask、Goal、SubAgent、恢复或会话存储变化 |
 | 模型上下文与缓存 | Prompt、Context State、Skills 目录、工具 schema、裁剪、cleanup、compaction、历史窗口或 trace 变化 |
 | Writing | 书籍、章节、大纲、编辑器、搜索替换、评论、Writing Agent、Diff Review 或写作会话变化 |
 | Game | 故事、回合、Actor State、Director、规则、事件、行动建议、历史、分支或游戏 Agent 变化 |
 | AgentChat、Project、Files 与 Terminal | Project 注册表/身份、通用对话、工作台 Tab、后台 Book、文件树、Monaco、PTY 或 WebSocket 变化 |
 | 设置、模型与安全 | Settings、Model Profile、协议适配器、密钥、权限规则、远程访问或用户/工作区作用域变化 |
-| 资料、预设、Skills、自动化与图像 | 共用创作资源、CAS、Config Manager、Skill 管理、Automation 或图像生成变化 |
+| 资料、预设、Skills、自动化与图像 | 共用创作资源、CAS、配置管理工具、Skill 管理、Automation 或图像生成变化 |
 | 数据、版本与恢复 | API 字段、文件结构、持久化真源、迁移/清理、版本 Diff、恢复、备份或并发写入变化 |
 | 性能与长会话 | 列表、虚拟化、滚动、SSE、轮询、缓存、长历史、大文件、渲染或大对象变化 |
 | 平台与发布 | 构建、内嵌资源、安装器、updater、跨平台代码或正式发版 |
@@ -74,19 +85,16 @@
 - 共享消息列表、输入框或工具卡变化：选择“Agent runtime 与会话”，并在 Writing、Game、AgentChat 中分别验证。
 - Project 身份或工作区事件变化：选择 Writing、Game、AgentChat/Files、数据恢复，检查前台与后台 Project 隔离。
 - Context、Prompt 或 Tool Schema 变化：选择 Agent runtime、模型上下文与缓存，并覆盖所有使用该能力的 Agent 类型。
-- 一级菜单或共享页面变化：选择导航域，同时从 Writing 和 Game 两个模式进入共享页面。
+- 一级菜单或共享页面变化：选择导航域，同时从 Writing 和 Game 两个入口进入共享页面。
 - 持久化、版本、删除或覆盖行为变化：选择数据恢复，并只在临时目录或完整副本上执行破坏性验证。
 - API 或配置字段变化：同步选择前端消费者、后端服务、持久化和错误处理，不只验证一个请求。
 
 ## 4. 自动化与构建门禁
 
-所有大范围变更至少执行：
+大范围变更按 AGENTS.md 选择必要检查，以下为 Bash 示例。Windows 原生使用 PowerShell 匹配的语法，在根目录与 `agent/` 分别执行 Go 检查，并使用当前平台支持的完整构建入口。
 
 ```bash
 git diff --check
-
-go mod tidy
-(cd agent && go mod tidy)
 
 go test -count=1 ./...
 (cd agent && go test -count=1 ./...)
@@ -108,11 +116,11 @@ pnpm --dir web test
 
 验收要求：
 
-- [ ] `go mod tidy` 后只有预期的依赖文件变化，`git diff --check` 无错误。
+- [ ] 仅依赖变更在相关 module 执行 `go mod tidy`；清单核验可用 `go mod tidy -diff`。依赖文件只有预期变化，`git diff --check` 无错误。
 - [ ] 所有相关测试、全量构建和静态检查通过；没有 race、panic、goroutine 泄漏或未处理 Promise rejection。
 - [ ] 没有新增单项运行超过 3 秒的低效单元测试。
 - [ ] 中英文 i18n key 对齐；用户界面按当前语言只展示中文或英文，不在同一交互中重复展示双语。
-- [ ] `./scripts/build.sh` 完整结束，主程序、updater、前端和内嵌资源均成功生成。
+- [ ] 按 AGENTS.md 的宿主平台入口完成完整构建，包含主程序、updater、前端和内嵌资源、Skills、ripgrep；交叉编译不代替目标平台运行验证。
 
 ## 5. 基础不变量
 
@@ -123,9 +131,9 @@ pnpm --dir web test
 | BASE-01 | 启动当前源码并打开已有 Project | 应用可加载，当前 Project、基础设置和主界面正确恢复，无启动崩溃或持续失败请求 |
 | BASE-02 | 打开 Writing，切换章节并完成一次编辑保存 | 正文、目录和保存链路可用；不会覆盖其他文件或 Project |
 | BASE-03 | 打开 Game，进入已有故事并完成一次输入；允许使用当前默认模型配置 | 输入、流式输出、正文/状态提交和刷新恢复可用；不会产生半回合 |
-| BASE-04 | 显式切换 Writing 与 Game，再从两个模式进入一个共享一级页面 | 只有模式切换器能改变模式；共享菜单不自动切换模式；任何时候只有一个一级菜单高亮 |
+| BASE-04 | 依次进入 Writing、Game 和共通能力一级页面 | 各入口直接进入对应目的地，不出现全局模式切换器；任何时候只有一个一级菜单高亮 |
 | BASE-05 | 在两个 Project 间切换并分别读取内容 | API、缓存、会话、事件和写入按 Project 隔离，无跨 Project 内容污染 |
-| BASE-06 | 刷新页面并检查最近操作 | 已提交内容、当前模式、活动页面和必要布局状态正确恢复，不重复执行副作用 |
+| BASE-06 | 刷新页面并检查最近操作 | 已提交内容、活动页面和必要布局状态正确恢复，不重复执行副作用 |
 | BASE-07 | 检查浏览器控制台、网络请求和服务端日志 | 无未解释 exception、重复 4xx/5xx、错误轮询、panic 或敏感信息泄漏；错误按当前语言展示并保留 Log ID |
 | BASE-08 | 检查所有涉及用户内容的删除、覆盖或自动调整 | 用户内容优先保护；破坏性行为有明确确认、备份或可回滚路径，不静默丢数据 |
 
@@ -154,10 +162,10 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 浏览器选择：
 
 - 开发过程中用应用内 Browser 快速检查真实页面。
-- 大型前端或核心组件改造，必须用 `control-in-app-browser` 回归 Writing 和 Game 主链路。
+- 大型前端或核心组件改造，回归 Writing 和 Game 主链路；开发优先应用内浏览器，系统验证使用 Playwright。
 - 需要稳定、可重复断言时使用 Playwright。
 - 依赖用户真实账号、登录态或现有浏览器会话时使用 Chrome。
-- 已有前端进程时直接复用热更新；不要 kill 或再启动一套。后端变更使用 `scripts/restart-backend.sh` 更新可见进程。
+- 已有前端进程时直接复用热更新；不要 kill 或再启动一套。后端变更按 AGENTS.md 的当前宿主入口更新可见进程，只操作当前仓库的后端；Windows 整体重启脚本不代替仅重启后端。
 
 涉及布局或用户交互时，至少检查：
 
@@ -171,15 +179,15 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 
 | ID | 操作 | 通过标准 |
 | --- | --- | --- |
-| NAV-01 | 从 Writing、Game 分别进入所有受影响的共享一级页面 | 不隐式切换模式；关闭共享页返回原模式；只有当前一级菜单高亮 |
+| NAV-01 | 从 Writing、Game 分别进入所有受影响的共通能力一级页面 | 直接进入对应目的地，不保留额外全局模式；只有当前一级菜单高亮 |
 | NAV-02 | 拖动受影响的一级菜单、侧栏或分栏，折叠后刷新并切换 Project | 只有真实用户调整会持久化；折叠不被拖动误触发；不同页面和 Project 不串值 |
 | NAV-03 | 在宽窄屏切换受影响页面、Dialog、Tab 和抽屉 | 自适应布局可用，无页面级横向溢出或被遮挡的主操作 |
 | NAV-04 | 分别使用中文和英文检查新增文案、空状态、错误和提示 | 文案跟随语言配置，不在同屏重复展示双语，不出现缺失 key 或写死单一语言 |
-| NAV-05 | 用键盘遍历模式切换、菜单、列表和主要 Dialog | 焦点可见且顺序合理；模式状态互斥；列表点击父项整行即可展开/折叠 |
+| NAV-05 | 用键盘遍历一级菜单、列表和主要 Dialog | 焦点可见且顺序合理；当前目的地明确；列表点击父项整行即可展开/折叠 |
 
 ## 8. Agent runtime 与会话
 
-共享 runtime 变化时，先选择所有实际消费者，再在每个入口至少完成一个真实 Run：Writing Agent、Game Agent、AgentChat、Config Manager、Automation、Image Agent，以及受影响的 SubAgent。
+共享 runtime 变化时，先选择所有实际消费者，再在每个入口至少完成一个真实 Run：Writing Agent、Game Agent、AgentChat、Automation、Image Agent，以及受影响的 SubAgent。Native 与外部 runtime 分别核验实际能力；游戏不得开启 Goal。
 
 | ID | 操作 | 通过标准 |
 | --- | --- | --- |
@@ -191,7 +199,7 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 | AGENT-06 | 创建含长 thinking、多工具和长结果的单个回合，刷新并向上分页 | 历史按完整用户回合展示，不截断末尾工具或正文，不错误提示还有更早消息 |
 | AGENT-07 | 回答、取消并重复提交 Ask；必要时冷重启 | 只有一个规范结果；重复请求幂等；未知或失效交互给出明确错误 |
 | AGENT-08 | 执行 read/glob/grep、Shell、edit/delete 等受影响工具 | schema、分页、计数、路径边界、部分成功和错误反馈正确；写入进入可审阅变更链路 |
-| AGENT-09 | 如果改动 Goal/Plan，测试创建、编辑、暂停、清除和续跑 | 状态互斥关系正确，跨刷新恢复；仅正确的 Agent 能结束目标 |
+| AGENT-09 | 如果改动 Goal/Plan，在支持的入口测试创建、编辑、暂停、清除和续跑 | 状态和归属正确，跨刷新恢复；游戏 UI、API 与执行层拒绝 Goal；外部 Plan 只保存已确认快照 |
 | AGENT-10 | 运行有长输出的 SubAgent，分别在运行中和完成后打开详情 | 运行中跟随最新输出；完成后可从开头阅读并跳到底部；委派边界与来源稳定 |
 | AGENT-11 | 测试短回复、长回复和用户主动上翻 | 短会话无大块空白；长会话默认到最新；主动上翻后不被强制拉回 |
 
@@ -238,12 +246,12 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 
 | ID | 操作 | 通过标准 |
 | --- | --- | --- |
-| WORKBENCH-01 | 添加 Book 和普通目录 Project，测试重命名、排序、归档和目录重连 | Project ID 稳定；历史和状态保留；操作不切换当前 Writing/Game 模式 |
+| WORKBENCH-01 | 添加 Book 和普通目录 Project，测试重命名、排序、归档和目录重连 | Project ID 稳定；历史和状态保留；管理操作不意外跳转当前页面 |
 | WORKBENCH-02 | 新建、切换、重命名和删除 AgentChat 会话 | 会话绑定正确 Project；列表、消息数、草稿和历史跨刷新正确 |
 | WORKBENCH-03 | 创建多个对话/终端/阅读器 Tab，拖动排序并跨左右工作区迁移 | Tab、草稿、后台 Run 和编辑器保持稳定；分栏状态正确恢复 |
 | WORKBENCH-04 | 在 Files 创建多级路径、保存、重命名、拖动、粘贴和删除 | 目标目录、选择恢复、部分成功和错误回执正确；无错误自动保存或跨 Project 写入 |
 | WORKBENCH-05 | 模拟外部文件内容与目录结构变化 | 内容变化只刷新内容，结构变化才刷新树；本地操作不产生事件回声 |
-| WORKBENCH-06 | 在后台 Book 打开 Reader/Lore 并编辑 | 所有资源绑定后台 Project；前台 Book 和模式不被替换 |
+| WORKBENCH-06 | 在后台 Book 打开 Reader/Lore 并编辑 | 所有资源绑定后台 Project；前台 Book 和活动页面不被替换 |
 | WORKBENCH-07 | 启动 Shell 或已配置 CLI，测试输入输出、resize、主题、退出与重连 | PTY 可用；CLI 退出回到原目录 Shell；重连恢复有界 scrollback，不留下假活连接 |
 
 ## 13. 设置、模型与安全
@@ -264,7 +272,7 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 | RESOURCE-01 | 在 Writing/Game 读取并编辑受影响的 Lore 或预设 | 共用资源即时同步；revision/CAS 生效；冲突不覆盖其他保存；模块作用域正确 |
 | RESOURCE-02 | 创建、编辑、排序和删除受影响资源 | 整行可展开；排序与自动保存稳定；删除有确认且不会留下失效引用 |
 | RESOURCE-03 | 创建/编辑 Skill，并通过命令选择器显式调用 | 候选、键盘和 token 正确；完整 Skill 只按需加载；失败有明确回退 |
-| RESOURCE-04 | 检查 Project 指令、Skill 目录和配置管理工具 | 模型可见内容为英文且来源明确；Config Manager 受当前作用域和 revision 约束 |
+| RESOURCE-04 | 检查 Project 指令、Skill 目录和配置管理工具 | 模型可见内容为英文且来源明确；配置管理工具受当前作用域和 revision 约束 |
 | RESOURCE-05 | 创建 Automation，手动运行、确认、取消并检查重启后的状态 | 定义和 Run 按 Project 隔离；确认幂等；不会永久卡在 running 或重复执行副作用 |
 | RESOURCE-06 | 生成单图与多图，并制造一个逐项失败 | 已成功图片继续返回并落盘；逐项失败明确；只有全部失败时整体失败；路径绑定正确 Project |
 | RESOURCE-07 | 如果改动 Trajectory 或 Agents Project，检查开关、详情、导出、Profile 编辑、版本保存和恢复 | 敏感数据只在启用时记录；Trajectory 只读且可审计；Profile 变更可通过 Project Versions 检查和恢复 |
@@ -330,4 +338,4 @@ scripts/build-github-release.sh "vX.Y.Z"
 - [ ] 所有临时数据已清理；破坏性验证的目标、备份和恢复位置已记录。
 - [ ] 如果是正式发布，第 17 节全部通过。
 
-以下问题直接阻塞合并或发布：用户内容丢失或跨 Project 污染、共享菜单自动切换模式、Writing 或 Game 核心流程不可用、Agent 重复执行非幂等副作用、恢复流程不可回滚、模型上下文协议断链、构建/测试/race/安全检查失败，或发布包无法安装启动。
+以下问题直接阻塞合并或发布：用户内容丢失或跨 Project 污染、一级导航目的地或高亮状态错误、Writing 或 Game 核心流程不可用、Agent 重复执行非幂等副作用、恢复流程不可回滚、模型上下文协议断链、构建/测试/race/安全检查失败，或发布包无法安装启动。

@@ -5,20 +5,19 @@ import (
 	"unicode"
 )
 
-// EstimateMessagesTokens applies one provider-neutral estimate to every
-// context-budgeting path. It includes model-visible attachment instructions
-// and inline image payloads instead of treating attachments as free.
-func EstimateMessagesTokens(messages []*Message) int {
+// EstimateMessagesTextTokens estimates the textual part of messages. Use
+// InputEstimator for a complete request, including native image inputs.
+func EstimateMessagesTextTokens(messages []*Message) int {
 	tokens := 0
 	for _, message := range messages {
-		tokens += EstimateMessageTokens(message)
+		tokens += EstimateMessageTextTokens(message)
 	}
 	return tokens
 }
 
-// EstimateMessageTokens estimates one provider-visible message, including
-// structured content, tool-call envelopes, and native attachment payloads.
-func EstimateMessageTokens(message *Message) int {
+// EstimateMessageTextTokens includes structured content, tool-call envelopes,
+// and attachment instructions, but excludes native image pixels.
+func EstimateMessageTextTokens(message *Message) int {
 	if message == nil {
 		return 0
 	}
@@ -40,11 +39,6 @@ func EstimateMessageTokens(message *Message) int {
 		}
 	}
 	tokens += EstimateTextTokens(message.ToolName) + EstimateTextTokens(message.ToolCallID)
-	for _, attachment := range message.Attachments {
-		if IsNativeImageMediaType(attachment.MediaType) {
-			tokens += EstimateTextTokens("data:"+attachment.MediaType+";base64,") + estimateBase64PayloadTokens(attachment.Size)
-		}
-	}
 	return tokens
 }
 
@@ -72,23 +66,10 @@ func EstimateTextTokens(content string) int {
 	return max(1, tokens)
 }
 
-func estimateBase64PayloadTokens(byteSize int64) int {
-	if byteSize <= 0 {
-		return 1
-	}
-	// Base64 uses four ASCII characters per three input bytes; the shared
-	// ASCII estimate charges roughly one token per four encoded characters.
-	estimate := (byteSize + 2) / 3
-	maxInt := int64(^uint(0) >> 1)
-	if estimate > maxInt {
-		return int(maxInt)
-	}
-	return int(estimate)
-}
-
-// EstimateRequestTokens includes provider-visible messages and tool schemas.
-func EstimateRequestTokens(messages []*Message, tools []*ToolInfo) int {
-	tokens := EstimateMessagesTokens(messages)
+// EstimateRequestTextTokens includes message text and tool schemas. Complete
+// model requests must use InputEstimator to include native images as well.
+func EstimateRequestTextTokens(messages []*Message, tools []*ToolInfo) int {
+	tokens := EstimateMessagesTextTokens(messages)
 	if encoded, err := json.Marshal(tools); err == nil && string(encoded) != "null" {
 		tokens += EstimateTextTokens(string(encoded))
 	}

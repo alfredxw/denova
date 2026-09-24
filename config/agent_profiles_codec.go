@@ -9,6 +9,7 @@ import (
 )
 
 const agentProfileSchemaVersion = 1
+const agentRuntimeProfileSchemaVersion = 2
 
 const agentProfileDefaultsFilename = "defaults.toml"
 
@@ -26,6 +27,7 @@ type agentProfileDefaultsDocument struct {
 type mainAgentProfileDocument struct {
 	SchemaVersion       int                  `toml:"schema_version"`
 	Kind                string               `toml:"kind"`
+	Runtime             *RuntimePreferences  `toml:"runtime,omitempty"`
 	Model               AgentModelOverride   `toml:"model,omitempty"`
 	Tools               AgentToolOverride    `toml:"tools,omitempty"`
 	Prompt              AgentPromptOverride  `toml:"prompt,omitempty"`
@@ -120,12 +122,20 @@ func mainAgentProfileForSettings(settings Settings, kind string) (mainAgentProfi
 	}
 	document.GeneralSubAgent = generalSubAgentOverrideFor(settings.GeneralSubAgents, kind)
 	switch kind {
+	case AgentKindIDE:
+		document.Runtime = settings.AgentRuntimes.IDE
 	case AgentKindGeneral:
+		document.Runtime = settings.AgentRuntimes.General
+	case AgentKindInteractiveStory:
+		document.Runtime = settings.AgentRuntimes.InteractiveStory
 		document.ToolParallelism = settings.AgentToolParallelism
 		document.SubAgentParallelism = settings.AgentSubAgentParallelism
 	case AgentKindImage:
 		document.ImageAPIProfileID = strings.TrimSpace(settings.DefaultImageAPIProfileID)
 		document.DefaultImageAgentID = settings.DefaultImageAgentID
+	}
+	if document.Runtime != nil {
+		document.SchemaVersion = agentRuntimeProfileSchemaVersion
 	}
 	return document, nil
 }
@@ -134,12 +144,23 @@ func applyMainAgentProfile(settings *Settings, document mainAgentProfileDocument
 	if settings == nil {
 		return fmt.Errorf("Agent Profile settings target is nil")
 	}
-	if document.SchemaVersion != agentProfileSchemaVersion {
+	if document.SchemaVersion != agentProfileSchemaVersion && document.SchemaVersion != agentRuntimeProfileSchemaVersion {
 		return fmt.Errorf("unsupported Agent Profile schema_version %d", document.SchemaVersion)
 	}
 	document.Kind = strings.TrimSpace(document.Kind)
 	if document.Kind != expectedKind {
 		return fmt.Errorf("Agent Profile kind %q does not match file kind %q", document.Kind, expectedKind)
+	}
+	if document.Runtime != nil {
+		if document.SchemaVersion != agentRuntimeProfileSchemaVersion {
+			return fmt.Errorf("runtime preferences require Agent Profile schema_version %d", agentRuntimeProfileSchemaVersion)
+		}
+		if expectedKind != AgentKindIDE && expectedKind != AgentKindGeneral && expectedKind != AgentKindInteractiveStory {
+			return fmt.Errorf("%w: runtime preferences are not supported for %q", ErrInvalidAgentRuntime, expectedKind)
+		}
+		if err := document.Runtime.Validate(); err != nil {
+			return err
+		}
 	}
 	definition, ok := LookupAgentKind(expectedKind)
 	if !ok {
@@ -162,7 +183,12 @@ func applyMainAgentProfile(settings *Settings, document mainAgentProfileDocument
 	}
 	setGeneralSubAgentProfileOverride(&settings.GeneralSubAgents, expectedKind, document.GeneralSubAgent)
 	switch expectedKind {
+	case AgentKindIDE:
+		settings.AgentRuntimes.IDE = document.Runtime
 	case AgentKindGeneral:
+		settings.AgentRuntimes.General = document.Runtime
+	case AgentKindInteractiveStory:
+		settings.AgentRuntimes.InteractiveStory = document.Runtime
 		settings.AgentToolParallelism = document.ToolParallelism
 		settings.AgentSubAgentParallelism = document.SubAgentParallelism
 	case AgentKindImage:
@@ -187,6 +213,9 @@ func setGeneralSubAgentProfileOverride(settings *AgentGeneralSubAgentSettings, k
 }
 
 func encodeMainAgentProfile(settings Settings, profile fixedAgentProfile) ([]byte, error) {
+	if err := validateSettingsRuntimes(settings); err != nil {
+		return nil, err
+	}
 	document, err := mainAgentProfileForSettings(settings, profile.Kind)
 	if err != nil {
 		return nil, err
@@ -207,8 +236,15 @@ func decodeMainAgentProfile(path string, content []byte, expectedKind string) (m
 }
 
 func encodeCustomAgentProfile(agent CustomAgentConfig) ([]byte, error) {
+	if err := validateSettingsRuntimes(Settings{CustomAgents: []CustomAgentConfig{agent}}); err != nil {
+		return nil, err
+	}
+	version := agentProfileSchemaVersion
+	if agent.Runtime != nil {
+		version = agentRuntimeProfileSchemaVersion
+	}
 	return toml.Marshal(customAgentProfileDocument{
-		SchemaVersion: agentProfileSchemaVersion,
+		SchemaVersion: version,
 		Kind:          "custom_main_agent",
 		Agent:         agent,
 	})
@@ -219,8 +255,11 @@ func decodeCustomAgentProfile(path string, content []byte) (CustomAgentConfig, e
 	if err := toml.Unmarshal(content, &document); err != nil {
 		return CustomAgentConfig{}, fmt.Errorf("decode Custom Main Agent Profile %s: %w", path, err)
 	}
-	if document.SchemaVersion != agentProfileSchemaVersion || strings.TrimSpace(document.Kind) != "custom_main_agent" {
+	if (document.SchemaVersion != agentProfileSchemaVersion && document.SchemaVersion != agentRuntimeProfileSchemaVersion) || strings.TrimSpace(document.Kind) != "custom_main_agent" {
 		return CustomAgentConfig{}, fmt.Errorf("invalid Custom Main Agent Profile header in %s", path)
+	}
+	if document.Agent.Runtime != nil && document.SchemaVersion != agentRuntimeProfileSchemaVersion {
+		return CustomAgentConfig{}, fmt.Errorf("runtime preferences require Agent Profile schema_version %d", agentRuntimeProfileSchemaVersion)
 	}
 	agents := SanitizeCustomAgents([]CustomAgentConfig{document.Agent})
 	if len(agents) != 1 || strings.TrimSpace(agents[0].Name) == "" || CustomAgentRuntimeKind(agents[0]) == "" {
@@ -228,6 +267,9 @@ func decodeCustomAgentProfile(path string, content []byte) (CustomAgentConfig, e
 	}
 	if agents[0].ID != strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) {
 		return CustomAgentConfig{}, fmt.Errorf("Custom Main Agent ID %q does not match filename %q", agents[0].ID, filepath.Base(path))
+	}
+	if err := validateSettingsRuntimes(Settings{CustomAgents: agents}); err != nil {
+		return CustomAgentConfig{}, fmt.Errorf("validate Custom Main Agent Profile %s: %w", path, err)
 	}
 	return agents[0], nil
 }
@@ -260,6 +302,7 @@ func decodeSubAgentProfile(path string, content []byte) (SubAgentConfig, error) 
 
 func agentProfileSettings(settings Settings) Settings {
 	return Settings{
+		AgentRuntimes:            MergeAgentRuntimeSettings(AgentRuntimeSettings{}, settings.AgentRuntimes),
 		DefaultImageAPIProfileID: settings.DefaultImageAPIProfileID,
 		AgentModels: AgentModelSettings{
 			Default: settings.AgentModels.Default, General: settings.AgentModels.General,
@@ -303,6 +346,7 @@ func clearAgentProfileSettings(settings *Settings) {
 		return
 	}
 	settings.DefaultImageAPIProfileID = ""
+	settings.AgentRuntimes = AgentRuntimeSettings{}
 	settings.AgentModels.Default = AgentModelOverride{}
 	settings.AgentModels.General = AgentModelOverride{}
 	settings.AgentModels.IDE = AgentModelOverride{}
@@ -354,6 +398,7 @@ func mergeAgentProfileLayer(base, profiles Settings) Settings {
 	profile := agentProfileSettings(profiles)
 	base.DefaultImageAPIProfileID = profile.DefaultImageAPIProfileID
 	base.AgentModels = MergeAgentModelSettings(base.AgentModels, profile.AgentModels)
+	base.AgentRuntimes = profile.AgentRuntimes
 	base.AgentTools = MergeAgentToolSettings(base.AgentTools, profile.AgentTools)
 	base.AgentPrompts = MergeAgentPromptSettings(base.AgentPrompts, profile.AgentPrompts)
 	base.AgentSkills = MergeAgentSkillSettings(base.AgentSkills, profile.AgentSkills)

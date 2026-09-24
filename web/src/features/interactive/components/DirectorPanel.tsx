@@ -11,6 +11,7 @@ import { DirectorConsole } from './director-console/DirectorConsole'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 
 interface DirectorPanelProps {
+  projectId?: string
   storyId?: string
   story?: StorySummary
   planningTemplates?: GamePlanningTemplate[]
@@ -31,6 +32,7 @@ interface DirectorPanelProps {
 }
 
 export function DirectorPanel({
+  projectId,
   storyId,
   story,
   planningTemplates = [],
@@ -51,6 +53,7 @@ export function DirectorPanel({
 }: DirectorPanelProps) {
   return (
     <DirectorConsole
+      projectId={projectId}
       storyId={storyId}
       story={story}
       planningTemplates={planningTemplates}

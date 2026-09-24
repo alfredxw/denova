@@ -64,6 +64,7 @@ type CustomAgentConfig struct {
 	Enabled           *bool                 `toml:"enabled,omitempty" json:"enabled,omitempty"`
 	Instructions      string                `toml:"instructions,omitempty" json:"instructions,omitempty"`
 	Model             AgentModelOverride    `toml:"model,omitempty" json:"model,omitempty"`
+	Runtime           *RuntimePreferences   `toml:"runtime,omitempty" json:"runtime,omitempty"`
 	Tools             AgentToolOverride     `toml:"tools,omitempty" json:"tools,omitempty"`
 	ToolGuidance      map[string]string     `toml:"tool_guidance,omitempty" json:"tool_guidance,omitempty"`
 	SkillPolicy       AgentSkillPolicy      `toml:"skill_policy,omitempty" json:"skill_policy,omitempty"`
@@ -153,6 +154,7 @@ func SanitizeCustomAgents(agents []CustomAgentConfig) []CustomAgentConfig {
 			}
 		}
 		item.Instructions = strings.TrimSpace(item.Instructions)
+		item.Runtime = mergeRuntimePreferences(nil, item.Runtime)
 		item.Model.ProfileID = normalizeModelProfileID(item.Model.ProfileID)
 		if item.Model.ThinkingLevel != "" {
 			item.Model.ThinkingLevel = normalizeThinkingLevel(item.Model.ThinkingLevel)

@@ -102,6 +102,19 @@ func (session *Session) suspendAndClose(ctx context.Context, request SuspendRequ
 		return Suspension{}, ErrSessionClosed
 	}
 	session.mu.Lock()
+	if previous, found := session.controlReceipts[strings.TrimSpace(request.IdempotencyKey)]; found && (session.lastControl.Receipt.Cursor > previous.Receipt.Cursor || session.active == nil || request.RunID != "" && session.active.id != request.RunID) {
+		reason := strings.TrimSpace(request.Reason)
+		if reason == "" {
+			reason = "Agent Session suspended"
+		}
+		runID := request.RunID
+		if runID == "" {
+			runID = previous.Receipt.RunID
+		}
+		receipt, err := session.acceptControlLocked(ctx, "suspend", runID, request.IdempotencyKey, reason)
+		session.mu.Unlock()
+		return Suspension{Session: session.Key(), RunID: runID, Status: ResultSuspended, Receipt: receipt}, err
+	}
 	run := session.active
 	if request.RunID != "" && (run == nil || run.id != request.RunID) {
 		session.mu.Unlock()
@@ -116,14 +129,6 @@ func (session *Session) suspendAndClose(ctx context.Context, request SuspendRequ
 	reason := strings.TrimSpace(request.Reason)
 	if reason == "" {
 		reason = "Agent Session suspended"
-	}
-	if previous, found := session.controlReceipts[request.IdempotencyKey]; found && session.lastControl.Receipt.Cursor > previous.Receipt.Cursor {
-		// A delayed retry acknowledges the old command without undoing a later
-		// Resume or cancellation. The journal already records that newer choice.
-		receipt, err := session.acceptControlLocked(ctx, "suspend", runID, request.IdempotencyKey, reason)
-		result.Receipt = receipt
-		session.mu.Unlock()
-		return result, err
 	}
 	if session.closed || session.closing {
 		if _, accepted := session.controlReceipts[request.IdempotencyKey]; !accepted {
@@ -172,7 +177,7 @@ func (session *Session) suspendAndClose(ctx context.Context, request SuspendRequ
 		session.mu.RUnlock()
 		return result, err
 	case <-ctx.Done():
-		return Suspension{Session: session.Key(), RunID: runID}, ctx.Err()
+		return result, ctx.Err()
 	}
 }
 
@@ -280,47 +285,61 @@ func (session *Session) ResumeRun(ctx context.Context, request ResumeRequest) (*
 	return session.resumeRun(ctx, request, "")
 }
 
+// ResumeRunWithReceipt returns the resume command receipt, separate from the
+// original Run input. Exact retries never resume work again after later controls.
+func (session *Session) ResumeRunWithReceipt(ctx context.Context, request ResumeRequest) (*Run, CommandReceipt, error) {
+	return session.resumeRunCommand(ctx, request, "")
+}
 func (session *Session) resumeRun(ctx context.Context, request ResumeRequest, treeID string) (*Run, error) {
+	run, _, err := session.resumeRunCommand(ctx, request, treeID)
+	return run, err
+}
+
+func (session *Session) resumeRunCommand(ctx context.Context, request ResumeRequest, treeID string) (*Run, CommandReceipt, error) {
 	ctx, err := commandContext(ctx)
 	if err != nil {
-		return nil, err
+		return nil, CommandReceipt{}, err
 	}
 	if err := session.usable(); err != nil {
-		return nil, err
+		return nil, CommandReceipt{}, err
 	}
 	session.agent.admissionMu.Lock()
 	defer session.agent.admissionMu.Unlock()
 	sealed, err := session.agent.treeSealed(ctx, session.key, treeID)
 	if err != nil {
-		return nil, err
+		return nil, CommandReceipt{}, err
 	}
 	if sealed {
-		return nil, ErrSessionBusy
+		return nil, CommandReceipt{}, ErrSessionBusy
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	if session.closing || session.closed {
-		return nil, ErrSessionClosed
+		return nil, CommandReceipt{}, ErrSessionClosed
+	}
+	if _, found := session.controlReceipts[strings.TrimSpace(request.IdempotencyKey)]; found {
+		receipt, err := session.acceptControlLocked(ctx, "resume", request.RunID, request.IdempotencyKey, "")
+		return session.runs[request.RunID], receipt, err
 	}
 	previous := session.runs[strings.TrimSpace(request.RunID)]
 	if previous == nil {
-		return nil, ErrNoActiveRun
+		return nil, CommandReceipt{}, ErrNoActiveRun
 	}
 	if previous.isSettled() {
-		return nil, ErrRunSettled
+		return nil, CommandReceipt{}, ErrRunSettled
 	}
 	if session.active != nil && session.active != previous {
-		return nil, ErrSessionBusy
+		return nil, CommandReceipt{}, ErrSessionBusy
 	}
 	receipt, err := session.acceptControlLocked(ctx, "resume", previous.id, request.IdempotencyKey, "")
 	if err != nil {
-		return nil, err
+		return nil, CommandReceipt{}, err
 	}
 	if session.lastControl.Receipt.Cursor > receipt.Cursor {
-		return previous, nil
+		return previous, receipt, nil
 	}
 	if !previous.isSuspended() && session.active == previous {
-		return previous, nil
+		return previous, receipt, nil
 	}
 	run := newPublicRun(session, previous.id, previous.commandID, previous.input, previous.delivery, runUsesSession)
 	run.receipt, run.startedAt, run.cycle, run.snapshot = previous.receipt, previous.startedAt, previous.cycle, previous.snapshot
@@ -338,5 +357,5 @@ func (session *Session) resumeRun(ctx context.Context, request ResumeRequest, tr
 		session.pending[index], session.runs[fresh.id] = fresh, fresh
 	}
 	safeGo(run.execute, func(err error) { run.finish(Result{Status: ResultFailed, Reason: err.Error()}, err) })
-	return run, nil
+	return run, receipt, nil
 }

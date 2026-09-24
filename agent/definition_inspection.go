@@ -31,6 +31,12 @@ type ModelRequestInspection struct {
 	Options              Options
 	Streaming            bool
 	StablePrefixMessages int
+	inputEstimator       InputEstimator
+}
+
+// EstimateInput uses the same captured model policy as the inspected call.
+func (request ModelRequestInspection) EstimateInput() (InputSize, error) {
+	return request.inputEstimator.Estimate(request.Messages, request.Options.Tools)
 }
 
 // Inspection is a read-only preview of one prospective model step. The
@@ -48,6 +54,7 @@ type Inspection struct {
 	ModelIdentity           CapabilityIdentity
 	Compaction              *CompactionState
 	CompactionMetrics       CompactionMetrics
+	ElisionMetrics          ElisionMetrics
 	// ContextFragments is the exact bounded provenance materialized by the
 	// selected Definition before model middleware. ModelRequest remains the
 	// sole provider-visible payload; diagnostics use these fragments to explain
@@ -66,5 +73,6 @@ func modelRequestInspection(snapshot *ModelRequestSnapshot) ModelRequestInspecti
 		Options:              *options,
 		Streaming:            snapshot.Streaming(),
 		StablePrefixMessages: snapshot.StablePrefixMessages(),
+		inputEstimator:       snapshot.inputEstimator,
 	}
 }

@@ -1,3 +1,4 @@
+import { GameStories } from '@/features/platform/GameStories'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -265,8 +266,8 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   }, [active, reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.story_id])
 
   useEffect(() => {
-    if (!isMobile || submode !== 'story') setMobileSnapshotOpen(false)
-  }, [isMobile, submode])
+    if (!active || !isMobile || submode !== 'story') setMobileSnapshotOpen(false)
+  }, [active, isMobile, submode])
 
   const handleCreateStory = async (input: StoryCreateInput) => {
     const story = await createInteractiveStory(input)
@@ -462,6 +463,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const directorPanelVisible = isMobile ? mobileSnapshotOpen : rightPanelVisible
   const storyStage = (
     <StoryStage
+      active={active}
       projectId={projectId}
       workspace={workspace}
       styleSceneSuggestions={styleSceneSuggestions}
@@ -501,6 +503,10 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     />
   )
   return (
+    <GameStories key={projectId || 'current'} projectId={projectId ?? ''} active={active} builtinPicker={{
+      stories, currentStoryId, onSelect: handleStorySelect, onCreate: () => undefined,
+      onDeleteStories: handleDeleteStories, onRenameStory: handleRenameStory,
+    }}>
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <div data-testid="interactive-shell" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-bg)]">
         <div className="flex min-h-0 flex-1">
@@ -515,6 +521,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                   onMobileConsoleOpenChange={setMobileSnapshotOpen}
                   story={storyStage}
                   console={<DirectorPanel
+                      projectId={projectId}
                       storyId={currentStoryId}
                       story={currentStory}
                       planningTemplates={planningTemplates}
@@ -546,6 +553,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
         onCreate={(source, title, customAgentId) => handleCreateBranch(source.turnId, title, customAgentId)}
       />
     </div>
+    </GameStories>
   )
 }
 

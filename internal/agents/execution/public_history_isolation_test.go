@@ -28,10 +28,8 @@ func (conversation invalidHistoryConversation) CanonicalMessages(context.Context
 func TestInvalidHistoryIsolatesAdmissionToSessionOrBranch(t *testing.T) {
 	for _, kind := range []string{agentrun.AgentKindIDE, agentrun.AgentKindInteractiveStory} {
 		t.Run(kind, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
+			ctx := t.Context()
 			runtime := NewEphemeralRuntime()
-			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 			store, err := session.NewStore(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
@@ -49,6 +47,9 @@ func TestInvalidHistoryIsolatesAdmissionToSessionOrBranch(t *testing.T) {
 				AgentKind: kind, ProjectID: "history-project", Workspace: t.TempDir(),
 				SessionID: broken.ID, RootAgentName: "root",
 			}
+			// Drain the runtime and close its journal before TempDir cleanup.
+			t.Cleanup(func() { _ = store.Close() })
+			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 			if kind == agentrun.AgentKindInteractiveStory {
 				options.SessionID = ""
 				options.StoryID, options.BranchID = "same-story", "broken-branch"
@@ -102,7 +103,10 @@ func TestInvalidHistoryIsolatesAdmissionToSessionOrBranch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unrelated conversation could not start: %v", err)
 			}
-			if outcome := operation.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
+			waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			outcome := operation.Wait(waitCtx)
+			cancel()
+			if outcome.Status != agentrun.OutcomeCompleted {
 				t.Fatalf("unrelated conversation did not complete: %+v", outcome)
 			}
 			// Replacing the failed projection with valid canonical history must
@@ -114,7 +118,10 @@ func TestInvalidHistoryIsolatesAdmissionToSessionOrBranch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed identity remained poisoned: %v", err)
 			}
-			if outcome := operation.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
+			waitCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
+			outcome = operation.Wait(waitCtx)
+			cancel()
+			if outcome.Status != agentrun.OutcomeCompleted {
 				t.Fatalf("recovered identity did not complete: %+v", outcome)
 			}
 		})

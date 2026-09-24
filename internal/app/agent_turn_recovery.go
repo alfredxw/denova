@@ -80,7 +80,7 @@ func (a *App) prepareInteractiveProfileCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	if cycle.runtimeCfg.ProjectID != binding.ProjectID || cycle.storyID != binding.StoryID || cycle.branchID != binding.BranchID {
+	if cycle.externalAssembly != nil || cycle.runtimeCfg.ProjectID != binding.ProjectID || cycle.storyID != binding.StoryID || cycle.branchID != binding.BranchID {
 		return agentexecution.Cycle{}, fmt.Errorf(
 			"%w: prepared game runtime does not match durable binding",
 			agentexecution.ErrCyclePreparationUnavailable,

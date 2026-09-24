@@ -11,11 +11,13 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
 	agentchatapp "denova/internal/app/agentchat"
 	appagentruntime "denova/internal/app/agentruntime"
+	"denova/internal/project"
 )
 
 type agentChatSessionCreateRequest struct {
@@ -77,6 +79,21 @@ func (h *Handlers) HandleAgentChatProjectCreate(_ context.Context, c *app.Reques
 	record, err := h.app.AgentChat().AddProject(request.Path)
 	if err != nil {
 		writeAgentChatProjectError(c, consts.StatusBadRequest, "添加项目失败", "Failed to add project", err)
+		return
+	}
+	writeJSON(c, consts.StatusCreated, record)
+}
+
+func (h *Handlers) HandleAgentChatDirectoryCreate(_ context.Context, c *app.RequestContext) {
+	var request project.CreateDirectoryRequest
+	if err := decodeStrictJSONRequest(c.Request.Body(), &request); err != nil {
+		c.JSON(400, map[string]string{"messageKey": "platform.errors.INVALID_ARGUMENT"})
+		return
+	}
+	record, err := h.app.AgentChat().CreateDirectoryProject(request)
+	if err != nil {
+		slog.Warn("project_directory_create_failed", "error", err)
+		c.JSON(400, map[string]string{"messageKey": "platform.errors.PROJECT_CREATE_FAILED"})
 		return
 	}
 	writeJSON(c, consts.StatusCreated, record)
@@ -296,8 +313,8 @@ func (h *Handlers) HandleAgentChatActive(ctx context.Context, c *app.RequestCont
 		response["task_id"] = view.Task.ID
 		response["stream_cursor"] = view.Task.Cursor
 	}
-	if view.PendingAsk != nil {
-		response["pending_ask"] = view.PendingAsk
+	if len(view.PendingAsks) > 0 {
+		response["pending_asks"] = view.PendingAsks
 	}
 	if view.PendingInterruptionID != "" {
 		response["pending_interruption_id"] = view.PendingInterruptionID
@@ -341,14 +358,14 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 			return
 		}
 	}
-	receipt, err := h.app.AgentChat().SubmitCommand(ctx, binding, appagentruntime.Command{
+	receipt, err := h.app.AgentChat().SubmitCommand(ctx, binding, agentruntime.Command{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
 		OperationID:     appsvc.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),
 		TargetCommandID: appsvc.AgentCommandID(strings.TrimSpace(body.TargetCommandID)),
 		Reason:          body.Reason, Input: body.Input,
 	})
 	if err != nil {
-		h.writeAgentCommandError(c, err, body.TargetOperationID)
+		h.writeAgentCommandError(ctx, c, err, body.TargetOperationID)
 		return
 	}
 	c.JSON(consts.StatusAccepted, agentCommandReceiptResponse{
@@ -513,9 +530,19 @@ func (h *Handlers) HandleAgentChatSlashCommand(ctx context.Context, c *app.Reque
 		}
 		writeJSON(c, consts.StatusOK, map[string]string{"result": status})
 	case "help":
-		writeJSON(c, consts.StatusOK, map[string]string{"result": "/clear · /status · /help"})
+		writeJSON(c, consts.StatusOK, map[string]string{"result": "/compact · /clear · /status · /help"})
 	case "compact":
-		writeError(c, consts.StatusConflict, "AgentChat 暂不支持手动压缩 / Manual compaction is not available in AgentChat yet")
+		compacted, err := h.app.AgentChat().CompactContext(ctx, binding, "")
+		if err != nil {
+			h.writeAgentCommandError(ctx, c, err, "")
+			return
+		}
+		localizer := requestLocalizer(c)
+		result := localizer.T("api.command.runtimeCompacted")
+		if !compacted.RuntimeManaged {
+			result = localizer.T("api.command.compacted", "epoch", compacted.Revision, "before", compacted.TokensBefore, "after", compacted.TokensAfter)
+		}
+		writeJSON(c, consts.StatusOK, map[string]string{"result": result})
 	default:
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 	}

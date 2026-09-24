@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, type ReactNode } from 'react'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { AgentChatProjectType } from './api'
@@ -7,7 +7,9 @@ import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { AgentChatConversationTab } from './AgentChatConversationTab'
-import type { AgentChatConversationState } from './AgentChatConversationTab'
+import type { AgentChatConversationState, AgentChatPendingAction } from './AgentChatConversationTab'
+import { buildDevelopmentMessage, useProjectDevelopment } from '@/features/platform/development-context'
+import { writeAgentChatActiveSession } from './session-preferences'
 import { AgentSubAgentSessionPanel, type AgentSubAgentSessionTarget } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { TerminalTabView, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
 import type { TerminalSessionInfo } from './terminal/api'
@@ -22,7 +24,7 @@ import type {
   AgentChatReviewRenderContext,
   AgentChatTab,
 } from './types'
-import { ToolNavigationProvider, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
+import { ToolNavigationProvider, useToolNavigation, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
 
 const FilesTab = lazy(() => import('@/features/files/FilesTab').then((module) => ({ default: module.FilesTab })))
 
@@ -32,6 +34,8 @@ interface AgentChatTabContentProps {
   active: boolean
   running: boolean
   conversationSyncRevision: string
+  pendingAction?: AgentChatPendingAction
+  onPendingActionConsumed?: (id: string) => void
   conversationState?: AgentChatConversationState
   activeSubAgentSession?: AgentSubAgentSessionTarget | null
   composerSettings: WritingComposerSettingsController
@@ -75,6 +79,8 @@ export function AgentChatTabContent({
   active,
   running,
   conversationSyncRevision,
+  pendingAction,
+  onPendingActionConsumed,
   conversationState,
   activeSubAgentSession,
   composerSettings,
@@ -105,6 +111,13 @@ export function AgentChatTabContent({
   onTerminalTitleChange,
   onTerminalStatusChange,
 }: AgentChatTabContentProps) {
+  const development = useProjectDevelopment(tab.projectId, tab.kind === 'agent' && active)
+  const messageTransform = useCallback((message: string) => development.source
+    ? buildDevelopmentMessage(message, development.source, development.feedback)
+    : message, [development.source, development.feedback])
+  useEffect(() => {
+    if (active && tab.kind === 'agent' && !tab.draft) writeAgentChatActiveSession(tab.projectId, tab.sessionId)
+  }, [active, tab])
   const documentReview = useDocumentReview({
     projectId: projectType === 'book' && (tab.kind === 'agent' || tab.kind === 'page') ? tab.projectId : '',
     agentVisible: true,
@@ -151,10 +164,14 @@ export function AgentChatTabContent({
     paths: string[],
     metadata: WorkspaceChangeMetadata,
   ) => onWorkspaceChanged?.(tab.projectId, changedWorkspace, paths, metadata), [onWorkspaceChanged, tab.projectId])
+  const parentToolNavigation = useToolNavigation()
   const toolNavigation = useMemo(() => ({
     workspace: tab.workspace,
-    open: (target: ToolNavigationTarget) => onOpenToolTarget(tab.projectId, tabGroup(tab), target),
-  }), [onOpenToolTarget, tab.group, tab.projectId, tab.workspace])
+    // Agent configuration belongs to the outer workbench, outside Project tabs.
+    open: (target: ToolNavigationTarget) => target.kind === 'config_resource' && target.resource === 'agent_profile'
+      ? parentToolNavigation?.open(target)
+      : onOpenToolTarget(tab.projectId, tabGroup(tab), target),
+  }), [onOpenToolTarget, parentToolNavigation, tab.group, tab.projectId, tab.workspace])
   const handleConversationStateChange = useCallback(
     (state: AgentChatConversationState) => onConversationStateChange(tab.projectId, tab.id, state),
     [onConversationStateChange, tab.id, tab.projectId],
@@ -175,6 +192,10 @@ export function AgentChatTabContent({
           workspace={tab.workspace}
           sessionId={tab.sessionId}
           syncRevision={conversationSyncRevision}
+          pendingAction={development.isPending ? undefined : pendingAction}
+          onPendingActionConsumed={onPendingActionConsumed}
+          messageTransform={messageTransform}
+          quickPromptScope={development.source ? 'extensions' : undefined}
           draft={tab.draft}
           active={active}
           composerSettings={composerSettings}

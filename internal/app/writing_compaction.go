@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"denova/config"
 	"fmt"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	compactionapp "denova/internal/app/compaction"
+	conversationapp "denova/internal/app/conversation"
 )
 
 func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, requestedCommandID string) (agentcompaction.Result, error) {
@@ -35,6 +37,27 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 	)
 	if err != nil {
 		return agentcompaction.Result{}, err
+	}
+	runtime, _, err := s.prepareIDEChatRuntime(ctx, agentchat.ChatRequest{})
+	if err != nil {
+		return agentcompaction.Result{}, err
+	}
+	if runtime.cfg.ActiveAgentRuntime != nil && runtime.cfg.ActiveAgentRuntime.Kind != config.RuntimeNative {
+		s.app.mu.RLock()
+		err = fence.validateLocked(s.app, true)
+		s.app.mu.RUnlock()
+		if err != nil {
+			return agentcompaction.Result{}, err
+		}
+		host, err := s.app.AgentHostCapabilities(ctx, &runtime.cfg, agentrun.AgentKindIDE)
+		if err != nil {
+			return agentcompaction.Result{}, err
+		}
+		executor, err := conversationapp.BuildExecution(ctx, sharedConversationRuntime(runtime), host, s.app.AgentEngines(), "")
+		if err != nil {
+			return agentcompaction.Result{}, err
+		}
+		return executor.Compact(ctx, commandID, runtime.agentOptions(""))
 	}
 	cycle, err := s.prepareWritingStructuralCycle(ctx, fence)
 	if err != nil {

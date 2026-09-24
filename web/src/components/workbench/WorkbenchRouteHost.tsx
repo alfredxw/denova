@@ -6,6 +6,7 @@ import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { WorkbenchPresentedLayout } from './WorkbenchShell'
 
 export type WorkbenchRouteId =
+  | 'extensions'
   | 'settings'
   | 'skills'
   | 'agents'
@@ -20,6 +21,7 @@ export type WorkbenchRouteId =
   | 'ide-writing'
 
 const PRESENTED_LAYOUT_BY_ROUTE = {
+  extensions: 'full',
   settings: 'full',
   skills: 'full',
   agents: 'full',
@@ -97,6 +99,7 @@ export function selectWorkbenchRoute({
 }: WorkbenchRouteSelection): WorkbenchRouteId {
   if (settingsOpen) return 'settings'
   switch (mode) {
+    case 'extensions':
     case 'skills':
     case 'agents':
     case 'automations':

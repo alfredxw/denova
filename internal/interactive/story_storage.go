@@ -129,7 +129,7 @@ func (s *Store) publishStorySummaryLocked(storyID string) (StorySummary, error) 
 		}
 	}
 	index.Stories = append(index.Stories, summary)
-	if strings.TrimSpace(index.CurrentStoryID) == "" {
+	if strings.TrimSpace(index.CurrentStoryID) == "" && !summary.Preview {
 		index.CurrentStoryID = storyID
 	}
 	if err := s.writeIndexLocked(index); err != nil {
@@ -153,13 +153,15 @@ func storySummaryFromProjection(projection *storyJournalProjection) StorySummary
 	}
 	meta := projection.Meta
 	return normalizeStorySummary(StorySummary{
-		ID: meta.StoryID, Title: meta.Title, TitleSource: meta.TitleSource, Origin: meta.Origin,
+		Preview: meta.Preview,
+		ID:      meta.StoryID, Title: meta.Title, TitleSource: meta.TitleSource, Origin: meta.Origin,
 		Protagonist:   meta.Protagonist,
 		StoryTellerID: meta.StoryTellerID, PlanningTemplateID: normalizedGamePlanningTemplateID(meta.PlanningTemplateID),
 		ModuleRefs:       cloneStoryDirectorModuleRefs(meta.ModuleRefs),
 		PlanningMode:     meta.PlanningMode,
 		ReplyTargetChars: meta.ReplyTargetChars, ChoiceCount: meta.ChoiceCount,
-		Opening: meta.Opening, ImageSettings: meta.ImageSettings, CheckSettings: meta.CheckSettings,
+		SpeechSettings: meta.SpeechSettings,
+		Opening:        meta.Opening, ImageSettings: meta.ImageSettings, CheckSettings: meta.CheckSettings,
 		StateSchemaPolicy: cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy),
 		CreatedAt:         meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
 		Branches: len(meta.Branches), Events: projection.EventCount, TurnCount: turnCount,

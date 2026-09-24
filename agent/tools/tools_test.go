@@ -44,7 +44,7 @@ func TestReadRoutesLocalTextAndDirectoryWithAdapterSpecificArguments(t *testing.
 	mustWriteTestFile(t, root, "chapters/.hidden", "secret")
 	mustWriteTestFile(t, root, "chapters/nested/two.md", "two")
 	workspace := mustOpenTestWorkspace(t, root)
-	textAdapter, err := LocalTextAdapter(workspace)
+	textAdapter, err := LocalFileAdapter(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestReadRoutesLocalTextAndDirectoryWithAdapterSpecificArguments(t *testing.
 func TestReadReportsMissingResourcesAsSuccessfulObservations(t *testing.T) {
 	root := t.TempDir()
 	workspace := mustOpenTestWorkspace(t, root)
-	textAdapter, err := LocalTextAdapter(workspace)
+	textAdapter, err := LocalFileAdapter(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestReadUsesWorkspacePolicyAndReturnsContinuation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := LocalTextAdapter(workspace)
+	adapter, err := LocalFileAdapter(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestReadSupportsExternalPathsAndRejectsBinaryContent(t *testing.T) {
 		}
 	}
 	workspace := mustOpenTestWorkspace(t, root)
-	adapter, err := LocalTextAdapter(workspace)
+	adapter, err := LocalFileAdapter(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}

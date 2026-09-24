@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "display": {
+      "type": "object",
+      "x-titleKey": "settings.display",
+      "additionalProperties": false,
+      "properties": {
+        "showLabel": {
+          "type": "boolean",
+          "x-titleKey": "settings.showLabel"
+        },
+        "variant": {
+          "type": "string",
+          "x-titleKey": "settings.variant",
+          "oneOf": [
+            {
+              "const": "compact",
+              "x-titleKey": "settings.compact"
+            },
+            {
+              "const": "full",
+              "x-titleKey": "settings.full"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

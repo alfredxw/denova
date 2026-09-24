@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import { useState, type ComponentProps } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { expect, type Mock } from 'vitest'
 import { StoryStage as ProjectStoryStage } from '../StoryStage'
@@ -17,7 +18,8 @@ export interface StoryStageTestMocks {
 }
 
 function StoryStage(props: Omit<ComponentProps<typeof ProjectStoryStage>, 'projectId'>) {
-  return <ProjectStoryStage {...props} projectId="project-story" />
+  const [queries] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
+  return <QueryClientProvider client={queries}><ProjectStoryStage {...props} projectId="project-story" /></QueryClientProvider>
 }
 
 /** Resets only shared DOM/store state and mock defaults; each suite owns its module mocks. */

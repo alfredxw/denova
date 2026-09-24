@@ -75,7 +75,7 @@ func testChildTracesAfterParentStops(t *testing.T, kind string) {
 	t.Cleanup(func() { _ = runtime.Close(ctx) })
 	model := &publicBackendTestModel{responses: []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{ID: "start-both", Type: "function", Function: agent.FunctionCall{
-			Name: "task", Arguments: `{"action":"start","starts":[{"agent":"writer","prompt":"Write"},{"agent":"reviewer","prompt":"Review"}]}`,
+			Name: "send", Arguments: `{"items":[{"action":"delegate","message":"Write","agent":"writer"},{"action":"delegate","message":"Review","agent":"reviewer"}]}`,
 		}}}), agent.AssistantMessage("Started both", nil),
 	}}
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{

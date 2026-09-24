@@ -14,36 +14,28 @@ import (
 	"denova/internal/automation"
 )
 
-// Service owns automation scheduling, trigger coordination, active-run
-// identity, and replay state. Workspace resources are captured on demand and
+// Service owns trigger scheduling and durable delivery. The Project Agent
+// owns execution and recovery. Workspace resources are captured on demand and
 // never retained as mutable service state.
 type Service struct {
-	host               Host
-	mu                 sync.RWMutex
-	closed             bool
-	activeTasks        map[string]*apptask.Task
-	activeRuns         map[string]automationRunState
-	activeClaims       map[string]*automationRunClaim
-	triggers           *automationTriggerCoordinator
-	schedulerCancel    context.CancelFunc
-	schedulerWG        sync.WaitGroup
-	schedulerStarted   bool
-	effectWake         chan struct{}
-	semanticEvaluator  semanticTriggerEvaluationFunc
-	runtimeProjector   automationRuntimeProjectionFunc
-	hostEffectTransfer func(context.Context, automation.HostEffectObligation, admittedToolMutationPayload) (bool, error)
+	host              Host
+	mu                sync.RWMutex
+	closed            bool
+	triggers          *automationTriggerCoordinator
+	schedulerCancel   context.CancelFunc
+	schedulerWG       sync.WaitGroup
+	schedulerStarted  bool
+	effectWake        chan struct{}
+	semanticEvaluator semanticTriggerEvaluationFunc
 }
 
 // NewService creates the process-wide automation application service. The Host is
 // retained only as a lifecycle and immutable-runtime boundary.
 func NewService(host Host) *Service {
 	return &Service{
-		host:         host,
-		activeTasks:  make(map[string]*apptask.Task),
-		activeRuns:   make(map[string]automationRunState),
-		activeClaims: make(map[string]*automationRunClaim),
-		triggers:     newAutomationTriggerCoordinator(),
-		effectWake:   make(chan struct{}, 1),
+		host:       host,
+		triggers:   newAutomationTriggerCoordinator(),
+		effectWake: make(chan struct{}, 1),
 	}
 }
 
@@ -108,7 +100,7 @@ func (s *Service) SignalReconciliation() {
 }
 
 // Close fences new automation work, stops background coordinators, and waits
-// for every admitted display task to settle.
+// for trigger coordinators to settle. AgentChat closes its own workers.
 func (s *Service) Close(ctx context.Context) error {
 	if s == nil {
 		return nil
@@ -123,21 +115,6 @@ func (s *Service) Close(ctx context.Context) error {
 	}
 	s.closed = true
 	cancel := s.schedulerCancel
-	tasks := make([]*apptask.Task, 0, len(s.activeTasks))
-	seen := make(map[*apptask.Task]struct{}, len(s.activeTasks))
-	for _, task := range s.activeTasks {
-		if task != nil {
-			if _, ok := seen[task]; !ok {
-				seen[task] = struct{}{}
-				tasks = append(tasks, task)
-			}
-		}
-	}
-	for key, claim := range s.activeClaims {
-		if claim != nil && claim.task == nil {
-			s.removeAutomationClaimLocked(key, claim)
-		}
-	}
 	s.mu.Unlock()
 
 	if cancel != nil {
@@ -145,21 +122,6 @@ func (s *Service) Close(ctx context.Context) error {
 	}
 	if s.triggers != nil {
 		s.triggers.Close()
-	}
-	for _, task := range tasks {
-		if !task.Finished() {
-			task.Abort()
-		}
-	}
-	for _, task := range tasks {
-		if task.Finished() {
-			continue
-		}
-		select {
-		case <-task.Done():
-		case <-ctx.Done():
-			return fmt.Errorf("wait for automation task %s: %w", task.ID(), ctx.Err())
-		}
 	}
 	s.schedulerWG.Wait()
 	return nil
@@ -177,18 +139,18 @@ func (s *Service) runSchedulerTick(ctx context.Context, now time.Time) {
 }
 
 func (s *Service) List() ([]automation.Task, error) {
-	return s.storeAllWorkspaces().List()
+	return s.projectTasks(s.storeAllWorkspaces().List())
 }
 
 // ListForProject is the project-facing automation catalog. Automations are
 // configured and observed through their owning Project Agent, so callers must
 // not mix definitions from unrelated Projects into one view.
 func (s *Service) ListForProject(projectID, workspace string) ([]automation.Task, error) {
-	return s.storeAllWorkspaces().ListForTarget(automation.ExecutionTarget{
+	return s.projectTasks(s.storeAllWorkspaces().ListForTarget(automation.ExecutionTarget{
 		Kind:      automation.TargetKindWorkspace,
 		ProjectID: strings.TrimSpace(projectID),
 		Workspace: strings.TrimSpace(workspace),
-	})
+	}))
 }
 
 func (s *Service) Templates(locale string) []automation.TaskTemplate {
@@ -199,6 +161,13 @@ func (s *Service) Create(definition automation.TaskDefinition) (automation.Task,
 	if err := requireProjectAutomationDefinition(definition); err != nil {
 		return automation.Task{}, err
 	}
+	// Resolve the caller's Project before the catalog normalizes legacy paths.
+	// Otherwise an ID-only target inherits the foreground Book's workspace.
+	target, err := s.resolveAutomationProjectTarget(definition.Target)
+	if err != nil {
+		return automation.Task{}, err
+	}
+	definition.Target = target
 	return s.storeAllWorkspaces().Create(definition)
 }
 
@@ -246,9 +215,6 @@ func (s *Service) Delete(id string) error {
 	task, err := store.Get(id)
 	if err != nil {
 		return err
-	}
-	if s.hasActiveAutomationDefinition(automationTaskStoreID(task)) {
-		return fmt.Errorf("%w: task_id=%s", automation.ErrTaskHasActiveRun, automationTaskStoreID(task))
 	}
 	return store.Delete(automationTaskStoreID(task))
 }
@@ -299,8 +265,8 @@ func (s *Service) StartTaskCommand(ctx context.Context, id, commandID string, ev
 	return replayAutomationRunTask(run), run, nil
 }
 
-// replayAutomationRunTask adapts a terminal persisted run to the same bounded
-// SSE Task contract as a live execution. It never opens an Agent runner.
+// replayAutomationRunTask returns a delivery projection through the bounded
+// SSE Task contract. It never opens an Agent runner.
 func replayAutomationRunTask(run automation.RunRecord) *apptask.Task {
 	return apptask.New(func(_ context.Context, _ *apptask.Task, emit func(agentrun.Event)) {
 		emit(agentrun.Event{Type: "automation_run", Data: run})
@@ -371,12 +337,6 @@ func (s *Service) startTaskWithSourceRunID(ctx context.Context, snap *automation
 		defer func() {
 			resultErr = errors.Join(resultErr, releaseRun())
 		}()
-		if activeTask, activeRun, ok := s.activeAutomationTaskByRunID(snap, deterministicRunID); ok {
-			if !sameAutomationRunSemantics(taskDef, run, activeRun) {
-				return nil, automation.RunRecord{}, automationRunIDConflict(deterministicRunID)
-			}
-			return activeTask, activeRun, nil
-		}
 		persisted, found, lookupErr := persistedAutomationRunByID(storeForSnapshot(snap), deterministicRunID)
 		if lookupErr != nil {
 			return nil, automation.RunRecord{}, lookupErr
@@ -385,128 +345,16 @@ func (s *Service) startTaskWithSourceRunID(ctx context.Context, snap *automation
 			if !sameAutomationRunSemantics(taskDef, run, persisted) {
 				return nil, automation.RunRecord{}, automationRunIDConflict(deterministicRunID)
 			}
-			receiptIncomplete := persisted.RuntimeCommandID == "" || persisted.RuntimeOperationID == "" || persisted.RuntimeReceiptCursor == 0
-			if persisted.Status == automation.RunStatusRunning || receiptIncomplete {
-				reconciled, ok, reconcileErr := s.reconcileAutomationRunReceipt(ctx, snap, taskDef, persisted)
-				if reconcileErr != nil {
-					return nil, automation.RunRecord{}, reconcileErr
-				}
-				if ok {
-					if reconciled.RuntimeRecoveryRequired {
-						return s.ensureAutomationRecoveryTask(ctx, snap, taskDef, reconciled)
-					}
-					if reconciled.Status == automation.RunStatusSuccess {
-						reconciled, reconcileErr = s.completeAutomationRunEffects(ctx, snap, taskDef, reconciled)
-					}
-					return nil, reconciled, reconcileErr
-				}
-				if persisted.Status == automation.RunStatusRunning && !receiptIncomplete {
-					persisted.RuntimeRecoveryRequired = true
-					if _, appendErr := storeForSnapshot(snap).AppendRun(automationTaskStoreID(taskDef), persisted); appendErr != nil {
-						return nil, automation.RunRecord{}, appendErr
-					}
-					return s.ensureAutomationRecoveryTask(ctx, snap, taskDef, persisted)
-				}
-			}
-			if automation.RunHasDurableObligation(persisted) &&
-				(persisted.CompletionEffectsPending || persisted.Status == automation.RunStatusSuccess && !persisted.CompletionEffectsCompleted) {
-				completed, completionErr := s.completeAutomationRunEffects(ctx, snap, taskDef, persisted)
-				return nil, completed, completionErr
-			}
-			if !receiptIncomplete || (persisted.Status != automation.RunStatusFailed && persisted.Status != automation.RunStatusRunning) {
-				return nil, persisted, nil
-			}
-			// A failed/running record without a runtime receipt never crossed
-			// StartTurn admission. Reuse the same deterministic identity and
-			// original admission timestamp for retry.
-			run.StartedAt = persisted.StartedAt
-			if strings.TrimSpace(persisted.SessionID) != "" {
-				run.SessionID = persisted.SessionID
-			}
+			run = persisted
 		}
-		if !found {
-			reconciled, ok, reconcileErr := s.reconcileAutomationRunReceipt(ctx, snap, taskDef, run)
-			if reconcileErr != nil {
-				return nil, automation.RunRecord{}, reconcileErr
-			}
-			if ok {
-				if reconciled.RuntimeRecoveryRequired {
-					return s.ensureAutomationRecoveryTask(ctx, snap, taskDef, reconciled)
-				}
-				if reconciled.Status == automation.RunStatusSuccess {
-					reconciled, reconcileErr = s.completeAutomationRunEffects(ctx, snap, taskDef, reconciled)
-				}
-				return nil, reconciled, reconcileErr
-			}
+	} else {
+		release, err := storeForSnapshot(snap).AcquireRunLease(ctx, automationTaskStoreID(taskDef), run.ID)
+		if err != nil {
+			return nil, run, err
 		}
+		defer func() { resultErr = errors.Join(resultErr, release()) }()
 	}
-	taskStoreID := automationTaskStoreID(taskDef)
-	claim, owner, err := s.reserveActiveAutomationRun(ctx, snap, taskStoreID, run)
-	if err != nil {
-		return nil, automation.RunRecord{}, err
-	}
-	if !owner {
-		if deterministicRunID != "" && !sameAutomationRunSemantics(taskDef, run, claim.run) {
-			return nil, automation.RunRecord{}, automationRunIDConflict(deterministicRunID)
-		}
-		slog.InfoContext(ctx, fmt.Sprintf("[automation] attach active run workspace=%q task_id=%s run_id=%s status=%s", snap.workspace, taskDef.ID, claim.run.ID, claim.task.Status()))
-		return claim.task, claim.run, nil
-	}
-	claimActivated := false
-	defer func() {
-		if !claimActivated {
-			s.releaseAutomationClaim(claim)
-		}
-	}()
-	var execution *automationAcceptedRun
-	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
-		if err := s.activateAutomationClaim(claim, task); err != nil {
-			return err
-		}
-		claimActivated = true
-		return nil
-	})
-	if err != nil {
-		// App registration is the final in-memory admission gate before the
-		// durable Runtime is touched. Capacity/lifecycle rejection therefore
-		// leaves no failed run ledger entry for an operation that never existed.
-		return nil, automation.RunRecord{}, err
-	}
-	task.Emit(agentrun.Event{Type: "automation_run", Data: run})
-	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	execution, err = s.startAutomationRun(acceptCtx, snap, task, taskDef, run, task.Emit)
-	releaseAcceptance()
-	if err != nil {
-		if execution != nil {
-			run = execution.run
-		}
-		result, _ := s.failAutomationRun(snap, taskDef, run, task.Emit, false, err)
-		if result.Run.ID != "" {
-			task.Emit(agentrun.Event{Type: "automation_run", Data: result.Run})
-		}
-		task.RejectStart(err)
-		s.host.UnregisterTask(task)
-		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
-		return nil, result.Run, err
-	}
-	run = execution.run
-	task.Emit(agentrun.Event{Type: "automation_run", Data: run})
-	if err := task.Start(func(taskCtx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
-		defer s.host.UnregisterTask(task)
-		defer s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
-		result, _ := s.waitAutomationRun(taskCtx, execution)
-		if result.Run.ID != "" {
-			task.Emit(agentrun.Event{Type: "automation_run", Data: result.Run})
-		}
-	}); err != nil {
-		task.Abort()
-		_, _ = s.waitAutomationRun(task.Context(), execution)
-		task.Finish()
-		s.host.UnregisterTask(task)
-		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
-		return nil, automation.RunRecord{}, err
-	}
-	return task, run, nil
+	return s.deliverRun(ctx, snap, taskDef, run)
 }
 
 func persistedAutomationRunByID(store *automation.Store, runID string) (automation.RunRecord, bool, error) {
@@ -521,12 +369,16 @@ func persistedAutomationRunByID(store *automation.Store, runID string) (automati
 }
 
 func sameAutomationRunSemantics(task automation.Task, expected, existing automation.RunRecord) bool {
+	sameTarget := existing.ProjectID == expected.ProjectID
+	if existing.ProjectID == "" || expected.ProjectID == "" {
+		sameTarget = canonicalAutomationWorkspace(existing.Workspace) == canonicalAutomationWorkspace(expected.Workspace)
+	}
 	if strings.TrimSpace(existing.ID) != strings.TrimSpace(expected.ID) ||
 		!automation.TaskMatchesID(task, existing.TaskID) ||
 		normalizeAutomationTrigger(existing.Trigger) != normalizeAutomationTrigger(expected.Trigger) ||
 		strings.TrimSpace(existing.SourceRunID) != strings.TrimSpace(expected.SourceRunID) ||
 		existing.Scope != expected.Scope ||
-		canonicalAutomationWorkspace(existing.Workspace) != canonicalAutomationWorkspace(expected.Workspace) ||
+		!sameTarget ||
 		len(existing.TriggerEvidence) != len(expected.TriggerEvidence) {
 		return false
 	}

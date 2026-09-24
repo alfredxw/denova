@@ -410,7 +410,10 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			if len(projection.Details) != 0 && json.Valid(projection.Details) {
 				domainPayload = string(projection.Details)
 			}
-			for _, warning := range projectPublicToolResult(projector.options, payload.Name, domainPayload, meta, data, projector.emitEvent) {
+			for _, warning := range ProjectToolResult(projector.options.ProjectID, payload.Name, domainPayload, data, func(event agentrun.Event) {
+				event.Data = meta.appendTo(event.Data.(map[string]any))
+				projector.emitEvent(event)
+			}) {
 				slog.WarnContext(context.Background(), "[agent-public-runtime] project ToolResult display data failed",
 					"tool", payload.Name, "error", warning)
 			}
@@ -868,7 +871,7 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 		projector.emitEvent(agentrun.Event{Type: "suspended", Data: map[string]string{"reason": reason}})
 	default:
 		data := map[string]string{"message": reason}
-		if agent.IsModelIncompleteTerminalReason(reason) {
+		if agent.IsModelIncompleteTerminalReason(reason) || reason == agent.ModelImageInputRejectedReason || reason == agent.ModelRequestTooLargeReason {
 			data["code"] = reason
 		}
 		projector.emitEvent(agentrun.Event{Type: "error", Data: data})

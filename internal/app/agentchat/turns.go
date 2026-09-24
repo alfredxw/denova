@@ -11,13 +11,17 @@ import (
 	"denova/config"
 	chatagent "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
+	"denova/internal/agents/conversationconfig"
 	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
+	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
 	apptask "denova/internal/app/task"
+	agent "github.com/alfredxw/denova/agent"
 )
 
 // StartTask starts one project-scoped turn without switching the foreground
@@ -37,16 +41,16 @@ func (service *Service) StartTask(ctx context.Context, binding Binding, request 
 }
 
 // AcceptedTurn is one project-Agent command that crossed durable admission.
-// Its caller owns exactly one of Start or Wait. Start is used by interactive
-// AgentChat; Automation already owns a Task worker and calls Wait from it.
+// Start uses the common Project Agent worker for every caller, including triggers.
 type AcceptedTurn struct {
 	service      *Service
 	active       *run
-	accepted     *agentexecution.Operation
+	accepted     *conversationapp.Operation
 	task         *apptask.Task
 	runtime      conversationapp.Runtime
 	conversation *agentconversation.SessionConversation
 	replayed     bool
+	receipt      agentrun.CommandReceipt
 
 	mutationMu        sync.Mutex
 	verifiedMutations []agenttool.Mutation
@@ -61,8 +65,11 @@ func (turn *AcceptedTurn) Task() *apptask.Task {
 }
 
 func (turn *AcceptedTurn) Receipt() agentrun.CommandReceipt {
-	if turn == nil || turn.accepted == nil {
+	if turn == nil {
 		return agentrun.CommandReceipt{}
+	}
+	if turn.accepted == nil {
+		return turn.receipt
 	}
 	return turn.accepted.Receipt()
 }
@@ -104,7 +111,7 @@ func (turn *AcceptedTurn) Wait(ctx context.Context) agentrun.Outcome {
 		len(turn.active.request.Message), turn.active.policy.Origin,
 	))
 	outcome := turn.accepted.Wait(ctx)
-	_, outputCommitted := turn.conversation.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput)
+	outputCommitted := turn.accepted.OutputCommitted()
 	postSettlementCtx := ctx
 	if outputCommitted {
 		postSettlementCtx = context.WithoutCancel(ctx)
@@ -113,7 +120,7 @@ func (turn *AcceptedTurn) Wait(ctx context.Context) agentrun.Outcome {
 	mutations := append([]agenttool.Mutation(nil), turn.verifiedMutations...)
 	verification := turn.verification
 	turn.mutationMu.Unlock()
-	if outputCommitted && len(mutations) > 0 && turn.service.host != nil {
+	if (outputCommitted || turn.accepted.IsExternal()) && len(mutations) > 0 && turn.service.host != nil {
 		turn.service.host.OnVerifiedMutations(postSettlementCtx, "agent_chat_post_run", turn.runtime.VersionService, turn.runtime.Config, mutations, verification)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf(
@@ -156,42 +163,52 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		if input.Task != nil && input.Task != replay {
 			return nil, fmt.Errorf("%w: command_id=%q", apptask.ErrCommandConflict, request.CommandID)
 		}
-		return &AcceptedTurn{service: service, task: replay, replayed: true}, nil
-	}
-	busyPolicy := input.Policy.BusyPolicy
-	if busyPolicy == "" {
-		busyPolicy = TurnBusyReject
-	}
-	if busyPolicy != TurnBusyReject && busyPolicy != TurnBusyWait {
-		return nil, fmt.Errorf("unsupported AgentChat busy policy %q", input.Policy.BusyPolicy)
-	}
-	for {
-		active := service.activeRun(binding)
-		if active == nil || active.task == nil || active.task.Finished() {
-			break
-		}
-		switch busyPolicy {
-		case TurnBusyReject:
-			return nil, appagentruntime.ErrOperationActive
-		case TurnBusyWait:
-			slog.InfoContext(ctx, fmt.Sprintf(
-				"[app/agentchat] turn waiting for conversation owner project_id=%s session_id=%s task_id=%s",
-				binding.ProjectID, binding.SessionID, active.task.ID(),
-			))
-			select {
-			case <-active.task.Done():
-				continue
-			case <-ctx.Done():
-				return nil, ctx.Err()
+		if control, selected, err := service.externalController(ctx, binding); err != nil {
+			return nil, err
+		} else if selected {
+			receipt, found, err := control.Receipt(ctx, request.CommandID)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				return &AcceptedTurn{service: service, task: replay, replayed: true, receipt: receipt}, nil
 			}
 		}
+		_, runtime := service.host.BaseRuntime()
+		view, found, err := runtime.CommandProjection(ctx, runtimeOptions(binding, ""), request.CommandID)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("accepted AgentChat command is missing: %s", request.CommandID)
+		}
+		return &AcceptedTurn{service: service, task: replay, replayed: true, receipt: view.Receipt}, nil
+	}
+	if active := service.activeRun(binding); active != nil && active.task != nil && !active.task.Finished() {
+		return nil, agentruntime.ErrOperationActive
 	}
 
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve AgentChat Project runtime: %w", err)
 	}
-	sess, created, err := getOrCreateConversation(project, binding)
+	var sess *session.Session
+	created := !project.store.Exists(binding.SessionID)
+	if created && input.Policy.Origin != "" {
+		// Automation owns a separate Native conversation. Foreground Agent
+		// defaults must never change the executor of a scheduled invocation.
+		var runtimeCfg config.Config
+		runtimeCfg, err = refreshRuntimeConfig(project)
+		if err == nil {
+			seed := conversationconfig.LegacyDefault(&runtimeCfg, binding.agentKind)
+			err = conversationconfig.Validate(&runtimeCfg, seed, binding.agentKind)
+			if err == nil {
+				sess, err = project.store.GetOrCreateWithRuntimeConfig(binding.SessionID, seed)
+			}
+		}
+	} else {
+		sess, created, err = getOrCreateConversation(project, binding)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("open AgentChat conversation: %w", err)
 	}
@@ -213,14 +230,11 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat host capabilities: %w", err)
 	}
-	builtAgent, err := appagentruntime.BuildConversationAgent(
-		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
-		agentHost,
-	)
+	executor, err := conversationapp.BuildExecution(ctx, runtime, agentHost, service.host.AgentEngines(), input.Policy.Origin)
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat Project Agent: %w", err)
 	}
-	systemPrompt := builtAgent.Composition
+	systemPrompt := executor.Composition
 	conversation := conversationapp.ProjectConversation(runtime, request)
 
 	task := input.Task
@@ -263,16 +277,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		turn.mutationMu.Unlock()
 	})
 	options = conversationapp.BindReviewFeedback(options, runtime, request)
-	accepted, err := runtime.ExecutionRuntime.Start(acceptCtx, agentexecution.StartRequest{
-		Cycle: agentexecution.Cycle{
-			Definition:   builtAgent.Definition,
-			Conversation: conversation,
-			BookService:  runtime.BookService,
-			Request:      request,
-			Options:      options,
-		},
-		Emit: emit,
-	})
+	accepted, err := executor.Start(acceptCtx, request, conversation, options, emit)
 	releaseAcceptance()
 	if err != nil {
 		reservation.Rollback()
@@ -282,6 +287,9 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		service.releaseActiveRun(active)
 		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, fmt.Errorf("%w: command_id=%q", apptask.ErrCommandConflict, request.CommandID)
+		}
+		if errors.Is(err, agent.ErrSessionBusy) {
+			return nil, agentruntime.ErrOperationActive
 		}
 		return nil, err
 	}
@@ -346,50 +354,32 @@ func startOptions(
 
 // SubmitCommand targets one exact Project conversation. A command from
 // another tab cannot steer, queue into, or abort this binding.
-func (service *Service) SubmitCommand(ctx context.Context, binding Binding, command appagentruntime.Command) (agentrun.CommandReceipt, error) {
+func (service *Service) SubmitCommand(ctx context.Context, binding Binding, command agentruntime.Command) (agentrun.CommandReceipt, error) {
 	var err error
 	binding, err = service.ResolveBinding(binding)
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
 	active := service.activeRun(binding)
+	taskID := ""
+	var emit func(agentrun.Event)
+	if active != nil && active.task != nil && !active.task.Finished() {
+		taskID, emit = active.task.ID(), active.task.Emit
+	}
+	bound, err := service.agentSession(ctx, binding, taskID)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
+	}
 	if active == nil || active.task == nil || active.task.Finished() {
-		_, runtime := service.host.BaseRuntime()
-		options := runtimeOptions(binding, "")
-		status, err := runtime.RuntimeStatusProjection(ctx, options)
+		status, err := bound.Status(ctx)
 		if err != nil {
 			return agentrun.CommandReceipt{}, err
 		}
 		if status.Phase != agentrun.RunPhaseSuspended {
 			return agentrun.CommandReceipt{}, appagentruntime.ErrNoActiveOperation
 		}
-		return runtime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: command.Kind, CommandID: command.CommandID,
-			OperationID: command.OperationID, AfterOperationID: command.OperationID,
-			TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Request: command.Input, Options: options,
-		})
 	}
-
-	options := runtimeOptions(binding, active.task.ID())
-	switch command.Kind {
-	case agentexecution.CommandAbort, agentexecution.CommandSuspend, agentexecution.CommandSteerQueued, agentexecution.CommandCancelQueued:
-		return active.runtime.ExecutionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: command.Kind, CommandID: command.CommandID,
-			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Options: options,
-		})
-	case agentexecution.CommandSteer, agentexecution.CommandFollowUp, agentexecution.CommandNextTurn:
-		// Prepared below after the active Run admits the exact command.
-	default:
-		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported AgentChat command %q", agentrun.ErrInvalidCommand, command.Kind)
-	}
-
-	return active.runtime.ExecutionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-		Kind: command.Kind, CommandID: command.CommandID,
-		OperationID: command.OperationID, AfterOperationID: command.OperationID,
-		Request: command.Input, Emit: active.task.Emit, Options: options,
-	})
+	return bound.Submit(ctx, command, emit)
 }
 
 func (service *Service) prepareCommandExecution(ctx context.Context, active *run, request chatagent.ChatRequest) (agentexecution.Cycle, error) {

@@ -54,9 +54,6 @@ export function useLayeredSettingsDraft({
   const applySequenceRef = useRef(0)
   const suppressQuerySyncRef = useRef(0)
 
-  layeredRef.current = layered
-  draftsRef.current = drafts
-
   const applySnapshot = useCallback(async (next: LayeredSettings, source: SettingsSnapshotSource) => {
     const applySequence = applySequenceRef.current + 1
     applySequenceRef.current = applySequence
@@ -169,12 +166,13 @@ export function useLayeredSettingsDraft({
   }, [applySnapshot, projectId, targetKind])
 
   const setDraft: Dispatch<SetStateAction<Settings>> = useCallback((action) => {
-    setDrafts((current) => {
-      const settings = typeof action === 'function' ? action(current[layer]) : action
-      const next = { ...current, [layer]: settings }
-      draftsRef.current = next
-      return next
-    })
+    // Publish intent before React batches the render. A save or refresh may
+    // rebase in that interval and must see every edit already accepted here.
+    const current = draftsRef.current
+    const settings = typeof action === 'function' ? action(current[layer]) : action
+    const next = { ...current, [layer]: settings }
+    draftsRef.current = next
+    setDrafts(next)
   }, [layer])
 
   const saveLayer = useCallback(async (targetLayer: SettingsLayer, settings: Settings, baseRevision?: string) => {

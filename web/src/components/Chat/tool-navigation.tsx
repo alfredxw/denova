@@ -3,7 +3,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 export type ToolNavigationTarget =
   | { kind: 'workspace_file'; path: string }
   | { kind: 'lore_item'; id?: string; name?: string }
-  | { kind: 'config_resource'; resource: string; id?: string; scope?: string }
+  | { kind: 'config_resource'; resource: string; id?: string; scope?: string; section?: 'runtime' }
 
 export interface ToolNavigationIntent {
   target: Exclude<ToolNavigationTarget, { kind: 'workspace_file' }>

@@ -1,6 +1,9 @@
 package automation
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // portableTask removes host routing from Project-owned durable state. The
 // owning Project store reconstructs these fields from ProjectID at read time.
@@ -35,6 +38,7 @@ func portableTask(task Task) Task {
 }
 
 func portableRun(run RunRecord) RunRecord {
+	run = deliveryRecord(run)
 	if strings.TrimSpace(run.ProjectID) != "" {
 		run.Workspace = ""
 	}
@@ -78,5 +82,21 @@ func (s *Store) bindProjectRunRuntime(run RunRecord) RunRecord {
 		run.ProjectID = s.projectID
 		run.Workspace = s.workspace
 	}
+	return run
+}
+
+// deliveryRecord prevents read projections from becoming a second execution
+// journal. Released legacy history remains intact until its delivery is adopted.
+func deliveryRecord(run RunRecord) RunRecord {
+	if run.DeliveryStatus == "" {
+		return run
+	}
+	run.Status, run.Summary, run.Error, run.OutputPath = "", "", "", ""
+	run.FinishedAt = time.Time{}
+	run.ToolManifest = nil
+	run.RuntimeCommandID, run.RuntimeOperationID, run.RuntimeCommandFingerprint, run.RuntimeIntentHash = "", "", "", ""
+	run.RuntimeReceiptCursor = 0
+	run.PendingRuntimeCommandID, run.PendingRuntimeIntentHash, run.PendingRuntimeCommandFingerprint, run.RuntimeSuccessorConflict = "", "", "", ""
+	run.RuntimeAdmissionPending, run.RuntimeRecoveryRequired = false, false
 	return run
 }

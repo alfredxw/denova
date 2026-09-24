@@ -8,7 +8,7 @@ const workbenchServers = Array.isArray(workbenchConfig.webServer) ? workbenchCon
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['production/**/*.spec.ts', 'e2e/books.spec.ts', 'browser/workspace-navigation.spec.ts'],
+  testMatch: ['production/**/*.spec.ts', 'browser/bootstrap.spec.ts', 'e2e/books.spec.ts', 'browser/workspace-navigation.spec.ts'],
   outputDir: './test-results/production-artifacts',
   workers: 1,
   retries: 0,
@@ -16,6 +16,7 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL,
+    serviceWorkers: 'block',
     locale: 'zh-CN',
     colorScheme: 'dark',
     trace: 'retain-on-failure',

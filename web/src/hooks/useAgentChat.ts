@@ -299,9 +299,9 @@ export function useAgentChat(options: ChatOptions = {}) {
     }) : status === 'submitted' ? t('chat.activity.thinking') : ''
 
   useEffect(() => {
-    if (!runtimeProjection?.pending_ask) return
-    appendDataMessage(setUIMessages, 'data-agent-ask', { ...runtimeProjection.pending_ask })
-  }, [runtimeProjection?.pending_ask, setUIMessages])
+    const pending = runtimeProjection?.pending_asks ?? (runtimeProjection?.pending_ask ? [runtimeProjection.pending_ask] : [])
+    for (const question of pending) appendDataMessage(setUIMessages, 'data-agent-ask', { ...question })
+  }, [runtimeProjection?.pending_ask, runtimeProjection?.pending_asks, setUIMessages])
 
   useEffect(() => {
     const operationID = runtimeProjection?.active_operation_id?.trim() || ''
@@ -406,6 +406,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           await loadSessions()
           return true
         }
+        if (command === 'compact') await loadHistory()
         appendDataMessage(setUIMessages, 'data-agent-system', {
           content: result,
         })

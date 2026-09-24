@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/QuHu2aPya"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the Denova Discord" /></a>
+  <a href="https://discord.gg/BM6dRmyvvZ"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the Denova Discord" /></a>
   <a href="https://github.com/alfredxw/denova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/denova?style=flat-square"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/denova?style=flat-square"></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.26.6%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.4.5</strong> (2026-09-09) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.5.0</strong> (2026-09-22) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)
@@ -62,8 +62,8 @@ Start a new book from an idea, import an existing novel to continue writing, or 
 ## Core Features
 
 - **Novel writing**: Markdown document and source editing, multiple tabs, find and replace, outlines and chapter plans, progress tracking, inline comments, change review, and novel import.
-- **Creative Agents**: work with the current selection, project files, and lore; extend workflows with Skills; and support multiple conversations plus opt-in SubAgent collaboration.
-- **Interactive games**: advance stories through player input, with branches, storyline switching, action suggestions, character and world state, rule checks, and adjustable story planning.
+- **Creative Agents**: choose Native, Codex, or Claude Code to work with selections, project files, images, and lore; extend workflows with Skills, multiple conversations, SubAgent collaboration, and task pause/resume.
+- **Interactive games**: advance stories through player input, with branches, storyline switching, action suggestions, character and world state, rule checks, adjustable story planning, and OpenAI-compatible read-aloud.
 - **Lore and presets**: manage characters, locations, factions, world rules, and narrative styles in one place so durable creative assets can serve both Writing and Game.
 - **Image creation**: generate chapter illustrations, interactive images, and book covers, then preview and manage the results in the app.
 - **Versions and recovery**: save local versions, inspect changes, restore historical files, and review or undo Agent edits to the workspace.
@@ -90,7 +90,7 @@ Run `denova` after installation. Windows users and anyone who prefers manual ins
 
 For stable use, choose a Release. The `master` branch may contain unreleased changes.
 
-Before upgrading from v0.3.3, read the [v0.4.0 release and data migration notes](./CHANGELOG.md): recreate legacy global Automations within Projects and reselect affected model and context options.
+Before upgrading from v0.4.5, read the [v0.5.0 release and data compatibility notes](./CHANGELOG.md). Journals are backed up before their first upgraded write, but older versions cannot read the new task recovery, compaction, and external runtime records. To downgrade, stop the app, restore the earliest pre-upgrade backup, and separately preserve content created after upgrading.
 
 ### First Run
 
@@ -140,7 +140,7 @@ Read [CONTRIBUTING.md](./CONTRIBUTING.md) before contributing. Common commands:
 
 Denova is evolving quickly. Bug reports, workflow ideas, usage notes, and creative discussions are welcome.
 
-[Discord community](https://discord.gg/QuHu2aPya)
+[Discord community](https://discord.gg/BM6dRmyvvZ)
 
 <p align="center">
   <img src="./img/wechat.png" alt="WeChat community" width="240">

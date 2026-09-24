@@ -94,6 +94,13 @@ func (toolCallTextPolyfill) apply(inner agent.ToolCallingChatModel) agent.ToolCa
 
 type toolCallTextModel struct{ inner agent.ToolCallingChatModel }
 
+func (m *toolCallTextModel) InputEstimator() agent.InputEstimator {
+	if model, ok := m.inner.(agent.ModelInputEstimator); ok {
+		return model.InputEstimator()
+	}
+	return agent.InputEstimator{}
+}
+
 func (m *toolCallTextModel) Generate(ctx context.Context, in []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
 	msg, err := m.inner.Generate(ctx, in, opts...)
 	if err != nil || msg == nil {
@@ -194,6 +201,13 @@ func (inlineThinkPolyfill) apply(inner agent.ToolCallingChatModel) agent.ToolCal
 }
 
 type inlineThinkModel struct{ inner agent.ToolCallingChatModel }
+
+func (m *inlineThinkModel) InputEstimator() agent.InputEstimator {
+	if model, ok := m.inner.(agent.ModelInputEstimator); ok {
+		return model.InputEstimator()
+	}
+	return agent.InputEstimator{}
+}
 
 func (m *inlineThinkModel) Generate(ctx context.Context, in []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
 	msg, err := m.inner.Generate(ctx, in, opts...)

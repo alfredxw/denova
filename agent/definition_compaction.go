@@ -72,6 +72,10 @@ func (engine *definitionEngine) RunStructural(
 		return runstate.EngineResult{}, ErrCapabilityUnsupported
 	}
 	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
+	prepared.elision, err = elisionStateFrom(request.Capabilities)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
 	materialized, materializedErr := materializedDefinitionFingerprint(prepared)
 	if materializedErr != nil {
 		return runstate.EngineResult{}, materializedErr
@@ -126,7 +130,11 @@ func (engine *definitionEngine) RunStructural(
 				transcript.Messages, next, true,
 			)
 		}
-		contextMessages, contextErr := projectToolArtifactPaths(forkCtx, prepared.definition.Artifacts, transcript.Messages)
+		contextMessages, contextErr := elisionForHistory(prepared.elision, current, present).project(transcript.Messages)
+		if contextErr != nil {
+			return runstate.EngineResult{}, contextErr
+		}
+		contextMessages, contextErr = projectToolArtifactPaths(forkCtx, prepared.definition.Artifacts, contextMessages)
 		if contextErr != nil {
 			return runstate.EngineResult{}, contextErr
 		}
@@ -212,15 +220,18 @@ func prepareStructuralCompactionSnapshot(
 	}
 	prepared.contextState = nextContextState
 	raw = append(cloneMessages(raw), cloneMessages(stateMessages)...)
-	effective, err := effectiveCompactionMessages(
-		raw, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
+	effective, err := effectiveHistoryMessages(
+		raw, prepared.elision, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
 	)
 	checkpointVisible := err == nil
 	if err != nil {
 		if !errors.Is(err, ErrContextLimit) {
 			return nil, err
 		}
-		effective = cloneMessages(raw)
+		effective, err = elisionForHistory(prepared.elision, compaction, compactionPresent).project(raw)
+		if err != nil {
+			return nil, err
+		}
 	}
 	messages := make([]*Message, 0, len(effective)+len(prepared.fragments))
 	messages = append(messages, leadingContextMessages(prepared.fragments)...)
@@ -273,9 +284,43 @@ func executeCompaction(
 	if len(contextMessages) != len(messages) || present && current.ReplacementTo > len(messages) {
 		return compactionRecord{}, false, CompactionMetrics{}, errors.New("Compaction runtime source does not match journal coverage")
 	}
+	contextMessages, err := resolveMessageAttachmentPaths(prepared.definition.AttachmentRoot, contextMessages)
+	if err != nil {
+		return compactionRecord{}, false, CompactionMetrics{}, err
+	}
 	groups, ends, retainedBytes := compactionGroups(messages, contextMessages, current, present)
+	base := compactionRecord{
+		Version: 2, ID: checkpointID, Revision: max(uint64(1), revisionBase+1), CreatedAt: time.Now().UTC(),
+	}
+	if present {
+		base.Revision = max(base.Revision, current.Revision+1)
+		if !current.Removed {
+			base.ReplacementFrom = current.ReplacementFrom
+		}
+	}
+	recordThrough := func(end int) compactionRecord {
+		next := base
+		next.ReplacementTo = end
+		if prepared.activeModelUser != nil && prepared.activeUserIndex >= next.ReplacementFrom && prepared.activeUserIndex < end {
+			index := prepared.activeUserIndex
+			next.RetainedUserFrom = &index
+		}
+		return next
+	}
 	proposal, err := prepared.definition.Compaction.Plan(ctx, CompactionPlanRequest{
 		Session: session, Run: run, Groups: groups, RetainedBytes: retainedBytes,
+		EstimateAfter: func(count int) (InputSize, error) {
+			if count <= 0 || count > len(ends) || buildAfter == nil {
+				return InputSize{}, errors.New("Compaction estimate requires an eligible group prefix and request projection")
+			}
+			next := recordThrough(ends[count-1])
+			next.Summary = mergeProtectedReceiptContext("", current.Summary, compactionReceiptMessages(contextMessages[next.ReplacementFrom:next.ReplacementTo], modelSnapshot), summaryLimit)
+			after, err := buildAfter(next)
+			if err != nil {
+				return InputSize{}, err
+			}
+			return after.EstimateInput()
+		},
 		ModelSnapshot: modelSnapshot, LifecycleReservedTokens: prepared.goalReservedTokens,
 		Force:   request.Force || present && len(current.Summary) > summaryLimit,
 		Current: compactionStatePointer(current, present),
@@ -332,22 +377,10 @@ func executeCompaction(
 	if err := validateCompactionContextData(checkpoint.ContextData); err != nil {
 		return compactionRecord{}, false, plan.Metrics, err
 	}
-	revision := max(uint64(1), revisionBase+1)
-	if present && current.Revision >= revisionBase {
-		revision = current.Revision + 1
-	}
-	next := compactionRecord{
-		Version: 2, ID: checkpointID, Revision: revision,
-		SourceHash: wantHash,
-		Summary:    checkpoint.Summary, SummaryTokenEstimate: EstimateTextTokens(checkpoint.Summary),
-		ReplacementFrom: plan.SourceFrom, ReplacementTo: plan.SourceTo,
-		CreatedAt:   time.Now().UTC(),
-		ContextData: cloneHostData(checkpoint.ContextData),
-	}
-	if prepared.activeModelUser != nil && prepared.activeUserIndex >= plan.SourceFrom && prepared.activeUserIndex < plan.SourceTo {
-		index := prepared.activeUserIndex
-		next.RetainedUserFrom = &index
-	}
+	next := recordThrough(plan.SourceTo)
+	next.SourceHash = wantHash
+	next.Summary, next.SummaryTokenEstimate = checkpoint.Summary, EstimateTextTokens(checkpoint.Summary)
+	next.ContextData = cloneHostData(checkpoint.ContextData)
 	if modelSnapshot == nil || buildAfter == nil {
 		return compactionRecord{}, false, plan.Metrics, errors.New("Compaction requires exact before and after model request snapshots")
 	}
@@ -377,8 +410,15 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan comp
 		return metrics, errors.New("Compaction validation policy contains negative limits")
 	}
 	beforeMessages, afterMessages := before.Messages(), after.Messages()
-	beforeTokens := EstimateRequestTokens(beforeMessages, before.ResolvedOptions().Tools)
-	afterTokens := EstimateRequestTokens(afterMessages, after.ResolvedOptions().Tools)
+	beforeSize, err := before.EstimateInput()
+	if err != nil {
+		return metrics, err
+	}
+	afterSize, err := after.EstimateInput()
+	if err != nil {
+		return metrics, err
+	}
+	beforeTokens, afterTokens := beforeSize.Tokens, afterSize.Tokens
 	metrics.EstimatedTokensBefore = beforeTokens
 	metrics.EstimatedTokensAfter = afterTokens
 	metrics.ReservedTokens = policy.ReservedTokens
@@ -390,10 +430,16 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan comp
 	metrics.MessageCountBefore = len(beforeMessages)
 	metrics.MessageCountAfter = len(afterMessages)
 	metrics.SourceMessageCount = plan.SourceTo - plan.SourceFrom
-	metrics.StablePrefixTokens = stableSnapshotTokens(after)
-	metrics.CacheExpectedPrefixTokens = stableSnapshotTokens(before)
+	metrics.StablePrefixTokens, err = stableSnapshotTokens(after)
+	if err != nil {
+		return metrics, err
+	}
+	metrics.CacheExpectedPrefixTokens, err = stableSnapshotTokens(before)
+	if err != nil {
+		return metrics, err
+	}
 	metrics.CandidateFingerprint, metrics.CandidateGeneration = compactionCandidateIdentity(afterMessages)
-	if policy.HardLimitBytes > 0 && compactionRequestBytes(after) > policy.HardLimitBytes {
+	if policy.HardLimitBytes > 0 && afterSize.Bytes > policy.HardLimitBytes {
 		return metrics, fmt.Errorf("%w: post-Compaction request exceeds the %d-byte provider input limit", ErrContextLimit, policy.HardLimitBytes)
 	}
 	progress := metrics.ProjectedTokensBefore - metrics.ProjectedTokensAfter
@@ -419,24 +465,14 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan comp
 	return metrics, nil
 }
 
-func stableSnapshotTokens(snapshot *ModelRequestSnapshot) int {
+func stableSnapshotTokens(snapshot *ModelRequestSnapshot) (int, error) {
 	if snapshot == nil {
-		return 0
+		return 0, nil
 	}
 	messages := snapshot.Messages()
 	boundary := min(snapshot.StablePrefixMessages(), len(messages))
-	return EstimateRequestTokens(messages[:boundary], snapshot.ResolvedOptions().Tools)
-}
-
-func compactionRequestBytes(snapshot *ModelRequestSnapshot) int {
-	if snapshot == nil {
-		return 0
-	}
-	encoded, _ := json.Marshal(struct {
-		Messages []*Message
-		Tools    []*ToolInfo
-	}{snapshot.Messages(), snapshot.ResolvedOptions().Tools})
-	return len(encoded)
+	size, err := snapshot.WithMessages(messages[:boundary]).EstimateInput()
+	return size.Tokens, err
 }
 
 func compactionCandidateIdentity(messages []*Message) (string, uint64) {

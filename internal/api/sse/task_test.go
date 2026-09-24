@@ -3,13 +3,32 @@ package sse
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	agentrun "denova/internal/agents/run"
+	novaApp "denova/internal/app"
 	apptask "denova/internal/app/task"
 	"denova/internal/observability"
 )
+
+func TestGameTurnReplayMarkerDoesNotMutateLiveEvent(t *testing.T) {
+	for _, data := range []any{novaApp.InteractiveTurnPersistedEvent{StoryID: "story"}, map[string]any{"story_id": "story"}} {
+		event := novaApp.AgentEvent{Type: "interactive_turn_persisted", Data: data}
+		replayed, err := json.Marshal(markReplayedGameTurn(event).Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		live, err := json.Marshal(event.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(replayed, []byte(`"replayed":true`)) || bytes.Contains(live, []byte(`"replayed"`)) {
+			t.Fatalf("replay marker leaked into live event: replay=%s live=%s", replayed, live)
+		}
+	}
+}
 
 func TestSSEWriteHandlerPreservesRawToolInputDeltas(t *testing.T) {
 	var buf bytes.Buffer

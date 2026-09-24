@@ -31,7 +31,7 @@ export class ProjectEventStreamHTTPError extends Error {
   }
 }
 
-type StreamPhase = 'idle' | 'connecting' | 'open' | 'auth-required'
+type StreamPhase = 'idle' | 'connecting' | 'open' | 'auth-required' | 'project-missing'
 
 interface ProjectStreamState {
   phase: StreamPhase
@@ -87,7 +87,8 @@ export class SharedProjectEventHub {
     const streamWasOpen = state.phase === 'open'
     // A page subscribes after its login gate succeeds; its cookie may have
     // changed while this origin-wide worker was waiting for authentication.
-    if (state.phase === 'auth-required') this.stopStream(projectId)
+    // A missing Project may have been restored since the previous subscription.
+    if (state.phase === 'auth-required' || state.phase === 'project-missing') this.stopStream(projectId)
     this.ensureStream(projectId)
 
     if (streamWasOpen) {
@@ -124,7 +125,7 @@ export class SharedProjectEventHub {
   private ensureStream(projectId: string) {
     if (!this.hasSubscribers(projectId)) return
     const state = this.projectState(projectId)
-    if (state.task || state.phase === 'auth-required') return
+    if (state.task || state.phase === 'auth-required' || state.phase === 'project-missing') return
     const generation = ++state.generation
     const abortController = new AbortController()
     state.abortController = abortController
@@ -133,7 +134,7 @@ export class SharedProjectEventHub {
         if (state.task !== task) return
         state.task = null
         state.abortController = null
-        if (state.phase !== 'auth-required') state.phase = 'idle'
+        if (state.phase !== 'auth-required' && state.phase !== 'project-missing') state.phase = 'idle'
       })
     state.task = task
   }
@@ -180,6 +181,11 @@ export class SharedProjectEventHub {
         }
       } catch (error) {
         if (!this.isActive(projectId, state, generation, signal)) return
+        if (error instanceof ProjectEventStreamHTTPError && error.status === 404) {
+          state.phase = 'project-missing'
+          console.warn('[workspace-events/shared-worker-hub.ts] Project no longer exists; stopping event stream', { projectId })
+          return
+        }
         if (error instanceof ProjectEventStreamHTTPError && error.status === 401 && error.authenticationRequired) {
           state.phase = 'auth-required'
           this.broadcastRemoteAccessRequired(projectId)

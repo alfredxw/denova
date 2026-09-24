@@ -13,7 +13,6 @@ type AgentPromptSettings struct {
 	VersionSummary AgentPromptOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent      AgentPromptOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Image          AgentPromptOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation     AgentPromptOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
 type AgentPromptOverride struct {
@@ -30,7 +29,6 @@ type AgentPromptSourceSettings struct {
 	VersionSummary   AgentPromptSourceList `json:"version_summary,omitempty"`
 	ToolAgent        AgentPromptSourceList `json:"tool_agent,omitempty"`
 	Image            AgentPromptSourceList `json:"image,omitempty"`
-	Automation       AgentPromptSourceList `json:"automation,omitempty"`
 }
 
 type AgentPromptSourceList struct {
@@ -55,7 +53,6 @@ type AgentPromptBlockSettings struct {
 	VersionSummary   AgentPromptBlocks `json:"version_summary,omitempty"`
 	ToolAgent        AgentPromptBlocks `json:"tool_agent,omitempty"`
 	Image            AgentPromptBlocks `json:"image,omitempty"`
-	Automation       AgentPromptBlocks `json:"automation,omitempty"`
 }
 
 type AgentPromptBlocks struct {
@@ -79,7 +76,6 @@ func MergeAgentPromptSettings(parent, child AgentPromptSettings) AgentPromptSett
 		VersionSummary:   mergeAgentPromptOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:        mergeAgentPromptOverride(parent.ToolAgent, child.ToolAgent),
 		Image:            mergeAgentPromptOverride(parent.Image, child.Image),
-		Automation:       mergeAgentPromptOverride(parent.Automation, child.Automation),
 	}
 }
 
@@ -121,7 +117,6 @@ func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettin
 	settings.VersionSummary = sanitizeAgentPromptOverride(settings.VersionSummary)
 	settings.ToolAgent = sanitizeAgentPromptOverride(settings.ToolAgent)
 	settings.Image = sanitizeAgentPromptOverride(settings.Image)
-	settings.Automation = sanitizeAgentPromptOverride(settings.Automation)
 	return settings
 }
 

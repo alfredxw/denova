@@ -3,12 +3,12 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	apptask "denova/internal/app/task"
 )
 
@@ -51,22 +51,11 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 	if target.task != nil {
 		emit = target.task.Emit
 	}
-	if command.Kind == agentexecution.CommandAbort || command.Kind == agentexecution.CommandSuspend || command.Kind == agentexecution.CommandSteerQueued || command.Kind == agentexecution.CommandCancelQueued {
-		return target.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: command.Kind, CommandID: command.CommandID,
-			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Options: options,
-		})
+	bound, err := s.app.agentSession(options, target.executionRuntime)
+	if err != nil {
+		return agentrun.CommandReceipt{}, err
 	}
-	if command.Kind != agentexecution.CommandFollowUp {
-		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported game command %q", agentrun.ErrInvalidCommand, command.Kind)
-	}
-	return target.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-		Kind: command.Kind, CommandID: command.CommandID,
-		OperationID: command.OperationID, AfterOperationID: command.OperationID,
-		Request: command.Input, Emit: emit,
-		Options: options,
-	})
+	return bound.Submit(ctx, agentruntime.Command{Kind: command.Kind, CommandID: command.CommandID, OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason, Input: command.Input}, emit)
 }
 
 func interactiveAgentCommandOptions(target interactiveAgentCommandTarget) agentrun.Options {

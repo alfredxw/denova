@@ -65,7 +65,7 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 		Reason: body.Reason, Input: body.Input,
 	})
 	if err != nil {
-		h.writeAgentCommandError(c, err, body.TargetOperationID)
+		h.writeAgentCommandError(ctx, c, err, body.TargetOperationID)
 		return
 	}
 	c.JSON(consts.StatusAccepted, agentCommandReceiptResponse{

@@ -4,6 +4,7 @@ import (
 	"context"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
 	"fmt"
@@ -15,11 +16,11 @@ type AgentRuntimeRecoveryRequest = appagentruntime.RecoveryRequest
 type AgentRuntimeRecoveryResult = appagentruntime.RecoveryResult
 
 func recoveryActionKey(action agentexecution.RuntimeRecoveryAction) string {
-	return appagentruntime.RecoveryActionKey(action)
+	return agentruntime.RecoveryActionKey(action)
 }
 
 func validateSelectedRecoveryAction(status agentrun.RuntimeStatus, selected agentexecution.RuntimeRecoveryAction) error {
-	return appagentruntime.ValidateRecoveryAction(status, selected)
+	return agentruntime.ValidateRecoveryAction(status, selected)
 }
 
 func (a *App) RecoverWritingAgent(ctx context.Context, request AgentRuntimeRecoveryRequest) (AgentRuntimeRecoveryResult, error) {
@@ -63,6 +64,11 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 		return AgentRuntimeRecoveryResult{}, err
 	}
 	defer operation.Release()
+	if existing != nil && existing.task != nil && existing.recovery == nil && existing.runtime.workspace == workspace && existing.runtime.sess == sess {
+		if receipt, ok := existing.recoveryActions[recoveryActionKey(request.Action)]; ok {
+			return AgentRuntimeRecoveryResult{Task: existing.task, Action: request.Action, Receipt: receipt}, nil
+		}
+	}
 	if existing != nil && existing.task != nil && existing.recovery != nil && existing.runtime.workspace == workspace && existing.runtime.sess == sess {
 		current, currentErr := finishedRecoveryActionStillCurrent(operation.Context(), existing.task, existing.recovery, request.Action)
 		if currentErr != nil {
@@ -81,6 +87,12 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 		executionRuntime: executionRuntime, workspace: workspace, projectStore: stateRoot,
 	}
 	options := runtime.agentOptions("")
+	if control, selected, err := a.externalController(options); selected || err != nil {
+		if err != nil {
+			return AgentRuntimeRecoveryResult{}, err
+		}
+		return s.recoverExternal(operation.Context(), control, request.Action)
+	}
 	recovery, err := executionRuntime.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err
@@ -194,6 +206,11 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err
 	}
+	if existing != nil && existing.task != nil && existing.recovery == nil && existing.info.Workspace == workspace && existing.info.StoryID == request.StoryID && existing.info.BranchID == branchID {
+		if receipt, ok := existing.recoveryActions[recoveryActionKey(request.Action)]; ok {
+			return AgentRuntimeRecoveryResult{Task: existing.task, Action: request.Action, Receipt: receipt}, nil
+		}
+	}
 	if existing != nil && existing.task != nil && existing.recovery != nil && existing.info.Workspace == workspace && existing.info.StoryID == request.StoryID && existing.info.BranchID == branchID {
 		current, currentErr := finishedRecoveryActionStillCurrent(operation.Context(), existing.task, existing.recovery, request.Action)
 		if currentErr != nil {
@@ -209,6 +226,12 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 	options := agentrun.Options{
 		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: projectID, Workspace: workspace,
 		StoryID: request.StoryID, BranchID: branchID, Mode: "interactive",
+	}
+	if control, selected, err := a.externalController(options); selected || err != nil {
+		if err != nil {
+			return AgentRuntimeRecoveryResult{}, err
+		}
+		return s.recoverExternal(operation.Context(), control, options, request.Action)
 	}
 	recovery, err := executionRuntime.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {

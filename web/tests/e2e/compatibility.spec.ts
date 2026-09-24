@@ -1,9 +1,11 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from '../support/fixtures'
 import { getCurrentWorkspace, getProjectLoreItems, getStorySnapshot } from '../support/api'
+import { submitAgentChatMessage } from '../support/agent-chat'
 
-const legacyWorkspace = path.resolve('test-results/runtime/denova/projects/Legacy E2E Book')
+const legacyWorkspace = path.join(runtimeRoot, 'denova/projects/Legacy E2E Book')
 const legacyLorePath = path.join(legacyWorkspace, '.nova', 'lore', 'items.json')
 const legacyWritingSessionPath = path.join(
   legacyWorkspace,
@@ -46,8 +48,7 @@ test('opens and continues the released v0.3.3 Writing, Book, Lore, and Game data
   await expect(page.getByRole('option', { name: '切换到会话 v0.3.3 备用会话' })).toBeVisible()
   await page.keyboard.press('Escape')
 
-  await writingComposer.fill('请继续旧会话。E2E_V033_WRITING_CONTINUE')
-  await writingComposer.press('Enter')
+  await submitAgentChatMessage(page, writingComposer, '请继续旧会话。E2E_V033_WRITING_CONTINUE')
   await expect(page.getByText('v0.3.3 写作历史续聊成功。', { exact: true })).toBeVisible()
   expect(await readFile(legacyWritingSessionPath, 'utf8')).toBe(originalWritingSession)
 
@@ -66,8 +67,7 @@ test('opens and continues the released v0.3.3 Writing, Book, Lore, and Game data
   })
 
   const composer = page.getByPlaceholder(/你要做什么/)
-  await composer.fill('继续探索旧车站')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, '继续探索旧车站')
   await expect.poll(async () => getStorySnapshot(request, legacyStoryID)).toMatchObject({
     turns: [
       { user: '查看旧车站', narrative: '这是 v0.3.3 保存的游戏正文。' },

@@ -83,6 +83,9 @@ export function cloneBuiltInAgent(
 
   return {
     ...seed,
+    runtime: runtimeKind === 'ide' || runtimeKind === 'general' || runtimeKind === 'interactive_story'
+      ? structuredClone(effective.agent_runtimes?.[runtimeKind] ?? { selected: 'native' })
+      : undefined,
     instructions,
     model: { ...model, profile_id: model.profile_id || 'default' },
     tools,

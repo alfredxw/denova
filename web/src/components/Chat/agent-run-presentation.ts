@@ -71,7 +71,7 @@ export function buildAgentRunPresentation(
     runID,
     sections: resultIndex >= 0
       ? buildTerminalSections(runViews, resultIndex)
-      : buildActiveSections(runViews),
+      : buildProcessSections(runViews, active),
   }
 }
 
@@ -100,9 +100,9 @@ function selectTerminalResultIndex(views: AgentMessageView[], active: boolean) {
 // Active and completed runs intentionally share the same process boundary. A
 // completion event may collapse that boundary, but must not rebuild the visible
 // timeline from several sibling disclosures into a different structure.
-function buildActiveSections(views: AgentMessageView[]): AgentRunPresentationSection[] {
+function buildProcessSections(views: AgentMessageView[], active: boolean): AgentRunPresentationSection[] {
   const sections: AgentRunPresentationSection[] = []
-  appendRunSections(sections, views, true)
+  appendRunSections(sections, views, active)
   return sections
 }
 

@@ -33,11 +33,15 @@ func (schemaTaskExecutor) Observe(context.Context, TaskRef, string) (TaskObserva
 func (schemaTaskExecutor) Wait(context.Context, []TaskRef) ([]TaskWaitOutcome, error) {
 	return nil, nil
 }
-func (schemaTaskExecutor) Steer(context.Context, TaskRef, agent.Input) error { return nil }
+func (schemaTaskExecutor) Steer(context.Context, TaskRef, agent.Input) (agent.CommandReceipt, error) {
+	return agent.CommandReceipt{}, nil
+}
 func (schemaTaskExecutor) Respond(context.Context, TaskRef, string, agent.InteractionResponse) error {
 	return nil
 }
-func (schemaTaskExecutor) Abort(context.Context, TaskRef, agent.AbortRequest) error { return nil }
+func (schemaTaskExecutor) Abort(context.Context, TaskRef, agent.AbortRequest) (agent.CommandReceipt, error) {
+	return agent.CommandReceipt{}, nil
+}
 
 type schemaSkillLoader struct{}
 
@@ -54,7 +58,7 @@ func TestActionToolsExposeParametersDirectly(t *testing.T) {
 		build      func() agent.Toolset
 		properties []string
 	}{
-		{"task", func() agent.Toolset { return Tasks(schemaTaskExecutor{}) }, []string{"action", "input", "reason", "refs", "starts", "targets"}},
+		{"send", func() agent.Toolset { return Tasks(schemaTaskExecutor{}) }, []string{"items"}},
 		{"todo", func() agent.Toolset { return Todo() }, []string{"action", "expected_revision", "items", "mutations"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -62,7 +66,11 @@ func TestActionToolsExposeParametersDirectly(t *testing.T) {
 			if schema.Type != "object" || len(schema.OneOf) != 0 || len(schema.AnyOf) != 0 || !reflect.DeepEqual(schemaPropertyNames(schema), test.properties) {
 				t.Fatalf("parameters are hidden from a properties-only tool parser: %#v", schema)
 			}
-			if !reflect.DeepEqual(schema.Required, []string{"action"}) {
+			required := "action"
+			if test.name == "send" {
+				required = "items"
+			}
+			if !reflect.DeepEqual(schema.Required, []string{required}) {
 				t.Fatalf("unconditional required parameters = %#v", schema.Required)
 			}
 		})
@@ -70,11 +78,11 @@ func TestActionToolsExposeParametersDirectly(t *testing.T) {
 }
 
 func TestTaskWaitUsesOneClosedTargetSchema(t *testing.T) {
-	schema := preparedNamedToolSchema(t, func() agent.Toolset { return Tasks(schemaTaskExecutor{}) }, "task_wait")
+	schema := preparedNamedToolSchema(t, func() agent.Toolset { return Tasks(schemaTaskExecutor{}) }, "await")
 	if schema.Type != "object" || !containsString(schema.Required, "targets") {
 		t.Fatalf("task_wait schema = %#v", schema)
 	}
-	if got := schemaPropertyNames(schema); !reflect.DeepEqual(got, []string{"targets"}) {
+	if got := schemaPropertyNames(schema); !reflect.DeepEqual(got, []string{"targets", "timeout_ms", "until"}) {
 		t.Fatalf("task_wait properties = %#v", got)
 	}
 	encoded, err := json.Marshal(schema)
@@ -182,4 +190,11 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func (schemaTaskExecutor) Interrupt(context.Context, TaskRef, agent.SuspendRequest) (agent.CommandReceipt, error) {
+	return agent.CommandReceipt{}, nil
+}
+func (schemaTaskExecutor) ListAgents(context.Context, ListAgentsInput) (ListAgentsOutput, error) {
+	return ListAgentsOutput{}, nil
 }

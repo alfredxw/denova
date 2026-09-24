@@ -1,197 +1,110 @@
 # Denova 插件开发手册
 
-状态：目标体验与契约草案；文中插件菜单、模板、SDK 和公开接口尚未实现，不是当前版本的操作说明。更新：2026-09-06。
+更新：2026-09-13。接口以当前代码和运行实例的 OpenAPI 为准。
 
-配套：[游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md) · [API 参考](plugin-platform-api.md)。
+配套：[扩展能力开发手册](extension-development.md) · [游戏开发手册](game-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
 
-第一版交付工具／工具集、静态 Agent 定义与 Skills，并验证它们在写作和游戏中的使用。动态上下文、flow／planner、面板和编辑扩展属于后续能力。通信采用 HTTP + JSON，运行事件采用 SSE；SDK 是可选封装，直接使用 HTTP 客户端即可接入。
+扩展页使用二级目录管理已安装的插件与游戏；工作台统一承接源码开发。插件提供可复用工具、工具集与服务；游戏交付可玩的作品。Skills 与 Agents 继续由各自页面管理，插件清单不分发这两类资源。宿主模型调用 API 和游戏私有角色定义保留。
 
-## 1. 插件扩展能力，游戏交付作品
+## 扩展示例
 
-**插件是对 Denova 能力的扩展。** 它给平台增加工具、Agent 定义、Skills、上下文来源、规划／流程能力、编辑辅助或界面扩展，供写作、聊天、游戏以及其他获准插件选择使用。
+完整示例源码供开发参考，不作为创建选项，默认不安装、不启用。创建源码项目、检查打包和准备隔离预览均不会将示例加入已安装扩展，也不会改变默认游戏；安装后才成为可用扩展。
 
-**游戏是游戏页中实际可游玩的作品。** 游戏可以有完全自定义的前端和后端，也可以只有前端，组合 Denova 内置能力与插件完成运行。游戏的开发、开局和存档见单独的游戏开发手册。
-
-| 交付物 | 例子 | 用户如何使用 |
+| 示例源码目录 | 示例 | 演示能力 |
 | --- | --- | --- |
-| 插件 | 世界书检索、NPC 对话能力、语音能力、审稿工具、可复用回合规则 | 安装后，在目标 Agent、工作区或游戏中配置使用 |
-| 游戏 | 有人物、场景、玩法和开局的 Galgame、城镇模拟器、3D 冒险 | 在游戏页查看、开始新游戏、继续已有存档 |
-| 内容资源 | 角色卡、世界观、团本、素材、规划模板 | 导入资料库，或供支持其格式的游戏与能力读取 |
+| `creative-toolkit` | 创作工具箱 | 文本统计与批量整理、独立笔记、资料库、图像模型槽、工具集、设置与权限 |
 
-“有前端”“有后端”“能打包”都不是插件的定义。插件可以有自己的设置页和功能面板；一套具体游戏的代码属于该游戏。通用对话引擎是插件，使用它做出的《月下物语》是游戏。
+## 在 App 中开发
 
-## 2. 先选需要开放的能力
+1. 在「扩展 → 创建扩展」选择「开发插件」，填写名称和可选需求。创建后进入工作台，打开源码项目和普通开发会话；填写的需求会作为第一条开发消息发送。
+2. 默认在应用数据目录的 projects 下创建新目录，自动生成稳定包 ID。插件与游戏各自生成一个通用开发骨架，不选择模板；高级选项只用于指定包 ID 或父目录。已有同名目录不会被覆盖。
+3. 开发骨架在 Project 根生成 denova.plugin.json、源码和 DEVELOPMENT.md。ProjectID 是稳定身份；受管 location 持久化为规范相对路径。源码草稿只在工作台显示，安装不会创建新 Project；扩展页的「打开源码」可关联多个独立源码副本。
+4. 工作台「更多开发操作 → 源码清单」直接编辑并自动保存清单，保留未编辑字段；文件和源码版本沿用项目编辑器与版本历史。含根清单的已有 Project 自动显示开发工具，损坏清单保留修复入口。同一项目可通过显式子目录绑定开发多个扩展。
+5. 工作台普通 Agent 会自动关联 extension-development Skill、当前所选源码位置和最近构建/测试反馈。反馈仅附在后续消息中，最多保留 16,384 字符，超出时保留末尾并标记省略；完整构建输出仍在终端中。切换扩展来源不会混用反馈。
+6. 工作台主操作为「试运行」和「发布到本机」。发布只确认名称、说明和版本等基本信息，保存源码编辑器后检查并安装，启用声明的必需能力；模型、测试参数和逐项授权不进入发布表单。可选能力在扩展设置中管理。需要构建的项目通过「更多开发操作 → 构建」在可见终端执行；关闭构建窗口停止该终端。检查验证文件、清单、schema 和引用，不执行代码。发布完成后打开已安装扩展，详情页可导出其准确冻结版本；本机设置、测试存档和未发布源码不会进入安装包。对外分发由用户自行处理。
+7. 试运行使用开发 Project 及独立测试数据。后续源码修改需要重新检查并开启新预览；同版本号的源码变化也可安装。已安装快照和真实存档不会随源码编辑改变。模型选择属于运行实例，扩展通用设置由扩展页统一管理。
 
-| 你的需求 | 优先使用 |
-| --- | --- |
-| 改变 Agent 工作方式或提供审稿策略 | Agent 定义、提示词和 Skill |
-| 让 Agent 执行一个新操作 | 工具及命名工具集 |
-| 按当前任务提供世界书、记忆或状态材料 | 有来源和容量上限的上下文提供器 |
-| 增加可复用玩法步骤或规划策略 | flow／planner 提供器 |
-| 在写作、聊天或游戏中增加局部功能 | 已声明的面板、命令或结果视图 |
-| 只是提供人物与设定 | 内容资源；不必建立可执行插件 |
+## 从 GitHub 安装与更新
 
-插件通过公开协议扩展平台，不访问宿主内部 React 对象、Go Store 或持久化文件。工具仍经过 Denova 的调用、授权和记录流程；Agent 定义仍使用原有 Agent 引擎。
+扩展页「安装扩展 → GitHub」接受公开的 `https://github.com/owner/repository` 地址，可填写分支、标签、完整 commit 和包所在子目录；默认使用默认分支和仓库根目录。每个包目录恰有一种 Denova 清单。同仓库的游戏与插件分别定位、检查和安装。
 
-## 3. 在 App 中创建插件（P1）
+检查先解析并固定 commit，再下载源码归档，按 `distribution.files` 收集安装文件并冻结候选包。安装只使用已检查字节。安装无需系统 Git，也不创建 Project；源码归档不包含 Git 历史。下载与展开各不超过 256 MiB，归档不超过 10000 项、单文件不超过 16 MiB；拒绝不符合跨系统规则的路径、大小写冲突、符号链接和特殊文件。暂不支持私有仓库认证、SSH 或自动拉取子模块、Git LFS 内容。
 
-目标路径为“**共通能力 → 插件 → 开发中 → 创建插件**”。
+作者应提交可直接运行的文件或构建产物。需要构建时，选择「导入源码到工作台」创建独立受管 Project，保留整个仓库的共享构建输入和所选子目录。导入不执行代码；依赖准备、编译由作者声明的配方和既有可见终端负责。构建后重新检查安装。导入记录的 commit 表示基础源码，最终产物以内容摘要为准；再次导入会创建独立副本，不覆盖本地修改。
 
-1. 第一版选择“Agent／Skill”或“HTTP 工具（Node 后端）”模板；其他模板随对应能力增加。
-2. 选择普通 Project 中的空目录，填写插件 ID 和中英文名称；创建前展示文件，不覆盖已有内容。
-3. 在现有工作台中使用文件编辑器、终端和 Agent 开发。插件源码不是新的 Project 类型。
-4. 点击“检查”校验清单、入口、schema、本地化和依赖；检查不执行包内脚本。
-5. 选择测试工作区／会话／游戏，配置模型和权限，启动预览。预览数据与正式使用范围分开。
-6. 在目标功能中实际调用，查看前端、提供器与 Agent 诊断；修改贡献或后端后停止旧激活再重载。
+详情页显示当前版本、仓库、ref 和 commit，并提供「检查更新」「更新」。更新按上游提交判断，确认时固定该提交；更新过程中包身份变化或原安装已被替换会拒绝安装。同版本号可以包含新的源码快照，版本号由作者用于表达兼容性。已有游戏存档继续引用原发行；普通 Agent 会话的后续执行直接采用当前已安装插件。新依赖默认采用当前已安装插件并校验版本范围，不在历史发行中自动择优。旧快照仍用于恢复，界面不展示发行历史列表。
 
-源码项目与被插件操作的目标项目分别选择。审稿工具默认在测试书籍验证，不能因为开发项目正在打开就自动读取真实书稿。原生程序仍受操作系统账户权限约束，测试范围并不是 OS 沙箱。
+源码初始化失败时保留已创建 Project 和文件，进入工作台检查，不删除用户工作。目录显示名和清单中英文名称可分别修改。Node 程序拥有当前系统账户权限；平台范围凭证不等于操作系统沙箱。
 
-## 4. 第一个工具插件（P2）
+扩展页「使用配置与授权」提供独有设置表单、恢复默认值和独立权限管理。各发行独立保存于 settings/<releaseId>/settings.toml；保存校验、并发保护、备份、预览隔离及运行快照规则见[扩展设置标准](extension-settings.md)。修改设置在下次启动生效，修改权限会停止受影响实例。卸载保留源码、会话、发行、设置和数据。
 
-例子：给写作和游戏 Agent 提供统计文本 Unicode 码点数量的工具。模板生成构建配置，以下是作者需要维护的文件。
+## HTTP 工具参考示例
+
+创作工具箱源码位于 `internal/extensions/creative-toolkit/package`。
+
+专属行为测试 `tools.test.mjs` 和公开平台 API 集成测试 `integration_test.go` 位于同级扩展目录。复制包到独立开发项目时，还需从 `extensionassets/sdk/` 复制 `runtime.mjs`；它是平台共享协议代码，不属于创作工具箱业务实现。
+
+准备后的开发目录包含：
 
 ```text
-text-tools/
-  denova.plugin.json
-  package.json
-  src/server.ts
-  src/count-characters.ts
-  tools/count-characters.json
-  locales/zh-CN.json
-  locales/en-US.json
-  dist/server.mjs
+denova.plugin.json
+server.mjs
+runtime.mjs
+tools.mjs
+tools/*.json
+settings.schema.json
+defaults.toml
+locales/zh-CN.json
+locales/en-US.json
 ```
 
-### 4.1 插件清单
+开发目录还提供通用浏览器连接示例；只有 distribution.files 列出的文件和清单进入发布包。该示例无需下载依赖，构建配方为 node --check server.mjs。
+
+ID 为 example.text-tools 的参考示例公开六个工具：count-characters、clean-text、read-notes、save-note、search-library、illustrate，分别归入 text-utils 和 creative-resources 工具集。笔记追加到宿主按会话或 Story 分支隔离的数据目录，相同 requestId 重试不重复写入；单作用域上限 1 MiB，超限明确报错。批量整理逐项报告错误。资料库、图像和写操作由可选权限控制；illustrate 需要调用方绑定本插件的 illustrator 图像模型槽，没有绑定时返回 NOT_CONFIGURED，普通文本工具仍可使用。工具统计 Unicode 码点，默认包括空白；在扩展设置中启用「忽略空白字符」后，新启动会跳过空白。定义使用 JSON Schema 2020-12，声明英文模型描述、输入、可选结构化输出和 effect（pure、read、propose、write）。宿主在调用前后分别验证输入及结构化输出。Agent 工具适配器使用现有参数修复与执行引擎。
+
+提供器收到 POST /tools/count，HTTP JSON body 直接是工具输入；成功返回：
 
 ```json
-{
-  "manifestVersion": 1,
-  "id": "alice.text-tools",
-  "version": "0.1.0",
-  "apiMajor": 1,
-  "name": { "zh-CN": "文本工具", "en-US": "Text Tools" },
-  "development": { "build": { "command": "pnpm", "args": ["build"] } },
-  "distribution": { "files": ["dist", "tools", "locales"] },
-  "runtime": {
-    "backend": {
-      "launch": { "kind": "runtime", "runtime": "node", "entry": "dist/server.mjs", "args": [] },
-      "protocol": "denova-runtime-v1"
-    }
-  },
-  "permissions": { "required": [], "optional": [] },
-  "contributes": {
-    "tools": [{
-      "id": "count-characters",
-      "definition": "tools/count-characters.json",
-      "endpoint": { "method": "POST", "path": "/tools/count-characters/invoke" }
-    }],
-    "toolsets": [{ "id": "text-utils", "tools": ["count-characters"] }]
-  },
-  "locales": { "zh-CN": "locales/zh-CN.json", "en-US": "locales/en-US.json" }
-}
+{ "content": "The text contains 3 Unicode code points.", "data": { "count": 3 } }
 ```
 
-此工具只计算输入，无须申请项目文件或模型调用权限。`contributes` 声明对外可选能力，完整名称为 `alice.text-tools/text-utils`。清单不声明游戏、游戏开局或游戏存档；安装此插件不会在游戏列表中增加一部作品。
+公共引用是 pluginId/localId。工具集必须引用本包已有工具；跨插件引用需要 requires 中明确列出对应贡献。游戏私有定义使用 local:id，不注册为其他游戏可见能力。
 
-`development.build` 引用模板 package.json 中的构建命令。`distribution.files` 是发行文件白名单，不包含开发依赖、密钥和测试数据。locale 文件包含下方示例所需的错误文案；用户可见面板、错误和工具标题维护两份独立资源。
+## 清单和发布
 
-### 4.2 工具定义
+清单使用 denova.plugin.json，至少声明 manifestVersion: 1、id、严格语义版本 version、apiMajor: 1、中英文 name、permissions 和 contributes。ID 使用小写字母、数字、点和连字符；builtin、local 保留。一个产物根只能有一种清单。
 
-`tools/count-characters.json`：
+- distribution.files 是文件或目录白名单；未列出的依赖、入口或定义会使检查失败。
+- runtime.backend 支持 protocol: denova-runtime-v1 与 launch.kind: runtime、runtime: node、entry、args。
+- modelSlots 支持 text 与 image；titleKey 必须存在于中英 locale 文件。宿主分别提供文本和图像配置选择；扩展只能使用实际绑定的槽位。
+- settings 引用分发内的 JSON Schema 与 defaults TOML，可选 uiSchema 提供声明式布局；字段必须有中英文标题。详见[扩展设置标准](extension-settings.md)。
+- requires 声明插件 ID、语义版本范围和所需贡献。运行时使用准确发行，不按加载顺序替换。
+- 声明 agents.run、tools.invoke、pluginData 权限；消费者直接调用或游戏 NPC 使用 `effect: write/propose` 的工具还需显式授予 `tools.write`。尚未实现的能力会明确拒绝。
+
+## 写作与游戏共用工具
+
+插件管理统一在扩展页中完成。启用并授权后，插件的公开工具自动供写作、工作台和内置游戏 Agent 使用，无需逐会话选择；工具集与成员不重复暴露。新执行读取当前已安装版本及其设置，现有会话同样采用最新配置。正在执行的任务使用已经装载的工具；暂停期间修改相关版本或设置后，原任务可能无法原地恢复，需要保留历史并按当前配置重新发起。
+
+三个入口和委派子 Agent 使用同一 Toolset 适配器。`pure/read` 工具按只读执行，`write/propose` 按外部变更沿用宿主 Agent 审批；插件结果回到原 Agent 的模型上下文，写作内容与游戏回合仍由原流程接纳。第三方游戏私有 NPC 通过定义中的 `tools/toolsets` 引用相同插件，并受游戏已授予权限限制。公开 Agent 定义、动态 context 和编辑器面板仍不属于本版插件贡献。
+
+工具 schema 的检查不启动插件代码；第一次实际调用才启动后端，本轮结束或取消后清理。数据按 Project、Product Session 或 Story 分支隔离。插件启停与当前版本归 installed.json，参数归 settings/<releaseId>/settings.toml；会话 JSONL／Story JSONL 不保存插件选择、版本或参数副本。插件进程路径、凭证和连接信息只存在于运行时。
+
+安装使用已检查字节，内容摘要区分同版本号的不同快照。旧快照保留，禁用只阻止新启动，当前游戏与任务可以继续至正常停止。停止后需重新启用才能启动；缺少可用依赖的游戏不会出现在新建故事线的可选列表中。卸载会停止受影响实例，同时保留数据与冻结快照。
+
+重新安装相同发行可以调整授权；宿主先停止受影响的实例并撤销旧凭证，再保存新的授权快照。源码和发行字节保持不变。
+
+## 后端启动协议
+
+宿主以 Node 启动已冻结入口，通过 stdin 的一行 JSON 发送 type: bootstrap、protocol、context、connection、packageDir、dataDir、tempDir、hostToken。路径仅是当前宿主运行时投影，不应写入业务身份。平台凭证和内部服务凭证分别使用，均不得写入 URL、argv、日志或发行包。
+
+提供器监听独立 loopback 端口，stdout 第一行返回：
 
 ```json
-{
-  "description": "Count Unicode code points in text, including whitespace.",
-  "inputSchema": {
-    "type": "object",
-    "properties": { "text": { "type": "string" } },
-    "required": ["text"],
-    "additionalProperties": false
-  },
-  "outputSchema": {
-    "type": "object",
-    "properties": { "count": { "type": "integer", "minimum": 0 } },
-    "required": ["count"],
-    "additionalProperties": false
-  },
-  "effect": "pure"
-}
+{ "type": "ready", "protocol": "denova-runtime-v1", "port": 42000 }
 ```
 
-清单声明普通 HTTP 端点 `POST /tools/count-characters/invoke`，请求体直接使用工具的 inputSchema，成功响应为 `{content, data}`。模板的 `src/server.ts` 负责监听、启动握手、宿主请求认证、请求体大小限制和错误处理，并把路由交给以下处理器。`Request`／`Response` 是标准 Web 类型，模板适配到 Node HTTP 服务，不要求专用 SDK。
+宿主再使用 hostToken 验证 GET /__denova/ready 返回 denova-runtime-v1。后台其他入口也必须验证该凭证。启动等待有基础设施超时；Agent 运行没有固定总时长或迭代上限。stderr 和后续 stdout 进入本地日志。
 
-`src/count-characters.ts` 的处理器片段：
+stdin 收到 shutdown 或关闭后停止服务。Windows 通过 Job Object 管理进程树；其他桌面系统使用进程组。当前变更在 Windows 原生验证；macOS 与 Linux/WSL 仍需目标平台验证。
 
-```ts
-export async function countCharacters(request: Request): Promise<Response> {
-  const input = await request.json();
-  if (input === null || typeof input !== "object" || Array.isArray(input)
-    || typeof input.text !== "string") {
-    return Response.json({
-      code: "INVALID_ARGUMENT",
-      messageKey: "errors.invalidText",
-      diagnostic: "Expected a text field",
-    }, { status: 400 });
-  }
-  const count = Array.from(input.text).length;
-  return Response.json({
-    content: `Character count: ${count}`,
-    data: { count },
-  });
-}
-```
-
-本例的 locale 文件分别包含 `errors.invalidText`：中文为“请输入文本”，英文为“Enter text”。工具 schema 和英文 diagnostic 供模型与开发者使用，用户界面按 messageKey 展示当前语言。
-
-宿主根据清单和已验证的后台监听地址绑定端点，校验输入与结果。作者也可以使用自己的 HTTP 框架实现相同契约；不需要 activate/register、远程函数代理或 JSON-RPC。完整启动与授权说明见 API 参考，以上片段不是可单独运行的服务器。
-
-### 4.3 在写作和游戏中选择使用
-
-预览成功后，把工具集加入测试 Agent 的工具选择，实际执行一次调用。安装只使工具集可选，不会把它自动添加到所有 Agent。游戏可以通过声明依赖选择工具集，也可以通过公开 HTTP 工具调用接口直接使用已授权工具，无须额外调用模型。
-
-工具 ID 和相对 HTTP 端点必须在清单中，重复 ID 或无效绑定会导致激活失败。禁用时停止工作、撤销绑定；后台收到停止请求后清理自己的连接和监听。`effect: pure` 描述工具效果，不代表原生程序被 OS 沙箱限制。
-
-## 5. 增加其他扩展（P3）
-
-Agent 定义声明指令、模型用途、工具、Skills、上下文和委派选择。模型槽由用户映射到已有连接，插件不读取模型密钥。平台内置提示、工具描述和模型可见反馈使用英文，用户创作内容保留原语言。
-
-上下文提供器声明来源、用途、稳定性和容量；静态设定保护缓存前缀，动态状态按需提供。Skills 接入同一个有效目录，模型看见的条目与工具实际可加载的资源一致。
-
-写作扩展通过 `editor.context` 读取授权文档和选区，通过 `editor.propose` 提出修改，在原生审阅界面采纳。文件 revision 与未保存草稿都要校验，冲突时保留提案。
-
-界面插件可以在声明的位置挂载前端视图；纯前端面板通过范围受限的 HTTP API 调用平台即可，不强制启动后端。模型工具、后台上下文等需要独立于页面运行的实现放在提供器中。关闭面板不应意外终止仍被游戏使用的能力。
-
-需要自有 HTTP 服务时使用 runtime.backend，工具端点与业务路由可由同一后台服务承载，每个插件激活最多一个后台进程。宿主按启动协议提供临时通道和路径，服务报告 readiness；前端通过实例专用来源访问业务路由。第一版提供 Node 模板，Python 和原生程序的运行支持在后续按需求增加。
-
-本地程序按当前操作系统账户权限运行，单独进程不等于安全沙箱；插件 API 授权不能阻止原生代码直接访问账户可访问的文件和网络。安装与预览如实展示本地代码执行和环境要求。
-
-## 6. 提供给游戏的能力如何设计
-
-插件暴露具名能力、输入输出 schema、所需权限和适用范围。游戏选择该能力并提供具体角色、场景和参数。插件不要把某一部作品的私人剧情写成所有使用者必须接受的全局配置。
-
-例如，通用 NPC 插件提供角色会话能力，游戏用自己的角色卡实例化 NPC；通用回合插件提供结算流程，具体地图、胜负条件和 UI 属于游戏。只服务一个游戏的后端算法可以直接放在游戏中，出现复用需求后再独立为插件。
-
-插件参与托管游戏动作时只提出候选状态，由宿主正式提交。插件状态按目标范围保存：Agent 恢复状态归该会话 journal，游戏状态归游戏选择的存储边界；插件缓存不能成为另一份游戏存档或 transcript。
-
-## 7. 打包、安装与维护（P4）
-
-1. 检查并执行模板构建，命令和输出在工作台可见。
-2. 从发行白名单生成不可变候选包，在干净测试范围验证声明的能力。
-3. 第一版导出本地插件包；GitHub 等分发来源后续接入同一安装校验流程，导出不会自动向外发布。
-4. 安装时预览准确来源、发行、能力、权限与运行条件，再启用；依赖需要独立展示和授权。
-5. 验证写作与游戏中的选择、调用、取消、禁用和故障反馈，以及声明支持的平台、主题与语言。
-
-更新插件不会静默改变已有游戏存档绑定的版本。第一版允许用户显式选择开发者声明兼容原存档格式的适配发行，先停止、备份并检查依赖，失败恢复原绑定与数据；需要转换存档格式的升级在后续支持。禁用或卸载前展示受影响的游戏与会话，保留数据和仍被引用的发行；依赖不可用时给出原因，不偷偷替换实现。
-
-清单的 apiMajor 声明适用的平台 API 主版本。Denova 提供接口文档、示例和不兼容变更说明，插件开发者负责修改和发布适配版本；主版本不匹配时宿主拒绝激活并给出明确提示，不自动改写插件或维护多版本兼容层。固定插件发行不保证新版 Denova 继续提供旧 API。
-
-发行可以仅包含运行产物；源码是否提供、是否使用 Agent 开发，由开发者决定。平台不要求源码交付，不增加专门的 Agent 修复流程。开发与发布通过已有 Project 工作台和安装流程完成。
-
-插件 ID、发行与能力 ID 独立于显示名和源码目录。修改内容使用用户副本，独立 Fork 插件使用新 ID 并遵守许可证。密钥、授权、私人会话和测试数据不随分享导出。
-
-## 8. 验收边界
-
-插件闭环的结果是：作者能在 App 内开发并安装一种扩展，用户能在目标场景选择、配置、运行和停用它。第一版验证工具、静态 Agent／Skill 和 Node 后台，至少一项能力可同时用于写作和游戏，并以普通 HTTP 客户端验证调用和 API 主版本不兼容提示；面板等样例随后续能力增加。
-
-游戏作品的开发与运行是另一条闭环，见[游戏开发手册](game-developer-guide.md)。两者共用基础机制，但不互相冒充产品对象。
+需要组合资料库、资源、图像或现有 Story 时，使用[扩展能力开发手册](extension-development.md)中的授权接口。自定义游戏界面由游戏视图完整实现。

@@ -461,8 +461,10 @@ func TestPublicEventProjectorEmitsStableRunTimingBeforeEveryTerminalEvent(t *tes
 	}
 }
 
-func TestPublicEventProjectorEmitsIncompleteModelOutputCodes(t *testing.T) {
+func TestPublicEventProjectorEmitsModelErrorCodes(t *testing.T) {
 	for _, reason := range []string{
+		agent.ModelImageInputRejectedReason,
+		agent.ModelRequestTooLargeReason,
 		agent.ModelOutputTruncatedReason,
 		agent.ModelContextWindowExceededReason,
 		agent.ModelOutputFilteredReason,
@@ -473,9 +475,13 @@ func TestPublicEventProjectorEmitsIncompleteModelOutputCodes(t *testing.T) {
 			projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{}, func(event agentrun.Event) {
 				events = append(events, event)
 			})
-			projector.Finalize(agent.ResultIncomplete, reason)
+			status := agent.ResultFailed
+			if agent.IsModelIncompleteTerminalReason(reason) {
+				status = agent.ResultIncomplete
+			}
+			projector.Finalize(status, reason)
 			if len(events) != 1 || events[0].Type != "error" || events[0].DataString("code") != reason {
-				t.Fatalf("incomplete terminal event = %#v", events)
+				t.Fatalf("model error terminal event = %#v", events)
 			}
 		})
 	}

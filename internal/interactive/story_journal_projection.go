@@ -10,9 +10,8 @@ import (
 )
 
 const (
-	// Version 14 rebuilds locators after the canonical context-batch protocol
-	// replaced its unreleased kind/hash fields with one sequence.
-	storyProjectionVersion      = 15
+	// Version 16 rebuilds compact Agent recovery state and historical locators.
+	storyProjectionVersion      = 16
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -53,18 +52,19 @@ type storyBranchProjection struct {
 // current branch state and sparse locators, never historical narrative,
 // thinking, rich tool results, maintenance state, or prior state snapshots.
 type storyJournalProjection struct {
-	Version       int                               `json:"version"`
-	StoryID       string                            `json:"story_id"`
-	Generation    string                            `json:"generation"`
-	Meta          StoryMeta                         `json:"meta"`
-	EventCount    int                               `json:"event_count"`
-	TurnCount     int                               `json:"turn_count"`
-	RecentCursors []conversationjournal.Cursor      `json:"recent_cursors,omitempty"`
-	TurnAnchors   []storyTurnAnchor                 `json:"turn_anchors,omitempty"`
-	RecentCommits []storyCommitLocator              `json:"recent_commits,omitempty"`
-	Branches      map[string]*storyBranchProjection `json:"branches"`
-	AgentSessions sessionjournal.Projection         `json:"agent_sessions,omitempty"`
-	TurnDrafts    map[string]storyDraftLocator      `json:"turn_drafts,omitempty"`
+	Version          int                                   `json:"version"`
+	StoryID          string                                `json:"story_id"`
+	Generation       string                                `json:"generation"`
+	Meta             StoryMeta                             `json:"meta"`
+	EventCount       int                                   `json:"event_count"`
+	TurnCount        int                                   `json:"turn_count"`
+	RecentCursors    []conversationjournal.Cursor          `json:"recent_cursors,omitempty"`
+	TurnAnchors      []storyTurnAnchor                     `json:"turn_anchors,omitempty"`
+	RecentCommits    []storyCommitLocator                  `json:"recent_commits,omitempty"`
+	Branches         map[string]*storyBranchProjection     `json:"branches"`
+	AgentSessions    sessionjournal.Projection             `json:"agent_sessions,omitempty"`
+	TurnDrafts       map[string]storyDraftLocator          `json:"turn_drafts,omitempty"`
+	ExtensionRecords map[string]conversationjournal.Cursor `json:"extension_records,omitempty"`
 
 	expectedID         string
 	expectedGeneration string
@@ -125,7 +125,7 @@ func (projection *storyJournalProjection) Checkpoint() (json.RawMessage, error) 
 
 func (projection *storyJournalProjection) Apply(record conversationjournal.Record) error {
 	projection.rememberCursor(record.Location.Cursor)
-	if handled, err := projection.AgentSessions.Apply(record.Payload); handled || err != nil {
+	if handled, err := projection.AgentSessions.Apply(record); handled || err != nil {
 		return err
 	}
 	meta, events, err := decodeStoryProjectionPayload(record.Payload)
@@ -206,6 +206,18 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 	branch.TailCursor = cursor
 	parentID := parentIDFromRaw(record.Raw)
 	switch record.Envelope.Type {
+	case StoryEventTypeExtensionRecord:
+		var event extensionRecordEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		if err := validateExtensionRecord(event.ExtensionRecord); err != nil {
+			return err
+		}
+		if projection.ExtensionRecords == nil {
+			projection.ExtensionRecords = make(map[string]conversationjournal.Cursor)
+		}
+		projection.ExtensionRecords[extensionRecordKey(event.BranchID, event.ExtensionRecord)] = cursor
 	case StoryEventTypeTurn:
 		var turn TurnEvent
 		if err := mapToStruct(record.Raw, &turn); err != nil {

@@ -1,3 +1,4 @@
+import { EMPTY_SPEECH_SETTINGS, SpeechSettingsEditor } from './SpeechSettingsEditor'
 import { cloneElement, isValidElement, useEffect, useId, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -31,8 +32,9 @@ import {
 import { ModelProfilesEditor } from './ModelProfilesEditor'
 import { DEFAULT_IMAGE_API_PROFILE_ID, imageAPIEndpointID, imageAPIEndpointsWithDefault, imageAPIProfileID, imageAPIProfilesWithDefault } from './image-profiles'
 import { ImageAPIProfilesEditor } from './ImageAPIProfilesEditor'
-import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
+import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, takeSettingsSection, type SettingsSectionRequest } from '@/features/onboarding/events'
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
+import { TerminalShellField } from './TerminalShellField'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
@@ -48,9 +50,9 @@ import { TextSizeControl } from './TextSizeControl'
 import { LANAccessSettings } from './LANAccessSettings'
 import { UpdatePanel, useUpdateSettings } from './UpdateSettings'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'speech' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
-const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'labs', 'agent', 'terminal', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
+const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'speech', 'image', 'paths', 'access', 'appearance', 'updates', 'labs', 'agent', 'terminal', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -83,6 +85,7 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
   const [revokingApprovalRuleID, setRevokingApprovalRuleID] = useState('')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
     model: true,
+    speech: true,
     image: true,
     paths: true,
     access: true,
@@ -323,6 +326,12 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
       ),
     },
     {
+      id: 'speech',
+      group: t('settings.group.common'),
+      title: t('speech.title'),
+      children: <SpeechSettingsEditor value={draft.speech ?? effective.speech ?? EMPTY_SPEECH_SETTINGS} onChange={value => setField('speech', value)} visible={visible} />,
+    },
+    {
       id: 'image',
       group: t('settings.group.common'),
       title: t('settings.section.imageApi'),
@@ -451,9 +460,9 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
           <BoolTri label={t('settings.terminal.enabled')} value={draft.terminal_enabled ?? null}
                    inherited={inherited.terminal_enabled}
                    onChange={(v) => setField('terminal_enabled', v)} />
-          <Text label={t('settings.terminal.shell')} value={draft.terminal_shell}
-                placeholder={placeholderFor('terminal_shell')}
-                onChange={(v) => setField('terminal_shell', v)} />
+          <TerminalShellField value={draft.terminal_shell} inherited={inherited.terminal_shell}
+                              windows={layered?.runtime?.goos === 'windows'}
+                              onChange={(v) => setField('terminal_shell', v)} />
           <TerminalCommandsEditor
             commands={terminalCommandsForEditor(draft, effective)}
             onChange={(commands) => setField('terminal_commands', commands)}
@@ -685,17 +694,25 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
   }
 
   useEffect(() => {
+    if (!visible || !layered) return
+    const section = takeSettingsSection()
+    if (isSettingsSectionId(section)) requestAnimationFrame(() => jumpToSection(section))
+  }, [visible, layered, jumpToSection])
+
+  useEffect(() => {
     const openSection = (event: Event) => {
       const detail = (event as CustomEvent<SettingsSectionRequest>).detail
       const section = detail?.section
       if (!isSettingsSectionId(section)) return
+      if (!visible || !layered) return
+      takeSettingsSection()
       requestAnimationFrame(() => {
         jumpToSection(section)
       })
     }
     window.addEventListener(SETTINGS_SECTION_EVENT, openSection)
     return () => window.removeEventListener(SETTINGS_SECTION_EVENT, openSection)
-  }, [jumpToSection])
+  }, [jumpToSection, visible, layered])
 
   const onContentScroll = () => {
     syncActiveSection()

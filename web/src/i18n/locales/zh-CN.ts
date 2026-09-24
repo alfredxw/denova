@@ -1,4 +1,7 @@
+import speech from './zh-CN/speech'
 import common from './zh-CN/common'
+import platform from './zh-CN/platform'
+import agentRuntime from './zh-CN/agentRuntime'
 import remoteAccess from './zh-CN/remoteAccess'
 import chat from './zh-CN/chat'
 import editor from './zh-CN/editor'
@@ -45,6 +48,9 @@ import trajectory from './zh-CN/trajectory'
 
 const zhCN = {
   ...common,
+  ...platform,
+  ...speech,
+  ...agentRuntime,
   ...remoteAccess,
   ...chat,
   ...editor,

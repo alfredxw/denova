@@ -17,6 +17,8 @@ const common = {
   'common.model': 'Model',
   'common.notSet': 'Not set',
   'common.modelOutputTruncated': 'The response reached its output limit and may be incomplete.',
+  'common.modelImageInputRejected': 'An attached image cannot be sent to this model. Try a smaller image or fewer images. Your original files are preserved.',
+  'common.modelRequestTooLarge': 'The request exceeds the provider’s transfer limit. Try fewer or smaller attachments, or start a new conversation.',
   'common.modelContextWindowExceeded': 'The response reached the model context limit and may be incomplete.',
   'common.modelOutputFiltered': 'Content filtering interrupted the response, so it may be incomplete.',
   'common.modelOutputIncomplete': 'The model returned an incomplete response.',

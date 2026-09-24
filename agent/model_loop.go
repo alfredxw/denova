@@ -40,6 +40,7 @@ func (agent *modelToolLoop) callModelWithRetry(
 	registry *Registry,
 	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
+	deferFinal bool,
 ) (*Message, int, []*Message, context.Context, error) {
 	if initial == nil || initial.Model == nil || initialContext == nil {
 		return nil, 0, nil, ctx, errors.New("model retry boundary requires an initial model call and context")
@@ -49,20 +50,22 @@ func (agent *modelToolLoop) callModelWithRetry(
 	defer func() { cancel.bindModel(nil); stopModel() }()
 	currentCall := &ModelCall{
 		Model: initial.Model, Messages: cloneMessages(initial.Messages),
-		Options: append([]ModelOption(nil), initial.Options...), Streaming: initial.Streaming,
+		modelIdentity:  initial.modelIdentity,
+		inputEstimator: initial.inputEstimator,
+		Options:        append([]ModelOption(nil), initial.Options...), Streaming: initial.Streaming,
 		stablePrefixMessages: initial.stablePrefixMessages, providerMessages: cloneMessages(initial.providerMessages),
 	}
 	acceptedMessages := cloneMessages(initial.Messages)
 	stableOptions := initial.Snapshot().ResolvedOptions()
 	var retryFeedback []*Message
 	var streamOutput *modelStreamOutput
-	if initial.Streaming {
+	if initial.Streaming && !deferFinal {
 		streamOutput = &modelStreamOutput{agent: agent, events: events, registry: registry}
 		defer streamOutput.close()
 	}
 	responseOrdinal := 0
 	publish := func(message *Message, action ModelOutputAction) {
-		if currentCall.Streaming || message == nil {
+		if currentCall.Streaming && !deferFinal || message == nil {
 			return
 		}
 		event := agent.messageEvent(message.Clone(), nil, Assistant, "")
@@ -72,6 +75,7 @@ func (agent *modelToolLoop) callModelWithRetry(
 			output.ToolExecutionNamespace = scope.ToolNamespace
 		}
 		output.ModelResponseOrdinal, output.previewOnly = responseOrdinal, action == ModelOutputRepair
+		output.discarded = deferFinal && len(message.ToolCalls) == 0
 		events.Send(event)
 	}
 	message, err := executeModelAttempts(modelCtx, agent.modelMaxAttempts, agent.retry,
@@ -106,10 +110,19 @@ func (agent *modelToolLoop) callModelWithRetry(
 					return modelAttemptResult{}, projectionErr
 				}
 			}
+			size, estimateErr := currentCall.inputEstimator.Estimate(providerMessages, GetCommonOptions(nil, currentCall.Options...).Tools)
+			if estimateErr != nil {
+				return modelAttemptResult{}, estimateErr
+			}
+			inputEstimate := ModelInputEstimate{
+				Version: InputEstimateVersion,
+				Tokens:  size.Tokens,
+				Model:   currentCall.modelIdentity,
+			}
 			callCtx, stopCall := context.WithCancel(ctx)
 			stopPropagation := context.AfterFunc(modelCtx, stopCall)
 			output, callErr, delivered := agent.callModel(callCtx, currentCall.Model, registry, providerMessages,
-				currentCall.Options, currentCall.Streaming, events, cancel, streamOutput, responseOrdinal)
+				currentCall.Options, currentCall.Streaming, events, cancel, streamOutput, responseOrdinal, inputEstimate)
 			stopPropagation()
 			stopCall()
 			if contextErr := agent.contextError(ctx, cancel); contextErr != nil {
@@ -426,6 +439,7 @@ func (agent *modelToolLoop) callModel(
 	cancel *cancelControl,
 	streamOutput *modelStreamOutput,
 	responseOrdinal int,
+	inputEstimate ModelInputEstimate,
 ) (*Message, error, bool) {
 	if !streaming {
 		message, err := awaitContextCall(ctx, func() (*Message, error) {
@@ -441,6 +455,7 @@ func (agent *modelToolLoop) callModel(
 			return nil, err, false
 		}
 		message = message.Clone()
+		bindModelInputEstimate(message, inputEstimate)
 		if message.Role == "" {
 			message.Role = Assistant
 		}
@@ -502,8 +517,28 @@ func (agent *modelToolLoop) callModel(
 			return nil, err, true
 		}
 		chunk = chunk.Clone()
+		if streamOutput == nil {
+			if activity := idleActivityFromContext(ctx); activity != nil {
+				activity()
+			}
+		}
+		bindModelInputEstimate(chunk, inputEstimate)
 		chunks = append(chunks, chunk.Clone())
 		streamOutput.send(chunk.Clone(), nil)
+	}
+}
+
+// Attach the estimate before publishing either a buffered response or a usage
+// chunk, so the live loop and the canonical event consumer receive one pair.
+// Never trust a provider-supplied estimate or reuse one from a rejected attempt.
+func bindModelInputEstimate(message *Message, estimate ModelInputEstimate) {
+	if message == nil || message.ResponseMeta == nil {
+		return
+	}
+	meta := message.ResponseMeta
+	meta.InputEstimate = nil
+	if meta.Usage != nil && meta.Usage.PromptTokens > 0 && estimate.Model.validate("Model") == nil {
+		meta.InputEstimate = &estimate
 	}
 }
 

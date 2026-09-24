@@ -15,12 +15,13 @@ type RunTraceReference struct {
 	ParentCallID string `json:"parent_call_id,omitempty"`
 }
 
-// TaskRunTraceReferences reads successful task.start items independently, so a
+// TaskRunTraceReferences reads accepted delegation items independently, so a
 // partial batch failure cannot hide the children that were actually accepted.
 func TaskRunTraceReferences(result string) []RunTraceReference {
 	var response struct {
 		Results []struct {
-			Task *publictools.Task `json:"task"`
+			Task *publictools.Task    `json:"task"` // Released history.
+			Ref  *publictools.TaskRef `json:"ref"`
 		} `json:"results"`
 	}
 	if json.Unmarshal([]byte(result), &response) != nil {
@@ -28,8 +29,11 @@ func TaskRunTraceReferences(result string) []RunTraceReference {
 	}
 	var references []RunTraceReference
 	for _, item := range response.Results {
-		if item.Task != nil && item.Task.Ref.Run != "" && item.Task.Ref.Session != "" {
-			ref := item.Task.Ref
+		ref := item.Ref
+		if ref == nil && item.Task != nil {
+			ref = &item.Task.Ref
+		}
+		if ref != nil && ref.Run != "" && ref.Session != "" {
 			references = append(references, RunTraceReference{ID: ref.Run, SessionID: ref.Session, AgentName: ref.Agent})
 		}
 	}

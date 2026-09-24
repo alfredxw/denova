@@ -1,3 +1,5 @@
+import { useGameStories } from '@/features/platform/game-story-context'
+import { BUILTIN_GAME_ID } from '@/features/platform/api'
 import { useState, type ReactNode, type KeyboardEventHandler, type PointerEventHandler } from 'react'
 import { createPortal } from 'react-dom'
 import { GripHorizontal, GripVertical } from 'lucide-react'
@@ -18,6 +20,12 @@ export function StoryWorkspace({ story, console: consoleContent, rightPanelVisib
   onMobileConsoleOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
+  const gameStories = useGameStories()
+  const selectedStory = gameStories?.picker.stories.find(story => story.id === gameStories.picker.currentStoryId)
+  const initialSetup = selectedStory?.title_source === 'pending' && selectedStory.turn_count === 0
+  const externalSetup = gameStories && (gameStories.creating || !gameStories.picker.currentStoryId || initialSetup) && gameStories.selectedGameId !== BUILTIN_GAME_ID
+  rightPanelVisible = rightPanelVisible && !externalSetup
+  mobileConsoleOpen = mobileConsoleOpen && !externalSetup
   const isMobile = useIsMobile()
   const [storyHost] = useState(() => createStablePortalHost('flex h-full min-h-0 flex-col'))
   const [consoleHost] = useState(() => createStablePortalHost('flex h-full min-h-0 flex-col'))

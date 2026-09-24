@@ -1,4 +1,12 @@
 const automations = {
+  'automations.runs.status.pending': '等待投递',
+  'automations.runs.status.accepted': '已投递到项目 Agent',
+  'automations.runs.status.queued': '排队中',
+  'automations.runs.status.running': '运行中',
+  'automations.runs.status.suspended': '已暂停',
+  'automations.runs.status.success': '已完成',
+  'automations.runs.status.failed': '执行失败',
+  'automations.runs.status.aborted': '已取消',
   'automations.title': '自动化',
   'automations.error': '自动化错误',
   'automations.newTask': '新建自动化',

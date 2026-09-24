@@ -2,11 +2,11 @@ package automationapp
 
 import (
 	"context"
-	"errors"
 
 	"denova/config"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
@@ -18,8 +18,8 @@ import (
 var (
 	// ErrNoWorkspace reports that an operation requires a selected workspace.
 	ErrNoWorkspace = appagentruntime.ErrNoWorkspace
-	// ErrOperationActive rejects a second root operation for the same run.
-	ErrOperationActive = errors.New("agent operation is already active")
+	// ErrOperationActive leaves delivery pending while the Project Agent is busy.
+	ErrOperationActive = agentruntime.ErrOperationActive
 	// ErrCommandIDRequired rejects commands that cannot be replayed safely.
 	ErrCommandIDRequired = apptask.ErrCommandIDRequired
 	// ErrCommandConflict reports reuse of a command identity for another intent.
@@ -35,8 +35,8 @@ type Operation interface {
 	Release()
 }
 
-// Runtime is an immutable view of the resources required by one automation
-// execution. A Host captures all fields atomically before returning it.
+// Runtime is an immutable view used for trigger delivery and result projection.
+// A Host captures all fields atomically before returning it.
 type Runtime struct {
 	ProjectID        string
 	ProjectType      projectdomain.Type
@@ -70,14 +70,14 @@ type ProjectConversationTurn struct {
 	RunID            string
 	SessionTitle     string
 	ModelProfileID   string
-	SessionStrategy  string
 }
 
-// ProjectConversationExecution is the durable AgentChat command accepted for
-// one automation run. The automation worker owns the single Wait call.
+// ProjectConversationExecution is a durable admission handle. Start delegates
+// execution and lifecycle ownership to the common Project Agent service.
 type ProjectConversationExecution interface {
 	Receipt() agentrun.CommandReceipt
-	Wait(context.Context) agentrun.Outcome
+	Start() error
+	Task() *apptask.Task
 }
 
 // Host is the narrow process boundary used by automation. It owns workspace
@@ -92,9 +92,7 @@ type Host interface {
 	AcquireRootOperation(context.Context) (Operation, error)
 	AcquireProjectOperation(context.Context, string) (Operation, error)
 	AcquireWorkspaceOperation(context.Context, string) (Operation, error)
-	AcceptProjectConversationTurn(context.Context, *apptask.Task, ProjectConversationTurn, func(agentrun.Event)) (ProjectConversationExecution, error)
-	RegisterTask(*apptask.Task, string) error
-	UnregisterTask(*apptask.Task)
+	AcceptProjectConversationTurn(context.Context, ProjectConversationTurn) (ProjectConversationExecution, error)
 }
 
 func snapshotFromRuntime(runtime Runtime) *automationWorkspaceSnapshot {

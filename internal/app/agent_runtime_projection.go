@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"denova/config"
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
@@ -13,6 +14,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	appagentruntime "denova/internal/app/agentruntime"
+	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 )
 
@@ -21,7 +23,7 @@ type WritingAgentActiveView struct {
 	Task                  *apptask.Snapshot
 	Runtime               agentrun.RuntimeStatus
 	RuntimeProjectionOK   bool
-	PendingAsk            *session.AskInteraction
+	PendingAsks           []*session.AskInteraction
 	PendingInterruptionID string
 	// RecoveryActions can contain a process-local projection refresh action
 	// after the durable runtime has already settled to Idle.
@@ -74,18 +76,24 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	var runtimeSnapshot agentrun.RuntimeStatus
 	projected := false
 	if sessionID != "" && executionRuntime != nil {
-		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), executionRuntime, agentrun.Options{
+		options := agentrun.Options{
 			AgentKind: agentrun.AgentKindIDE,
 			ProjectID: projectID,
 			StateRoot: stateRoot,
 			Workspace: workspace,
 			SessionID: sessionID,
-		})
+		}
+		if bound, err := a.agentSession(options, executionRuntime); err == nil {
+			runtimeSnapshot, err = bound.Status(operation.Context())
+			projected = err == nil
+		}
 	}
 	recoveryActions := agentexecution.RuntimeRecoveryActions(runtimeSnapshot)
-	var pendingAsk *session.AskInteraction
-	if projected && len(runtimeSnapshot.PendingInteractions) > 0 {
-		pendingAsk = agentchat.ProjectPendingInteraction(runtimeSnapshot.PendingInteractions[0], runtimeSnapshot)
+	var pendingAsks []*session.AskInteraction
+	if projected {
+		for _, request := range runtimeSnapshot.PendingInteractions {
+			pendingAsks = append(pendingAsks, agentchat.ProjectPendingInteraction(request, runtimeSnapshot))
+		}
 	}
 	pendingInterruptionID := ""
 	if selectedSession != nil {
@@ -107,7 +115,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	a.mu.RUnlock()
 	return WritingAgentActiveView{
 		SessionID: sessionID, Task: taskSnapshot, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected,
-		RecoveryActions: recoveryActions, PendingAsk: pendingAsk, PendingInterruptionID: pendingInterruptionID,
+		RecoveryActions: recoveryActions, PendingAsks: pendingAsks, PendingInterruptionID: pendingInterruptionID,
 	}
 }
 
@@ -151,18 +159,31 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 	}
 	var runtimeSnapshot agentrun.RuntimeStatus
 	projected := false
+	externalSelected := false
+	if resolved != "" {
+		if snapshot, found, err := store.BranchRuntimeConfig(storyID, resolved); err == nil && found {
+			externalSelected = snapshot.Engine().Kind != config.RuntimeNative
+		}
+	}
 	if resolved != "" && executionRuntime != nil {
-		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), executionRuntime, agentrun.Options{
+		options := agentrun.Options{
 			AgentKind: agentrun.AgentKindInteractiveStory,
 			ProjectID: projectID,
 			Workspace: workspace,
 			StoryID:   storyID,
 			BranchID:  resolved,
-		})
+		}
+		if bound, err := a.agentSession(options, executionRuntime); err == nil {
+			runtimeSnapshot, err = bound.Status(operation.Context())
+			projected = err == nil
+		}
 	}
 	pendingInterruptionID := ""
 	if resolved != "" && store != nil {
 		pending, pendingErr := store.PendingTurnInterruption(storyID, resolved)
+		if externalSelected && (task == nil || task.Finished()) {
+			pending, pendingErr = interactiveapp.ExternalTurnInterruption(store, storyID, resolved)
+		}
 		if pendingErr != nil {
 			slog.ErrorContext(ctx, fmt.Sprintf("[agent-runtime-projection] load paused game turn failed workspace=%s story_id=%s branch_id=%s err=%v", workspace, storyID, resolved, pendingErr))
 		} else if pending != nil {

@@ -1,0 +1,67 @@
+{
+  "manifestVersion": 1,
+  "id": "test.fixture",
+  "version": "1.0.0",
+  "apiMajor": 1,
+  "name": {
+    "zh-CN": "测试包",
+    "en-US": "Test package"
+  },
+  "description": {
+    "zh-CN": "平台协议测试",
+    "en-US": "Platform contract test"
+  },
+  "distribution": {
+    "files": [
+      "."
+    ]
+  },
+  "permissions": {
+    "required": [
+      "gameData",
+      "agents.run"
+    ],
+    "optional": []
+  },
+  "locales": {
+    "zh-CN": "zh.json",
+    "en-US": "en.json"
+  },
+  "views": [
+    {
+      "id": "stage",
+      "source": {
+        "kind": "static",
+        "path": "index.html"
+      }
+    }
+  ],
+  "game": {
+    "viewId": "stage",
+    "storage": {
+      "kind": "self",
+      "saveFormat": "test-v1"
+    },
+    "uses": {
+      "agents": [
+        "local:character"
+      ]
+    }
+  },
+  "definitions": {
+    "agents": [
+      {
+        "id": "character",
+        "definition": "character.json"
+      }
+    ]
+  },
+  "modelSlots": [
+    {
+      "id": "writer",
+      "titleKey": "writer",
+      "kind": "text",
+      "required": true
+    }
+  ]
+}

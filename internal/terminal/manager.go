@@ -74,7 +74,7 @@ type CommandProfile struct {
 // Config is the resolved terminal runtime configuration.
 type Config struct {
 	Enabled bool
-	// An empty Shell is inferred from the platform ($SHELL / COMSPEC / platform default).
+	// An empty Shell uses $SHELL on Unix and prefers pwsh on Windows.
 	Shell           string
 	Commands        []CommandProfile
 	MaxSessions     int

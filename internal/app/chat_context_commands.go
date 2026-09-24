@@ -34,7 +34,7 @@ func (s *ChatAppService) AnalyzeContext(ctx context.Context, req agentchat.ChatR
 	}
 	return agentchat.BuildInspectedContextAnalysis(
 		&runtime.cfg, agentrun.AgentKindIDE, "ide", inspected.Composition, inspected.Inspection,
-	), nil
+	)
 }
 
 func (a *App) CompactContext(ctx context.Context) (agentcompaction.Result, error) {

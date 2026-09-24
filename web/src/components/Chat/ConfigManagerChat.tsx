@@ -25,6 +25,7 @@ interface ConfigManagerChatProps {
   onInitialInstructionAccepted?: () => void
   onMutated?: () => void
   className?: string
+  active?: boolean
 }
 
 const EMPTY_STRINGS: string[] = []
@@ -58,6 +59,7 @@ export function ConfigManagerChat({
   onInitialInstructionAccepted,
   onMutated,
   className = '',
+  active = true,
 }: ConfigManagerChatProps) {
   const { t } = useTranslation()
   const [project, setProject] = useState<AgentChatProject | null>(null)
@@ -169,6 +171,7 @@ export function ConfigManagerChat({
   return (
     <div className={`h-full min-h-0 overflow-hidden ${className}`}>
       <WritingAgentWorkspace
+        active={active}
         projectId={project.id}
         projectType={project.type}
         activeSessionPreferenceScope="configuration"

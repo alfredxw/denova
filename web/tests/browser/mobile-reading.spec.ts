@@ -13,7 +13,7 @@ for (const theme of ['dark', 'light']) {
     })
     let items: ProductMessage[] = [
       { id: 'action', type: 'automation_action', title: '需要确认：一条很长的自动化任务通知，请检查整理结果后继续', summary: '作品资料已经整理完成，等待你确认下一步。', body: '请确认这份资料再继续后续流程。', action_required: true, task_id: 'task-1' },
-      { id: 'release', type: 'changelog', title: 'v0.5.0', summary: '更新内容应当先于支持项目的提示展示。', body: '# 更新正文\n\n本次更新的详细内容。' },
+      { id: 'release', type: 'changelog', title: 'v0.5.0', summary: '支持项目的提示应当位于更新正文之前。', body: '# 更新正文\n\n本次更新的详细内容。' },
       ...Array.from({ length: 12 }, (_, i) => ({ id: `run-${i}`, type: 'automation', title: `章节检查 ${i}`, summary: '自动化检查已经完成。', body: `检查 ${i} 的详细结果。`, read_at: '2026-09-01T00:00:00Z' })),
     ].map((item) => ({ ...item, published_at: '2026-09-07T00:00:00Z' }))
     const readIDs: string[] = []
@@ -60,8 +60,13 @@ for (const theme of ['dark', 'light']) {
     await expect(inbox.getByRole('heading', { name: '更新正文', exact: true })).toBeVisible()
     const contentTop = (await inbox.getByRole('heading', { name: '更新正文', exact: true }).boundingBox())!.y
     const supportTop = (await inbox.getByRole('region', { name: '给 Denova 点个 Star', exact: true }).boundingBox())!.y
-    expect(contentTop).toBeLessThan(supportTop)
-    await page.screenshot({ path: `test-results/mobile-ux/inbox-detail-${theme}-${test.info().project.name}.png` })
+    expect(supportTop).toBeLessThan(contentTop)
+    const donation = inbox.locator('img[src="/donate.png"]')
+    await expect(donation).toBeVisible()
+    const donationBox = (await donation.boundingBox())!
+    expect(donationBox.y + donationBox.height).toBeLessThan(contentTop)
+    expect(await inbox.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await page.screenshot({ path: test.info().outputPath(`inbox-detail-${theme}.png`) })
     // Desktop keeps side-by-side reading; the navigation shell changes at this breakpoint.
     await inbox.getByRole('button', { name: '关闭', exact: true }).click()
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -110,7 +115,7 @@ test('mobile Writing exposes touch tab actions and compact editing tools without
   const settings = page.getByRole('dialog', { name: '编辑器设置', exact: true })
   await expect(settings).toBeVisible()
   await settings.getByRole('button', { name: '关闭', exact: true }).click()
-  await page.screenshot({ path: `test-results/mobile-ux/writing-editor-320-${test.info().project.name}.png` })
+  await page.screenshot({ path: test.info().outputPath('writing-editor-320.png') })
   await page.getByRole('tab', { name: 'Agent', exact: true }).click()
   const composer = page.getByPlaceholder(/输入消息/)
   await composer.fill('Keep this Agent draft')
@@ -142,6 +147,11 @@ test('mobile inbox has a clear empty state and English controls', async ({ page,
     await route.fulfill({ response, json: { ...settings, effective: { ...settings.effective, language: 'en-US' } } })
   })
   await page.route(/\/api\/messages$/, (route) => route.fulfill({ json: { items: [], unread_count: 0 } }))
+  // The global badge and the opened list must describe the same empty inbox.
+  // A real activity refresh could otherwise overwrite the mocked unread count.
+  await page.route('**/api/activity/summary', (route) => route.fulfill({ json: {
+    message_unread_count: 0, automation_inbox_unread_count: 0, automation_running_count: 0,
+  } }))
   await page.goto('/')
   await page.getByRole('button', { name: 'Navigation', exact: true }).click()
   await page.getByRole('button', { name: 'Open message center', exact: true }).click()

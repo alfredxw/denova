@@ -22,7 +22,7 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 		if role == "" {
 			continue
 		}
-		if role != "tool_call" && role != "tool_result" && role != "thinking" && role != DisplayEventRoleNarrative && !(role == "assistant" && event.SubAgent) {
+		if role != "context_compaction" && role != "todo_updated" && role != "tool_call" && role != "tool_result" && role != "thinking" && role != DisplayEventRoleNarrative && !(role == "assistant" && event.SubAgent) {
 			continue
 		}
 		name := strings.TrimSpace(event.Name)
@@ -41,6 +41,7 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 			}
 		}
 		next := DisplayEvent{
+			Phase: event.Phase, RuntimeManaged: event.RuntimeManaged,
 			ID:                strings.TrimSpace(event.ID),
 			Role:              role,
 			Content:           content,
@@ -115,7 +116,7 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 				continue
 			}
 		case agent.User:
-			if message.TaskCompletion == nil && !agent.IsContextStateMessage(message) {
+			if message.TaskCompletion == nil && !agent.IsContextStateMessage(message) && UserGuidanceCommand(message) == "" {
 				continue
 			}
 		default:

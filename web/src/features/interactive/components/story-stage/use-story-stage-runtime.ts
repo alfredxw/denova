@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
-import { buildContextCompactionMessage, createContextCompactionMessageId, settleContextCompactionMessages } from '@/components/Chat/context-compaction-message'
 import { createAgentCommandID, type AgentRuntimeQueuedCommand } from '@/lib/api'
+import { localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { createAgentDataMessage } from '@/lib/agent-ui-message'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
@@ -60,7 +60,7 @@ interface UseStoryStageRuntimeOptions {
   setActivity: (content: string) => void
   setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
   clearComposer: () => void
-  onTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | void
+  onTurnPersisted: (event: InteractiveTurnPersistedEvent, options?: { replayed: boolean }) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
 }
 
@@ -97,7 +97,6 @@ export function useStoryStageRuntime({
   const [commandSubmitting, setCommandSubmitting] = useState(false)
   const [queueActionPendingCommandID, setQueueActionPendingCommandID] = useState('')
   const commandSubmittingRef = useRef(false)
-  const compactionIdCounterRef = useRef(0)
   const initialStartCommandIDsRef = useRef(new Map<string, string>())
   const commandIDsRef = useRef(new Map<string, string>())
   const streamConsumer = createStoryStageStreamConsumer({
@@ -118,7 +117,17 @@ export function useStoryStageRuntime({
     branchId,
     isStreaming: () => Boolean(useInteractiveStore.getState().storyStageRuns[stageKey]?.streaming),
     onResume: resumeActiveStoryRun,
-    onProject: (active) => interactiveAgentCommands.project(active, 'disconnected'),
+    onProject: (active) => {
+      interactiveAgentCommands.project(active, 'disconnected')
+      const last = active.last_operation
+      if (!active.active && !active.runtime_recoverable && last?.status === 'failed') {
+        // A settled failure lives in the journal even when there is no SSE
+        // replay to attach. Restore it only into an empty cold display.
+        setMessages(current => current.length ? current : [
+          errorMessage(localizeAgentRuntimeReason(last.reason, t('storyStage.activity.runFailed'), t)),
+        ])
+      }
+    },
     onDetach: () =>
       updateStageRun((current) => ({
         ...current,
@@ -276,19 +285,16 @@ export function useStoryStageRuntime({
     if (!storyId || streaming) return
     clearComposer()
     setStreaming(true)
-    setActivity('')
+    setActivity(t('chat.contextCompaction.status.running'))
     liveAccumulator.resetCompaction()
-    setMessages([buildContextCompactionMessage({ status: 'started', phase: 'pre_run' }, createContextCompactionMessageId(compactionIdCounterRef))])
+    setMessages([])
     try {
       await compactInteractiveContext(storyId, branchId)
-      setMessages((current) => [
-        ...settleContextCompactionMessages(current, 'success'),
-        systemMessage(t('storyStage.contextCompaction.done')),
-      ])
       await onDone()
+      // Completed maintenance is projected from the canonical Story journal.
+      setMessages([])
     } catch (error) {
-      setMessages((current) => [
-        ...settleContextCompactionMessages(current, 'error'),
+      setMessages([
         errorMessage(error instanceof Error ? error.message : t('storyStage.contextCompaction.failed')),
       ])
     } finally {

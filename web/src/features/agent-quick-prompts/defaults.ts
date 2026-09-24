@@ -7,6 +7,7 @@ export type AgentQuickPromptScope =
   | 'agents'
   | 'automation'
   | 'lore'
+  | 'extensions'
   | 'preset-teller'
   | 'preset-event'
   | 'preset-rule'
@@ -57,6 +58,11 @@ export function agentQuickPromptDefaults(
   }
 
   const groups: Record<Exclude<AgentQuickPromptScope, 'writing' | `preset-${string}`>, Array<[string, string, string]>> = {
+    extensions: [
+      ['extensions-develop', 'platform.quickDevelop', 'platform.quickDevelopPrompt'],
+      ['extensions-repair', 'platform.quickRepair', 'platform.quickRepairPrompt'],
+      ['extensions-check', 'platform.quickCheck', 'platform.quickCheckPrompt'],
+    ],
     skills: [
       ['skills-create', 'chat.quick.config.skills.create', 'chat.quick.config.skills.createPrompt'],
       ['skills-improve', 'chat.quick.config.skills.improve', 'chat.quick.config.skills.improvePrompt'],

@@ -1,4 +1,11 @@
 const agentApproval = {
+  'agentApproval.codex.ask.label': '只读',
+  'agentApproval.codex.ask.description': '读取项目文件和使用只读工具；阻止修改及有副作用的命令。',
+  'agentApproval.codex.write.label': '工作区写入',
+  'agentApproval.codex.write.description': '读写项目文件并执行允许的开发命令；超出范围的操作会被阻止。',
+  'agentApproval.codex.full_access.label': '完全访问',
+  'agentApproval.codex.full_access.description': '允许宿主工具访问项目之外的资源，仍检查极高危操作；关闭引擎沙箱限制。',
+  'agentApproval.codex.runActive': '请先停止当前运行，再修改权限。',
   'agentApproval.mode.ask.label': 'Ask',
   'agentApproval.mode.ask.description': '项目内编辑和常用只读命令自动执行；读取项目外文件、联网、外部写入和非白名单 Shell 命令先询问。',
   'agentApproval.mode.write.label': 'Write',

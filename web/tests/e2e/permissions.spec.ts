@@ -1,3 +1,4 @@
+import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from '../support/fixtures'
@@ -17,7 +18,7 @@ for (const scenario of [
   { mode: 'full_access', label: 'Full access', marker: 'FULL_ACCESS', reply: 'External read completed in Full access mode.' },
 ] as const) {
   test(`enforces ${scenario.label} permissions on real external reads`, async ({ page, request }) => {
-    const projectPath = await mkdtemp(path.resolve('test-results', 'runtime', 'permission-project-'))
+    const projectPath = await mkdtemp(path.join(runtimeRoot, 'permission-project-'))
     const project = await registerAgentChatProject(request, projectPath)
     const session = await createAgentChatSession(request, project.id, `Permission ${scenario.label} Session`)
     const modelStatus = await getModelStatus(request)

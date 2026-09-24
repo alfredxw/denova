@@ -44,6 +44,7 @@ export type AgentDataParts = {
   'agent-execution-summary': AgentDataPayload
   'agent-interactive-image': AgentDataPayload
   'agent-proposed-plan': AgentDataPayload
+  'agent-todo': AgentDataPayload
   'agent-rule-roll': AgentDataPayload
   'agent-system': AgentDataPayload
   'agent-token-usage': AgentDataPayload

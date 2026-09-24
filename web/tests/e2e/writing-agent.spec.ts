@@ -1,6 +1,6 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createProjectFile, readProjectFile } from '../support/api'
-import { openWritingAgent } from '../support/agent-chat'
+import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus, releaseDelayedRequest } from '../support/model'
 
 const delayedReplyMarker = 'E2E_DELAYED_AGENT_REPLY'
@@ -15,8 +15,7 @@ test('applies an Agent edit and supports review, undo, and redo', async ({ page,
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '写作', exact: true }).click()
   await page.getByRole('button', { name: /^e2e agent chapter\b/ }).click()
   const composer = await openWritingAgent(page)
-  await composer.fill('Update the chapter for the deterministic scenario. E2E_EDIT_CHAPTER')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Update the chapter for the deterministic scenario. E2E_EDIT_CHAPTER')
 
   const summary = page.getByRole('region', { name: '已编辑 1 个文件' })
   await expect(summary).toBeVisible()
@@ -44,8 +43,7 @@ test('reattaches to an Agent run after the page reloads mid-response', async ({ 
   await createAndOpenBook(request, 'Agent Recovery E2E Book')
   await page.goto('/')
   const composer = await openWritingAgent(page)
-  await composer.fill('Wait until the browser reconnects. E2E_DELAYED_AGENT_REPLY')
-  await composer.press('Enter')
+  await submitAgentChatMessage(page, composer, 'Wait until the browser reconnects. E2E_DELAYED_AGENT_REPLY')
 
   await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[delayedReplyMarker] ?? 0)
     .toBe(1)

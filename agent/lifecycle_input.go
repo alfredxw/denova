@@ -160,7 +160,8 @@ func (session *Session) receiveInput(ctx context.Context, input Input, kind sess
 		if previous.Hash != hash {
 			return CommandReceipt{}, nil, ErrIdempotencyConflict
 		}
-		return previous.Receipt, session.runHandle(previous.Receipt.RunID), nil
+		run, _, err := session.AttachRun(ctx, previous.Receipt.RunID)
+		return previous.Receipt, run, err
 	}
 	if _, found := session.controlReceipts[input.IdempotencyKey]; found {
 		session.mu.Unlock()
@@ -321,12 +322,6 @@ func sessionRecord(kind string, value any) (agentsession.Record, error) {
 	return agentsession.Record{Kind: kind, Version: sessionRecordVersion, Data: encoded}, nil
 }
 
-func (session *Session) runHandle(id string) *Run {
-	session.mu.RLock()
-	defer session.mu.RUnlock()
-	return session.runs[id]
-}
-
 func (run *Run) requestPreemption() {
 	select {
 	case run.controls <- runstate.EngineControl{Kind: runstate.EngineControlPreempt}:
@@ -388,6 +383,15 @@ func (session *Session) replayInput(record agentsession.Record) error {
 		case inputPending, inputConsumed, inputCancelled:
 		default:
 			return errors.New("invalid persisted input status")
+		}
+		// A retained control update may refer to an archived input. Its final
+		// metadata was restored from the index; only the control receipt is needed.
+		if item.input.Text == "" && len(item.input.Attachments) == 0 {
+			if update.Control != nil {
+				session.controlReceipts[update.Control.Receipt.CommandID] = *update.Control
+				session.cursor = max(session.cursor, update.Control.Receipt.Cursor)
+			}
+			return nil
 		}
 		item.status, item.targetRunID = update.Status, update.RunID
 		if update.HostData != nil {

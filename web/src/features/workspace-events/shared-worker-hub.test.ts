@@ -13,6 +13,33 @@ import type {
 } from './protocol'
 
 describe('SharedProjectEventHub', () => {
+  it('stops retrying a missing Project and allows an explicit subscription to recover', async () => {
+    vi.useFakeTimers()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const events = controlledStream<SSEEvent>()
+    const openStream = vi.fn<ProjectEventStreamFactory>()
+      .mockRejectedValueOnce(new ProjectEventStreamHTTPError(404, false))
+      .mockResolvedValue(events.stream)
+    const hub = new SharedProjectEventHub({ openStream })
+    const port = new FakePort()
+    hub.connect(port)
+    try {
+      port.receive({ type: 'subscribe', projectId: 'project-missing' })
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(openStream).toHaveBeenCalledTimes(1)
+
+      port.receive({ type: 'subscribe', projectId: 'project-missing' })
+      await flushMicrotasks()
+      expect(openStream).toHaveBeenCalledTimes(2)
+      events.enqueue(workspaceChangeSSE('project-missing', '/books/restored', 'notes.md'))
+      await eventually(() => expect(workspaceChanges(port)).toHaveLength(1))
+    } finally {
+      port.receive({ type: 'unsubscribe' })
+      warning.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('shares one stream across ports and closes it only after the last subscriber leaves', async () => {
     const events = controlledStream<SSEEvent>()
     const openStream = vi.fn<ProjectEventStreamFactory>(async () => events.stream)

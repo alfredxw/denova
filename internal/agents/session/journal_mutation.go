@@ -23,16 +23,18 @@ func (s *Session) withCanonicalMutation(ctx context.Context, operation string, m
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		s.mu.Lock()
-		if err := s.refreshCanonicalTailLocked(); err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("refresh session before %s: %w", operation, err)
-		}
-		err := mutate()
-		if err == nil {
-			s.trimMaterializedWindowLocked()
-		}
-		s.mu.Unlock()
+		err := func() error {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if err := s.refreshCanonicalTailLocked(); err != nil {
+				return fmt.Errorf("refresh session before %s: %w", operation, err)
+			}
+			err := mutate()
+			if err == nil {
+				s.trimMaterializedWindowLocked()
+			}
+			return err
+		}()
 		if !errors.Is(err, conversationjournal.ErrConflict) {
 			return err
 		}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
-import { createAgentDataMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
+import { createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
 import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import {
   appendBufferedLiveMessage,
@@ -17,20 +17,18 @@ import {
   updateToolMessageInput,
   type BufferedLiveMessage,
 } from './live-stream-messages'
-import { publicRuleRollFromToolOutput } from './rule-roll'
 import { createLiveTurnRenderKeys, type LiveTurnRenderKeys } from './utils'
 
 type LiveMessageUpdater = (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
 
 interface UseLiveMessageAccumulatorOptions {
-  publicRuleRollVisible: boolean
   setMessages: LiveMessageUpdater
 }
 
 // Owns the animation-frame buffer and correlation state for one live story stream.
 // Persisted history projection only receives stable render-key lookup methods, so
 // display recovery state cannot leak into the model/session context boundary.
-export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }: UseLiveMessageAccumulatorOptions) {
+export function useLiveMessageAccumulator({ setMessages }: UseLiveMessageAccumulatorOptions) {
   const toolKeyToMessageIdRef = useRef<Record<string, string>>({})
   const nonNarrativeStreamingRef = useRef(false)
   const stageKeyRef = useRef('')
@@ -145,26 +143,10 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     })
   }, [setMessages, updateBatcher])
 
-  const appendRuleRoll = useCallback((payload: Record<string, unknown> & { name?: string; content?: string }) => {
-    if (!publicRuleRollVisible || payload.name !== 'prepare_interactive_turn') return
-    flush()
-    const ruleRoll = publicRuleRollFromToolOutput(payload.content || '')
-    if (!ruleRoll) return
-    setMessages((current) => {
-      const id = ruleRoll.resolution_id ? `live-rule-roll-${ruleRoll.resolution_id}` : `live-rule-roll-${Date.now()}`
-      if (current.some((message) => message.id === id)) return current
-      return [...current, createAgentDataMessage({
-        id,
-        type: 'agent-rule-roll',
-        data: { id, role: 'rule_roll', rule_roll: ruleRoll },
-      })]
-    })
-  }, [flush, publicRuleRollVisible, setMessages])
-
   const appendContextCompaction = useCallback((data: Record<string, unknown>) => {
     flush()
-    const id = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
-    currentCompactionMessageIdRef.current = id
+    const id = (typeof data.id === 'string' && data.id) || currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
+    currentCompactionMessageIdRef.current = ['completed', 'success', 'failed', 'error'].includes(String(data.status)) ? null : id
     nonNarrativeStreamingRef.current = true
     setMessages((current) => upsertContextCompactionMessage(current, buildContextCompactionMessage(data, id)))
   }, [flush, setMessages])
@@ -236,7 +218,6 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
   return {
     appendAssistant,
     appendContextCompaction,
-    appendRuleRoll,
     appendThinking,
     appendToolArgs,
     appendToolCall,

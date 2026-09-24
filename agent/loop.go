@@ -13,6 +13,7 @@ type loopConfig struct {
 	Description     string
 	Instruction     string
 	Model           BaseChatModel
+	ModelIdentity   CapabilityIdentity
 	Tools           []ToolDefinition
 	ResultProcessor ToolResultProcessor
 	Artifacts       ToolArtifactStorage
@@ -64,6 +65,7 @@ type modelToolLoop struct {
 	description      string
 	instruction      string
 	model            BaseChatModel
+	modelIdentity    CapabilityIdentity
 	tools            []ToolDefinition
 	middlewares      []Middleware
 	resultProcessor  ToolResultProcessor
@@ -129,6 +131,7 @@ func newModelToolLoop(ctx context.Context, config loopConfig) (*modelToolLoop, e
 		description:      config.Description,
 		instruction:      config.Instruction,
 		model:            config.Model,
+		modelIdentity:    config.ModelIdentity,
 		tools:            tools,
 		middlewares:      middlewares,
 		resultProcessor:  config.ResultProcessor,
@@ -266,18 +269,6 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			events.Send(agent.errorEvent(err))
 			return
 		}
-		// A task batch is a synchronization boundary. Waiting here keeps an
-		// attached child concurrent with the tool batch that launched it, while
-		// preventing the next model response from streaming a provisional final
-		// answer that would have to be discarded when the child completes.
-		if _, waitErr := waitForTrackedTaskCompletionsAtSafePoint(
-			ctx,
-			options.cancel,
-			cancelAfterTools|cancelAfterModel,
-		); waitErr != nil {
-			events.Send(agent.errorEvent(waitErr))
-			return
-		}
 		if err := agent.deliverPendingTaskCompletions(ctx, state, events); err != nil {
 			events.Send(agent.errorEvent(err))
 			return
@@ -324,6 +315,9 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			}})
 			return
 		}
+		// Children do not block independent parent work. While they are attached,
+		// buffer the response so a provisional final never reaches the transcript.
+		deferFinal := hasTrackedTaskCompletions(ctx)
 		assistant, modelResponseOrdinal, acceptedModelMessages, nextCtx, err := agent.callModelWithRetry(
 			ctx,
 			modelCall,
@@ -331,6 +325,7 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			registry,
 			events,
 			options.cancel,
+			deferFinal,
 		)
 		ctx = nextCtx
 		stablePrefixSeed = cloneMessages(modelContext.stablePrefixSeed)
@@ -356,6 +351,13 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			return
 		}
 		state.Messages = cloneMessages(acceptedModelMessages)
+		if deferFinal && len(assistant.ToolCalls) == 0 {
+			if _, waitErr := waitForTrackedTaskCompletionsAtSafePoint(ctx, options.cancel, cancelAfterModel); waitErr != nil {
+				events.Send(agent.errorEvent(waitErr))
+				return
+			}
+			continue
+		}
 		assistant.AgentMeta = &AgentMessageMeta{ModelResponseOrdinal: modelResponseOrdinal}
 		state.Messages = append(state.Messages, assistant.Clone())
 

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -72,45 +73,40 @@ func (executor *recordingTaskExecutor) Observe(context.Context, TaskRef, string)
 	executor.calls++
 	return TaskObservation{}, nil
 }
-func (executor *recordingTaskExecutor) Steer(context.Context, TaskRef, agent.Input) error {
-	executor.calls++
-	return nil
-}
-func (executor *recordingTaskExecutor) Abort(context.Context, TaskRef, agent.AbortRequest) error {
-	executor.calls++
-	return nil
-}
 
-func TestTaskRejectsMissingAndMixedActionFieldsBeforeExecution(t *testing.T) {
+func (executor *recordingTaskExecutor) Steer(context.Context, TaskRef, agent.Input) (agent.CommandReceipt, error) {
+	executor.calls++
+	return agent.CommandReceipt{CommandID: "steer", Cursor: 1}, nil
+}
+func (executor *recordingTaskExecutor) Abort(context.Context, TaskRef, agent.AbortRequest) (agent.CommandReceipt, error) {
+	executor.calls++
+	return agent.CommandReceipt{CommandID: "abort", Cursor: 1}, nil
+}
+func TestSendRejectsMixedActionFieldsBeforeExecution(t *testing.T) {
 	executor := &recordingTaskExecutor{}
-	tool := taskDefinition(t, executor, "task").Tool
-	for _, arguments := range []string{
-		`{"action":"start"}`,
-		`{"action":"observe","targets":[]}`,
-		`{"action":"start","starts":[{"prompt":"inspect"}],"refs":[]}`,
-		`{"action":"observe","targets":[{"ref":{"agent":"a","session":"s","run":"r"}}],"input":"extra"}`,
-		`{"action":"steer","refs":[{"agent":"a","session":"s","run":"r"}]}`,
-		`{"action":"steer","refs":[{"agent":"a","session":"s","run":"r"}],"input":" "}`,
-		`{"action":"steer","refs":[{"agent":"a","session":"s","run":"r"}],"input":"continue","reason":"extra"}`,
-		`{"action":"abort","refs":[{"agent":"a","session":"s","run":"r"}]}`,
-		`{"action":"abort","refs":[{"agent":"a","session":"s","run":"r"}],"reason":" "}`,
-	} {
-		if _, err := tool.Run(context.Background(), arguments); err == nil {
-			t.Errorf("invalid action reached executor: %s", arguments)
+	tool := taskDefinition(t, executor, "send").Tool
+	result, err := tool.Run(context.Background(), `{"items":[
+ {"action":"delegate","message":"inspect","to":{"agent":"a","session":"s"}},
+ {"action":"steer","to":{"agent":"a","session":"s","run":"r"}},
+ {"action":"steer","to":{"agent":"a","session":"s","run":"r"},"message":"continue","reason":"extra"},
+ {"action":"abort","to":{"agent":"a","session":"s","run":"r"},"reason":" "},
+ {"action":"message","to":{"agent":"a","session":"s","run":"r"},"message":"context"},
+ {"action":"resume","to":{"agent":"a","session":"s","run":"r"},"message":"extra"}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Results []sendResult `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(result.ModelContent), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 6 || executor.calls != 0 {
+		t.Fatal(result.ModelContent)
+	}
+	for _, item := range response.Results {
+		if item.Error == nil || item.Error.Code != "invalid_input" {
+			t.Fatal(result.ModelContent)
 		}
-	}
-	if executor.calls != 0 {
-		t.Fatalf("invalid calls executed: %d", executor.calls)
-	}
-	for _, arguments := range []string{
-		`{"action":"steer","refs":[{"agent":"a","session":"s","run":"r"}],"input":"continue"}`,
-		`{"action":"abort","refs":[{"agent":"a","session":"s","run":"r"}],"reason":"finished"}`,
-	} {
-		if _, err := tool.Run(context.Background(), arguments); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if executor.calls != 2 {
-		t.Fatalf("valid calls executed: %d", executor.calls)
 	}
 }

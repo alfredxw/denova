@@ -93,6 +93,7 @@ export function useAgentChatTabWorkbench({
         activeTabIds[group] = nextActiveTabId(candidates, activeID, activeID)
       }
       const tabs = currentState.tabs.filter((tab) => !closing.has(tab.id))
+      const secondaryVisible = currentState.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0
       return {
         ...current,
         projects: {
@@ -101,7 +102,9 @@ export function useAgentChatTabWorkbench({
             ...currentState,
             tabs,
             activeTabIds,
-            secondaryVisible: currentState.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0,
+            // Closing the last secondary tab must not leave focus in a hidden pane.
+            focusedGroup: secondaryVisible ? currentState.focusedGroup : 'primary',
+            secondaryVisible,
           },
         },
       }

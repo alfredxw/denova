@@ -74,6 +74,19 @@ beforeEach(() => {
 })
 
 describe('StoryStage runtime recovery', () => {
+  it.each([
+    ['agent_runtime.model_request_too_large', '请求超过供应商的传输大小限制，请减少或缩小附件，或新建会话。'],
+    ['agent_runtime.model_image_input_rejected', '附件图片无法发送给当前模型，请缩小图片或减少图片数量。原始文件已保留。'],
+  ])('restores a settled model input failure without replaying the run: %s', async (reason, message) => {
+    getActiveInteractiveChatMock.mockResolvedValue({ active: false, phase: 'idle', runtime_recoverable: false,
+      last_operation: { id: 'failed-run', status: 'failed', reason } })
+    render(<StoryStageHarness />)
+    await screen.findByText(message)
+    expect(streamActiveInteractiveChatMock).not.toHaveBeenCalled()
+    expect(recoverInteractiveAgentRuntimeMock).not.toHaveBeenCalled()
+    expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+  })
+
   it('shows a cold verification and accepts an uncertain answer without resuming', async () => {
     const action = { kind: 'resume', action_id: '7', command_id: 'input-1', operation_id: 'run-1' }
     const pending = { schema: 'ask.pending.v1', id: 'verify-1', tool_call_id: 'execution-1', agent_kind: 'interactive_story', status: 'pending',

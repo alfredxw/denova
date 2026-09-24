@@ -45,7 +45,7 @@ interface StoryStageStreamConsumerOptions {
   liveAccumulator: LiveMessageAccumulator
   liveTurnNavigationAnchorId: string
   onRuntimeRecoveryRequired: () => Promise<{ handoffTaskId?: string } | void>
-  onTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | void
+  onTurnPersisted: (event: InteractiveTurnPersistedEvent, options?: { replayed: boolean }) => Snapshot | void
   setActivity: (content: string) => void
   setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
   setStageRuntime: (runtime: StoryStageRuntimeUpdater) => void
@@ -349,7 +349,6 @@ export function createStoryStageStreamConsumer({
           const data = event.data
           liveAccumulator.flush()
           liveAccumulator.completeToolCall(data, data.content || '')
-          liveAccumulator.appendRuleRoll(data)
           setActivity('')
           break
         }
@@ -359,6 +358,13 @@ export function createStoryStageStreamConsumer({
           liveAccumulator.appendContextCompaction(data)
           setActivity('')
           if (data.status === 'completed' || data.status === 'failed') liveAccumulator.resetCompaction()
+          break
+        }
+        case 'todo_updated': {
+          // Native Todo calls already have an inspectable tool card.
+          if (event.data.runtime_managed !== true) break
+          liveAccumulator.flush()
+          setMessages(current => [...current, createAgentDataMessage({ type: 'agent-todo', data: event.data })])
           break
         }
         case 'token_usage': {
@@ -373,7 +379,7 @@ export function createStoryStageStreamConsumer({
           receivedPersistedTurn = true
           persistenceRequired = false
           if (data.turn?.id) liveAccumulator.bindPersistedTurn(data.turn.id)
-          const appliedSnapshot = onTurnPersisted(data)
+          const appliedSnapshot = onTurnPersisted(data, { replayed: checkpointReplay || data.replayed === true })
           persistedSnapshot = appliedSnapshot || persistedSnapshot
           if (appliedSnapshot) {
             liveAccumulator.finishMessages()
@@ -391,14 +397,6 @@ export function createStoryStageStreamConsumer({
             break streamEvents
           }
           setActivity(t('storyStage.activity.thinking'))
-          break
-        }
-        case 'goal_evaluation_failed': {
-          liveAccumulator.flush()
-          setMessages((current) => [
-            ...current,
-            errorMessage(t('storyStage.activity.goalEvaluationFailed')),
-          ])
           break
         }
         case 'error': {

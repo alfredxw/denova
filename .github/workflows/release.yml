@@ -2,60 +2,144 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: "要发布的 Git tag，例如 v0.1.5"
+        description: 'Git tag to release, for example v0.5.0'
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
-  github-release:
-    name: Build GitHub Release assets
+  ci:
+    name: Require CI for the release commit
     runs-on: ubuntu-latest
-    env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      run-id: ${{ steps.ci.outputs.run-id }}
+      sha: ${{ steps.ci.outputs.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-          fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 11.15.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-
-      - name: Build release assets
-        run: scripts/build-github-release.sh "${RELEASE_TAG}"
-
-      - name: Create or update GitHub Release
+          ref: ${{ env.RELEASE_TAG }}
+      - id: ci
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release edit "${RELEASE_TAG}" --title "${RELEASE_TAG}" --notes-file dist/github-release/RELEASE_NOTES.md
-            gh release upload "${RELEASE_TAG}" dist/github-release/denova-* dist/github-release/checksums.txt dist/github-release/install.sh --clobber
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          # Never accept a PR check or a successful check for another commit.
+          run_id=$(gh run list --workflow ci.yml --commit "$sha" --limit 30 \
+            --json databaseId,event --jq '[.[] | select(.event == "push" or .event == "workflow_dispatch")][0].databaseId // empty')
+          if [[ -n "$run_id" ]]; then
+            gh run watch "$run_id" --interval 10 --exit-status
+            artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+              --jq '.artifacts[] | select(.name == "ci-distribution" and .expired == false) | .id')
+            if [[ -z "$artifact" ]]; then run_id=''; fi
+          fi
+          # A tag outside master, or an expired artifact, needs one normal CI
+          # run. Ordinary master releases reuse the already running/passed CI.
+          if [[ -z "$run_id" ]]; then
+            started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            gh workflow run ci.yml --ref "$RELEASE_TAG"
+            for attempt in {1..12}; do
+              run_id=$(gh run list --workflow ci.yml --commit "$sha" --event workflow_dispatch \
+                --created ">=$started" --json databaseId --jq '.[0].databaseId // empty')
+              if [[ -n "$run_id" ]]; then break; fi
+              sleep 5
+            done
+            test -n "$run_id"
+            gh run watch "$run_id" --interval 10 --exit-status
+          fi
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Verified CI: https://github.com/$GITHUB_REPOSITORY/actions/runs/$run_id" >> "$GITHUB_STEP_SUMMARY"
+
+  package:
+    name: Package ${{ matrix.target }}
+    needs: ci
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.ci.outputs.sha }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            agent/go.sum
+      - uses: actions/download-artifact@v8
+        with:
+          name: ci-distribution
+          run-id: ${{ needs.ci.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - run: mkdir -p output && tar -xf ci-distribution.tar -C output
+      - name: Package the tested frontend for this platform
+        env:
+          DENOVA_RELEASE_FRONTEND_DIR: ${{ github.workspace }}/output/web
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: bash scripts/build-github-release.sh "$RELEASE_TAG" "$RELEASE_TARGET"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/github-release/denova-${{ env.RELEASE_TAG }}-${{ matrix.target }}.*
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: matrix.target == 'linux-x64'
+        with:
+          name: release-metadata
+          path: |
+            dist/github-release/RELEASE_NOTES.md
+            dist/github-release/install.sh
+
+  publish:
+    name: Publish verified release assets
+    needs: [ci, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist/github-release
+      - name: Verify the complete platform set and publish
+        working-directory: dist/github-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64 windows-x64; do
+            extension=tar.gz
+            if [[ "$target" == windows-x64 ]]; then extension=zip; fi
+            test -s "denova-$RELEASE_TAG-$target.$extension"
+          done
+          sha256sum denova-* > checksums.txt
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
+            gh release upload "$RELEASE_TAG" denova-* checksums.txt install.sh --clobber
           else
-            gh release create "${RELEASE_TAG}" dist/github-release/denova-* dist/github-release/checksums.txt dist/github-release/install.sh --title "${RELEASE_TAG}" --notes-file dist/github-release/RELEASE_NOTES.md
+            gh release create "$RELEASE_TAG" denova-* checksums.txt install.sh --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
           fi

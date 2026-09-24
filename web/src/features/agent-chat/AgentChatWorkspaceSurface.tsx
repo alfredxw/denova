@@ -13,7 +13,6 @@ type SidebarProps = Omit<AgentChatActivitySidebarProps, 'onCollapse'>
 
 interface AgentChatWorkspaceSurfaceProps {
   sidebarProps: SidebarProps
-  desktopSecondaryControl: ReactNode
   secondaryPane: {
     available: boolean
     focused: boolean
@@ -36,7 +35,6 @@ interface AgentChatWorkspaceSurfaceProps {
  */
 export function AgentChatWorkspaceSurface({
   sidebarProps,
-  desktopSecondaryControl,
   secondaryPane,
   createDisabled,
   onCreateDefaultSession,
@@ -76,14 +74,6 @@ export function AgentChatWorkspaceSurface({
       contentViews={{ value: 'content', items: [{ value: 'content', label: t('workbench.mobile.primary') }], onValueChange: () => {} }}
       className="h-full min-h-0"
       collapseAt={720}
-      desktopOverlay={(
-        <div
-          data-slot="agent-chat-secondary-pane-control-host"
-          className="pointer-events-none absolute right-1 top-0 z-40 flex h-9 w-10 items-center px-1 [&>*]:pointer-events-auto"
-        >
-          {desktopSecondaryControl}
-        </div>
-      )}
       leftResize={{
         layoutKey: 'nova-agent-chat-activity-layout',
         label: t('layout.resize.sidebar'),

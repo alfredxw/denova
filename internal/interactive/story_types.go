@@ -11,6 +11,8 @@ import (
 )
 
 type CreateStoryRequest struct {
+	// Preview keeps development test Stories outside the normal Story picker.
+	Preview                   bool                              `json:"-"`
 	Title                     string                            `json:"title"`
 	CustomAgentID             *string                           `json:"custom_agent_id,omitempty"`
 	ProfileID                 string                            `json:"profile_id,omitempty"`
@@ -26,6 +28,7 @@ type CreateStoryRequest struct {
 	Opening                   StoryOpeningConfig                `json:"opening,omitempty"`
 	ImageSettings             StoryImageSettings                `json:"image_settings,omitempty"`
 	CheckSettings             StoryCheckSettings                `json:"check_settings,omitempty"`
+	SpeechSettings            StorySpeechSettings               `json:"speech_settings,omitempty"`
 	InitialTraitRolls         []InitialActorTraitRoll           `json:"initial_trait_rolls,omitempty"`
 	StateSchemaPolicy         *StoryStateSchemaPolicy           `json:"state_schema_policy,omitempty"`
 	ActorState                *StoryDirectorActorStateSystem    `json:"-"`
@@ -139,6 +142,7 @@ type UpdateStoryRequest struct {
 	Opening                   *StoryOpeningConfig              `json:"opening,omitempty"`
 	ImageSettings             *StoryImageSettings              `json:"image_settings,omitempty"`
 	CheckSettings             *StoryCheckSettings              `json:"check_settings,omitempty"`
+	SpeechSettings            *StorySpeechSettings             `json:"speech_settings,omitempty"`
 	StateSchemaPolicy         *StoryStateSchemaPolicy          `json:"state_schema_policy,omitempty"`
 	ActorState                *StoryDirectorActorStateSystem   `json:"-"`
 	TRPGSystem                *StoryDirectorTRPGSystem         `json:"-"`
@@ -159,6 +163,7 @@ type Index struct {
 }
 
 type StorySummary struct {
+	Preview               bool                     `json:"preview,omitempty"`
 	ID                    string                   `json:"id"`
 	Title                 string                   `json:"title"`
 	TitleSource           string                   `json:"title_source"`
@@ -174,6 +179,7 @@ type StorySummary struct {
 	Opening               StoryOpeningConfig       `json:"opening"`
 	ImageSettings         StoryImageSettings       `json:"image_settings"`
 	CheckSettings         StoryCheckSettings       `json:"check_settings"`
+	SpeechSettings        StorySpeechSettings      `json:"speech_settings,omitempty"`
 	StateSchemaPolicy     *StoryStateSchemaPolicy  `json:"state_schema_policy,omitempty"`
 	CreatedAt             string                   `json:"created_at"`
 	UpdatedAt             string                   `json:"updated_at"`
@@ -229,6 +235,7 @@ type BranchSummary struct {
 }
 
 type StoryMeta struct {
+	Preview                   bool                             `json:"preview,omitempty"`
 	V                         int                              `json:"v"`
 	Type                      string                           `json:"type"`
 	StoryID                   string                           `json:"story_id"`
@@ -246,6 +253,7 @@ type StoryMeta struct {
 	Opening                   StoryOpeningConfig               `json:"opening"`
 	ImageSettings             StoryImageSettings               `json:"image_settings"`
 	CheckSettings             StoryCheckSettings               `json:"check_settings,omitempty"`
+	SpeechSettings            StorySpeechSettings              `json:"speech_settings,omitempty"`
 	StateSchemaPolicy         *StoryStateSchemaPolicy          `json:"state_schema_policy,omitempty"`
 	InitialTraitRolls         []InitialActorTraitRoll          `json:"initial_trait_rolls,omitempty"`
 	ActorStateSchema          *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`
@@ -267,15 +275,16 @@ type TurnEvent struct {
 	Attachments []agent.Attachment `json:"attachments,omitempty"`
 	// UserContextOnly keeps host-owned autonomous instructions available to
 	// future model turns while hiding them from the player-authored timeline.
-	UserContextOnly  bool   `json:"user_context_only,omitempty"`
-	Narrative        string `json:"narrative"`
-	Thinking         string `json:"thinking,omitempty"`
-	RunID            string `json:"run_id,omitempty"`
-	AgentKind        string `json:"agent_kind,omitempty"`
-	AgentCommandID   string `json:"agent_command_id,omitempty"`
-	AgentOperationID string `json:"agent_operation_id,omitempty"`
-	AgentCycle       int    `json:"agent_cycle,omitempty"`
-	AgentCommitHash  string `json:"agent_commit_hash,omitempty"`
+	UserContextOnly   bool   `json:"user_context_only,omitempty"`
+	Narrative         string `json:"narrative"`
+	NarrativeRevision string `json:"narrative_revision,omitempty"`
+	Thinking          string `json:"thinking,omitempty"`
+	RunID             string `json:"run_id,omitempty"`
+	AgentKind         string `json:"agent_kind,omitempty"`
+	AgentCommandID    string `json:"agent_command_id,omitempty"`
+	AgentOperationID  string `json:"agent_operation_id,omitempty"`
+	AgentCycle        int    `json:"agent_cycle,omitempty"`
+	AgentCommitHash   string `json:"agent_commit_hash,omitempty"`
 	// ProviderContinuation is hydrated from a private side event for model
 	// history only. It is deliberately absent from public Game JSON.
 	ProviderContinuation map[string]any `json:"-"`
@@ -321,6 +330,8 @@ const DisplayEventRoleNarrative = "narrative"
 // Role 为 narrative 的事件是正文位置锚点：正文本身不进入 DisplayEvents，
 // 锚点只标记正文在事件流中的相对位置，供前端按真实顺序穿插渲染。
 type DisplayEvent struct {
+	Phase             string                  `json:"phase,omitempty"`
+	RuntimeManaged    bool                    `json:"runtime_managed,omitempty"`
 	AgentCycle        int                     `json:"agent_cycle,omitempty"`
 	ID                string                  `json:"id,omitempty"`
 	Role              string                  `json:"role"`
@@ -520,6 +531,7 @@ type Snapshot struct {
 	ContextRevision            uint64                           `json:"context_revision,omitempty"`
 	Turns                      []TurnEvent                      `json:"turns"`
 	PendingPlayerInputs        []PlayerInputAcceptedEvent       `json:"pending_player_inputs,omitempty"`
+	PendingDisplayEvents       []DisplayEvent                   `json:"pending_display_events,omitempty"`
 	PendingModelContextBatches []ModelContextBatchEvent         `json:"pending_model_context_batches,omitempty"`
 	CurrentTurn                *TurnEvent                       `json:"current_turn,omitempty"`
 	TokenUsageEvents           []TokenUsageEvent                `json:"token_usage_events,omitempty"`

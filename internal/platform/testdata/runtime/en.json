@@ -1,0 +1,10 @@
+{
+  "settings.display": "Display settings",
+  "settings.showLabel": "Show label",
+  "settings.variant": "Display variant",
+  "settings.compact": "Compact",
+  "settings.full": "Full",
+  "setup.initialValue": "Initial value",
+  "enabled": "Enable test behavior",
+  "writer": "Test model"
+}

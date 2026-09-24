@@ -38,10 +38,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Windows filesystem durability regressions
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -62,6 +67,7 @@ jobs:
       - name: Verify Project paths and released-data migration
         run: |
           go test ./internal/project ./internal/portablepath -count=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test ./internal/app -run "TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot|TestReleasedV033WritingSessionMigratesAndContinues|TestPortableDataMigration" -count=1
 
       - name: Verify Agent workspace filesystem boundaries

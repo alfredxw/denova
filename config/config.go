@@ -31,6 +31,7 @@ type Config struct {
 	ImageAPIEndpoints        []ImageAPIEndpointSettings   `toml:"image_api_endpoints"`
 	ImageAPIProfiles         []ImageAPIProfileSettings    `toml:"image_api_profiles"`
 	AgentModels              AgentModelSettings           `toml:"agent_models"`
+	AgentRuntimes            AgentRuntimeSettings         `toml:"agent_runtimes"`
 	AgentTools               AgentToolSettings            `toml:"agent_tools"`
 	AgentPrompts             AgentPromptSettings          `toml:"agent_prompts"`
 	AgentSkills              AgentSkillSettings           `toml:"agent_skills"`
@@ -53,9 +54,14 @@ type Config struct {
 	Workspace                string                       `toml:"workspace"`
 	// ProjectID and ProjectStoreDir are runtime-owned bindings. They never
 	// persist into user configuration or enter the content workspacelayout.
-	ProjectID                   string                    `toml:"-"`
-	ProjectStoreDir             string                    `toml:"-"`
-	ActiveCustomAgentID         string                    `toml:"-"`
+	ProjectID           string `toml:"-"`
+	ProjectStoreDir     string `toml:"-"`
+	ActiveCustomAgentID string `toml:"-"`
+	// Plugin calls are scoped to the current conversation at runtime.
+	AgentPluginScope AgentPluginScope `toml:"-" json:"-"`
+	// ActiveAgentRuntime is request-local and is resolved from the conversation
+	// snapshot. Agent defaults must never override it during execution.
+	ActiveAgentRuntime          *RuntimeSelection         `toml:"-" json:"-"`
 	ActiveCustomAgentName       string                    `toml:"-"`
 	ActiveCustomAgentRevision   string                    `toml:"-"`
 	RuntimeWebPort              int                       `toml:"-"`
@@ -129,6 +135,7 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		ImageAPIEndpoints:           s.ImageAPIEndpoints,
 		ImageAPIProfiles:            s.ImageAPIProfiles,
 		AgentModels:                 s.AgentModels,
+		AgentRuntimes:               s.AgentRuntimes,
 		AgentTools:                  s.AgentTools,
 		AgentPrompts:                s.AgentPrompts,
 		AgentSkills:                 s.AgentSkills,
@@ -273,6 +280,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		ImageAPIEndpoints:        cfg.ImageAPIEndpoints,
 		ImageAPIProfiles:         cfg.ImageAPIProfiles,
 		AgentModels:              cfg.AgentModels,
+		AgentRuntimes:            cfg.AgentRuntimes,
 		AgentTools:               cfg.AgentTools,
 		AgentPrompts:             cfg.AgentPrompts,
 		AgentSkills:              cfg.AgentSkills,
@@ -392,6 +400,7 @@ func Load() *Config {
 			ImageAPIEndpoints:           d.ImageAPIEndpoints,
 			ImageAPIProfiles:            d.ImageAPIProfiles,
 			AgentModels:                 d.AgentModels,
+			AgentRuntimes:               d.AgentRuntimes,
 			AgentTools:                  d.AgentTools,
 			AgentPrompts:                d.AgentPrompts,
 			AgentSkills:                 d.AgentSkills,

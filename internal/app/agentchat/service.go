@@ -14,6 +14,7 @@ import (
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
 	appagentruntime "denova/internal/app/agentruntime"
 	conversationapp "denova/internal/app/conversation"
@@ -245,6 +246,9 @@ func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 	if binding.SessionID == "" {
 		return Binding{}, fmt.Errorf("AgentChat session is required / AgentChat 会话不能为空")
 	}
+	if agentconversation.IsReservedSessionID(binding.SessionID) {
+		return Binding{}, fmt.Errorf("reserved Agent session cannot be opened as a Project conversation")
+	}
 	return binding, nil
 }
 
@@ -412,7 +416,7 @@ func (service *Service) installActiveRun(active *run) error {
 		return fmt.Errorf("AgentChat service is closed")
 	}
 	if current := service.active[key]; current != nil && current.task != nil && !current.task.Finished() {
-		return appagentruntime.ErrOperationActive
+		return agentruntime.ErrOperationActive
 	}
 	service.active[key] = active
 	return nil
@@ -468,7 +472,7 @@ func (service *Service) CloseProject(ctx context.Context, projectID string) erro
 	for _, active := range service.active {
 		if active != nil && active.binding.ProjectID == projectID && active.task != nil && !active.task.Finished() {
 			service.mu.Unlock()
-			return fmt.Errorf("%w: project has a running Agent conversation", appagentruntime.ErrOperationActive)
+			return fmt.Errorf("%w: project has a running Agent conversation", agentruntime.ErrOperationActive)
 		}
 	}
 	project := service.projects[projectID]

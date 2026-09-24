@@ -48,7 +48,7 @@ func RuntimeBindingFromAgentSessionKey(key agent.SessionKey) (RuntimeBinding, er
 	binding := RuntimeBinding{
 		ProjectID: attribute(bindingLabelProject), Workspace: attribute(bindingLabelWorkspace),
 		SessionID: attribute(bindingLabelSession), StoryID: attribute(bindingLabelStory),
-		BranchID: attribute(bindingLabelBranch), TaskID: attribute(bindingLabelTask),
+		BranchID: attribute(bindingLabelBranch),
 	}
 	switch {
 	case kind == bindingKindWriting && profile == bindingProfileWriting:
@@ -65,8 +65,6 @@ func RuntimeBindingFromAgentSessionKey(key agent.SessionKey) (RuntimeBinding, er
 		binding.AgentKind = AgentKindInteractiveStory
 	case kind == bindingKindWriting && profile == bindingProfileImage:
 		binding.AgentKind = AgentKindImage
-	case kind == bindingKindAutomation && profile == bindingProfileAutomation:
-		binding.AgentKind = AgentKindAutomation
 	default:
 		return RuntimeBinding{}, fmt.Errorf("%w: unsupported Denova Session namespace %q", ErrInvalidBinding, namespace)
 	}

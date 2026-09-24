@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "example.plugin",
+  "version": "0.1.0",
+  "apiMajor": 1,
+  "name": { "zh-CN": "插件项目", "en-US": "Plugin project" },
+  "description": { "zh-CN": "从这里开发你的插件。", "en-US": "Develop your plugin from here." },
+  "distribution": { "files": ["server.mjs", "runtime.mjs", "tools", "locales"] },
+  "runtime": { "backend": { "protocol": "denova-runtime-v1", "launch": { "kind": "runtime", "runtime": "node", "entry": "server.mjs", "args": [] } } },
+  "permissions": { "required": ["tools.invoke"], "optional": [] },
+  "contributes": {
+    "tools": [{ "id": "echo", "definition": "tools/echo.json", "endpoint": { "method": "POST", "path": "/tools/echo" } }],
+    "toolsets": [{ "id": "default", "tools": ["echo"] }]
+  },
+  "locales": { "zh-CN": "locales/zh-CN.json", "en-US": "locales/en-US.json" }
+}

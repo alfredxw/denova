@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 	agentsession "github.com/alfredxw/denova/agent/session"
 	sessionfile "github.com/alfredxw/denova/agent/session/file"
 )
@@ -249,5 +250,67 @@ func TestAbortTreeReleasesAdmissionForLaterTasks(t *testing.T) {
 	}
 	if result, err := next.Wait(ctx); err != nil || result.Status != ResultCompleted {
 		t.Fatalf("next=%#v err=%v", result, err)
+	}
+}
+
+type suspensionAtCloseEngine struct {
+	runstate.Engine
+	started chan struct{}
+}
+
+func (engine *suspensionAtCloseEngine) Run(ctx context.Context, request runstate.EngineRequest, _ runstate.EngineEventSink) (runstate.EngineResult, error) {
+	close(engine.started)
+	select {
+	case <-request.Controls:
+		// A tree admission fence can suspend execution after Close has already
+		// observed a running task and begun waiting for executionDone.
+		return runstate.EngineResult{Status: runstate.EngineSuspended}, nil
+	case <-ctx.Done():
+		return runstate.EngineResult{}, ctx.Err()
+	}
+}
+
+func TestAbortTreeSettlesRunThatSuspendsWhileClosing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	owner, err := New(ctx, Definition{Name: "test", Model: &lifecycleModel{responses: []*Message{AssistantMessage("done", nil)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	key := NamedSession("abort-during-suspension")
+	session, err := owner.Session(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &suspensionAtCloseEngine{Engine: session.engine, started: make(chan struct{})}
+	session.engine = engine
+	run, err := session.Run(ctx, Text("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-engine.started:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if _, err := owner.AbortTree(ctx, key, AbortRequest{IdempotencyKey: "abort-tree"}); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := run.Wait(ctx); err != nil || result.Status != ResultAborted {
+		t.Fatalf("aborted=%#v err=%v", result, err)
+	}
+	for range run.Events() {
+	}
+	reopened, err := owner.Session(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, found, err := reopened.AttachRun(ctx, run.ID())
+	if err != nil || !found {
+		t.Fatalf("aborted run missing after reopening: found=%v err=%v", found, err)
+	}
+	if result, err := restored.Wait(ctx); err != nil || result.Status != ResultAborted {
+		t.Fatalf("restored=%#v err=%v", result, err)
 	}
 }

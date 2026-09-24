@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/QuHu2aPya"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="加入 Denova Discord" /></a>
+  <a href="https://discord.gg/BM6dRmyvvZ"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="加入 Denova Discord" /></a>
   <a href="https://github.com/alfredxw/denova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/denova?style=flat-square"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/denova?style=flat-square"></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.26.6%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.4.5</strong>（2026-09-09） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
+  当前版本：<strong>v0.5.0</strong>（2026-09-22） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -62,8 +62,8 @@ Denova 把小说写作、互动故事、结构化资料库、AI Agent、图像�
 ## 核心能力
 
 - **小说写作**：Markdown 文档与源码编辑、多文档 Tab、查找替换、大纲与章节细纲、进度追踪、正文评论、修改审阅和现有小说导入。
-- **创作 Agent**：结合当前选区、项目文件和资料库进行创作，可通过 Skills 扩展工作流，并支持多个会话和按需的 SubAgent 协作。
-- **互动游戏**：通过玩家输入推进故事，支持剧情分支、故事线切换、行动建议、角色与世界状态、规则检定以及可调整的剧情规划。
+- **创作 Agent**：支持 Native、Codex 和 Claude Code，结合当前选区、项目文件、图片和资料库进行创作；可通过 Skills 扩展工作流，支持多会话、SubAgent 协作和任务暂停恢复。
+- **互动游戏**：通过玩家输入推进故事，支持剧情分支、故事线切换、行动建议、角色与世界状态、规则检定、可调整的剧情规划及 OpenAI 兼容的语音朗读。
 - **资料库与方案预设**：统一管理角色、地点、势力、世界规则和叙事风格，让稳定设定同时服务写作与游戏。
 - **图像创作**：生成章节插画、互动图像和书籍封面，并在界面中预览和管理结果。
 - **版本与恢复**：保存本地版本、查看差异、恢复历史文件，并审阅或撤销 Agent 对工作区的修改。
@@ -90,7 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/inst
 
 稳定使用建议选择 Release；`master` 分支可能包含尚未发布的改动。
 
-从 v0.3.3 升级前，请阅读 [v0.4.0 更新与数据迁移说明](./CHANGELOG.md)：旧全局自动化需在项目内重新创建，部分模型和上下文选项需重新设置。
+从 v0.4.5 升级前，请阅读 [v0.5.0 更新与数据兼容说明](./CHANGELOG.md)。新会话记录首次写入前会自动备份，但旧版无法直接读取新版任务恢复、压缩和外部运行时记录；降级需退出应用、恢复最早的升级前备份，并另行保留升级后新增内容。
 
 ### 第一次使用
 
@@ -140,7 +140,7 @@ corepack enable
 
 Denova 仍在快速迭代中，欢迎反馈问题、分享用法或讨论创作工作流。
 
-[Discord 社区](https://discord.gg/QuHu2aPya)
+[Discord 社区](https://discord.gg/BM6dRmyvvZ)
 
 <p align="center">
   <img src="./img/wechat.png" alt="微信交流" width="240">

@@ -234,7 +234,7 @@ func automationMessagesForLocale(tasks []automation.Task, inbox []automation.Tri
 	items := make([]messages.Message, 0, len(tasks)+len(inbox))
 	for _, task := range tasks {
 		for _, run := range task.RecentRuns {
-			if run.Status == automation.RunStatusRunning || strings.TrimSpace(run.ID) == "" {
+			if (run.Status != automation.RunStatusSuccess && run.Status != automation.RunStatusFailed && run.Status != automation.RunStatusAborted) || strings.TrimSpace(run.ID) == "" {
 				continue
 			}
 			items = append(items, automationRunMessage(task, run, locale))

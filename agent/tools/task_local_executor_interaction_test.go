@@ -75,7 +75,7 @@ func TestTaskWaitRoutesChildInteractionThroughHost(t *testing.T) {
 	}
 	waitCall := func(id string) *agent.Message {
 		return agent.AssistantMessage("", []agent.ToolCall{{
-			ID: id, Type: "function", Function: agent.FunctionCall{Name: "task_wait", Arguments: string(arguments)},
+			ID: id, Type: "function", Function: agent.FunctionCall{Name: "await", Arguments: string(arguments)},
 		}})
 	}
 	parent, err := agent.New(ctx, agent.Definition{

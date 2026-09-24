@@ -1,0 +1,17 @@
+{
+  "description": "Search the current Project library through the host API. Requires optional library.read permission.",
+  "effect": "read",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 100
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false
+  }
+}

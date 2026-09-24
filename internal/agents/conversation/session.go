@@ -216,6 +216,8 @@ func (c *SessionConversation) CommitAgentCanonicalOutput(
 	}
 	c.cycleMu.Lock()
 	c.cycleCursor = c.session.ContextCursor()
+	c.ensureCycleCommitMapsLocked()
+	c.lastCommitReceipts[agentrun.DomainCommitOutput] = &receipt
 	c.cycleMu.Unlock()
 	return receipt, nil
 }

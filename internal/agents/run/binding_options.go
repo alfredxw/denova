@@ -33,15 +33,6 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 			sessionID = imageAgentSessionID
 		}
 		binding = RuntimeBinding{AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace, SessionID: sessionID}
-	case AgentKindAutomation:
-		taskID := options.AutomationTaskID
-		if taskID == "" {
-			taskID = options.TaskID
-		}
-		binding = RuntimeBinding{
-			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace,
-			SessionID: options.SessionID, TaskID: taskID,
-		}
 	default:
 		return RuntimeBinding{}, fmt.Errorf("%w: unsupported agent profile %q", ErrInvalidBinding, options.AgentKind)
 	}

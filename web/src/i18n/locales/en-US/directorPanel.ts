@@ -58,6 +58,7 @@ const directorPanel = {
   'directorPanel.tuning.check.difficulty.1': 'Harder',
   'directorPanel.tuning.check.difficulty.2': 'Much harder',
   'directorPanel.tuning.image.title': 'Interactive images',
+  'directorPanel.tuning.image.configure': 'Configure model',
   'directorPanel.tuning.image.automatic': 'Generate automatically',
   'directorPanel.tuning.image.automaticHint': 'Create story images on a turn interval; turn this off for manual generation only.',
   'directorPanel.tuning.image.interval': 'Generation interval (turns)',

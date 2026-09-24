@@ -537,8 +537,11 @@ type ToolResultProtectedReceipt struct {
 // ToolResult separates bounded model context from display content and
 // structured durability details.
 type ToolResult struct {
-	ModelContent     string                      `json:"model_content"`
-	DisplayContent   string                      `json:"display_content"`
+	ModelContent   string `json:"model_content"`
+	DisplayContent string `json:"display_content"`
+	// Attachments are native images already saved as immutable, owner-relative
+	// copies. Model input includes their pixels independently of text limits.
+	Attachments      []Attachment                `json:"attachments,omitempty"`
 	Details          json.RawMessage             `json:"details,omitempty"`
 	Status           ToolResultStatus            `json:"status"`
 	SyntheticReason  ToolSyntheticReason         `json:"synthetic_reason,omitempty"`
@@ -597,6 +600,10 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 		return ToolResult{}, errors.New("successful tool result cannot be synthetic")
 	}
 	result.ResultRetention = descriptor.ResultRetention
+	if err := validateToolAttachments(result.Attachments); err != nil {
+		return ToolResult{}, err
+	}
+	result.Attachments = cloneAttachments(result.Attachments)
 	normalizedHints, err := normalizeToolResultContextHints(result.ContextHints)
 	if err != nil {
 		return ToolResult{}, err
@@ -635,7 +642,7 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 		}
 		artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.ReadablePath, "\uFFFD"))
 		artifact.ContentType = strings.TrimSpace(artifact.ContentType)
-		if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 {
+		if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 && !IsNativeImageMediaType(artifact.ContentType) {
 			artifact.EstimatedTokens = estimateToolResultTokens(artifact.EstimatedBytes)
 		}
 		artifact.SHA256 = strings.ToLower(strings.TrimSpace(artifact.SHA256))
