@@ -113,7 +113,11 @@ func (turn *ExternalTurn) invokeTool(ctx context.Context, call external.ToolCall
 	if reason := external.HostPermissionError(*turn.config.Config.ActiveAgentRuntime, turn.config.Config.ProjectID, c.workspace, call, definition.Descriptor, files); reason != "" {
 		result = agent.ToolErrorResult(reason, i18n.New(turn.config.Config.Language).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
 	} else {
-		result, callErr = toolruntime.InvokeHostTool(ctx, policy, identity, definition, string(call.Arguments))
+		outcome, err := toolruntime.InvokeHostTool(ctx, policy, identity, definition, string(call.Arguments))
+		result, callErr = outcome.Result, err
+		if callErr != nil && outcome.Invocation == toolruntime.HostToolNotInvoked {
+			result = agent.ToolErrorResult("Tool execution did not start. No tool side effects occurred.", i18n.New(turn.config.Config.Language).T("agentRuntime.toolNotExecuted"))
+		}
 	}
 	if callErr != nil && result.ModelContent == "" {
 		return external.ToolResult{}, callErr

@@ -12,6 +12,11 @@ Denova records only major user-visible features, important compatibility or data
 
 ## [Unreleased]
 
+### Fixed / 修复
+
+- 修复写作与通用对话使用外部运行时时，取消排队中的写入后无法继续会话或切换运行时的问题。
+- Fix external-runtime Writing and General conversations remaining blocked after cancelling a queued write, preventing continuation or runtime switching.
+
 ## [v0.5.0] - 2026-09-22
 
 ### Brief / 简要说明

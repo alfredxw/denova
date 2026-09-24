@@ -164,13 +164,17 @@ func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool prep
 	identity := toolruntime.HostToolIdentity{OperationID: operation.id, ExecutionID: executionID, ProviderCallID: call.ID, SessionID: operation.request.Session.ID, ReviewThreadID: operation.request.ReviewThreadID}
 	var result agent.ToolResult
 	var callErr error
+	var invocation toolruntime.HostToolInvocation
 	if reason := operation.hostPermissionError(call, tool); reason != "" {
 		result = agent.ToolErrorResult(reason, i18n.New(operation.request.Locale).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
 	} else {
-		result, callErr = toolruntime.InvokeHostTool(ctx, operation.request.ToolPolicy, identity, tool.definition, string(call.Arguments))
+		outcome, err := toolruntime.InvokeHostTool(ctx, operation.request.ToolPolicy, identity, tool.definition, string(call.Arguments))
+		result, invocation, callErr = outcome.Result, outcome.Invocation, err
 	}
 	if callErr != nil {
-		if tool.definition.Descriptor.MutationScope != agent.ToolMutationNone && len(result.Details) == 0 && len(result.Effects) == 0 {
+		if invocation == toolruntime.HostToolNotInvoked {
+			result = agent.ToolErrorResult("Tool execution did not start. No tool side effects occurred.", i18n.New(operation.request.Locale).T("agentRuntime.toolNotExecuted"))
+		} else if tool.definition.Descriptor.MutationScope != agent.ToolMutationNone && len(result.Details) == 0 && len(result.Effects) == 0 {
 			// No receipt can establish whether this call changed the domain. Keep
 			// its start unresolved and interrupt the operation; never replay it.
 			return ToolResult{}, callErr
