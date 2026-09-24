@@ -24,6 +24,7 @@ type resourceTestHost struct {
 	calls    atomic.Int32
 	blocking bool
 	entered  chan struct{}
+	requests chan ImageRequest
 }
 
 func (h *resourceTestHost) LibraryItems(ctx context.Context, project string) ([]LibraryItem, error) {
@@ -38,10 +39,13 @@ func (h *resourceTestHost) ReadAsset(ctx context.Context, project, name string) 
 	}
 	return h.image, ctx.Err()
 }
-func (h *resourceTestHost) GenerateImage(ctx context.Context, project, profile string, _ ImageRequest) (ImageBytes, error) {
+func (h *resourceTestHost) GenerateImage(ctx context.Context, project, profile string, input ImageRequest) (ImageBytes, error) {
 	h.calls.Add(1)
 	if project != h.project || profile != h.profile {
 		return ImageBytes{}, failure("PERMISSION_DENIED", "Unexpected Project or model binding")
+	}
+	if h.requests != nil {
+		h.requests <- input
 	}
 	if h.entered != nil {
 		close(h.entered)
@@ -65,7 +69,7 @@ func testResourceGame(t *testing.T, m *Manager, project string) Release {
 	if err := readJSON(path, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	manifest.Permissions.Required = []string{"library.read", "assets.read", "images.generate"}
+	manifest.Permissions.Required = []string{"library.read", "library.write", "assets.read", "assets.write", "images.generate"}
 	manifest.ModelSlots = []ModelSlot{{ID: "art", TitleKey: "writer", Kind: "image", Required: true}}
 	if err := writeJSON(path, manifest); err != nil {
 		t.Fatal(err)

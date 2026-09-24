@@ -1,7 +1,7 @@
 # Platform test fixtures
 
 These minimal packages exercise the public manifest, settings, HTTP runtime,
-Agent and storage contracts. They have no dependency on `templates/` and are
+Agent and storage contracts. They have no dependency on `extensionassets/` and are
 never embedded in the application. Tests copy `runtime/` and a package directory
 into their own temporary Project before importing it through normal APIs.
 

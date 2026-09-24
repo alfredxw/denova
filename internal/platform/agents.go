@@ -65,7 +65,7 @@ type RunRef struct {
 }
 type RunResult struct {
 	Run        RunRef `json:"run"`
-	Status     string `json:"status"`
+	Status     string `json:"status" jsonschema:"enum=accepted,enum=running,enum=waiting,enum=completed,enum=failed,enum=aborted,enum=incomplete"`
 	Text       string `json:"text"`
 	Error      *Error `json:"error,omitempty"`
 	Completion *struct {
@@ -166,7 +166,7 @@ func (s *AgentService) definition(runtime *Runtime, caller *activation, id strin
 type EnsureAgentSession struct {
 	ProjectID  string `json:"projectId"`
 	Definition string `json:"definition"`
-	Key        string `json:"key"`
+	Key        string `json:"key" jsonschema:"minLength=1,maxLength=256"`
 }
 
 func (s *AgentService) ensure(ctx context.Context, runtime *Runtime, caller *activation, request EnsureAgentSession) (AgentSession, bool, error) {

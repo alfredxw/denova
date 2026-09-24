@@ -14,14 +14,12 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
-- 新增统一扩展管理与工作台开发流程：支持从 GitHub 或本地安装游戏和插件、按提交检查更新，以及启停、独有设置表单与 TOML 编辑、模板创建、构建、独立预览与导出。
-- Added unified extension management and workbench development: install games and plugins from GitHub or local files, check upstream updates, enable, configure through forms or TOML, create, build, preview and export.
+- 新增统一扩展管理与工作台开发流程：支持从 GitHub 或本地安装游戏和插件、按提交检查更新，以及启停、独有设置表单、模板创建、构建、独立预览与导出。
+- Added unified extension management and workbench development: install games and plugins from GitHub or local files, check upstream updates, enable, configure through forms, create, build, preview and export.
 - 游戏页支持在新建故事线时选择已安装游戏、设置默认游戏，并按故事线保存和恢复各自的进度；游戏可使用工具插件与私有 NPC。
 - Games now supports installed game types and a default game during storyline creation, with separate persistent saves, shared tool plugins and private NPCs.
-- 扩展可组合资料库、Agent 和图像生成，并为已有互动故事实现自己的界面与交互；提供「余光来信」AI 视觉小说开发示例及扩展手册。
-- Extensions can compose the library, Agents and image generation, and build custom interfaces for existing interactive stories. Includes the Afterglow Letters AI visual novel example and extension development handbook.
-- 扩展页统一管理插件工具，启用后自动供写作、工作台、内置游戏及委派 Agent 使用；后续任务采用当前安装版本与全局设置，沿用现有审批方式。
-- Manage plugin tools in Extensions and make enabled tools available to Writing, Workbench, built-in Game and delegated Agents. New tasks use the installed versions and shared settings with existing approval policies.
+- 扩展页统一管理插件工具，启用后自动供写作、工作台、内置游戏及委派 Agent 使用；后续任务采用当前安装版本及对应设置，沿用现有审批方式。
+- Manage plugin tools in Extensions and make enabled tools available to Writing, Workbench, built-in Game and delegated Agents. New tasks use the installed versions and their settings with existing approval policies.
 
 ## [v0.5.0] - 2026-09-22
 

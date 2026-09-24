@@ -24,6 +24,7 @@ import (
 	imageapp "denova/internal/app/image"
 	loreapp "denova/internal/app/lore"
 	modelsapp "denova/internal/app/models"
+	platformapp "denova/internal/app/platform"
 	projectbookapp "denova/internal/app/projectbook"
 	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
@@ -200,9 +201,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("initialize canonical Agent Session Store: %w", err)
 	}
 	app.platform = platform.New(dataDir, registry)
-	app.platform.ConfigureAgents(canonicalSessions, app.platformModel)
-	app.platform.ConfigureResources(platformResourceHost{app: app})
-	app.platform.ConfigureStories(platformStoryHost{app: app})
+	app.platform.ConfigureAgents(canonicalSessions, platformapp.NewModels(platformHost{app}).Resolve)
+	app.platform.ConfigureResources(platformapp.NewResources(platformHost{app}))
+	app.platform.ConfigureStories(platformapp.NewStories(platformHost{app}))
 	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,

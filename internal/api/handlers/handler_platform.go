@@ -119,13 +119,13 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 		respond(manager.List(platform.Kind(parts[1])))
 		return
 	}
-	if method == "GET" && (len(parts) == 3 && parts[0] == "candidates" && (parts[2] == "settings" || parts[2] == "setup") || len(parts) == 4 && parts[0] == "packages" && parts[1] == "game" && parts[3] == "setup") {
+	if method == "GET" && (len(parts) == 3 && parts[0] == "candidates" && parts[2] == "setup" || len(parts) == 4 && parts[0] == "packages" && parts[1] == "game" && parts[3] == "setup") {
 		locale := c.Query("locale")
 		if locale != "zh-CN" {
 			locale = "en-US"
 		}
 		if parts[0] == "candidates" {
-			respond(manager.CandidateConfiguration(parts[1], parts[2], locale))
+			respond(manager.CandidateSetup(parts[1], locale))
 		} else {
 			respond(manager.SetupConfiguration(parts[2], c.Query("releaseId"), locale))
 		}
@@ -198,25 +198,21 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 		respond(manager.Impact(platform.Kind(parts[1]), parts[2]))
 		return
 	}
-	if len(parts) >= 4 && parts[0] == "packages" && parts[3] == "settings" {
+	if len(parts) == 4 && parts[0] == "packages" && parts[3] == "settings" {
 		locale := c.Query("locale")
 		if locale != "zh-CN" {
 			locale = "en-US"
 		}
 		if len(parts) == 4 && method == "GET" {
-			respond(manager.PackageConfiguration(platform.Kind(parts[1]), parts[2], locale))
+			respond(manager.PackageConfiguration(platform.ReleaseRef{Package: platform.PackageRef{Kind: platform.Kind(parts[1]), ID: parts[2]}, ReleaseID: c.Query("releaseId")}, locale))
 			return
 		}
-		if len(parts) == 4 && method == "PUT" || len(parts) == 5 && parts[4] == "validate" && method == "POST" {
+		if method == "PUT" {
 			var input platform.ConfigurationInput
 			if !decode(&input) {
 				return
 			}
-			if method == "PUT" {
-				respond(manager.SavePackageConfiguration(platform.Kind(parts[1]), parts[2], locale, input))
-			} else {
-				respond(manager.ValidatePackageConfiguration(platform.Kind(parts[1]), parts[2], locale, input))
-			}
+			respond(manager.SavePackageConfiguration(platform.Kind(parts[1]), parts[2], locale, input))
 			return
 		}
 	}

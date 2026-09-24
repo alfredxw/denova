@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -195,7 +193,7 @@ func TestSharedPluginSettingsAndScopeIsolation(t *testing.T) {
 	release := testInstall(t, m, testCandidate(t, m, projectID, "tool", "test.shared-tools", Plugin))
 	cfg := pluginTestConfig(t, m, projectID)
 	// Existing conversations use current preferences when preparing new work.
-	if err := os.WriteFile(filepath.Join(m.packagePath(release.Ref.Package), "settings.toml"), []byte("enabled = true\n"), 0600); err != nil {
+	if err := writeBytes(m.settingsPath(release.Ref), []byte("enabled = true\n")); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -242,7 +240,7 @@ func TestSharedPluginChangesApplyToNewExecutions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(m.packagePath(release.Ref.Package), "settings.toml"), []byte("enabled = true\n"), 0600); err != nil {
+	if err := writeBytes(m.settingsPath(release.Ref), []byte("enabled = true\n")); err != nil {
 		t.Fatal(err)
 	}
 	current, err := m.HostAgentTools(cfg, config.AgentKindIDE)

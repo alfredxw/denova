@@ -21,7 +21,7 @@ const MaxLibraryItemBytes = 1 << 20
 // calling extension's scope. It is portable; consumers resolve it with an
 // authenticated request and never persist the resulting browser blob URL.
 type AssetRef struct {
-	Kind string `json:"kind"`
+	Kind string `json:"kind" jsonschema:"enum=project,enum=generated,enum=shared"`
 	Path string `json:"path"`
 }
 
@@ -38,6 +38,12 @@ type LibraryItem struct {
 	Keywords         []string  `json:"keywords,omitempty"`
 	Content          string    `json:"content,omitempty"`
 	Image            *AssetRef `json:"image,omitempty"`
+}
+
+type LibraryPage struct {
+	Items      []LibraryItem `json:"items"`
+	Total      int           `json:"total" jsonschema:"minimum=0"`
+	NextOffset *int          `json:"nextOffset,omitempty" jsonschema:"minimum=0"`
 }
 
 // ResourceHost reuses application services under an explicit Project lease.
@@ -64,8 +70,14 @@ func (s *ResourceService) ServeHTTP(w http.ResponseWriter, request *http.Request
 	switch {
 	case strings.HasPrefix(route, "/library/"):
 		permission = "library.read"
+		if request.Method != http.MethodGet {
+			permission = "library.write"
+		}
 	case strings.HasPrefix(route, "/assets/"):
 		permission = "assets.read"
+		if request.Method != http.MethodGet {
+			permission = "assets.write"
+		}
 	case strings.HasPrefix(route, "/images/"):
 		permission = "images.generate"
 	default:
@@ -87,8 +99,14 @@ func (s *ResourceService) ServeHTTP(w http.ResponseWriter, request *http.Request
 	switch permission {
 	case "library.read":
 		s.serveLibrary(w, request, caller, route)
-	case "assets.read":
-		s.serveAsset(w, request, caller, route)
+	case "library.write":
+		s.serveLibraryWrite(w, request, caller, route)
+	case "assets.read", "assets.write":
+		if route == "/assets/content" && request.URL.Query().Get("kind") != "shared" {
+			s.serveAsset(w, request, caller, route)
+		} else {
+			s.serveSharedContent(w, request, runtime, caller, route)
+		}
 	case "images.generate":
 		s.serveImages(w, request, runtime, caller, route)
 	}
@@ -135,11 +153,7 @@ func (s *ResourceService) serveLibrary(w http.ResponseWriter, request *http.Requ
 		return
 	}
 	query := strings.ToLower(strings.TrimSpace(request.URL.Query().Get("query")))
-	result := struct {
-		Items      []LibraryItem `json:"items"`
-		Total      int           `json:"total"`
-		NextOffset *int          `json:"nextOffset,omitempty"`
-	}{Items: []LibraryItem{}}
+	result := LibraryPage{Items: []LibraryItem{}}
 	for _, item := range items {
 		if query != "" && !strings.Contains(strings.ToLower(strings.Join([]string{item.Name, item.Type, item.BriefDescription, strings.Join(item.Tags, " "), strings.Join(item.Keywords, " ")}, " ")), query) {
 			continue

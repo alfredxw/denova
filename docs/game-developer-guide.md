@@ -1,6 +1,6 @@
 # Denova 游戏开发手册
 
-更新：2026-09-13。接口以当前代码和运行实例的 OpenAPI 为准。
+更新：2026-09-15。接口以当前代码和运行实例的 OpenAPI 为准。
 
 配套：[扩展能力开发手册](extension-development.md) · [插件开发手册](plugin-developer-guide.md) · [系统设计](plugin-platform-design.md) · [HTTP API](plugin-platform-api.md)。
 
@@ -16,12 +16,13 @@
 
 游戏占用内容区，宿主保留故事线切换、退出停止、全屏、导航与设置。切换一级菜单不停止游戏；扩展页停用游戏或依赖只阻止新启动，已有实例可继续至正常停止。修改实际授权会先停止受影响的实例，游戏开局参数仍在故事线中配置。开发预览和测试存档统一在工作台管理；重置测试存档会先备份。
 
-## 游戏示例
+## 独立游戏引擎
 
-仓库保留一个完整游戏参考「余光来信」，位于 internal/platform/templates/galgame/，默认不安装、不启用，也不作为创建选项。它演示实时对话式视觉小说：Story 正文直接流入舞台，角色立绘、背景和 CG 由作品呈现。复制示例目录及 common/client.mjs 到独立源码项目即可开发。详见[扩展能力开发手册](extension-development.md)。
+具体游戏引擎通过扩展安装流程接入，不随平台默认安装。已安装发行和存档继续按原身份使用；平台提供的 Story、资料库、图像和资源能力见[扩展能力开发手册](extension-development.md)。
 
+## 自管游戏的角色聊天组合
 
-index.html 与 style.css 决定界面，game.mjs 展示完整 API 调用，locales 中保存独立中英文文案。模板无需构建与 Node 后端。更换角色时同步修改私有定义、game.uses.agents、game.mjs 联系人与两份语言资源；改变已有角色定义应使用新的会话 key。聊天输入上限为 8000 个 UTF-16 代码单元，超出时输入框阻止继续输入；历史按 50 条分页，可继续加载更早记录。模型回复没有总运行时长限制，玩家可以停止回复。
+自定义角色聊天游戏可以通过独立 HTML／CSS 界面、私有 Agent 定义和平台会话组成，不要求 Node 后端。更换角色时同步修改私有定义、game.uses.agents、联系人和两份语言资源；改变已有角色定义应使用新的会话 key。历史可按 50 条分页继续读取；模型回复没有总运行时长限制，应保留玩家停止入口。以下说明适用于自管游戏的 Agent 组合；复用 Story 的游戏由原生 Story 执行剧情。
 
 模板使用已有 HTTP/JSON API，不依赖单独发布的 SDK。通用 client.mjs 仅负责凭证握手和 fetch；可以直接用其他 HTTP 客户端实现相同协议。
 
@@ -53,7 +54,7 @@ const result = await client.request(`/agents/sessions/${session.ref.sessionId}/r
 
 游戏可在 `game.cover` 声明封面图片的源码相对路径，例如 `"cover": "cover.png"`，同时将该文件加入 `distribution.files`。支持 PNG、JPEG、WebP、GIF，最大 4 MiB，建议 3:4 竖版。宿主从已安装的冻结发行读取封面，不启动游戏、不加载远程图片或 SVG。未声明或加载失败时使用游戏图标；插件不展示封面。源码清单编辑器提供可选路径输入。
 
-「余光来信」提供对白文字大小和自动播放间隔设置，通过双语 schema 展示，保存在扩展设置中，运行时读取 context.settings；保存后下次启动生效。
+游戏可通过扩展设置保存文字大小、静音和总音量。预览只在当前页面应用，不写正式用户配置。拥有 settings.write 的运行视图可以经 `/settings` 原生 CAS 保存，并将返回值立即应用到自己的界面；其他已打开视图仍保留原配置直到重新加载。宿主语言、主题和显隐变化通过受来源校验的消息交付。
 
 denova.game.json 至少声明 manifestVersion: 1、id、version、apiMajor: 1、中英文 name、permissions、views 和 game。不能包含公共 contributes；私有能力放在 definitions。
 
@@ -92,7 +93,7 @@ Node 后端直接管理自己的 dataDir；这类游戏不能同时用文件 API
 
 角色聊天示例先将角色 ID、稳定 commandId 和完整玩家输入保存到 messages.json，再提交 Agent 请求；请求结束后从平台读取聊天历史，再清除待处理请求。回答与完成收据留在平台 canonical journal，不在游戏文件另存一份聊天正文。刷新或重启后重用同一个 commandId 找回原请求。状态为 incomplete 时历史仍保留，不自动重做可能产生外部副作用的调用。保存冲突或网络错误会显示重新连接入口，重新读取最新 revision 后恢复请求；同一时间只发送一条消息，但仍可切换联系人查看历史。
 
-一个 Agent 会话只使用其 Product Session JSONL 保存正文、运行记录、配置与请求收据。索引可以删除后重建，runs 目录和浏览器存储不是恢复事实源。自管存档引用完成记录不等于支持任意回档或删除未来 NPC 记忆。复用 Story 时，使用与确切回合修订绑定的扩展记录；示例的呈现 Agent 按回合修订独立建会话，避免跨分支带入未来内容。
+一个 Agent 会话只使用其 Product Session JSONL 保存正文、运行记录、配置与请求收据。索引可以删除后重建，runs 目录和浏览器存储不是恢复事实源。自管存档引用完成记录不等于支持任意回档或删除未来 NPC 记忆。Story 游戏可从原生正文解析演出，用确切分支、回合和正文修订绑定扩展记录，不另建呈现 Agent 会话；创作 Agent 只负责资料与作品草稿。
 
 ## 更换发行和备份
 
@@ -108,4 +109,4 @@ Node 后端直接管理自己的 dataDir；这类游戏不能同时用文件 API
 
 ## 游戏独有设置
 
-游戏与插件共用[扩展设置标准](extension-settings.md)。扩展页的 settings 应用于该游戏的所有故事线，在下次启动时生效；game.setup 在新建故事线时生成开局表单。自管游戏保存于 instance.json；复用 Story 的游戏随绑定记录写入该 Story journal。运行时分别读取 context.settings 和 context.setup。全局设置修改不会改写存档进度或开局参数。
+游戏与插件共用[扩展设置标准](extension-settings.md)。扩展页的 settings 应用于绑定同一发行的故事线，在下次启动时生效；game.setup 在新建故事线时生成开局表单。自管游戏保存于 instance.json；复用 Story 的游戏随绑定记录写入该 Story journal。运行时分别读取 context.settings 和 context.setup。发行设置修改不会改写存档进度或开局参数。

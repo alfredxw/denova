@@ -26,8 +26,8 @@ func TestExportInstalledPreservesReleaseWithoutLocalData(t *testing.T) {
 				t.Fatal(err)
 			}
 			release := testInstall(t, m, candidate)
-			localSettings := filepath.Join(m.packagePath(release.Ref.Package), "settings.toml")
-			if err := os.WriteFile(localSettings, []byte("private_setting = true"), 0600); err != nil {
+			localSettings := m.settingsPath(release.Ref)
+			if err := writeBytes(localSettings, []byte("private_setting = true")); err != nil {
 				t.Fatal(err)
 			}
 			if err := m.SetAvailability(context.Background(), kind, release.Manifest.ID, PackageAvailability{Enabled: false}); err != nil {

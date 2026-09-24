@@ -16,13 +16,17 @@ import (
 // ImageRequest requests one raster from an image slot selected by the user.
 // commandId is stable across transport retries; it must change for a deliberate
 // new generation, including retrying an interrupted or cancelled operation.
+// Optional output controls pass unchanged to native generation; omitted or
+// empty values retain the selected profile's defaults and provider validation.
 type ImageRequest struct {
-	CommandID   string `json:"commandId"`
-	ModelSlot   string `json:"modelSlot"`
-	Prompt      string `json:"prompt"`
-	Size        string `json:"size,omitempty"`
-	AspectRatio string `json:"aspectRatio,omitempty"`
-	Quality     string `json:"quality,omitempty"`
+	CommandID    string `json:"commandId"`
+	ModelSlot    string `json:"modelSlot"`
+	Prompt       string `json:"prompt" jsonschema_description:"English image prompt; 1..65536 UTF-8 bytes."`
+	Size         string `json:"size,omitempty"`
+	AspectRatio  string `json:"aspectRatio,omitempty"`
+	Resolution   string `json:"resolution,omitempty" jsonschema_description:"Native provider resolution. Omitted or empty uses the selected image profile default."`
+	Quality      string `json:"quality,omitempty"`
+	OutputFormat string `json:"outputFormat,omitempty" jsonschema_description:"Native output format: png, jpeg/jpg or webp. Omitted or empty uses the selected image profile default."`
 }
 
 type ImageBytes struct {
@@ -39,7 +43,7 @@ type GeneratedImage struct {
 
 type ImageResult struct {
 	CommandID string           `json:"commandId"`
-	Status    string           `json:"status"`
+	Status    string           `json:"status" jsonschema:"enum=running,enum=completed,enum=failed,enum=cancelled,enum=interrupted"`
 	Images    []GeneratedImage `json:"images"`
 	Error     *Error           `json:"error,omitempty"`
 }

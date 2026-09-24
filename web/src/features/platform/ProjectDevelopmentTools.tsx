@@ -164,7 +164,11 @@ function SourceDevelopmentActions({ source, visible, refreshSignal, beforeAction
     <Dialog open={visible && !!player} onOpenChange={open => { if (!open) void run('Stop preview', async () => { if (player) await management(`/runtimes/${player.id}/stop`, 'POST', {}); setPlayer(null) }) }}>
       <DialogContent className="flex h-[85dvh] max-w-[calc(100vw-2rem)] flex-col sm:max-w-5xl">
         <DialogHeader><DialogTitle>{t('platform.preview')}</DialogTitle><DialogDescription>{t('platform.previewDescription')}</DialogDescription></DialogHeader>
-        {player && <GamePlayer runtime={player} visible={visible} onExit={() => setPlayer(null)} />}
+        {player && <GamePlayer key={player.id} runtime={player} visible={visible} onExit={() => setPlayer(null)} onOpenInstance={async instance => {
+          const next = await management<RuntimeSnapshot>(`/instances/${instance.instanceId}/open`, 'POST', { locale: i18n.language, theme: resolvedTheme })
+          setPlayer(next)
+          refresh()
+        }} />}
       </DialogContent>
     </Dialog>
     <Dialog open={visible && testsOpen} onOpenChange={setTestsOpen}>

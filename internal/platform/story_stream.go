@@ -10,6 +10,10 @@ import (
 func (r *Runtime) serveStoryStream(w http.ResponseWriter, request *http.Request, scope Scope) {
 	started := false
 	err := r.manager.stories.Stream(request.Context(), scope, request.URL.Query().Get("operationId"), func(event StoryStreamEvent) error {
+		// Frozen releases without activity support keep their original event contract.
+		if event.Kind == "activity" && request.URL.Query().Get("includeActivity") != "true" {
+			return nil
+		}
 		if !started {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache")

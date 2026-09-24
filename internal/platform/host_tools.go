@@ -207,7 +207,7 @@ func (call *hostPluginInvocation) runtime(provider string) (*Runtime, error) {
 	add(release.Manifest)
 	sort.Slice(pins, func(i, j int) bool { return pins[i].PluginID < pins[j].PluginID })
 	id := "agent-" + randomToken()
-	runtime, err := m.startRuntime(id, release, call.toolset.scope, pins, RuntimeConfiguration{frozenSettings: call.settings}, call.toolset.models, false, OpenOptions{hostOnly: true})
+	runtime, err := m.startRuntime(id, release, call.toolset.scope, pins, RuntimeConfiguration{frozenSettings: call.settings}, call.toolset.models, OpenOptions{hostOnly: true})
 	if err != nil {
 		return nil, err
 	}

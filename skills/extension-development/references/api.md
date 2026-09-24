@@ -208,17 +208,20 @@ x-descriptionKey. Keys must resolve to strings in both manifest.locales files.
 Localized enum labels use oneOf entries with const and x-titleKey. UI hints may
 use ui:titleKey, ui:descriptionKey, ui:helpKey and ui:placeholderKey.
 
-The trusted Extensions page provides the form, TOML editor, validation and save.
+The trusted Extensions page provides the form, validation and save.
 Do not implement a settings webview or call management APIs from an extension.
-One user settings.toml per package is shared across releases. Tables merge with
+Each release has its own settings/<releaseId>/settings.toml. Tables merge with
 release defaults recursively; arrays and scalars replace. Saved changes apply on
 next start. Read context.settings from the handshake, GET /context or backend
 bootstrap. Preview uses defaults and explicit test values, not installed settings.
 
 Game creation parameters use game.setup with the same declaration format. They
-are saved with the instance and exposed as context.setup, separately from shared
-settings. Keep schema changes compatible with releases still pinned by saves;
-the host rejects incompatible saves and installs without silently resetting data.
+are saved with the instance and exposed as context.setup, separately from release
+settings. Updates copy prior overrides only when the target has none. Invalid
+inherited values remain available for form repair and block activation, not
+installation. Save with {releaseId, expectedRevision, overrides}; older saves do
+not constrain another release. Preview identity follows its release; do not send
+a preview flag when creating an instance or activating a plugin.
 Supported values are strings, booleans, finite safe numbers, arrays and tables.
 No null, nonfinite values or native TOML dates; use strings for dates. Settings
 and each definition are limited to 1 MiB. Model credentials remain host-owned.

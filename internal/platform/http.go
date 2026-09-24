@@ -40,7 +40,7 @@ func ErrorResponse(err error) (int, *Error) {
 		status = http.StatusNotFound
 	case "PERMISSION_DENIED":
 		status = http.StatusForbidden
-	case "NOT_CONFIGURED", "UNSUPPORTED", "API_INCOMPATIBLE", "DEPENDENCY_UNAVAILABLE", "SESSION_BUSY", "DOCUMENT_CONFLICT", "CONFIGURATION_CONFLICT", "IDEMPOTENCY_CONFLICT", "SAVE_INCOMPATIBLE", "CURSOR_EXPIRED":
+	case "NOT_CONFIGURED", "UNSUPPORTED", "API_INCOMPATIBLE", "DEPENDENCY_UNAVAILABLE", "SESSION_BUSY", "DOCUMENT_CONFLICT", "IDEMPOTENCY_CONFLICT", "SAVE_INCOMPATIBLE", "CURSOR_EXPIRED":
 		status = http.StatusConflict
 	case "LIMIT_EXCEEDED":
 		status = http.StatusRequestEntityTooLarge
@@ -138,12 +138,16 @@ func (r *Runtime) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	switch {
 	case request.Method == "GET" && route == "/context":
 		writeResponse(w, 200, caller.context)
+	case route == "/settings":
+		r.serveSettings(w, request, caller)
 	case request.Method == "GET" && route == "/capabilities":
 		writeResponse(w, 200, map[string]any{"permissions": caller.grants, "apiMajor": APIMajor, "limits": map[string]int{"requestBytes": MaxDefinitionBytes, "fileBytes": MaxFileBytes, "instructionsBytes": 256 << 10, "assetBytes": MaxAssetBytes, "libraryItemBytes": MaxLibraryItemBytes, "libraryPageItems": 100, "imagePromptBytes": 64 << 10}, "schemaDialect": "https://json-schema.org/draft/2020-12/schema"})
 	case request.Method == "GET" && route == "/openapi.json":
 		writeResponse(w, 200, OpenAPI())
 	case request.Method == "GET" && route == "/contributions":
 		writeResponse(w, 200, r.contributionCatalog(caller))
+	case route == "/story/instances" && request.Method == http.MethodPost:
+		r.serveCreateStory(w, request, caller)
 	case route == "/story" || strings.HasPrefix(route, "/story/"):
 		r.serveStory(w, request, caller, route)
 	case strings.HasPrefix(route, "/library/") || strings.HasPrefix(route, "/assets/") || strings.HasPrefix(route, "/images/"):
@@ -325,11 +329,7 @@ func (r *Runtime) serveData(w http.ResponseWriter, request *http.Request, caller
 		return
 	}
 	name := request.URL.Query().Get("path")
-	var mutation struct {
-		Path             string  `json:"path"`
-		Content          string  `json:"content"`
-		ExpectedRevision *string `json:"expectedRevision"`
-	}
+	var mutation ContentDocument
 	if request.Method == "PUT" || request.Method == "DELETE" {
 		if err := readRequest(request, &mutation); err != nil {
 			writeError(w, err)

@@ -29,7 +29,7 @@ func TestConfigurationTOMLAndValidation(t *testing.T) {
 			t.Fatalf("accepted invalid settings: %s", raw)
 		}
 	}
-	if _, err := configurationInput(ConfigurationInput{Format: "values", Overrides: map[string]any{"nil": nil}}); err == nil {
+	if _, err := validateConfiguration(form, map[string]any{"nil": nil}); err == nil {
 		t.Fatal("accepted null")
 	}
 	_, err = validateConfiguration(form, map[string]any{"display": map[string]any{"size": 9}})
@@ -52,7 +52,7 @@ func TestSharedSettingsSurviveUpgradeWithoutChangingRunningGameOrSetup(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := m.PackageConfiguration(Game, release.Manifest.ID, "zh-CN")
+	doc, err := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Game, ID: release.Manifest.ID}}, "zh-CN")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestSharedSettingsSurviveUpgradeWithoutChangingRunningGameOrSetup(t *testin
 	if displaySchema["title"] != "显示设置" {
 		t.Fatalf("unlocalized form: %v", displaySchema)
 	}
-	input := ConfigurationInput{ReleaseID: release.Ref.ReleaseID, ExpectedRevision: doc.Revision, Format: "toml", TOML: "[display]\nvariant = 'full'\n"}
+	input := ConfigurationInput{ReleaseID: release.Ref.ReleaseID, ExpectedRevision: doc.Revision, Overrides: map[string]any{"display": map[string]any{"variant": "full"}}}
 	doc, err = m.SavePackageConfiguration(Game, release.Manifest.ID, "en-US", input)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestSharedSettingsSurviveUpgradeWithoutChangingRunningGameOrSetup(t *testin
 		t.Fatal(err)
 	}
 	next := testInstall(t, m, nextCandidate)
-	nextDoc, err := m.PackageConfiguration(Game, release.Manifest.ID, "en-US")
+	nextDoc, err := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Game, ID: release.Manifest.ID}}, "en-US")
 	if err != nil || !reflect.DeepEqual(nextDoc.Values, doc.Values) {
 		t.Fatalf("upgrade lost settings: %#v %v", nextDoc, err)
 	}
@@ -108,7 +108,7 @@ func TestSharedSettingsSurviveUpgradeWithoutChangingRunningGameOrSetup(t *testin
 		t.Fatalf("upgrade changed save: %#v %v", saved, err)
 	}
 	root := m.packagePath(release.Ref.Package)
-	for _, relative := range []string{"installed.json", "settings.toml", "releases/" + release.Ref.ReleaseID, "releases/" + next.Ref.ReleaseID, "instances/" + instance.ID + "/instance.json"} {
+	for _, relative := range []string{"installed.json", "settings/" + release.Ref.ReleaseID + "/settings.toml", "settings/" + next.Ref.ReleaseID + "/settings.toml", "releases/" + release.Ref.ReleaseID, "releases/" + next.Ref.ReleaseID, "instances/" + instance.ID + "/instance.json"} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestSharedSettingsSurviveUpgradeWithoutChangingRunningGameOrSetup(t *testin
 		t.Fatal(err)
 	}
 	relocated := New(moved, m.registry)
-	restored, err := relocated.PackageConfiguration(Game, release.Manifest.ID, "en-US")
+	restored, err := relocated.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Game, ID: release.Manifest.ID}}, "en-US")
 	if err != nil || !reflect.DeepEqual(restored.Values, doc.Values) {
 		t.Fatalf("relocated settings: %#v %v", restored, err)
 	}
@@ -131,7 +131,7 @@ func TestSharedSettingsSurviveUpgradeWithoutChangingRunningGameOrSetup(t *testin
 	}
 }
 
-func TestSettingsRejectPinnedIncompatibilityAndRepairInvalidFile(t *testing.T) {
+func TestReleaseSettingsAreIndependentAndRepairInvalidFile(t *testing.T) {
 	m, projectID := testManager(t)
 	candidate := testCandidate(t, m, projectID, "static", "test.settings-conflict", Game)
 	old := testInstall(t, m, candidate)
@@ -156,35 +156,37 @@ func TestSettingsRejectPinnedIncompatibilityAndRepairInvalidFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	next := testInstall(t, m, nextCandidate)
-	doc, _ := m.PackageConfiguration(Game, manifest.ID, "en-US")
-	input := ConfigurationInput{ReleaseID: next.Ref.ReleaseID, ExpectedRevision: doc.Revision, Format: "toml", TOML: "extra = true"}
-	_, err = m.SavePackageConfiguration(Game, manifest.ID, "en-US", input)
-	_, problem := ErrorResponse(err)
-	if problem.Code != "CONFIGURATION_CONFLICT" || problem.Version != "1.0.0" {
-		t.Fatalf("pinned conflict: %#v", problem)
+	doc, _ := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Game, ID: manifest.ID}}, "en-US")
+	input := ConfigurationInput{ReleaseID: next.Ref.ReleaseID, ExpectedRevision: doc.Revision, Overrides: map[string]any{"extra": true}}
+	if _, err = m.SavePackageConfiguration(Game, manifest.ID, "en-US", input); err != nil {
+		t.Fatalf("old saves must not constrain new release settings: %v", err)
 	}
-	path := filepath.Join(m.packagePath(next.Ref.Package), "settings.toml")
+	oldValues, err := m.settingsValues(old, "installed", nil)
+	if err != nil || oldValues["extra"] != nil {
+		t.Fatalf("new settings leaked to the old release: %v %v", oldValues, err)
+	}
+	path := filepath.Join(m.packagePath(next.Ref.Package), "settings", next.Ref.ReleaseID, "settings.toml")
 	broken := "[display\nvariant = 'full'"
 	if err := writeBytes(path, []byte(broken)); err != nil {
 		t.Fatal(err)
 	}
-	repair, err := m.PackageConfiguration(Game, manifest.ID, "en-US")
-	if err != nil || repair.Problem == nil || repair.TOML != broken {
+	repair, err := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Game, ID: manifest.ID}}, "en-US")
+	if err != nil || repair.Problem == nil {
 		t.Fatalf("repair form: %#v %v", repair, err)
 	}
-	input.ExpectedRevision, input.TOML = repair.Revision, "[display]\nvariant = 'full'"
+	input.ExpectedRevision, input.Overrides = repair.Revision, map[string]any{"display": map[string]any{"variant": "full"}}
 	if _, err := m.SavePackageConfiguration(Game, manifest.ID, "en-US", input); err != nil {
 		t.Fatal(err)
 	}
 	backups, err := filepath.Glob(filepath.Join(filepath.Dir(path), "backups", "settings-*.toml"))
-	if err != nil || len(backups) != 1 {
+	if err != nil || len(backups) == 0 {
 		t.Fatalf("missing recovery backup: %v %v", backups, err)
 	}
-	prior, _ := os.ReadFile(backups[0])
+	prior, _ := os.ReadFile(backups[len(backups)-1])
 	if string(prior) != broken {
 		t.Fatal("backup did not retain original bytes")
 	}
-	// Invalid overrides also block installing an incompatible target version.
+	// Installation preserves inherited input for repair without blocking updates.
 	manifest.Version = "3.0.0"
 	files[manifest.Settings.Schema] = []byte(strings.ReplaceAll(string(files[manifest.Settings.Schema]), `"const":"full"`, `"const":"invalid"`))
 	files[Game.manifestFile()], _ = json.Marshal(manifest)
@@ -192,8 +194,13 @@ func TestSettingsRejectPinnedIncompatibilityAndRepairInvalidFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Install(invalidCandidate.ID, old.Grants); err == nil {
-		t.Fatal("installed incompatible settings schema")
+	installed := testInstall(t, m, invalidCandidate)
+	configuration, err := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Game, ID: manifest.ID}}, "en-US")
+	if err != nil || configuration.Problem == nil {
+		t.Fatalf("inherited settings need repair: %#v %v", configuration, err)
+	}
+	if _, err := m.settingsValues(installed, "installed", nil); err == nil {
+		t.Fatal("started with incompatible settings")
 	}
 }
 
@@ -216,11 +223,11 @@ func TestPluginProviderConsumesSettingsOnlyOnNextStart(t *testing.T) {
 		}
 	}
 	count(runtime, 3)
-	doc, err := m.PackageConfiguration(Plugin, release.Manifest.ID, "en-US")
+	doc, err := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Plugin, ID: release.Manifest.ID}}, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.SavePackageConfiguration(Plugin, release.Manifest.ID, "en-US", ConfigurationInput{ReleaseID: release.Ref.ReleaseID, ExpectedRevision: doc.Revision, Format: "toml", TOML: "enabled = true"}); err != nil {
+	if _, err := m.SavePackageConfiguration(Plugin, release.Manifest.ID, "en-US", ConfigurationInput{ReleaseID: release.Ref.ReleaseID, ExpectedRevision: doc.Revision, Overrides: map[string]any{"enabled": true}}); err != nil {
 		t.Fatal(err)
 	}
 	reused, err := m.ActivatePlugin(context.Background(), input)

@@ -210,7 +210,7 @@ func validateManifest(kind Kind, files map[string][]byte) (Manifest, error) {
 		}
 	}
 	for _, permission := range append(slices.Clone(m.Permissions.Required), m.Permissions.Optional...) {
-		if !slices.Contains([]string{"agents.run", "tools.invoke", "tools.write", "gameData", "pluginData", "library.read", "assets.read", "images.generate", "stories.read", "stories.write"}, permission) {
+		if !slices.Contains([]string{"agents.run", "tools.invoke", "tools.write", "gameData", "pluginData", "library.read", "library.write", "assets.read", "assets.write", "images.generate", "stories.read", "stories.write", "settings.write"}, permission) {
 			return m, failure("UNSUPPORTED", "Unsupported permission %s", permission)
 		}
 		if permissions[permission] {

@@ -14,6 +14,13 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
+type agentRunInput struct {
+	CommandID string `json:"commandId" jsonschema:"minLength=1,maxLength=256"`
+	Input     struct {
+		Text string `json:"text"`
+	} `json:"input"`
+}
+
 type streamEvent struct {
 	sequence uint64
 	Kind     string
@@ -145,12 +152,7 @@ func (s *AgentService) ServeHTTP(w http.ResponseWriter, request *http.Request, r
 		parts := strings.Split(strings.TrimPrefix(route, "/agents/sessions/"), "/")
 		id := parts[0]
 		if len(parts) == 2 && parts[1] == "runs" && request.Method == "POST" {
-			var input struct {
-				CommandID string `json:"commandId"`
-				Input     struct {
-					Text string `json:"text"`
-				} `json:"input"`
-			}
+			var input agentRunInput
 			if err := readRequest(request, &input); err != nil {
 				writeError(w, err)
 				return

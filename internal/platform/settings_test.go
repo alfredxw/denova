@@ -38,7 +38,7 @@ func TestInstalledSettingsPreserveSourceAndPreviewIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settings := ConfigurationInput{ExpectedRevision: revisionfile.MissingRevision, ReleaseID: release.Ref.ReleaseID, Format: "values", Overrides: map[string]any{"tone": "bright"}}
+	settings := ConfigurationInput{ExpectedRevision: revisionfile.MissingRevision, ReleaseID: release.Ref.ReleaseID, Overrides: map[string]any{"tone": "bright"}}
 	if err := m.SetAvailability(context.Background(), Plugin, manifest.ID, PackageAvailability{Enabled: false}); err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +72,11 @@ func TestInstalledSettingsPreserveSourceAndPreviewIsolation(t *testing.T) {
 	if _, err := m.SavePackageConfiguration(Plugin, manifest.ID, "en-US", settings); err == nil {
 		t.Fatal("invalid schema value accepted")
 	}
-	retained, _ := m.settingsOverrides(release.Ref.Package)
+	retained, _ := m.settingsOverrides(release.Ref)
 	if !reflect.DeepEqual(retained, map[string]any{"tone": "bright"}) {
 		t.Fatal("failed settings write changed persisted values")
 	}
-	doc, _ := m.PackageConfiguration(Plugin, manifest.ID, "en-US")
+	doc, _ := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: Plugin, ID: manifest.ID}}, "en-US")
 	settings.ExpectedRevision = doc.Revision
 	settings.Overrides = map[string]any{}
 	if _, err := m.SavePackageConfiguration(Plugin, manifest.ID, "en-US", settings); err != nil {

@@ -13,7 +13,7 @@ export interface ActivityItem {
 
 const ACTIVITY_ORDER_STORAGE_KEY = 'nova.activity.order.workspace.v1'
 const ACTIVITY_HIDDEN_STORAGE_KEY = 'nova.activity.hidden.workspace.v1'
-const DEFAULT_ACTIVITY_ORDER: ActivityItemID[] = ['writing', 'story', 'extensions', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_ACTIVITY_ORDER: ActivityItemID[] = ['writing', 'story', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations', 'extensions']
 
 export function sortActivityItems(items: ActivityItem[], order: ActivityItemID[], defaultOrder: ActivityItemID[]) {
   const orderIndex = new Map<ActivityItemID, number>()

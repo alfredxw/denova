@@ -131,8 +131,6 @@ export const managementBase = '/api/platform/manage'
 
 export interface ConfigurationProblem {
   messageKey: string
-  packageId?: string
-  version?: string
   fields?: { path: string[]; keyword: string }[]
 }
 export interface ConfigurationDocument {
@@ -141,9 +139,12 @@ export interface ConfigurationDocument {
   form: { schema: import('@rjsf/utils').RJSFSchema; uiSchema: import('@rjsf/utils').UiSchema; defaults: Record<string, unknown> } | null
   overrides: Record<string, unknown>
   values: Record<string, unknown>
-  toml: string
   problem?: ConfigurationProblem
 }
+export interface RuntimeSetupDocument extends ConfigurationDocument {
+  models: { key: string; kind: string; required: boolean }[]
+}
+
 export function management<T>(
   path: string,
   method = 'GET',

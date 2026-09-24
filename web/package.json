@@ -11,7 +11,7 @@
     "check:i18n": "node scripts/check-i18n-keys.mjs",
     "generate-icons": "node scripts/generate-pwa-icons.mjs",
     "test": "pnpm test:unit && pnpm test:playwright && pnpm test:extensions",
-    "test:extensions": "node --test ../internal/platform/creative_toolkit_test.mjs ../internal/platform/galgame_template_test.mjs ../internal/platform/galgame_browser_test.mjs",
+    "test:extensions": "node --test ../internal/extensions/creative-toolkit/tools.test.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:playwright": "playwright test",

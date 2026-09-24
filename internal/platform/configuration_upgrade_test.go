@@ -47,15 +47,15 @@ func TestAddingSettingsPreservesUnconfiguredPinnedReleases(t *testing.T) {
 				instanceID = runtime.ID
 			}
 			next := testInstall(t, m, candidate)
-			doc, err := m.PackageConfiguration(kind, next.Manifest.ID, "en-US")
+			doc, err := m.PackageConfiguration(ReleaseRef{Package: PackageRef{Kind: kind, ID: next.Manifest.ID}}, "en-US")
 			if err != nil {
 				t.Fatal(err)
 			}
-			toml := "[display]\nvariant = 'full'\n"
+			overrides := map[string]any{"display": map[string]any{"variant": "full"}}
 			if kind == Plugin {
-				toml = "enabled = true"
+				overrides = map[string]any{"enabled": true}
 			}
-			saved, err := m.SavePackageConfiguration(kind, next.Manifest.ID, "en-US", ConfigurationInput{ReleaseID: next.Ref.ReleaseID, ExpectedRevision: doc.Revision, Format: "toml", TOML: toml})
+			saved, err := m.SavePackageConfiguration(kind, next.Manifest.ID, "en-US", ConfigurationInput{ReleaseID: next.Ref.ReleaseID, ExpectedRevision: doc.Revision, Overrides: overrides})
 			if err != nil {
 				t.Fatalf("adding settings blocked by a release without a declaration: %v", err)
 			}

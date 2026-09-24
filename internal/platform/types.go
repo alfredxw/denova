@@ -6,6 +6,7 @@ package platform
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -33,13 +34,22 @@ type LocalizedText struct {
 }
 
 type PackageRef struct {
-	Kind Kind   `json:"kind"`
+	Kind Kind   `json:"kind" jsonschema:"enum=plugin,enum=game"`
 	ID   string `json:"id"`
 }
 
 type ReleaseRef struct {
 	Package   PackageRef `json:"package"`
 	ReleaseID string     `json:"releaseId"`
+}
+
+// Environment is derived from the release identity; callers cannot label an
+// installed release as a preview or use a preview against production data.
+func (ref ReleaseRef) Environment() string {
+	if strings.HasPrefix(ref.ReleaseID, "preview-") {
+		return "preview"
+	}
+	return "installed"
 }
 
 type Command struct {
@@ -245,8 +255,6 @@ type Instance struct {
 
 type Error struct {
 	Fields     []ConfigurationIssue `json:"fields,omitempty"`
-	PackageID  string               `json:"packageId,omitempty"`
-	Version    string               `json:"version,omitempty"`
 	Code       string               `json:"code"`
 	MessageKey string               `json:"messageKey"`
 	Diagnostic string               `json:"diagnostic"`

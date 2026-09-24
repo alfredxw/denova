@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useGameCreationRequest } from './extension-navigation'
 import type { StoryPickerProps } from '@/features/interactive/components/StoryPicker'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { MobileWorkspaceHeaderScope } from '@/components/layout/mobile-workspace-header'
 import { GameStoryContext, type GameChoice } from './game-story-context'
 import { InstalledGameStory } from './InstalledGameStory'
 import { BUILTIN_GAME_ID, management, localized, platformError, type CatalogEntry, type GamePreferences, type Instance } from './api'
@@ -104,6 +105,9 @@ export function GameStories({ projectId, active, builtinPicker, children }: {
   }}>
     {error && <InlineErrorNotice className="m-3" message={platformError(error)} />}
     {selected && <InstalledGameStory key={selected.instanceId} instance={selected} item={installed.find(item => item.id === selected.gameId)} active={active} picker={picker} onRefresh={() => { void refresh() }} />}
-    <div hidden={!!selected} className={selected ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>{children}</div>
+    {/* Retained native controls must not escape the hidden subtree through the mobile header portal. */}
+    <MobileWorkspaceHeaderScope visible={!selected}>
+      <div hidden={!!selected} className={selected ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>{children}</div>
+    </MobileWorkspaceHeaderScope>
   </GameStoryContext.Provider>
 }

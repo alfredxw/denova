@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -116,7 +115,7 @@ func (m *Manager) OpenInstance(ctx context.Context, id string, options OpenOptio
 	if !slices.Equal(pins, instance.Dependencies) {
 		return RuntimeSnapshot{}, failure("DEPENDENCY_UNAVAILABLE", "Saved dependency binding is incomplete")
 	}
-	runtime, err := m.startRuntime(id, release, Scope{Kind: "game-instance", InstanceID: id, ProjectID: instance.ProjectID, StoryID: instance.StoryID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, instance.Preview, options)
+	runtime, err := m.startRuntime(id, release, Scope{Kind: "game-instance", InstanceID: id, ProjectID: instance.ProjectID, StoryID: instance.StoryID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, options)
 	if err != nil {
 		return RuntimeSnapshot{}, err
 	}
@@ -130,14 +129,10 @@ type ActivatePlugin struct {
 	Scope     Scope             `json:"scope"`
 	Settings  map[string]any    `json:"settings"`
 	Models    map[string]string `json:"models"`
-	Preview   bool              `json:"preview"`
 	OpenOptions
 }
 
 func (m *Manager) ActivatePlugin(ctx context.Context, request ActivatePlugin) (RuntimeSnapshot, error) {
-	if request.Preview != strings.HasPrefix(request.ReleaseID, "preview-") {
-		return RuntimeSnapshot{}, failure("INVALID_ARGUMENT", "Preview releases require isolated targets")
-	}
 	if request.Scope.Kind != "project" && request.Scope.Kind != "session" {
 		return RuntimeSnapshot{}, failure("INVALID_ARGUMENT", "Plugin test target must be an explicit Project or Session")
 	}
@@ -149,8 +144,9 @@ func (m *Manager) ActivatePlugin(ctx context.Context, request ActivatePlugin) (R
 	}
 	m.runtimeMu.Lock()
 	defer m.runtimeMu.Unlock()
+	environment := (ReleaseRef{ReleaseID: request.ReleaseID}).Environment()
 	id := stableID("plugin", request.PluginID, request.Scope.Kind, request.Scope.ProjectID, request.Scope.SessionID)
-	if request.Preview {
+	if environment == "preview" {
 		id = "preview-" + stableID(id, request.ReleaseID)
 		request.Scope = Scope{Kind: "project", ProjectID: request.Scope.ProjectID, SessionID: id}
 	}
@@ -177,10 +173,6 @@ func (m *Manager) ActivatePlugin(ctx context.Context, request ActivatePlugin) (R
 	if err != nil {
 		return RuntimeSnapshot{}, err
 	}
-	environment := "installed"
-	if request.Preview {
-		environment = "preview"
-	}
 	configuration, err := m.settingsValues(release, environment, request.Settings)
 	if err != nil {
 		return RuntimeSnapshot{}, err
@@ -188,7 +180,7 @@ func (m *Manager) ActivatePlugin(ctx context.Context, request ActivatePlugin) (R
 	if err := m.validateModels(release, pins, request.Scope.ProjectID, request.Models); err != nil {
 		return RuntimeSnapshot{}, err
 	}
-	runtime, err := m.startRuntime(id, release, request.Scope, pins, RuntimeConfiguration{Settings: configuration}, request.Models, request.Preview, request.OpenOptions)
+	runtime, err := m.startRuntime(id, release, request.Scope, pins, RuntimeConfiguration{Settings: configuration}, request.Models, request.OpenOptions)
 	if err != nil {
 		return RuntimeSnapshot{}, err
 	}
@@ -196,7 +188,7 @@ func (m *Manager) ActivatePlugin(ctx context.Context, request ActivatePlugin) (R
 	return runtime.snapshot(), nil
 }
 
-func (m *Manager) startRuntime(id string, owner Release, scope Scope, pins []DependencyPin, configuration RuntimeConfiguration, models map[string]string, preview bool, options OpenOptions) (*Runtime, error) {
+func (m *Manager) startRuntime(id string, owner Release, scope Scope, pins []DependencyPin, configuration RuntimeConfiguration, models map[string]string, options OpenOptions) (*Runtime, error) {
 	parent, err := url.Parse(options.ParentOrigin)
 	if !options.hostOnly && (err != nil || parent.Host == "" || (parent.Scheme != "http" && parent.Scheme != "https") || parent.Path != "") {
 		return nil, failure("INVALID_ARGUMENT", "A trusted parent origin is required")
@@ -236,8 +228,8 @@ func (m *Manager) startRuntime(id string, owner Release, scope Scope, pins []Dep
 		if err := portablepath.PreflightTree(m.releasePath(release.Ref)); err != nil {
 			return nil, err
 		}
-		environment := "installed"
-		if preview {
+		environment := owner.Ref.Environment()
+		if scope.Kind == "upgrade" {
 			environment = "preview"
 		}
 		supplied := map[string]any{}

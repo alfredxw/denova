@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -11,12 +10,10 @@ import (
 	"slices"
 	"strings"
 
+	"denova/extensionassets"
 	"denova/internal/portablepath"
 	"github.com/google/uuid"
 )
-
-//go:embed starters templates/common
-var starterFiles embed.FS
 
 func validateDevelopmentPath(path string) error {
 	if path == "." {
@@ -189,6 +186,7 @@ func (m *Manager) CreateDevelopment(request CreateDevelopment) (Development, err
 		return Development{}, failure("DOCUMENT_CONFLICT", "Development directory must be empty")
 	}
 	starterRoot := "starters/" + string(request.Kind)
+	starterFiles := extensionassets.Files()
 	err = fs.WalkDir(starterFiles, starterRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -234,19 +232,19 @@ func (m *Manager) CreateDevelopment(request CreateDevelopment) (Development, err
 	if err != nil {
 		return Development{}, err
 	}
-	sharedFiles := []string{"DEVELOPMENT.md"}
+	sharedFiles := []string{"starters/DEVELOPMENT.md"}
 	switch request.Kind {
 	case Plugin:
-		sharedFiles = append(sharedFiles, "runtime.mjs")
+		sharedFiles = append(sharedFiles, "sdk/runtime.mjs")
 	case Game:
-		sharedFiles = append(sharedFiles, "client.mjs")
+		sharedFiles = append(sharedFiles, "sdk/client.mjs")
 	}
 	for _, shared := range sharedFiles {
-		data, err := starterFiles.ReadFile("templates/common/" + shared)
+		data, err := starterFiles.ReadFile(shared)
 		if err != nil {
 			return Development{}, err
 		}
-		file, err := directory.OpenFile(shared, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		file, err := directory.OpenFile(filepath.Base(shared), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
 			return Development{}, err
 		}

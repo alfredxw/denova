@@ -43,7 +43,7 @@ export function DevelopmentPreviewDialog({ candidate, projectId, open, onClose, 
         const instance = await management<Instance>('/instances', 'POST', {
           gameId: release.manifest.id, releaseId: release.ref.releaseId,
           title: localized(release.manifest.name, i18n.language), projectId: previewProjectId,
-          setup: setup.configuration, models: setup.models, preview: true,
+          setup: setup.configuration, models: setup.models,
         })
         onPlay(await management(`/instances/${instance.instanceId}/open`, 'POST', options))
         onClose()
@@ -51,7 +51,7 @@ export function DevelopmentPreviewDialog({ candidate, projectId, open, onClose, 
         setRuntime(await management('/runtimes/plugin', 'POST', {
           pluginId: release.manifest.id, releaseId: release.ref.releaseId,
           scope: { kind: 'project', projectId }, settings: setup.configuration,
-          models: setup.models, preview: true, ...options,
+          models: setup.models, ...options,
         }))
       }
     } catch (error) {
@@ -66,7 +66,7 @@ export function DevelopmentPreviewDialog({ candidate, projectId, open, onClose, 
       {runtime ? <ToolConsole runtime={runtime} manifest={candidate.manifest} onStop={() => setRuntime(null)} onFeedback={onFeedback} /> : <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3">
         {storyPreview && <p className="text-sm text-muted-foreground">{t(previewProjectId ? 'platform.storyPreviewProject' : 'platform.storyPreviewProjectRequired')}</p>}
         <RuntimeSetup projectLocked manifest={candidate.manifest}
-          configurationEndpoint={`/candidates/${candidate.candidateId}/${candidate.kind === 'game' ? 'setup' : 'settings'}`}
+          configurationEndpoint={`/candidates/${candidate.candidateId}/setup`}
           value={{ ...setup, projectId: previewProjectId }} onChange={setSetup} />
         {Boolean(candidate.manifest.permissions.optional?.length) && <details>
           <summary className="cursor-pointer text-sm">{t('platform.optionalCapabilities')}</summary>

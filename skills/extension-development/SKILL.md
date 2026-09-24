@@ -26,7 +26,7 @@ The Extensions page manages installed releases and links back to source Projects
    Chinese and English UI strings and support both light and dark themes.
    Extension-specific options use declarative settings with JSON Schema, TOML
    defaults and locale keys; the Extensions page owns the form and persistence.
-   Keep per-story game.setup distinct from shared extension settings.
+   Keep per-story game.setup distinct from release-scoped extension settings.
 4. Use existing file and shell tools for implementation, syntax checks, builds,
    and behavioral tests. Inspect development.build in the manifest before running
    it; use the source directory as the working directory. Static projects may

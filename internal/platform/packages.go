@@ -83,7 +83,7 @@ func (m *Manager) PreviewDirectory(kind Kind, directory string) (Candidate, erro
 	if manifest.Distribution != nil {
 		paths = append(slices.Clone(manifest.Distribution.Files), kind.manifestFile())
 	}
-	files, err := readPackageFiles(root, paths)
+	files, err := readPackageFiles(root.FS(), paths)
 	if err != nil {
 		return Candidate{}, err
 	}
@@ -92,7 +92,7 @@ func (m *Manager) PreviewDirectory(kind Kind, directory string) (Candidate, erro
 
 // Source collection follows its distribution list; installed exports collect
 // every frozen file so their content identity survives an export/import roundtrip.
-func readPackageFiles(root *os.Root, paths []string) (map[string][]byte, error) {
+func readPackageFiles(root fs.FS, paths []string) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	total := 0
 	for _, path := range paths {
@@ -101,7 +101,7 @@ func readPackageFiles(root *os.Root, paths []string) (map[string][]byte, error) 
 				return nil, failure("INVALID_ARGUMENT", "%v", err)
 			}
 		}
-		err := fs.WalkDir(root.FS(), path, func(name string, entry fs.DirEntry, walkErr error) error {
+		err := fs.WalkDir(root, path, func(name string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -322,18 +322,7 @@ func (m *Manager) Install(candidateID string, grants []string) (Release, error) 
 		return Release{}, failure("NOT_FOUND", "Candidate %s is unavailable", candidateID)
 	}
 	manifest := candidate.Manifest
-	form, err := readConfiguration(manifest.Settings, func(name string) ([]byte, error) { return candidate.files[name], nil })
-	if err != nil {
-		return Release{}, err
-	}
-	overrides, err := m.settingsOverrides(PackageRef{Kind: candidate.Kind, ID: manifest.ID})
-	if err != nil {
-		return Release{}, err
-	}
-	if _, err := validateConfiguration(form, overrides); err != nil {
-		return Release{}, err
-	}
-	grants, err = validateGrants(manifest, grants)
+	grants, err := validateGrants(manifest, grants)
 	if err != nil {
 		return Release{}, err
 	}
@@ -371,34 +360,26 @@ func (m *Manager) Install(candidateID string, grants []string) (Release, error) 
 			}
 		}
 	}
-	destination := m.releasePath(release.Ref)
-	if _, err := os.Stat(destination); os.IsNotExist(err) {
-		parent := filepath.Dir(destination)
-		if err := os.MkdirAll(parent, 0o700); err != nil {
-			return Release{}, err
-		}
-		staging, err := os.MkdirTemp(parent, ".install-")
-		if err != nil {
-			return Release{}, err
-		}
-		defer os.RemoveAll(staging)
-		for _, name := range candidate.Files {
-			path := filepath.Join(staging, filepath.FromSlash(name))
-			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-				return Release{}, err
-			}
-			if err := writeBytes(path, candidate.files[name]); err != nil {
-				return Release{}, err
-			}
-		}
-		if err := os.Rename(staging, destination); err != nil {
-			return Release{}, err
-		}
-	} else if err != nil {
+	if err := m.publishCandidate(candidate, release.Ref); err != nil {
 		return Release{}, err
 	}
 	if !slices.ContainsFunc(items[index].Releases, func(r Release) bool { return r.Digest == release.Digest }) {
 		items[index].Releases = append(items[index].Releases, release)
+	}
+	// Inherit user input once, without making old saves constrain new schemas.
+	// Incompatible values remain editable and block activation, not installation.
+	settings := m.settingsPath(release.Ref)
+	if _, err := os.Stat(settings); os.IsNotExist(err) && items[index].CurrentRelease != "" {
+		previous := ReleaseRef{Package: release.Ref.Package, ReleaseID: items[index].CurrentRelease}
+		if raw, err := os.ReadFile(m.settingsPath(previous)); err == nil {
+			if err := writeBytes(settings, raw); err != nil {
+				return Release{}, err
+			}
+		} else if !os.IsNotExist(err) {
+			return Release{}, err
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return Release{}, err
 	}
 	items[index].CurrentRelease = release.Ref.ReleaseID
 	items[index].Source = candidate.Source
@@ -410,6 +391,37 @@ func (m *Manager) Install(candidateID string, grants []string) (Release, error) 
 	}
 	slog.Info("platform_package_installed", "kind", candidate.Kind, "package", manifest.ID, "release", release.Ref.ReleaseID)
 	return release, nil
+}
+
+// Installation and preview publish the same frozen bytes atomically.
+func (m *Manager) publishCandidate(candidate *Candidate, ref ReleaseRef) error {
+	destination := m.releasePath(ref)
+	if _, err := os.Stat(destination); os.IsNotExist(err) {
+		parent := filepath.Dir(destination)
+		if err := os.MkdirAll(parent, 0o700); err != nil {
+			return err
+		}
+		staging, err := os.MkdirTemp(parent, ".install-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(staging)
+		for _, name := range candidate.Files {
+			path := filepath.Join(staging, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				return err
+			}
+			if err := writeBytes(path, candidate.files[name]); err != nil {
+				return err
+			}
+		}
+		if err := publishReleaseDirectory(staging, destination); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *Manager) releasePath(ref ReleaseRef) string {

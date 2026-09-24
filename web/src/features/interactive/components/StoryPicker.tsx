@@ -162,7 +162,7 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
           )
         }}
         renderFooter={(close) => selectingForDelete ? (
-          <div className="sticky bottom-0 mt-1 space-y-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
+          <div className="mt-1 flex flex-col gap-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
             <div className="flex items-center justify-between gap-2 px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">
               <span>{t('storyPicker.selectedCount', { count: selectedStories.length })}</span>
               <Button
@@ -196,7 +196,7 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
             </div>
           </div>
         ) : (
-          <div className="sticky bottom-0 mt-1 space-y-0.5 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
+          <div className="mt-1 flex flex-col gap-0.5 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
             {titleMenu && !hideCreate && <Button variant="ghost" className="w-full justify-start" onClick={() => { close(); onCreate() }}><Plus />{t('chat.new')}</Button>}
             {onOpenHistory && <Button variant="ghost" className="w-full justify-start" onClick={() => { close(); onOpenHistory() }} aria-label={t('storyStage.turnNavigator.label')}><History />{t('storyStage.mobile.history')}</Button>}
             {currentStory && onRenameStory ? (

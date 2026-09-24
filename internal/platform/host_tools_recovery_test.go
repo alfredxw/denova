@@ -2,8 +2,6 @@ package platform
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -77,7 +75,7 @@ func TestPausedPluginTaskRejectsChangedSharedSettingsAfterReopen(t *testing.T) {
 	if err := owner.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(m.packagePath(release.Ref.Package), "settings.toml"), []byte("enabled = true\n"), 0600); err != nil {
+	if err := writeBytes(m.settingsPath(release.Ref), []byte("enabled = true\n")); err != nil {
 		t.Fatal(err)
 	}
 	definition.Tools, err = m.HostAgentTools(cfg, config.AgentKindIDE)

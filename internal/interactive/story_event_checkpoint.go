@@ -132,8 +132,14 @@ func (s *Store) planForStoryAncestorsLocked(handle *storyJournalHandle, ancestor
 }
 
 func (s *Store) stateForStoryAncestorsLocked(handle *storyJournalHandle, ancestorIDs map[string]bool) (map[string]any, error) {
+	return s.stateForStoryAncestorsContextLocked(context.Background(), handle, ancestorIDs)
+}
+
+// The context variant serves cancellable read-only projections without changing
+// the checkpoint reducer used by existing branch creation and recovery paths.
+func (s *Store) stateForStoryAncestorsContextLocked(ctx context.Context, handle *storyJournalHandle, ancestorIDs map[string]bool) (map[string]any, error) {
 	revisions := make(map[string]TurnStateRevisedEvent)
-	if err := scanStoryEventsLocked(handle, func(record StoryEventRecord) error {
+	if err := scanStoryEventsContextLocked(ctx, handle, func(record StoryEventRecord) error {
 		if record.Envelope.Type != StoryEventTypeTurnStateRevised {
 			return nil
 		}
@@ -150,7 +156,7 @@ func (s *Store) stateForStoryAncestorsLocked(handle *storyJournalHandle, ancesto
 	}
 
 	state := initialStoryState()
-	if err := scanStoryEventsLocked(handle, func(record StoryEventRecord) error {
+	if err := scanStoryEventsContextLocked(ctx, handle, func(record StoryEventRecord) error {
 		if !ancestorIDs[record.Envelope.ID] {
 			return nil
 		}
@@ -163,7 +169,8 @@ func (s *Store) stateForStoryAncestorsLocked(handle *storyJournalHandle, ancesto
 			applyStateDeltaToProjection(state, StateDelta{SchemaVersion: delta.SchemaVersion, Ops: delta.Ops, ActorOps: delta.ActorOps})
 		case StoryEventTypeTurn:
 			var turn TurnEvent
-			if err := mapToStruct(record.Raw, &turn); err != nil {
+			// State reduction needs no narrative, thinking or model context.
+			if err := mapToStruct(map[string]any{"id": record.Envelope.ID, "state_delta": record.Raw["state_delta"]}, &turn); err != nil {
 				return err
 			}
 			if revision, ok := revisions[turn.ID]; ok {
@@ -184,12 +191,19 @@ func (s *Store) stateForStoryAncestorsLocked(handle *storyJournalHandle, ancesto
 }
 
 func scanStoryEventsLocked(handle *storyJournalHandle, visit func(StoryEventRecord) error) error {
+	return scanStoryEventsContextLocked(context.Background(), handle, visit)
+}
+
+func scanStoryEventsContextLocked(ctx context.Context, handle *storyJournalHandle, visit func(StoryEventRecord) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if handle == nil || handle.journal == nil {
 		return fmt.Errorf("story journal is unavailable")
 	}
 	head := handle.journal.Head().Cursor
 	for after := conversationjournal.Cursor(0); after < head; {
-		records, err := handle.journal.ReadRange(context.Background(), conversationjournal.Range{
+		records, err := handle.journal.ReadRange(ctx, conversationjournal.Range{
 			After: after, Through: head, Limit: storyCheckpointScanTransactions,
 		})
 		if err != nil {
@@ -197,6 +211,9 @@ func scanStoryEventsLocked(handle *storyJournalHandle, visit func(StoryEventReco
 		}
 		next := after
 		for _, physical := range records {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if physical.Location.Cursor > next {
 				next = physical.Location.Cursor
 			}

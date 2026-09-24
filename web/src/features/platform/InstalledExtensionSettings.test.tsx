@@ -14,7 +14,7 @@ it('keeps settings and permissions visible and saves their drafts independently'
     manifest: { id: 'test.game', version: '1.0.0', apiMajor: 1, name: { 'en-US': 'Game', 'zh-CN': '游戏' }, settings: { schema: 'settings.json', defaults: 'defaults.toml' }, permissions: { required: ['gameData'], optional: ['tools.invoke'] } },
   }
   const item: CatalogEntry = { kind: 'game', id: 'test.game', enabled: true, currentRelease: 'r1', releases: [release], grants: ['gameData'] }
-  const doc = { releaseId: 'r1', revision: 'original', values: { hints: true }, overrides: {}, toml: '', form: { schema: { type: 'object', properties: { hints: { type: 'boolean', title: 'Show hints' } } }, defaults: { hints: true }, uiSchema: {} } }
+  const doc = { releaseId: 'r1', revision: 'original', values: { hints: true }, overrides: {}, form: { schema: { type: 'object', properties: { hints: { type: 'boolean', title: 'Show hints' } } }, defaults: { hints: true }, uiSchema: {} } }
   vi.mocked(management).mockResolvedValueOnce(doc).mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ ...doc, revision: 'saved', values: { hints: false }, overrides: { hints: false } })
   const onDirty = vi.fn()
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -32,5 +32,5 @@ it('keeps settings and permissions visible and saves their drafts independently'
   expect(onDirty).toHaveBeenLastCalledWith(true)
   fireEvent.click(screen.getByRole('button', { name: 'platform.settings.save' }))
   await waitFor(() => expect(onDirty).toHaveBeenLastCalledWith(false))
-  expect(management).toHaveBeenCalledWith('/packages/game/test.game/settings?locale=en-US', 'PUT', { releaseId: 'r1', expectedRevision: 'original', format: 'values', overrides: { hints: false } })
+  expect(management).toHaveBeenCalledWith('/packages/game/test.game/settings?locale=en-US', 'PUT', { releaseId: 'r1', expectedRevision: 'original', overrides: { hints: false } })
 })

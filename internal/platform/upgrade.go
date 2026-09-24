@@ -21,7 +21,7 @@ func (m *Manager) checkUpgrade(ctx context.Context, instance Instance, release R
 	if instance.StoryID != "" {
 		id := ".upgrade-" + uuid.NewString()
 		defer os.RemoveAll(m.instancePath(instance.GameID, id))
-		runtime, err := m.startRuntime(id, release, Scope{Kind: "game-instance", InstanceID: id, ProjectID: instance.ProjectID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, true, OpenOptions{ParentOrigin: "http://127.0.0.1"})
+		runtime, err := m.startRuntime(id, release, Scope{Kind: "upgrade", InstanceID: id, ProjectID: instance.ProjectID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, OpenOptions{ParentOrigin: "http://127.0.0.1"})
 		if err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ func (m *Manager) checkUpgrade(ctx context.Context, instance Instance, release R
 	}); err != nil {
 		return err
 	}
-	runtime, err := m.startRuntime(id, release, Scope{Kind: "game-instance", InstanceID: id, ProjectID: instance.ProjectID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, true, OpenOptions{ParentOrigin: "http://127.0.0.1"})
+	runtime, err := m.startRuntime(id, release, Scope{Kind: "upgrade", InstanceID: id, ProjectID: instance.ProjectID}, pins, RuntimeConfiguration{Setup: instance.Setup}, instance.Models, OpenOptions{ParentOrigin: "http://127.0.0.1"})
 	if err != nil {
 		return err
 	}

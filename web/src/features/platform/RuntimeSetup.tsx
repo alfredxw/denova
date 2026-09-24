@@ -16,7 +16,7 @@ import { getAgentChatProjects } from '@/features/agent-chat/api'
 import { fetchSettings } from '@/features/settings/api'
 import { modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
-import { management, platformError, type ConfigurationDocument, type Installed, type Manifest } from './api'
+import { management, platformError, type RuntimeSetupDocument, type Manifest } from './api'
 
 export interface Setup {
   projectId: string
@@ -45,7 +45,7 @@ export function RuntimeSetup({
 }) {
   const { t, i18n } = useTranslation()
   const inputId = useId()
-  const form = useQuery({ queryKey: ['platform', 'setup', configurationEndpoint, i18n.language], queryFn: () => management<ConfigurationDocument>(configurationEndpoint! + (configurationEndpoint!.includes('?') ? '&' : '?') + 'locale=' + (i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US')), enabled: !!configurationEndpoint, staleTime: 'static', refetchOnWindowFocus: false })
+  const form = useQuery({ queryKey: ['platform', 'setup', configurationEndpoint, i18n.language], queryFn: () => management<RuntimeSetupDocument>(configurationEndpoint! + (configurationEndpoint!.includes('?') ? '&' : '?') + 'locale=' + (i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US')), enabled: !!configurationEndpoint, staleTime: 'static', refetchOnWindowFocus: false })
   const projects = useQuery({
     queryKey: ['platform', 'projects'],
     queryFn: getAgentChatProjects,
@@ -55,44 +55,13 @@ export function RuntimeSetup({
     queryKey: ['platform', 'settings'],
     queryFn: fetchSettings,
   })
-  const plugins = useQuery({
-    queryKey: ['platform', 'packages', 'plugin'],
-    queryFn: () => management<Installed[]>('/packages/plugin'),
-  })
-  const providers = manifest ? [manifest] : []
-  const visited = new Set(manifest && !manifest.game ? [manifest.id] : [])
-  const visit = (id: string) => {
-    if (visited.has(id)) return
-    visited.add(id)
-    const installed = plugins.data?.find((item) => item.id === id)
-    const next = installed?.releases.find(
-      (release) => release.ref.releaseId === installed.currentRelease,
-    )?.manifest
-    if (next) {
-      providers.push(next)
-      next.requires?.forEach((dependency) => visit(dependency.pluginId))
-    }
-  }
-  manifest?.requires?.forEach((dependency) => visit(dependency.pluginId))
-  const slots = providers.flatMap((provider) =>
-    (provider.modelSlots ?? []).map((slot) => ({
-      required: slot.required,
-      kind: slot.kind,
-      key:
-        provider === manifest && manifest.game
-          ? `local:${slot.id}`
-          : `${provider.id}/${slot.id}`,
-    })),
-  )
+  const slots = form.data?.models ?? []
   const profiles = modelProfilesWithDefault(settings.data?.effective).filter(
     (profile): profile is typeof profile & { id: string } => !!profile.id,
   )
   const imageProfiles = imageAPIProfilesWithDefault(settings.data?.effective).filter(
     (profile): profile is typeof profile & { id: string } => !!profile.id,
   )
-  if (manifest?.game?.uses?.agents?.includes('builtin/assistant')) {
-    slots.push({ key: 'builtin/assistant', required: true, kind: 'text' })
-  }
   return (
     <FieldGroup>
       {!projectLocked && <Field>

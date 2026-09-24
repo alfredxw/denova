@@ -49,3 +49,9 @@ prd
 .playwright-cli/
 tmp/
 /npm/
+
+# Local AVG engine and its integration checks are not distributed.
+/internal/extensions/avgengine/
+/internal/app/avgengine_local_test.go
+/web/tests/e2e/avgengine.local.spec.ts
+/web/tests/support/avgengine-local.ts

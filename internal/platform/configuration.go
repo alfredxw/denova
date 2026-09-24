@@ -3,7 +3,6 @@ package platform
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -37,20 +36,17 @@ type ConfigurationDocument struct {
 	Revision  string             `json:"revision"`
 	Problem   *Error             `json:"problem,omitempty"`
 	ReleaseID string             `json:"releaseId"`
-	Form      *ConfigurationForm `json:"form"`
+	Form      *ConfigurationForm `json:"form" jsonschema:"nullable"`
 	Overrides map[string]any     `json:"overrides"`
 	Values    map[string]any     `json:"values"`
-	TOML      string             `json:"toml"`
 }
 
-// ConfigurationInput replaces all user overrides. Validate converts between the
-// form and TOML without saving. An empty override object restores defaults.
+// ConfigurationInput replaces user overrides for one release. An empty object
+// restores defaults; the observed file revision prevents concurrent overwrites.
 type ConfigurationInput struct {
 	ExpectedRevision string         `json:"expectedRevision"`
 	ReleaseID        string         `json:"releaseId"`
-	Format           string         `json:"format"`
 	Overrides        map[string]any `json:"overrides"`
-	TOML             string         `json:"toml"`
 }
 
 func configurationValues(value any) (any, error) {
@@ -215,8 +211,13 @@ func (m *Manager) readReleaseFile(release Release, name string) ([]byte, error) 
 	return data, err
 }
 
-func (m *Manager) settingsOverrides(ref PackageRef) (map[string]any, error) {
-	raw, err := os.ReadFile(filepath.Join(m.packagePath(ref), "settings.toml"))
+// Settings are writable release metadata, never part of frozen package bytes.
+func (m *Manager) settingsPath(ref ReleaseRef) string {
+	return filepath.Join(m.packagePath(ref.Package), "settings", ref.ReleaseID, "settings.toml")
+}
+
+func (m *Manager) settingsOverrides(ref ReleaseRef) (map[string]any, error) {
+	raw, err := os.ReadFile(m.settingsPath(ref))
 	if os.IsNotExist(err) {
 		return map[string]any{}, nil
 	}
@@ -231,14 +232,14 @@ func (m *Manager) settingsValues(release Release, environment string, supplied m
 	if err != nil {
 		return nil, err
 	}
-	// Older releases without a declaration never consume shared settings added
-	// by a newer version. Explicit caller-supplied configuration is still invalid.
+	// A release without a declaration ignores inherited preferences but still
+	// rejects explicit caller-supplied configuration.
 	if form == nil {
 		return validateConfiguration(nil, supplied)
 	}
 	overrides := map[string]any{}
 	if environment == "installed" {
-		overrides, err = m.settingsOverrides(release.Ref.Package)
+		overrides, err = m.settingsOverrides(release.Ref)
 		if err != nil {
 			return nil, err
 		}
@@ -374,43 +375,50 @@ func configurationDocument(releaseID string, manifest Manifest, declaration *Con
 			return ConfigurationDocument{}, err
 		}
 	}
-	raw, err := toml.Marshal(overrides)
-	if err != nil {
-		return ConfigurationDocument{}, fmt.Errorf("encode configuration: %w", err)
-	}
-	return ConfigurationDocument{ReleaseID: releaseID, Form: form, Overrides: overrides, Values: values, TOML: string(raw), Problem: problem}, nil
+	return ConfigurationDocument{ReleaseID: releaseID, Form: form, Overrides: overrides, Values: values, Problem: problem}, nil
 }
 
-// SetupConfiguration projects frozen starting options without reading shared
-// settings. The selected release is checked again when the instance is created.
-func (m *Manager) SetupConfiguration(gameID, releaseID, locale string) (ConfigurationDocument, error) {
+// RuntimeSetupDocument is a disposable projection of the same dependency
+// resolution used at activation. It never becomes another persisted plan.
+type RuntimeSetupDocument struct {
+	ConfigurationDocument
+	Models []ModelRequirement `json:"models"`
+}
+
+func (m *Manager) runtimeSetup(release Release, read func(string) ([]byte, error), locale string) (RuntimeSetupDocument, error) {
+	pins, err := m.resolveDependencies(release.Manifest, nil)
+	if err != nil {
+		return RuntimeSetupDocument{}, err
+	}
+	slots, err := m.modelRequirements(release, pins)
+	if err != nil {
+		return RuntimeSetupDocument{}, err
+	}
+	declaration := release.Manifest.Settings
+	if release.Manifest.Game != nil {
+		declaration = release.Manifest.Game.Setup
+	}
+	document, err := configurationDocument(release.Ref.ReleaseID, release.Manifest, declaration, read, map[string]any{}, locale)
+	return RuntimeSetupDocument{ConfigurationDocument: document, Models: slots}, err
+}
+
+func (m *Manager) SetupConfiguration(gameID, releaseID, locale string) (RuntimeSetupDocument, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	release, _, err := m.release(ReleaseRef{Package: PackageRef{Kind: Game, ID: gameID}, ReleaseID: releaseID})
 	if err != nil {
-		return ConfigurationDocument{}, err
+		return RuntimeSetupDocument{}, err
 	}
-	return configurationDocument(releaseID, release.Manifest, release.Manifest.Game.Setup, func(name string) ([]byte, error) { return m.readReleaseFile(release, name) }, map[string]any{}, locale)
+	return m.runtimeSetup(release, func(name string) ([]byte, error) { return m.readReleaseFile(release, name) }, locale)
 }
 
-// CandidateConfiguration supplies host-rendered forms for isolated previews.
-func (m *Manager) CandidateConfiguration(id, purpose, locale string) (ConfigurationDocument, error) {
+func (m *Manager) CandidateSetup(id, locale string) (RuntimeSetupDocument, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	candidate := m.candidates[id]
 	if candidate == nil {
-		return ConfigurationDocument{}, failure("NOT_FOUND", "Preview candidate is unavailable")
+		return RuntimeSetupDocument{}, failure("NOT_FOUND", "Preview candidate is unavailable")
 	}
-	declaration := candidate.Manifest.Settings
-	switch purpose {
-	case "settings":
-	case "setup":
-		if candidate.Manifest.Game == nil {
-			return ConfigurationDocument{}, failure("INVALID_ARGUMENT", "Only games have starting options")
-		}
-		declaration = candidate.Manifest.Game.Setup
-	default:
-		return ConfigurationDocument{}, failure("INVALID_ARGUMENT", "Unknown configuration purpose")
-	}
-	return configurationDocument(candidate.Digest, candidate.Manifest, declaration, func(name string) ([]byte, error) { return candidate.files[name], nil }, map[string]any{}, locale)
+	release := Release{Ref: ReleaseRef{Package: PackageRef{Kind: candidate.Kind, ID: candidate.Manifest.ID}, ReleaseID: candidate.Digest}, Manifest: candidate.Manifest}
+	return m.runtimeSetup(release, func(name string) ([]byte, error) { return candidate.files[name], nil }, locale)
 }

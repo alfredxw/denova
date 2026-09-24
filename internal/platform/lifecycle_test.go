@@ -23,12 +23,12 @@ func TestPreviewCatalogIsolationAndManagedDataRelocation(t *testing.T) {
 	if err != nil || len(installed) != 0 {
 		t.Fatalf("preview entered catalog: %v %v", installed, err)
 	}
-	if _, err := m.CreateInstance(CreateInstance{GameID: candidate.Manifest.ID, ReleaseID: release.Ref.ReleaseID, Title: "Invalid"}); err == nil {
-		t.Fatal("preview became a formal instance")
-	}
-	instance, err := m.CreateInstance(CreateInstance{GameID: candidate.Manifest.ID, ReleaseID: release.Ref.ReleaseID, Title: "Test save", ProjectID: projectID, Preview: true})
+	instance, err := m.CreateInstance(CreateInstance{GameID: candidate.Manifest.ID, ReleaseID: release.Ref.ReleaseID, Title: "Test save", ProjectID: projectID})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !instance.Preview {
+		t.Fatal("preview identity was not derived from its release")
 	}
 	if err := writeBytes(filepath.Join(m.instancePath(instance.GameID, instance.ID), "data", "proof.txt"), []byte("portable")); err != nil {
 		t.Fatal(err)

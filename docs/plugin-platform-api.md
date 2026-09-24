@@ -19,7 +19,7 @@ Consumer API 使用普通 HTTP + JSON，事件使用 SSE。每个游戏开局或
 | 400 | INVALID_ARGUMENT、INVALID_CONFIGURATION、INVALID_TOML |
 | 403 | PERMISSION_DENIED |
 | 404 | NOT_FOUND |
-| 409 | DOCUMENT_CONFLICT、IDEMPOTENCY_CONFLICT、SESSION_BUSY、API_INCOMPATIBLE、DEPENDENCY_UNAVAILABLE、SAVE_INCOMPATIBLE、CONFIGURATION_CONFLICT、CURSOR_EXPIRED |
+| 409 | DOCUMENT_CONFLICT、IDEMPOTENCY_CONFLICT、SESSION_BUSY、API_INCOMPATIBLE、DEPENDENCY_UNAVAILABLE、SAVE_INCOMPATIBLE、CURSOR_EXPIRED |
 | 413 | LIMIT_EXCEEDED |
 | 503 | RUNTIME_UNAVAILABLE、RUNTIME_FAILED |
 
@@ -146,7 +146,7 @@ apiMajor 必须为 1，不兼容的清单在检查阶段即拒绝。JSON Schema 
 
 ## 宿主 Agent 工具
 
-宿主 Agent 自动使用已启用且获得授权的插件公开工具。扩展管理 API 的启停、当前安装版本和 settings.toml 是唯一配置来源；会话配置 API 不接受插件选择或设置副本。
+宿主 Agent 自动使用已启用且获得授权的插件公开工具。扩展管理 API 的启停、当前安装版本和对应发行的 settings/<releaseId>/settings.toml 是唯一配置来源；会话配置 API 不接受插件选择或设置副本。
 
 适用范围为写作、工作台会话和内置 Story 分支。每次新执行读取当前已安装发行及全局设置；运行中的执行使用已经装载的工具。暂停期间修改相关配置后，原任务可能无法继续，历史保留且不自动重放旧工具调用。准备工具定义不会启动插件后端，实际调用才启动。
 
@@ -222,12 +222,11 @@ SSE 首帧 snapshot 含当前 RunResult 与 cursor，其后发送 delta、state�
 | 方法与路径 | 输入或结果 |
 | --- | --- |
 | GET /catalog | 带 kind、启用状态、发行及 unavailableReason 的统一已安装列表 |
-| GET /packages/{kind}/{id}/settings | 当前设置表单、默认值、覆盖、TOML 和 revision，支持 locale |
-| POST /packages/{kind}/{id}/settings/validate | 校验并转换表单/TOML，不持久化 |
-| PUT /packages/{kind}/{id}/settings | { releaseId, expectedRevision, format, overrides 或 toml }；校验在用发行，备份并原子保存 |
+| GET /packages/{kind}/{id}/settings | 设置表单、默认值、覆盖和 revision，支持 locale 及可选 releaseId |
+| PUT /packages/{kind}/{id}/settings | { releaseId, expectedRevision, overrides }；校验指定发行，备份并原子保存 |
 | PUT /packages/{kind}/{id}/permissions | { releaseId, grants }；更新授权并停止受影响实例 |
 | GET /packages/game/{id}/setup | 指定 releaseId 的开局表单，支持 locale |
-| GET /candidates/{id}/settings 或 /setup | 独立预览表单，支持 locale |
+| GET /candidates/{id}/setup | 独立预览表单和解析后的模型槽，支持 locale |
 | POST /packages/preview | JSON { directory } 或 application/zip；根目录必须恰有一种清单 |
 | POST /packages/github/preview | { url, ref?, path?, commit? }；下载固定提交并返回候选包，不执行构建 |
 | POST /packages/github/import | 同上；创建受管源码 Project，返回 DevelopmentSource，不安装、不执行代码 |
@@ -253,7 +252,7 @@ GitHub 来源为 `{ url, ref, path, commit }`：URL 规范化为公开 HTTPS 仓
 
 停用只禁止新建和重启，不撤销运行中的凭证；卸载及重新授权会先停止受影响实例。已有存档始终保留准确发行，不能随默认游戏改变而改写。
 
-每个扩展的安装与发行聚合于 plugins/{id} 或 games/{id}，包括 installed.json、settings.toml、releases、previews 和 backups。自管存档位于 games/{id}/instances/{instanceId}；插件 data 按范围隔离。托管 Story 的应用绑定和扩展 JSON 位于该 Story journal，生成资产位于同一 Project Store 的扩展范围，不能在安装目录维护另一份 Story 恢复事实。扩展设置与游戏 setup 分开，保存设置保留运行快照，预览不读取已安装覆盖。字段、合并、兼容性与保存协议见[扩展设置标准](extension-settings.md)。
+每个扩展的安装与发行聚合于 plugins/{id} 或 games/{id}，包括 installed.json、settings/<releaseId>/settings.toml、releases、previews 和 backups。自管存档位于 games/{id}/instances/{instanceId}；插件 data 按范围隔离。托管 Story 的应用绑定和扩展 JSON 位于该 Story journal，生成资产位于同一 Project Store 的扩展范围，不能在安装目录维护另一份 Story 恢复事实。扩展设置与游戏 setup 分开，保存设置保留运行快照，预览不读取已安装覆盖。字段、合并、兼容性与保存协议见[扩展设置标准](extension-settings.md)。
 
 重新安装同一发行可以调整授权，变更前停止受影响实例。平台 Agent 会话不会进入普通写作或 Project 会话入口，避免用其他 Agent 定义继续其历史。
 

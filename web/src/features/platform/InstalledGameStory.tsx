@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
@@ -19,6 +20,7 @@ export function InstalledGameStory({ instance, item, active, picker, onRefresh }
 }) {
   const { t, i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
+  const queryClient = useQueryClient()
   const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -43,15 +45,19 @@ export function InstalledGameStory({ instance, item, active, picker, onRefresh }
     // Appearance changes are delivered to the frame without starting another runtime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance.instanceId, active])
-  return <div className="flex min-h-0 flex-1 flex-col bg-background">
-    <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+  const storyControls = <div className="flex flex-wrap items-center gap-2">
       <StoryPicker {...picker} />
       <Badge variant="outline" className="max-w-full truncate">{gameName}{release ? ' · ' + release.manifest.version : ''}</Badge>
       <Button size="sm" variant="ghost" asChild><a href={`${managementBase}/instances/${instance.instanceId}/export`}>{t('platform.exportSave')}</a></Button>
       {item && item.currentRelease !== instance.releaseId && <Button size="sm" variant="outline" disabled={busy || !item.enabled || item.removed || !!item.unavailableReason} onClick={() => { setError(''); setUpgrade(item.currentRelease) }}>{t('platform.github.useInstalledUpdate')}</Button>}
     </div>
-    {error && <InlineErrorNotice className="m-3" message={error} />}
-    {runtime ? <GamePlayer runtime={runtime} title={instance.title} visible={active} onExit={() => setRuntime(null)} /> : <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+  return <div className="flex min-h-0 flex-1 flex-col bg-background">
+    {!runtime && <div className="border-b px-3 py-2">{storyControls}</div>}
+    {!runtime && error && <InlineErrorNotice className="m-3" message={error} />}
+    {runtime ? <GamePlayer runtime={runtime} title={instance.title} visible={active} menuContent={storyControls} onExit={() => setRuntime(null)} onOpenInstance={created => {
+      queryClient.setQueryData<Instance[]>(['platform', 'instances'], previous => [...(previous ?? []).filter(item => item.instanceId !== created.instanceId), created])
+      picker.onSelect('game:' + created.instanceId)
+    }} /> : <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
       <h2 className="break-words text-lg font-semibold">{instance.title}</h2>
       {(!item?.enabled || item.removed || item.unavailableReason) && <p className="max-w-md text-sm text-muted-foreground">{t('platform.savedGameUnavailable')}</p>}
       <Button disabled={busy || !item?.enabled || item.removed || !!item.unavailableReason} onClick={() => void open()}>{t(busy ? 'common.loading' : 'platform.continue')}</Button>
