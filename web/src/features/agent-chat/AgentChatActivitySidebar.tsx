@@ -56,7 +56,7 @@ export function AgentChatActivitySidebar({
 }: AgentChatActivitySidebarProps) {
   const { t } = useTranslation()
   const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set())
-  const knownProjectIDsRef = useRef<ReadonlySet<string>>(new Set())
+  const [knownProjectIDs, setKnownProjectIDs] = useState<ReadonlySet<string>>(() => new Set())
   const previousActiveProjectIDRef = useRef('')
   // A row click owns both selection and expansion. Preserve that explicit toggle when the
   // parent commits the new selection; active-project changes from elsewhere still auto-expand.
@@ -74,7 +74,6 @@ export function AgentChatActivitySidebar({
     }),
   )
   useLayoutEffect(() => {
-    const knownProjectIDs = knownProjectIDsRef.current
     const visibleProjectIDs = new Set(projects.map((project) => project.id))
     const activeProjectChanged = previousActiveProjectIDRef.current !== activeProjectId
     const preserveExplicitToggle = activeProjectChanged && pendingRowToggleProjectIDRef.current === activeProjectId
@@ -87,9 +86,9 @@ export function AgentChatActivitySidebar({
       return setsEqual(current, next) ? current : next
     })
     if (activeProjectChanged) pendingRowToggleProjectIDRef.current = ''
-    knownProjectIDsRef.current = visibleProjectIDs
+    setKnownProjectIDs((current) => setsEqual(current, visibleProjectIDs) ? current : visibleProjectIDs)
     previousActiveProjectIDRef.current = activeProjectId
-  }, [activeProjectId, projects])
+  }, [activeProjectId, knownProjectIDs, projects])
 
   const toggleProject = (project: AgentChatProject) => {
     preferences.recordProjectOpened(project.id)
@@ -167,7 +166,9 @@ export function AgentChatActivitySidebar({
                     key={project.id}
                     project={project}
                     active={project.id === activeProjectId}
-                    expanded={!collapsedProjects.has(project.id)}
+                    // New rows must mount in their intended state. Correcting an open row
+                    // in a layout effect can still trigger its CSS collapse transition.
+                    expanded={knownProjectIDs.has(project.id) ? !collapsedProjects.has(project.id) : project.id === activeProjectId}
                     manualSorting={preferences.sortMode === 'manual'}
                     pinned={preferences.isProjectPinned(project.id)}
                     activities={activitiesByProject.get(project.id) ?? []}
