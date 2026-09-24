@@ -21,6 +21,11 @@ Denova records only major user-visible features, important compatibility or data
 - 扩展页统一管理插件工具，启用后自动供写作、工作台、内置游戏及委派 Agent 使用；后续任务采用当前安装版本及对应设置，沿用现有审批方式。
 - Manage plugin tools in Extensions and make enabled tools available to Writing, Workbench, built-in Game and delegated Agents. New tasks use the installed versions and their settings with existing approval policies.
 
+### Fixed / 修复
+
+- 修复写作与通用对话使用外部运行时时，取消排队中的写入后无法继续会话或切换运行时的问题。
+- Fix external-runtime Writing and General conversations remaining blocked after cancelling a queued write, preventing continuation or runtime switching.
+
 ## [v0.5.0] - 2026-09-22
 
 ### Brief / 简要说明
