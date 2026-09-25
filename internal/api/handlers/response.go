@@ -11,6 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/internal/i18n"
+	"denova/internal/observability"
 )
 
 // decodeStrictJSONRequest rejects unknown fields and trailing JSON values at
@@ -61,7 +62,17 @@ func requestLocaleHeader(c *app.RequestContext) string {
 }
 
 func writeErrorKey(c *app.RequestContext, code int, key string, args ...any) {
-	writeError(c, code, requestLocalizer(c).T(key, args...))
+	values := append([]any(nil), args...)
+	details := map[string]any{}
+	for index := 0; index+1 < len(values); index += 2 {
+		if values[index] == "detail" {
+			if value, ok := values[index+1].(string); ok {
+				values[index+1] = observability.DiagnosticText(value)
+				details["detail"] = values[index+1]
+			}
+		}
+	}
+	writeAgentRuntimeError(c, code, key, requestLocalizer(c).T(key, values...), details)
 }
 
 func messageKey(c *app.RequestContext, key string, args ...any) string {

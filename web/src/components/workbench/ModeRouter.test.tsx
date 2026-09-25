@@ -31,7 +31,7 @@ function withAppProviders(ui: ReactNode) {
   return <TooltipProvider>{ui}</TooltipProvider>
 }
 
-vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/toast', () => ({ toast: toastMock }))
 
 vi.mock('@/hooks/usePersistedUserSettings', () => ({
   usePersistedUserSettings: vi.fn(),

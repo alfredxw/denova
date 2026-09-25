@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { useTranslation } from 'react-i18next'
 import { useSpeechSettings } from '@/features/speech/hooks'
 import { speechConfigError, speechPlayer } from '@/features/speech/player'

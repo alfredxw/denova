@@ -1,7 +1,7 @@
 import { AtSign } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { ProjectExplorerPane } from './ProjectExplorerPane'
 import { useProjectExplorerPreferences } from './preferences'
 import type { ProjectExplorerExtensions } from './types'

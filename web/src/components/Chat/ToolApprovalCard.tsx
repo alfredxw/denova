@@ -1,3 +1,5 @@
+import { errorMessage } from '@/lib/error-diagnostics'
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Check, Loader2, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -79,8 +81,8 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
           console.warn('[tool-approval] Failed to refresh settings after saving a workspace rule', reason)
         })
       }
-    } catch {
-      setError(t('agentApproval.approval.submitFailed'))
+    } catch (error) {
+      setError(errorMessage(error, t('agentApproval.approval.submitFailed')))
     } finally {
       setSubmitting(null)
     }
@@ -130,7 +132,7 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
         )}
       </div>
 
-      {error && <p role="alert" className="m-0 text-[11px] text-[var(--nova-danger)]">{error}</p>}
+      {error && <InlineErrorNotice message={error} />}
       {pending && (
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" size="sm" variant="outline" disabled={!onResolve || Boolean(submitting)} onClick={() => void resolve('deny')}>

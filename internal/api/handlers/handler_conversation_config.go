@@ -108,7 +108,7 @@ func writeConversationConfigError(c *app.RequestContext, err error) {
 	case errors.Is(err, agentruntime.ErrEngineModelUnavailable):
 		writeErrorKey(c, consts.StatusUnprocessableEntity, "agentRuntime.modelUnavailable")
 	case errors.Is(err, appsvc.ErrConversationModelDefaultsNotSaved):
-		writeErrorKey(c, consts.StatusInternalServerError, "api.conversationConfig.rememberModelFailed")
+		writeErrorKey(c, consts.StatusInternalServerError, "api.conversationConfig.rememberModelFailed", "detail", err.Error())
 	case appsvc.IsConversationConfigRevisionConflict(err):
 		writeErrorKey(c, consts.StatusConflict, "api.conversationConfig.revisionConflict")
 	case errors.Is(err, appsvc.ErrNoWorkspace), errors.Is(err, appsvc.ErrNoWorkspaceOpen):

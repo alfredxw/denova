@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -10,6 +11,7 @@ import (
 
 	"denova/internal/agents/runtime/external"
 	appsvc "denova/internal/app"
+	agent "github.com/alfredxw/denova/agent"
 )
 
 type askAnswerRequest struct {
@@ -50,7 +52,7 @@ func (h *Handlers) handleInteractiveAsk(ctx context.Context, c *app.RequestConte
 	}
 	result, err := h.app.ResolveInteractiveAsk(ctx, request.StoryID, request.BranchID, strings.TrimSpace(c.Param("ask_id")), status, request.Answers, request.Reason)
 	if err != nil {
-		writeAskResolutionError(c, err)
+		writeAskResolutionError(ctx, c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
@@ -67,7 +69,7 @@ func (h *Handlers) HandleSessionAskAnswer(ctx context.Context, c *app.RequestCon
 	}
 	result, err := h.app.AnswerSessionAsk(ctx, request.SessionID, strings.TrimSpace(c.Param("ask_id")), request.Answers)
 	if err != nil {
-		writeAskResolutionError(c, err)
+		writeAskResolutionError(ctx, c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
@@ -84,21 +86,28 @@ func (h *Handlers) HandleSessionAskCancel(ctx context.Context, c *app.RequestCon
 	}
 	result, err := h.app.CancelSessionAsk(ctx, request.SessionID, strings.TrimSpace(c.Param("ask_id")), request.Reason)
 	if err != nil {
-		writeAskResolutionError(c, err)
+		writeAskResolutionError(ctx, c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func writeAskResolutionError(c *app.RequestContext, err error) {
+func writeAskResolutionError(ctx context.Context, c *app.RequestContext, err error) {
+	slog.ErrorContext(ctx, "agent_interaction_resolution_failed", "interaction_id", c.Param("ask_id"), "error", err)
+	status, code, key := consts.StatusInternalServerError, "agent_runtime.ask_failed", "api.ask.failed"
 	switch {
-	case errors.Is(err, external.ErrAskConflict):
-		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.ask_conflict", "Ask interaction was resolved differently", nil)
+	case errors.Is(err, agent.ErrDefinitionMismatch):
+		status, code, key = consts.StatusConflict, "agent_runtime.definition_mismatch", "api.ask.definitionMismatch"
+	case errors.Is(err, agent.ErrInteractionStale):
+		status, code, key = consts.StatusConflict, "agent_runtime.ask_stale", "api.ask.stale"
+	case errors.Is(err, agent.ErrInvalidInteractionResponse):
+		status, code, key = consts.StatusBadRequest, "agent_runtime.invalid_ask_answer", "api.ask.invalidAnswer"
+	case errors.Is(err, external.ErrAskConflict), errors.Is(err, agent.ErrIdempotencyConflict):
+		status, code, key = consts.StatusConflict, "agent_runtime.ask_conflict", "api.ask.conflict"
 	case errors.Is(err, appsvc.ErrAgentAskNotFound):
-		writeAgentRuntimeError(c, consts.StatusNotFound, "agent_runtime.ask_not_found", "Ask interaction not found", nil)
+		status, code, key = consts.StatusNotFound, "agent_runtime.ask_not_found", "api.ask.notFound"
 	case errors.Is(err, appsvc.ErrNoWorkspace):
-		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.no_workspace", "No workspace is open", nil)
-	default:
-		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_ask_answer", "Invalid ask answer", map[string]any{"detail": err.Error()})
+		status, code, key = consts.StatusConflict, "agent_runtime.no_workspace", "api.workspace.noWorkspace"
 	}
+	writeAgentRuntimeError(c, status, code, messageKey(c, key), map[string]any{"operation": "agent.interaction.resolve", "detail": err.Error()})
 }

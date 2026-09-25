@@ -190,8 +190,11 @@ func TestTaskPanicEmitsErrorAndSettlesAsTaskError(t *testing.T) {
 		t.Fatalf("panic replay = %#v, want one error event", replay)
 	}
 	data, ok := taskDisplayDataMap(replay[0].Event.Data)
-	if !ok || data["message"] == "" {
-		t.Fatalf("panic error event has no user-visible message: %#v", replay[0].Event.Data)
+	if !ok || data["message"] != "Agent task panicked" || data["code"] != "agent_runtime.panic" || snapshot.TerminalReason != "Agent task panicked" {
+		t.Fatalf("panic error event lost its summary: %#v, snapshot: %#v", replay[0].Event.Data, snapshot)
+	}
+	if details, ok := data["details"].(map[string]any); !ok || details["detail"] != "worker exploded" {
+		t.Fatalf("panic error event lost its cause: %#v", data)
 	}
 	if _, open := <-subscription.Events(); open || subscription.EndReason() != SubscriptionTaskFinished {
 		t.Fatalf("panic subscription remained open or had wrong reason: %q", subscription.EndReason())

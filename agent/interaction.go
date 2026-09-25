@@ -60,6 +60,10 @@ const (
 )
 
 type PermissionPresentation struct {
+	// ToolDefinitionHash binds this approval to the captured tool schema and
+	// descriptor. It is durable authorization evidence, independent of mutable
+	// model context. Older journals omit it and retain the full Definition fence.
+	ToolDefinitionHash string             `json:"tool_definition_hash,omitempty"`
 	Tool               string             `json:"tool"`
 	CallID             string             `json:"call_id"`
 	Arguments          json.RawMessage    `json:"arguments"`
@@ -308,7 +312,7 @@ func (policy standardInteractionPolicy) Resolve(ctx context.Context, request Int
 		case PermissionAllowOnce, PermissionRemember, PermissionDeny:
 			return InteractionResolution{Permission: response.Permission}, nil
 		default:
-			return InteractionResolution{}, errors.New("permission response must allow once, remember, or deny")
+			return InteractionResolution{}, fmt.Errorf("%w: permission response must allow once, remember, or deny", ErrInvalidInteractionResponse)
 		}
 	case InteractionAsk:
 		return resolveAskResolution(askResolutionContractFromRequest(request), response)
@@ -435,7 +439,12 @@ func resolvePersistedStandardAsk(encoded json.RawMessage, response InteractionRe
 	return resolveAskResolution(contract, response)
 }
 
-func resolveAskResolution(contract askResolutionContract, response InteractionResponse) (InteractionResolution, error) {
+func resolveAskResolution(contract askResolutionContract, response InteractionResponse) (resolution InteractionResolution, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %w", ErrInvalidInteractionResponse, err)
+		}
+	}()
 	questions := make(map[string]askResolutionQuestion, len(contract.Questions))
 	for _, question := range contract.Questions {
 		questions[question.ID] = question

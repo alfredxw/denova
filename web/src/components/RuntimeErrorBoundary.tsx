@@ -1,3 +1,5 @@
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { errorMessage } from '@/lib/error-diagnostics'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { normalizeRuntimeError, recordRuntimeLog } from '@/lib/runtimeLog'
 import { Button } from '@/components/ui/button'
@@ -16,7 +18,9 @@ export class RuntimeErrorBoundary extends Component<RuntimeErrorBoundaryProps, R
   state: RuntimeErrorBoundaryState = { errorMessage: '' }
 
   static getDerivedStateFromError(error: unknown): RuntimeErrorBoundaryState {
-    return { errorMessage: normalizeRuntimeError(error).message }
+    const normalized = normalizeRuntimeError(error)
+    return { errorMessage: errorMessage({ message: normalized.message, code: 'client.render_failed',
+      details: { operation: 'ui.render', detail: normalized.stack?.split('\n').slice(1, 3).join('\n') } }) }
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
@@ -39,9 +43,7 @@ export class RuntimeErrorBoundary extends Component<RuntimeErrorBoundaryProps, R
             <div className="mt-2 text-sm leading-6 text-[var(--nova-text-muted)]">
               {i18n.t('runtime.description')}
             </div>
-            <pre className="mt-3 max-h-40 overflow-auto rounded bg-[var(--nova-surface-2)] p-3 text-xs text-[var(--nova-danger)] whitespace-pre-wrap">
-              {this.state.errorMessage}
-            </pre>
+            <InlineErrorNotice className="mt-3" message={this.state.errorMessage} />
             <Button
               type="button"
               size="sm"

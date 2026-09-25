@@ -1,7 +1,7 @@
 import { useCallback, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { AtSign, Copy, CopyPlus, FilePlus2, FolderOpen, FolderSearch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import {
   ContextMenu,
   ContextMenuContent,

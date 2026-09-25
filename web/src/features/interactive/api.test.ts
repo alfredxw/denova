@@ -49,7 +49,7 @@ describe('interactive agent command API', () => {
       mode: 'story',
       story_id: 'story-1',
       message: '推开石门',
-    })).rejects.toMatchObject({ status: 503, message: 'temporary failure' })
+    })).rejects.toMatchObject({ status: 503, summary: 'temporary failure' })
   })
 
   it('starts a persisted story opening without a client-authored model prompt', async () => {
