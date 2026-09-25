@@ -50,12 +50,16 @@ func TestExternalAttachmentsSurviveHistoryAndDomainReadImages(t *testing.T) {
 	if outcome := op.Wait(t.Context()); outcome.Status != agentrun.OutcomeCompleted {
 		t.Fatalf("image operation: %#v, error: %v", outcome, outcome.Error)
 	}
-	history, err := ReadHistory(t.Context(), request.Session)
+	history, err := PrepareHistory(t.Context(), request.Session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := history.Messages(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	userImages, toolImages := 0, 0
-	for _, message := range history.Messages {
+	for _, message := range messages {
 		userImages += len(message.Attachments)
 		toolImages += len(message.ToolImages)
 		for _, file := range append(append([]agent.Attachment(nil), message.Attachments...), message.ToolImages...) {
@@ -67,7 +71,7 @@ func TestExternalAttachmentsSurviveHistoryAndDomainReadImages(t *testing.T) {
 	if userImages != 1 || toolImages != 1 {
 		t.Fatalf("history omitted images: user=%d tool=%d", userImages, toolImages)
 	}
-	projected, err := op.projectMedia(t.Context(), Input{History: history.Messages})
+	projected, err := op.projectMedia(t.Context(), Input{History: messages})
 	if err != nil {
 		t.Fatal(err)
 	}

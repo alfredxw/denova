@@ -47,11 +47,11 @@ func TestExternalCheckpointCoversLargeCanonicalMessageAndReusesVerifiedPrefix(t 
 		return Result{Text: "Continued."}, nil
 	})
 	prepare := func(command string) {
-		history, err := ReadHistory(t.Context(), request.Session)
+		history, err := PrepareHistory(t.Context(), request.Session)
 		if err != nil {
 			t.Fatal(err)
 		}
-		request.PreparedCursor, request.Checkpoint, request.Input.History = history.Cursor, history.Checkpoint, history.Messages
+		request.PreparedCursor, request.Checkpoint, request.LoadHistory = history.Cursor, history.Checkpoint, history.Messages
 		request.CommandID, request.Fingerprint, request.Metadata.MessageID = command, command, command+"-input"
 	}
 	run := func() {

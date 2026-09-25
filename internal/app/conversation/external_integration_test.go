@@ -254,11 +254,15 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 			if err != nil || len(group.ChangeSets) != 1 || group.RunID != toolRunID {
 				t.Fatalf("missing original domain receipt: %+v, %v", group, err)
 			}
-			history, err := external.ReadHistory(ctx, sess)
+			history, err := external.PrepareHistory(ctx, sess)
 			if err != nil {
 				t.Fatal(err)
 			}
-			encoded, _ := json.Marshal(history.Messages)
+			messages, err := history.Messages(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, _ := json.Marshal(messages)
 			if !strings.Contains(string(encoded), "Restrained") || !strings.Contains(string(encoded), "The restrained draft is saved.") {
 				t.Fatal("canonical history lost question answer or output")
 			}

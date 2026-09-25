@@ -18,15 +18,32 @@ type ExternalContextRecord struct {
 	Runtime *externaljournal.Record
 }
 
-func (s *Session) scanExternalContextLocked(ctx context.Context, visit func(ExternalContextRecord) error) error {
+// ExternalContextSource captures an immutable interval before admitting new
+// input. It can outlive a ReadExternal callback, unlike its journal readers.
+// Appends do not extend the interval; clear or journal replacement invalidates it.
+type ExternalContextSource struct {
+	incarnation string
+	after       conversationjournal.Cursor
+	through     conversationjournal.Cursor
+}
+
+func (s *Session) scanExternalContextLocked(ctx context.Context, source ExternalContextSource, visit func(ExternalContextRecord) error) error {
 	if visit == nil || s.journal == nil || s.projection == nil {
 		return errors.New("external context visitor requires a canonical journal")
 	}
-	after, through := s.projection.ClearCursor, s.materializedCursor
+	if source.incarnation != s.journalIncarnation || source.after != s.projection.ClearCursor || source.through > s.materializedCursor || source.after > source.through {
+		return ErrContextRevisionConflict
+	}
+	after, through := source.after, source.through
 	for after < through {
 		records, err := s.journal.ReadRange(ctx, conversationjournal.Range{After: after, Through: through, Limit: 64})
 		if err != nil {
 			return err
+		}
+		// ReadRange refreshes the shared projection. An independent Session can
+		// clear between pages even while this handle holds its own Session lock.
+		if source.after != s.projection.ClearCursor {
+			return ErrContextRevisionConflict
 		}
 		if len(records) == 0 {
 			return errors.New("external context source interval is missing")
@@ -102,6 +119,13 @@ func (s *Session) scanExternalContextLocked(ctx context.Context, visit func(Exte
 			}
 		}
 		after = records[len(records)-1].Location.Cursor
+	}
+	// Also observe a clear committed while the final page was being projected.
+	if err := s.refreshCanonicalTailLocked(); err != nil {
+		return err
+	}
+	if source.after != s.projection.ClearCursor {
+		return ErrContextRevisionConflict
 	}
 	return nil
 }
