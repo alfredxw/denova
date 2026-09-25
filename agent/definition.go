@@ -525,24 +525,12 @@ func materializeDefinitionCapabilities(
 	if prepared == nil {
 		return errors.New("materialize agent Definition capabilities: prepared Definition is nil")
 	}
-	definition := prepared.definition
-	var tools []ToolDefinition
-	var err error
-	if definition.Tools != nil {
-		tools, err = definition.Tools.PrepareTools(ctx, ToolRequest{
-			Session: request.Session, Run: request.Run, Input: request.Input,
-		})
-		if err != nil {
-			return fmt.Errorf("prepare agent Toolset: %w", err)
-		}
+	if err := materializeDefinitionTools(ctx, request, prepared); err != nil {
+		return err
 	}
-	registry, err := NewRegistry(ctx, tools...)
-	if err != nil {
-		return fmt.Errorf("prepare agent Toolset: %w", err)
-	}
-	prepared.tools = registry.Definitions()
-	prepared.toolSnapshots = registry.Snapshots()
 
+	definition := prepared.definition
+	var err error
 	var fragments []ContextFragment
 	if definition.Context != nil {
 		fragments, err = definition.Context.Materialize(ctx, ContextRequest{

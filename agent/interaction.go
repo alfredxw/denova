@@ -60,6 +60,10 @@ const (
 )
 
 type PermissionPresentation struct {
+	// ToolDefinitionHash binds this approval to the captured tool schema and
+	// descriptor. It is durable authorization evidence, independent of mutable
+	// model context. Older journals omit it and retain the full Definition fence.
+	ToolDefinitionHash string             `json:"tool_definition_hash,omitempty"`
 	Tool               string             `json:"tool"`
 	CallID             string             `json:"call_id"`
 	Arguments          json.RawMessage    `json:"arguments"`
