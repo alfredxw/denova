@@ -294,10 +294,8 @@ func (m *Manager) CheckDevelopment(id string) (Candidate, error) {
 	if err != nil {
 		return Candidate{}, err
 	}
-	m.mu.Lock()
-	m.candidates[candidate.ID].Source = item.Source
-	candidate.Source = item.Source
-	m.mu.Unlock()
+	// Development provenance describes the imported checkout, not these locally
+	// edited bytes. Publishing must not establish an upstream update baseline.
 	return candidate, nil
 }
 

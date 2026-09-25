@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"denova/internal/app/resourceexchange"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -41,7 +43,7 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 		}
 	}
 	if len(parts) == 1 && parts[0] == "catalog" && method == "GET" {
-		respond(manager.Catalog())
+		respond(h.app.ResourceExchange().ExtensionCatalog(ctx))
 		return
 	}
 	if len(parts) == 4 && parts[0] == "packages" && parts[1] == "game" && parts[3] == "cover" && method == "GET" {
@@ -88,7 +90,7 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 	if len(parts) == 4 && parts[0] == "packages" && parts[3] == "update" {
 		ref := platform.PackageRef{Kind: platform.Kind(parts[1]), ID: parts[2]}
 		if method == "GET" {
-			respond(manager.CheckGitHubUpdate(ctx, ref))
+			respond(h.app.ResourceExchange().CheckExtensionUpdate(ctx, ref))
 			return
 		}
 		if method == "POST" {
@@ -96,7 +98,7 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 				Commit string `json:"commit"`
 			}
 			if decode(&input) {
-				respond(manager.PreviewGitHubUpdate(ctx, ref, input.Commit))
+				respond(h.app.ResourceExchange().PreviewExtensionUpdate(ctx, ref, input.Commit))
 			}
 			return
 		}
@@ -154,7 +156,7 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 		if !decode(&input) {
 			return
 		}
-		respond(manager.Install(input.CandidateID, input.Grants))
+		respond(h.app.InstallExtensionCandidate(ctx, input.CandidateID, input.Grants))
 		return
 	}
 	if len(parts) == 3 && parts[0] == "candidates" && parts[2] == "archive" && method == "GET" {
@@ -359,6 +361,12 @@ func (h *Handlers) HandlePlatformManagement(ctx context.Context, c *hertzapp.Req
 }
 
 func platformManagementError(c *hertzapp.RequestContext, err error) {
+	for cause, key := range map[error]string{resourceexchange.ErrSourceChanged: "market.errors.sourceChanged", resourceexchange.ErrBundleOwned: "market.errors.bundleOwned", resourceexchange.ErrReferenceChanged: "market.errors.referenceChanged", resourceexchange.ErrResourcesBusy: "market.errors.busy"} {
+		if errors.Is(err, cause) {
+			err = &platform.Error{Code: "DOCUMENT_CONFLICT", MessageKey: key, Diagnostic: err.Error()}
+			break
+		}
+	}
 	status, body := platform.ErrorResponse(err)
 	slog.Warn("platform_management_failed", "code", body.Code, "diagnostic", body.Diagnostic)
 	c.JSON(status, body)

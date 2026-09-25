@@ -160,6 +160,15 @@ func (m *Manager) resolveGitHubSource(ctx context.Context, source GitHubSource) 
 }
 
 func (m *Manager) downloadGitHubSource(ctx context.Context, source GitHubSource) (GitHubSource, map[string][]byte, error) {
+	source, data, err := m.downloadGitHubArchive(ctx, source)
+	if err != nil {
+		return source, nil, err
+	}
+	files, err := readGitHubArchive(data)
+	return source, files, err
+}
+
+func (m *Manager) downloadGitHubArchive(ctx context.Context, source GitHubSource) (GitHubSource, []byte, error) {
 	source, err := m.resolveGitHubSource(ctx, source)
 	if err != nil {
 		return source, nil, err
@@ -169,12 +178,8 @@ func (m *Manager) downloadGitHubSource(ctx context.Context, source GitHubSource)
 	if err != nil {
 		return source, nil, err
 	}
-	files, err := readGitHubArchive(data)
-	if err != nil {
-		return source, nil, err
-	}
 	slog.Info("platform_github_source_downloaded", "repository", source.URL, "ref", source.Ref, "commit", source.Commit, "path", source.Path)
-	return source, files, nil
+	return source, data, nil
 }
 
 // PreviewGitHub only downloads and validates files. Build commands run solely

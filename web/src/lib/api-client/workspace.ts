@@ -47,10 +47,11 @@ export async function previewCharacterCard(file: File): Promise<CharacterCardPre
 
 export async function importCharacterCard(
   file: File,
-  options: { targetMode: 'current' | 'new_book'; projectId?: string; bookTitle?: string; userCharacterName?: string; loreClassification?: 'heuristic' | 'semantic' },
+  options: { targetMode: 'current' | 'new_book'; projectId?: string; bookTitle?: string; userCharacterName?: string; loreClassification?: 'heuristic' | 'semantic'; replaceCover?: boolean },
 ): Promise<CharacterCardImportResult> {
   const form = new FormData()
   form.append('file', file)
+  if (options.replaceCover) form.append('replace_cover', 'true')
   if (options.bookTitle) form.append('book_title', options.bookTitle)
   if (options.userCharacterName) form.append('user_character_name', options.userCharacterName)
   if (options.loreClassification) form.append('lore_classification', options.loreClassification)

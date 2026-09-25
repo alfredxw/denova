@@ -6,11 +6,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/app/resourceexchange"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book/character"
 	"denova/internal/book/lore"
@@ -64,6 +66,7 @@ func readCharacterCardUpload(c *app.RequestContext) (string, []byte, bool) {
 }
 
 type characterCardImportFields struct {
+	replaceCover       bool
 	bookTitle          string
 	userCharacterName  string
 	classificationMode string
@@ -75,6 +78,7 @@ func readCharacterCardImportFields(c *app.RequestContext) characterCardImportFie
 		classificationMode = lore.ClassificationModeSemantic
 	}
 	return characterCardImportFields{
+		replaceCover:       string(c.FormValue("replace_cover")) == "true",
 		bookTitle:          strings.TrimSpace(string(c.FormValue("book_title"))),
 		userCharacterName:  strings.TrimSpace(string(c.FormValue("user_character_name"))),
 		classificationMode: classificationMode,
@@ -109,9 +113,7 @@ func (h *Handlers) HandleProjectCharacterCardImport(ctx context.Context, c *app.
 		"size", len(data),
 		"classification_mode", fields.classificationMode,
 	)
-	result, err := character.NewService(scope.ContentRoot).ImportTavernCard(
-		filename, data, h.characterCardImportOptions(ctx, scope.ProjectID, fields),
-	)
+	result, err := h.installCharacterResources(ctx, filename, data, scope.ProjectID, scope.ContentRoot, fields)
 	result.ProjectID = scope.ProjectID
 	result.Workspace = scope.ContentRoot
 	h.writeCharacterCardImportResult(ctx, c, filename, result, err)
@@ -190,9 +192,7 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 			)
 		}
 	}
-	result, err := character.NewService(created.Workspace).ImportTavernCard(
-		filename, data, h.characterCardImportOptions(ctx, created.ProjectID, fields),
-	)
+	result, err := h.installCharacterResources(ctx, filename, data, created.ProjectID, created.Workspace, fields)
 	if err != nil {
 		cleanup()
 		return failedResult, err
@@ -200,5 +200,47 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 	result.ProjectID = created.ProjectID
 	result.Workspace = created.Workspace
 	result.BookMeta = &created.Meta
+	return result, nil
+}
+
+// The character-specific picker preserves conversion options, but all writes
+// and source records go through the same resource transaction as market imports.
+func (h *Handlers) installCharacterResources(ctx context.Context, filename string, data []byte, projectID, workspace string, fields characterCardImportFields) (character.ImportResult, error) {
+	exchange := h.app.ResourceExchange()
+	preview, err := exchange.PreviewCharacter(ctx, resourceexchange.Source{Kind: "file", Filename: filename}, data, h.characterCardImportOptions(ctx, projectID, fields))
+	if err != nil {
+		return character.ImportResult{}, err
+	}
+	defer exchange.DiscardPreview(preview.ID)
+	candidate := preview.Candidates[0]
+	selected := make([]string, 0, len(candidate.Resources))
+	for _, resource := range candidate.Resources {
+		if resource.Kind == "project.cover" && !fields.replaceCover {
+			_, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(preview.Character.CoverPath)))
+			if err == nil {
+				preview.Character.CoverPath = ""
+				continue
+			}
+			if !os.IsNotExist(err) {
+				return character.ImportResult{}, err
+			}
+		}
+		selected = append(selected, resource.ID)
+	}
+	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{PreviewID: preview.ID, CandidateID: candidate.ID, ProjectID: projectID, Resources: selected, ReplaceModified: fields.replaceCover})
+	if err != nil {
+		return character.ImportResult{}, err
+	}
+	installed, err := h.app.ApplyResourcePlan(ctx, plan.ID)
+	if err != nil {
+		return character.ImportResult{}, err
+	}
+	result := *preview.Character
+	result.ProjectID = projectID
+	for _, binding := range installed.Bindings {
+		if binding.Local.Kind == "lore.item" {
+			result.ItemIDs = append(result.ItemIDs, binding.Local.ID)
+		}
+	}
 	return result, nil
 }

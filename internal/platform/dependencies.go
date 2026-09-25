@@ -12,6 +12,10 @@ func (m *Manager) resolveDependencies(manifest Manifest, requested []DependencyP
 	if err != nil {
 		return nil, err
 	}
+	return resolveAvailableDependencies(manifest, requested, installed)
+}
+
+func resolveAvailableDependencies(manifest Manifest, requested []DependencyPin, installed []Installed) ([]DependencyPin, error) {
 	available := map[string]Installed{}
 	for _, item := range installed {
 		available[item.ID] = item
@@ -151,4 +155,10 @@ func (m *Manager) validateModels(release Release, pins []DependencyPin, projectI
 		}
 	}
 	return nil
+}
+
+// ExportDependencies resolves the same current plugin releases that a new
+// consumer would use. Export callers include those releases in their bundle.
+func (m *Manager) ExportDependencies(manifest Manifest) ([]DependencyPin, error) {
+	return m.resolveDependencies(manifest, nil)
 }

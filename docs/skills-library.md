@@ -27,26 +27,36 @@ groups are hidden while searching or filtering.
   ambient library cannot bypass these preferences. Denova does not rewrite the
   user's CLI Skills preferences.
 
-## Remote updates
+## Import, export and remote updates
 
-Remote installs record their original URL, ref, subdirectory, candidate path, and
-content digest in `.denova-source.json` inside the installed Skill. ZIP uploads
-and existing installations without provenance are not guessed to be remote;
-reinstall them from the original remote source to enable update tracking.
+The Skills import picker uses the shared resource preview and install plan. It
+accepts standard Skill repositories and ZIPs as well as mixed resource packages.
+User and Project scopes remain explicit; shared and built-in Skills are never
+modified in place. Individual Skills can be exported as a standard ZIP or added
+to a mixed package.
 
-Each remote Skill has an auto-update switch, off by default. While Denova runs,
-an application-owned worker checks opted-in Skills when their last attempt is at
-least 24 hours old. Starting the app catches up overdue checks. Failed checks
-also retain their attempt time, so a failed upstream does not create a retry loop.
-No OS service or external scheduler is installed.
+Sources, content baselines and update preferences live in
+`<data directory>/resource-exchange/installations/`. The Library links each
+tracked Skill to its installation in Marketplace. That page provides manual
+checks, reviewed updates, policy changes, detaching and backup recovery. It does
+not replace the Skill editor or availability controls.
 
-“Check all” only reports updates. “Update” and “Update all” install upstream
-changes. Both manual and automatic installation skip Skills with locally changed
-files or names. Updating one failed Skill does not roll back successful peers.
+New installs default to manual updates. Notify checks daily without replacing
+content. Automatic apply is available for packages containing only Skills,
+presets and style references; it requires unchanged local files, the original
+selection and dependencies, and idle consumers. A locally added file also counts
+as a modification. Failed checks retain their attempt time, avoiding retry loops.
+Mixed packages containing plugins, games or Project content require confirmation.
 
-Before replacement, the whole previous directory is retained under
-`<skill root>/.denova-backups/<skill name>/<timestamp>/`. To restore, close Denova,
-preserve the current directory separately, and copy the desired backup back to
-`<skill root>/<skill name>/`. A `pending` backup marks an interrupted replacement
-and is recovered when the library is next opened. Backups are not automatically
-deleted. Library metadata is excluded from editable files and content revisions.
+The installer freezes upstream bytes before confirmation and commits the whole
+selected package with its source record. Before-images are retained in durable
+transaction records. The market can download backups or review a restore plan;
+it refuses to overwrite edits made since the original commit. See
+[Marketplace and resource exchange](resource-pack-import-export-design.md) for the
+format, ownership rules, recovery boundary and current scope.
+
+On upgrade from v0.5.0, `.denova-source.json` is backed up and moved into the shared
+installation model. An explicitly enabled auto-update preference is retained;
+other Skills remain manual. Skill content is unchanged. Downgrading requires
+restoring the old source files from migration before-images to recover source
+and update information. Existing legacy `.denova-backups` are not removed.

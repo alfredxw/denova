@@ -216,8 +216,8 @@ func TestGitHubImportsBuildSourceAsPortableProject(t *testing.T) {
 	}
 	reloaded := New(m.root, project.NewRegistry(m.root))
 	built, err := reloaded.CheckDevelopment(imported.ID)
-	if err != nil || built.Source == nil || built.Source.Commit != head || built.Source.Path != "games/demo" {
-		t.Fatalf("build lost imported provenance: %+v %v", built, err)
+	if err != nil || built.Source != nil {
+		t.Fatalf("local build claimed upstream release identity: %+v %v", built, err)
 	}
 	testInstall(t, reloaded, built)
 }
@@ -248,5 +248,59 @@ func TestGitHubInputAndDownloadBoundaries(t *testing.T) {
 		if _, err := readGitHubArchive(githubTestArchive(t, files)); err == nil {
 			t.Fatalf("accepted unsafe source archive: %v", files)
 		}
+	}
+}
+
+func TestResourceSourceAdmitsOnlySelectedPortableSubtree(t *testing.T) {
+	for _, scenario := range []struct {
+		name      string
+		path      string
+		mode      os.FileMode
+		wantError bool
+	}{
+		{"unrelated link", "CLAUDE.md", os.ModeSymlink | 0777, false},
+		{"selected link", "skills/example/reference.md", os.ModeSymlink | 0777, true},
+		{"selected traversal", "skills/example/../../outside", 0600, true},
+		{"selected case conflict", "skills/example/skill.md", 0600, true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			writer := zip.NewWriter(&buffer)
+			regular, err := writer.Create("owner-repo-commit/skills/example/SKILL.md")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := regular.Write([]byte("Portable Skill")); err != nil {
+				t.Fatal(err)
+			}
+			header := &zip.FileHeader{Name: "owner-repo-commit/" + scenario.path}
+			header.SetMode(scenario.mode)
+			entry, err := writer.CreateHeader(header)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := entry.Write([]byte("AGENTS.md")); err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			m, _ := testManager(t)
+			head := strings.Repeat("a", 40)
+			githubTestServer(t, m, &head, map[string][]byte{head: buffer.Bytes()})
+			resolved, files, err := m.SourceFiles(context.Background(), GitHubSource{URL: "https://github.com/author/repo", Ref: "main", Path: "skills/example"})
+			if scenario.wantError {
+				if err == nil {
+					t.Fatal("accepted unsafe file inside selected subtree")
+				}
+				return
+			}
+			if err != nil || resolved.Commit != head || len(files) != 1 || string(files["skills/example/SKILL.md"]) != "Portable Skill" {
+				t.Fatalf("subtree: %+v %v", files, err)
+			}
+			if _, err := readGitHubArchive(buffer.Bytes()); err == nil {
+				t.Fatal("full checkout unexpectedly admitted a symlink")
+			}
+		})
 	}
 }

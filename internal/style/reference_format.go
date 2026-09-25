@@ -2,16 +2,11 @@ package style
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
 )
-
-func fileRevision(info os.FileInfo) string {
-	return fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
-}
 
 func NormalizeStoragePath(path string) string {
 	path = strings.TrimSpace(filepath.ToSlash(path))

@@ -17,7 +17,7 @@ const workbench = {
   'workbench.activity.settings': 'Settings',
   'workbench.activity.skills': 'Skills',
   'workbench.activity.game': 'Game',
-  'workbench.activity.teller': 'Presets',
+  'workbench.activity.teller': 'Creative Setups',
   'workbench.activity.trajectory': 'Trajectory',
   'workbench.activity.toggleCollapse': 'Collapse',
   'workbench.activity.toggleExpand': 'Expand',

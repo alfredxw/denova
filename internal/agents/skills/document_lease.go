@@ -53,3 +53,22 @@ func withSkillLeases[T any](ctx context.Context, targets []skillLeaseTarget, ope
 	}()
 	return operation()
 }
+
+// MutationTarget identifies a writable Skill directory participating in an
+// application transaction. The callback must not reacquire these Skill leases.
+type MutationTarget struct {
+	Directory Directory
+	Name      string
+}
+
+func WithMutationLeases(ctx context.Context, targets []MutationTarget, operation func() error) error {
+	internal := make([]skillLeaseTarget, len(targets))
+	for i, target := range targets {
+		if !target.Directory.Writable {
+			return fmt.Errorf("Skill target is read-only")
+		}
+		internal[i] = skillLeaseTarget{dir: target.Directory, name: target.Name}
+	}
+	_, err := withSkillLeases(ctx, internal, func() (struct{}, error) { return struct{}{}, operation() })
+	return err
+}

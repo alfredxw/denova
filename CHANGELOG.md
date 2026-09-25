@@ -14,6 +14,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Added / 新增
 
+- 新增市场与统一导入导出：从独立索引发现包含创作方案、Skills、资料、插件和游戏的资源包，预览并组合交付内容，统一管理来源、更新策略与备份恢复，保留各模块的编辑和使用入口。
+- Added a Marketplace and shared import/export: discover packages with creative setups, Skills, Lore, plugins and games through an independent index, preview and bundle resources, and manage sources, update policies and backups while keeping editing in each module.
 - 新增统一扩展管理与工作台开发流程：支持从 GitHub 或本地安装游戏和插件、按提交检查更新，以及启停、独有设置表单、模板创建、构建、独立预览与导出。
 - Added unified extension management and workbench development: install games and plugins from GitHub or local files, check upstream updates, enable, configure through forms, create, build, preview and export.
 - 游戏页支持在新建故事线时选择已安装游戏、设置默认游戏，并按故事线保存和恢复各自的进度；游戏可使用工具插件与私有 NPC。
@@ -28,6 +30,11 @@ Denova records only major user-visible features, important compatibility or data
 
 - 修复写作与通用对话使用外部运行时时，取消排队中的写入后无法继续会话或切换运行时的问题。
 - Fix external-runtime Writing and General conversations remaining blocked after cancelling a queued write, preventing continuation or runtime switching.
+
+### Changed / 变更
+
+- 旧 Skill 来源和自动更新选择迁入统一安装记录，正文不变，旧来源文件在移除前保留事务备份；降级 v0.5.0 需恢复这些文件才能继续使用原来源和自动更新信息。
+- Skill sources and existing update preferences move into shared installation records without changing content. Old source files are backed up before removal; downgrading to v0.5.0 requires restoring them to recover source and automatic-update information.
 
 ## [v0.5.0] - 2026-09-22
 

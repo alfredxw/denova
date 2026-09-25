@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Download, Folder, Globe, LayoutGrid, List, RefreshCw, Search, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Folder, Globe, LayoutGrid, List, Search, Sparkles, Store, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -11,9 +11,12 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { refreshSkillUpdates, setSkillPreference } from '@/lib/api'
-import type { SkillCatalogTarget, SkillPreferenceChange, SkillSnapshot, SkillSummary } from '@/lib/api'
+import { setSkillPreference } from '@/lib/api'
+import type { SkillCatalogTarget, SkillPreferenceChange, SkillSnapshot } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { exchange, type Installation, type LocalRef } from '@/features/market/api'
+import { ExportDialog } from '@/features/market/ExportDialog'
+import { useWorkspaceStore } from '@/stores/workspace-store'
 import { keyOf, scopeLabel, skillCategory, skillCategoryLabel } from './skill-utils'
 
 interface SkillLibraryProps {
@@ -27,7 +30,7 @@ interface SkillLibraryProps {
 /** The library owns browsing and library preferences; document editing keeps
  * its existing revision-aware lifecycle in SkillsView. */
 export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }: SkillLibraryProps) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('all')
   const [source, setSource] = useState('all')
@@ -36,15 +39,32 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
   const [pending, setPending] = useState<string | null>(null)
   const hasFilters = query.trim() !== '' || status !== 'all' || source !== 'all' || category !== 'all'
   const categories = useMemo(() => Array.from(new Set(snapshot.skills.map(skillCategory))).sort(), [snapshot.skills])
-  const remoteSkills = snapshot.skills.filter((skill) => skill.remote)
-  const updateCount = remoteSkills.filter((skill) => skill.remote?.update_available && skill.remote.status !== 'modified').length
+  const [installations, setInstallations] = useState<Installation[]>([])
+  const [exporting, setExporting] = useState<LocalRef>()
+  useEffect(() => {
+    let active = true
+    void exchange<Installation[]>('/installations').then((items) => { if (active) setInstallations(items) }).catch(() => { if (active) toast.error(t('market.errors.operationFailed')) })
+    return () => { active = false }
+  }, [snapshot, t])
+  const sources = useMemo(() => {
+    const result = new Map<string, Installation>()
+    for (const item of installations) {
+      if (item.tracking !== 'tracked') continue
+      for (const binding of item.bindings) {
+        if (binding.local.kind !== 'skill') continue
+        if (binding.local.project_id && (target.kind !== 'project' || binding.local.project_id !== target.projectId)) continue
+        result.set(`${binding.local.scope}:${binding.local.id}`, item)
+      }
+    }
+    return result
+  }, [installations, target])
   const filtered = useMemo(() => snapshot.skills.filter((skill) => {
     const enabled = skill.active && skill.enabled !== false
     if (status === 'enabled' && !enabled || status === 'disabled' && enabled) return false
-    if (source === 'remote' && !skill.remote || source === 'denova' && skill.scope === 'shared' || source === 'shared' && skill.scope !== 'shared') return false
+    if (source === 'remote' && !sources.has(keyOf(skill)) || source === 'denova' && skill.scope === 'shared' || source === 'shared' && skill.scope !== 'shared') return false
     if (category !== 'all' && skillCategory(skill) !== category) return false
     return `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
-  }), [category, query, snapshot.skills, source, status])
+  }), [category, query, snapshot.skills, source, sources, status])
 
   const preference = async (id: string, change: SkillPreferenceChange) => {
     setPending(id)
@@ -53,20 +73,6 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
       await onChanged()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('skills.library.preferenceFailed'))
-    } finally { setPending(null) }
-  }
-
-  const update = async (action: 'check' | 'update', skill?: SkillSummary) => {
-    setPending(`${action}:${skill ? keyOf(skill) : 'all'}`)
-    try {
-      const results = await refreshSkillUpdates(target, action, skill)
-      const failures = results.filter((item) => item.error_key)
-      if (failures.length) toast.error(t('skills.library.updateFailures', { count: failures.length }))
-      else if (results.some((item) => item.remote?.status === 'modified')) toast.info(t('skills.library.modifiedHint'))
-      else toast.success(t(action === 'check' ? 'skills.library.checked' : 'skills.library.updated'))
-      await onChanged()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('skills.library.updateFailed'))
     } finally { setPending(null) }
   }
 
@@ -93,11 +99,8 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
               {['all', 'enabled', 'disabled'].map((item) => <ToggleGroupItem key={item} value={item}>{t(`skills.library.${item}`)}</ToggleGroupItem>)}
             </ToggleGroup>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" disabled={Boolean(pending) || remoteSkills.length === 0} onClick={() => void update('check')}>
-                <RefreshCw data-icon="inline-start" className={pending?.startsWith('check:') ? 'animate-spin' : undefined} />{t('skills.library.checkAll')}
-              </Button>
-              <Button variant="outline" size="sm" disabled={Boolean(pending) || updateCount === 0} onClick={() => void update('update')}>
-                <Download data-icon="inline-start" />{t('skills.library.updateAll', { count: updateCount })}
+              <Button variant="outline" size="sm" onClick={() => useWorkspaceStore.getState().openMarketInstallation()}>
+                <Store data-icon="inline-start" />{t('market.title')}
               </Button>
               <ToggleGroup type="single" value={view} onValueChange={(value) => value && setView(value)} variant="outline" size="sm" spacing={0} aria-label={t('skills.library.layout')}>
                 <ToggleGroupItem value="grid" aria-label={t('skills.library.grid')}><LayoutGrid /></ToggleGroupItem>
@@ -160,8 +163,7 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
                 <div className={cn('grid gap-3', view === 'grid' ? 'grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]' : 'grid-cols-1')}>
                   {section.skills.map((skill) => {
                     const enabled = skill.active && skill.enabled !== false
-                    const remote = skill.remote
-                    const checkedAt = remote?.checked_at && !remote.checked_at.startsWith('0001-') ? new Date(remote.checked_at).toLocaleString(i18n.language) : ''
+                    const remote = sources.get(keyOf(skill))
                     return (
                       <Card key={keyOf(skill)} size="sm" data-testid={`skill-card-${keyOf(skill)}`} className="min-w-0 cursor-pointer transition-shadow hover:ring-foreground/25 focus-within:ring-ring" onClick={() => onSelect(keyOf(skill))}>
                         <CardHeader>
@@ -179,22 +181,17 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
                         <CardContent className="flex flex-1 flex-wrap items-start gap-1.5">
                           <Badge variant="secondary">{skillCategoryLabel(skillCategory(skill), t)}</Badge>
                           {!skill.active && (!shared || snapshot.shared_enabled) && <Badge variant="outline">{t('skills.shadowed')}</Badge>}
-                          {remote?.status && <Badge variant={remote.status === 'error' ? 'destructive' : 'outline'} title={checkedAt ? t('skills.library.lastChecked', { time: checkedAt }) : undefined}>{t(`skills.library.state.${remote.status}`)}</Badge>}
+                          {remote && <Badge variant="outline">{t(`market.states.${remote.local_state || 'unchanged'}`)}</Badge>}
                         </CardContent>
                         <CardFooter className="flex flex-wrap justify-between gap-x-3 gap-y-2" onClick={(event) => event.stopPropagation()}>
                           <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" title={remote?.source.url || skill.path}>
                             {remote ? <Globe className="size-3.5 shrink-0" /> : <Folder className="size-3.5 shrink-0" />}
                             {scopeLabel(skill.scope, t)}{remote && <> · {t('skills.library.remote')}</>}
                           </span>
-                          {remote && (
-                            <div className="flex flex-wrap items-center gap-3">
-                              {remote.update_available && remote.status !== 'modified' && <Button size="sm" variant="ghost" disabled={Boolean(pending)} onClick={() => void update('update', skill)}>{t('skills.library.update')}</Button>}
-                              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground" title={t('skills.library.autoUpdateHint')}>
-                                {t('skills.library.autoUpdate')}
-                                <Switch size="sm" checked={remote.auto_update} disabled={Boolean(pending)} onCheckedChange={(checked) => void preference(`auto:${keyOf(skill)}`, { scope: skill.scope, name: skill.name, auto_update: checked })} aria-label={t('skills.library.autoUpdateSkill', { name: skill.name })} />
-                              </label>
-                            </div>
-                          )}
+                          <div className="flex flex-wrap gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => setExporting({ kind: 'skill', scope: skill.scope, id: skill.name, project_id: skill.scope === 'workspace' && target.kind === 'project' ? target.projectId : undefined })}><Upload data-icon="inline-start" />{t('market.export.title')}</Button>
+                            {remote && <Button size="sm" variant="ghost" onClick={() => useWorkspaceStore.getState().openMarketInstallation(remote.installation_id)}>{t('market.acquired.sourceActions')}</Button>}
+                          </div>
                         </CardFooter>
                       </Card>
                     )
@@ -204,7 +201,7 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
             </section>
           )
         })}
-        {remoteSkills.length > 0 && <p className="text-xs text-muted-foreground">{t('skills.library.autoUpdateHint')}</p>}
+        {exporting && <ExportDialog projectID={exporting.project_id} initialResources={[exporting]} onClose={() => setExporting(undefined)} />}
       </div>
     </div>
   )

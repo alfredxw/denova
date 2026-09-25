@@ -1,6 +1,8 @@
 package platform
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
@@ -10,6 +12,38 @@ import (
 	"denova/internal/project"
 	"github.com/google/uuid"
 )
+
+// readGitHubSubtree admits only the requested distribution directory. Unrelated
+// repository files (for example a root documentation symlink) are never extracted
+// and must not prevent installing a portable Skill or extension subpackage.
+func readGitHubSubtree(raw []byte, relative string) (map[string][]byte, error) {
+	if len(raw) > MaxPackageBytes {
+		return nil, failure("LIMIT_EXCEEDED", "Archive is too large")
+	}
+	reader, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		return nil, failure("INVALID_ARGUMENT", "Invalid GitHub archive: %v", err)
+	}
+	if len(reader.File) > MaxPackageFiles {
+		return nil, failure("LIMIT_EXCEEDED", "Archive exceeds entry limits")
+	}
+	entries := []*zip.File{}
+	root := ""
+	for _, entry := range reader.File {
+		parent, name, found := strings.Cut(entry.Name, "/")
+		if !found || parent == "" || (root != "" && parent != root) {
+			return nil, failure("INVALID_ARGUMENT", "GitHub archive must contain exactly one enclosing directory")
+		}
+		root = parent
+		if name == "" || (relative != "." && name != relative && !strings.HasPrefix(name, relative+"/")) {
+			continue
+		}
+		selected := *entry
+		selected.Name = name
+		entries = append(entries, &selected)
+	}
+	return readPackageEntries(entries)
+}
 
 func readGitHubArchive(raw []byte) (map[string][]byte, error) {
 	files, err := readPackageZIP(raw)

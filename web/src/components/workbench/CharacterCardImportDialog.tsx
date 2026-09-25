@@ -19,6 +19,8 @@ interface CharacterCardImportDialogProps {
   targetMode: CharacterCardTargetMode
   bookTitle: string
   userCharacterName: string
+  replaceCover: boolean
+  onReplaceCoverChange: (value: boolean) => void
   semanticClassification: boolean
   previewing: boolean
   importing: boolean
@@ -44,6 +46,8 @@ export function CharacterCardImportDialog({
   bookTitle,
   userCharacterName,
   semanticClassification,
+  replaceCover,
+  onReplaceCoverChange,
   previewing,
   importing,
   error,
@@ -177,6 +181,7 @@ export function CharacterCardImportDialog({
               )
             )}
 
+            {preview?.will_import_cover && targetMode === 'current' && <label className="flex items-center justify-between gap-3"><span>{t('market.import.replaceCover')}</span><Switch checked={replaceCover} onCheckedChange={onReplaceCoverChange} disabled={importing} aria-label={t('market.import.replaceCover')} /></label>}
             {preview?.user_placeholder_found && (
               <div className="space-y-2">
                 <Input
@@ -232,7 +237,7 @@ export function CharacterCardImportDialog({
   )
 }
 
-function CompatibilityReport({ preview }: { preview: CharacterCardPreview }) {
+export function CompatibilityReport({ preview }: { preview: Pick<CharacterCardPreview, 'compatibility'> }) {
   const { t } = useTranslation()
   const groups = [
     { key: 'capabilities', fields: preview.compatibility?.capabilities || [] },

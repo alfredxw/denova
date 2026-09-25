@@ -1,3 +1,4 @@
+import market from './zh-CN/market'
 import speech from './zh-CN/speech'
 import common from './zh-CN/common'
 import platform from './zh-CN/platform'
@@ -48,6 +49,7 @@ import trajectory from './zh-CN/trajectory'
 
 const zhCN = {
   ...common,
+  ...market,
   ...platform,
   ...speech,
   ...agentRuntime,

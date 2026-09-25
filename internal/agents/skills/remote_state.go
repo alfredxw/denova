@@ -156,3 +156,27 @@ func SetAutoUpdate(ctx context.Context, dirs []Directory, scope Scope, name stri
 		return *state, writeRemoteState(root, state)
 	})
 }
+
+// LegacySourceState is used only to migrate the latest released Skill source
+// metadata into application-owned installation records without resetting trust.
+func LegacySourceState(ctx context.Context, directory string) (*RemoteState, bool, error) {
+	state, err := readRemoteState(directory)
+	if err != nil || state == nil {
+		return state, false, err
+	}
+	digest, err := skillContentDigest(ctx, directory)
+	return state, digest == state.Digest, err
+}
+
+// CanonicalLegacySource resolves historical GitHub shorthand and tree URLs
+// without downloading. Non-GitHub archives retain their original URL/subdir.
+func CanonicalLegacySource(source RemoteArchiveSource) (RemoteArchiveSource, bool, error) {
+	repo, github, err := githubRepositoryFromRemoteSource(source)
+	if err != nil {
+		return source, github, err
+	}
+	if github {
+		return RemoteArchiveSource{URL: "https://github.com/" + repo.Owner + "/" + repo.Repo, Ref: repo.Ref, Subdir: repo.Subdir}, true, nil
+	}
+	return source, false, nil
+}

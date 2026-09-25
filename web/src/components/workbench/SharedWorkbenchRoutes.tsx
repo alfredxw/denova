@@ -6,6 +6,7 @@ import type { WorkbenchRouteId, WorkbenchRoutePresentation } from './WorkbenchRo
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const HomeView = memo(lazy(() => import('@/components/Home/HomeView').then((module) => ({ default: module.HomeView }))))
+const MarketView = memo(lazy(() => import('@/features/market/MarketView').then((module) => ({ default: module.MarketView }))))
 const ExtensionsView = memo(lazy(() => import('@/features/platform/ExtensionsView').then((module) => ({ default: module.ExtensionsView }))))
 const AgentsView = memo(lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView }))))
 const AutomationsView = memo(lazy(() => import('@/features/automations/AutomationsView').then((module) => ({ default: module.AutomationsView }))))
@@ -19,6 +20,7 @@ interface SharedWorkbenchRoutesProps {
   loadingLabel: string
   home: ComponentProps<typeof HomeView>
   automations: ComponentProps<typeof AutomationsView>
+  onSwitchProject: (path: string) => Promise<boolean>
   resourceTarget: ResourceTarget
   toolNavigationIntent: ToolNavigationIntent | null
 }
@@ -31,10 +33,12 @@ export function SharedWorkbenchRoutes({
   home,
   automations,
   resourceTarget,
+  onSwitchProject,
   toolNavigationIntent,
 }: SharedWorkbenchRoutesProps) {
   return (
     <>
+      {isMounted('market') && <WorkbenchRouteLayer visible={route === 'market'} loadingLabel={loadingLabel}><MarketView visible={route === 'market'} onSwitchProject={onSwitchProject} /></WorkbenchRouteLayer>}
       {isMounted('extensions') && (
         <WorkbenchRouteLayer visible={route === 'extensions'} loadingLabel={loadingLabel}>
           <ExtensionsView visible={route === 'extensions'} />

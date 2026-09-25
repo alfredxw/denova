@@ -32,7 +32,7 @@ func TestSkillUpdateScanDoesNotMigrateInactiveProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	application := &App{cfg: &config.Config{DenovaDir: data}, projectRegistry: registry}
-	application.updateDueSkills(context.Background(), time.Now())
+	application.ResourceExchange().UpdateDue(context.Background(), time.Now(), application.ApplyResourcePlan)
 	for _, path := range []string{filepath.Join(workspace, "skills"), layout.StoreRoot} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("background scan created an unrelated directory %s: %v", path, err)

@@ -104,7 +104,7 @@ const agentChat = {
   'agentChat.empty.noWorkspace': '还没有可管理的项目，请先添加一个目录。',
   'agentChat.page.reader': '写作',
   'agentChat.page.lore': '资料库',
-  'agentChat.page.presets': '预设',
+  'agentChat.page.presets': '创作方案',
   'agentChat.page.skills': 'Skills',
   'agentChat.page.agents': 'Agents',
   'agentChat.page.automations': '自动化',

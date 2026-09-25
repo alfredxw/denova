@@ -57,7 +57,7 @@ for (const width of [320, 1023]) {
     await expect(files.getByRole('button', { name: '关闭', exact: true })).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(files).toBeHidden()
-    for (const destination of ['资料库', '方案预设', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '设置']) {
+    for (const destination of ['资料库', '创作方案', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化', '设置']) {
       await page.getByRole('button', { name: '导航菜单', exact: true }).click()
       const navigation = page.getByRole('dialog', { name: '导航菜单', exact: true })
       await expect(navigation.getByRole('button', { name: destination, exact: true })).toBeVisible()
@@ -410,7 +410,7 @@ test('cached destinations contribute only the active title bar and preserve the 
   await expect(commands).toBeHidden()
 })
 
-for (const destination of ['Skills', 'Agents', '资料库', '方案预设', '自动化']) {
+for (const destination of ['Skills', 'Agents', '资料库', '创作方案', '自动化']) {
   test(`mobile ${destination} retains its Agent draft across full-page views and primary navigation`, async ({ page, request }) => {
     await createMobileBook(request, `Resource ${destination}`)
     await page.setViewportSize({ width: 390, height: 844 })

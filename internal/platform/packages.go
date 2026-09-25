@@ -169,10 +169,14 @@ func readPackageZIP(raw []byte) (map[string][]byte, error) {
 	if len(reader.File) > MaxPackageFiles {
 		return nil, failure("LIMIT_EXCEEDED", "Archive exceeds entry limits")
 	}
+	return readPackageEntries(reader.File)
+}
+
+func readPackageEntries(entries []*zip.File) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	seen := map[string]bool{}
 	total := 0
-	for _, file := range reader.File {
+	for _, file := range entries {
 		name := strings.TrimSuffix(file.Name, "/")
 		if err := portablepath.Validate(name); err != nil {
 			return nil, failure("INVALID_ARGUMENT", "%v", err)
@@ -468,11 +472,14 @@ func (m *Manager) release(ref ReleaseRef) (Release, Installed, error) {
 }
 
 func readJSON(path string, out any) error {
-	data, err := os.ReadFile(path)
+	snapshot, err := revisionfile.Read(context.Background(), path)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, out)
+	if !snapshot.Exists {
+		return &os.PathError{Op: "read", Path: path, Err: os.ErrNotExist}
+	}
+	return json.Unmarshal(snapshot.Content, out)
 }
 func writeJSON(path string, value any) error {
 	data, err := json.MarshalIndent(value, "", "  ")

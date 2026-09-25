@@ -50,7 +50,7 @@ interface ResourceDirectoryProps {
   headerActions?: ReactNode
   /** 展示「展开/收起全部」按钮 */
   showExpandCollapseAll?: boolean
-  /** 值变化时强制展开对应分组（如方案预设切换资源类型） */
+  /** Expand the matching group when the value changes, such as when switching creative setup types. */
   expandedSectionId?: string
   /** 空分组沉底展示（资料库语义）；缺省保持传入顺序 */
   emptySectionsLast?: boolean

@@ -1,3 +1,5 @@
+import { ResourceExchangeActions } from '@/features/market/ResourceExchangeActions'
+import type { ResourceKind } from '@/features/market/api'
 import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useEffect, useRef, useState } from 'react'
 import { Bot, Compass, Database, Dice5, RotateCcw, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
@@ -72,6 +74,7 @@ interface AutosaveController {
 const actionButtonClassName = 'gap-1.5 border-[var(--preset-line)] bg-[var(--preset-raised)] text-[var(--nova-text-muted)] shadow-none hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const iconActionClassName = 'border-[var(--preset-line)] bg-transparent text-[var(--nova-text-muted)] shadow-none hover:border-[var(--nova-danger-border)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]'
 const PRESET_CONFIG_INVALID_TOAST_ID = 'preset-config-invalid'
+const exchangeKinds: Record<PresetResourceKind, ResourceKind> = { teller: 'preset.narrative', event: 'preset.events', rule: 'preset.rules', 'actor-state': 'preset.actor_state', director: 'preset.game_planning', image: 'preset.image' }
 
 export function PresetSettingsPanel({
   projectId,
@@ -690,6 +693,7 @@ export function PresetSettingsPanel({
               onSaveShortcut={flushActivePresetAutosave}
               actions={(
                 <>
+                  <ResourceExchangeActions projectID={projectId} resources={currentActivePresetId(presetResourceKind) ? [{ kind: exchangeKinds[presetResourceKind], scope: 'global', id: currentActivePresetId(presetResourceKind) }] : undefined} beforeOpen={flushPresetResourceAutoSave} onImported={async () => { await Promise.all([refreshTellers(), refreshEventPackages(), refreshRuleSystems(), refreshActorStates(), refreshStoryDirectors(), refreshImagePresets()]) }} />
                   {activeDraft ? (
                     <AutosaveStatusIndicator
                       status={activeAutosave.status}

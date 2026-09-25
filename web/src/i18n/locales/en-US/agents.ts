@@ -211,9 +211,9 @@ const agents = {
   'agents.builtIn.loreRead.value': 'Read current lore items and user-referenced lore context.',
   'agents.builtIn.loreWrite.title': 'Write Lore',
   'agents.builtIn.loreWrite.value': 'Generate create / update / delete operations for backend validation and application.',
-  'agents.builtIn.tellerRead.title': 'Read Presets',
+  'agents.builtIn.tellerRead.title': 'Read Creative Setups',
   'agents.builtIn.tellerRead.value': 'Read current narrative styles, Game Planning templates, image presets, selected resources, and user-referenced resources.',
-  'agents.builtIn.tellerWrite.title': 'Write Presets',
+  'agents.builtIn.tellerWrite.title': 'Write Creative Setups',
   'agents.builtIn.tellerWrite.value':
     'Generate create / update plans for backend validation and saving as narrative styles, Game Planning templates, or image presets.',
   'agents.contract.general': 'General project input, tools, permissions, and response protocol.',

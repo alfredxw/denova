@@ -77,6 +77,17 @@ func stringify(v any) string {
 }
 
 var catalogZH = map[string]string{
+	"market.errors.resourceOwned":            "此资源属于另一个正在跟踪的安装，请先管理或停止该来源跟踪，再替换内容。",
+	"market.errors.localModified":            "本地内容已修改。可以保留本地内容，或明确选择备份后替换。",
+	"market.errors.skillExists":              "已存在同名技能，请使用其他本地名称。",
+	"market.errors.sourceChanged":            "来源与当前安装不同。请先停止原来源跟踪，再采用新的来源。",
+	"market.errors.bundleOwned":              "此扩展属于一个资源包，请到市场的「已获取」中更新整个资源包。",
+	"market.errors.busy":                     "资源正在使用中，请在任务或扩展停止后重试。",
+	"market.errors.referenceChanged":         "引用的扩展已变化或被停用，请先恢复所需发行再重试。",
+	"market.errors.catalogUnavailable":       "资源索引暂时无法访问，请稍后刷新；仍可从文件或链接导入。",
+	"market.errors.operationFailed":          "操作未完成。请检查资源格式、依赖、同名冲突与本地修改，然后重新预览。",
+	"market.errors.invalidFile":              "请选择有效的 ZIP、角色卡 PNG 或 JSON 文件（最大 256 MiB）。",
+	"market.errors.projectsUnavailable":      "无法加载作品列表，请关闭后重试。",
 	"speech.error.unconfigured":              "请先配置语音接口、模型和声线。",
 	"speech.error.url":                       "请输入有效的 HTTP 或 HTTPS 语音接口地址，不含用户名、密码或片段标识。",
 	"speech.error.input":                     "朗读内容为空或单段过长。",
@@ -273,6 +284,17 @@ var catalogZH = map[string]string{
 }
 
 var catalogEN = map[string]string{
+	"market.errors.resourceOwned":            "This resource belongs to another tracked installation. Manage or detach its source before replacing it.",
+	"market.errors.localModified":            "Local content has changed. Keep it, or explicitly choose to replace it with a backup.",
+	"market.errors.skillExists":              "A Skill with this name already exists. Choose a different local name.",
+	"market.errors.sourceChanged":            "The source differs from this installation. Stop tracking its source before adopting a different one.",
+	"market.errors.bundleOwned":              "This extension belongs to a package. Update the entire package from Acquired in the Marketplace.",
+	"market.errors.busy":                     "Resources are in use. Retry when the running task or extension has stopped.",
+	"market.errors.referenceChanged":         "A referenced extension has changed or is disabled. Restore the required release before retrying.",
+	"market.errors.catalogUnavailable":       "The resource index is unavailable. Retry later, or import from a file or link.",
+	"market.errors.operationFailed":          "The operation could not complete. Check format, dependencies, name conflicts and local changes, then preview again.",
+	"market.errors.invalidFile":              "Choose a valid ZIP, character PNG or JSON file (up to 256 MiB).",
+	"market.errors.projectsUnavailable":      "Projects could not load. Close and retry.",
 	"speech.error.unconfigured":              "Configure a speech endpoint, model and voice first.",
 	"speech.error.url":                       "Enter a valid HTTP or HTTPS speech URL without embedded credentials or a fragment.",
 	"speech.error.input":                     "The speech input is empty or the segment is too long.",

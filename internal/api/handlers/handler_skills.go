@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -13,9 +11,6 @@ import (
 	appsvc "denova/internal/app"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
 )
-
-// MaxSkillInstallUploadBytes limits Skill ZIP uploads.
-const MaxSkillInstallUploadBytes = appsvc.MaxSkillInstallArchiveBytes
 
 type skillCreateRequest struct {
 	Scope        appsvc.SkillScope `json:"scope"`
@@ -41,14 +36,6 @@ type skillFileSaveRequest struct {
 	Path         string            `json:"path"`
 	Content      string            `json:"content"`
 	BaseRevision string            `json:"base_revision"`
-}
-
-type skillInstallRemoteRequest struct {
-	URL          string            `json:"url"`
-	Ref          string            `json:"ref"`
-	Subdir       string            `json:"subdir"`
-	Scope        appsvc.SkillScope `json:"scope"`
-	CandidateIDs []string          `json:"candidate_ids"`
 }
 
 func (h *Handlers) HandleSkills(ctx context.Context, c *app.RequestContext) {
@@ -179,164 +166,9 @@ func (h *Handlers) HandleSkillDelete(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handlers) HandleSkillInstallZipPreview(ctx context.Context, c *app.RequestContext) {
-	scope := normalizeSkillInstallScope(string(c.FormValue("scope")))
-	_, data, ok := readSkillInstallUpload(c)
-	if !ok {
-		return
-	}
-	preview, err := h.app.ResourceCatalog().PreviewSkillZip(ctx, skillTarget(c), scope, data)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, preview)
-}
-
-func (h *Handlers) HandleSkillInstallZip(ctx context.Context, c *app.RequestContext) {
-	scope := normalizeSkillInstallScope(string(c.FormValue("scope")))
-	_, data, ok := readSkillInstallUpload(c)
-	if !ok {
-		return
-	}
-	candidateIDs := parseCandidateIDs(string(c.FormValue("candidate_ids")))
-	result, err := h.app.ResourceCatalog().InstallSkillZip(ctx, skillTarget(c), scope, data, candidateIDs)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
-func (h *Handlers) HandleSkillInstallGitHubPreview(ctx context.Context, c *app.RequestContext) {
-	var body skillInstallRemoteRequest
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	source := appsvc.SkillGitHubSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	preview, err := h.app.ResourceCatalog().PreviewSkillGitHub(ctx, skillTarget(c), normalizeSkillInstallScope(string(body.Scope)), source)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, preview)
-}
-
-func (h *Handlers) HandleSkillInstallGitHub(ctx context.Context, c *app.RequestContext) {
-	var body skillInstallRemoteRequest
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	source := appsvc.SkillGitHubSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	result, err := h.app.ResourceCatalog().InstallSkillGitHub(ctx, skillTarget(c), normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
-func (h *Handlers) HandleSkillInstallRemotePreview(ctx context.Context, c *app.RequestContext) {
-	var body skillInstallRemoteRequest
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	source := appsvc.SkillRemoteArchiveSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	preview, err := h.app.ResourceCatalog().PreviewSkillRemoteArchive(ctx, skillTarget(c), normalizeSkillInstallScope(string(body.Scope)), source)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, preview)
-}
-
-func (h *Handlers) HandleSkillInstallRemote(ctx context.Context, c *app.RequestContext) {
-	var body skillInstallRemoteRequest
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	source := appsvc.SkillRemoteArchiveSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	result, err := h.app.ResourceCatalog().InstallSkillRemoteArchive(ctx, skillTarget(c), normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
-func readSkillInstallUpload(c *app.RequestContext) (string, []byte, bool) {
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.uploadRequired")
-		return "", nil, false
-	}
-	if fileHeader.Size > MaxSkillInstallUploadBytes {
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.tooLarge")
-		return "", nil, false
-	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.readFailed", "detail", err.Error())
-		return "", nil, false
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(io.LimitReader(file, MaxSkillInstallUploadBytes+1))
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.readFailed", "detail", err.Error())
-		return "", nil, false
-	}
-	if int64(len(data)) > MaxSkillInstallUploadBytes {
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.tooLarge")
-		return "", nil, false
-	}
-	return fileHeader.Filename, data, true
-}
-
-func normalizeSkillInstallScope(scope string) appsvc.SkillScope {
-	scope = strings.TrimSpace(scope)
-	if scope == "" {
-		return appsvc.SkillScopeUser
-	}
-	return appsvc.SkillScope(scope)
-}
-
 func skillTarget(c *app.RequestContext) resourcecatalogapp.SkillTarget {
 	if layout := projectScope(c); layout.ProjectID != "" {
 		return resourcecatalogapp.ProjectSkills(layout.ProjectID)
 	}
 	return resourcecatalogapp.GlobalSkills()
-}
-
-func parseCandidateIDs(raw string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	var ids []string
-	if strings.HasPrefix(raw, "[") {
-		if err := json.Unmarshal([]byte(raw), &ids); err == nil {
-			return normalizeCandidateIDs(ids)
-		}
-	}
-	return normalizeCandidateIDs(strings.Split(raw, ","))
-}
-
-func normalizeCandidateIDs(ids []string) []string {
-	out := make([]string, 0, len(ids))
-	seen := map[string]bool{}
-	for _, id := range ids {
-		id = strings.TrimSpace(id)
-		if id == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
-		out = append(out, id)
-	}
-	return out
 }

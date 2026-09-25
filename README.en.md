@@ -35,9 +35,9 @@
 
 ![Denova Lore Library](./img/setting.png)
 
-### Presets
+### Creative Setups
 
-![Denova Presets](./img/story-teller.png)
+![Denova Creative Setups](./img/story-teller.png)
 
 ### Change review
 
@@ -64,7 +64,7 @@ Start a new book from an idea, import an existing novel to continue writing, or 
 - **Novel writing**: Markdown document and source editing, multiple tabs, find and replace, outlines and chapter plans, progress tracking, inline comments, change review, and novel import.
 - **Creative Agents**: choose Native, Codex, or Claude Code to work with selections, project files, images, and lore; extend workflows with Skills, multiple conversations, SubAgent collaboration, and task pause/resume.
 - **Interactive games**: advance stories through player input, with branches, storyline switching, action suggestions, character and world state, rule checks, adjustable story planning, and OpenAI-compatible read-aloud.
-- **Lore and presets**: manage characters, locations, factions, world rules, and narrative styles in one place so durable creative assets can serve both Writing and Game.
+- **Lore and Creative Setups**: manage characters, locations, factions, world rules, and narrative styles in one place so durable creative assets can serve both Writing and Game.
 - **Image creation**: generate chapter illustrations, interactive images, and book covers, then preview and manage the results in the app.
 - **Versions and recovery**: save local versions, inspect changes, restore historical files, and review or undo Agent edits to the workspace.
 - **Automation**: run scheduled review, continuation, and custom creative tasks.
@@ -74,7 +74,7 @@ Start a new book from an idea, import an existing novel to continue writing, or 
 
 Writing and Game are peer top-level destinations in the workbench. Writing focuses on ideas, settings, outlines, chapters, and progress. Game focuses on player actions, story branches, character state, and storyline progression.
 
-Lore, presets, Skills, and version management are shared between the two workflows. Chapter progress and game state remain separate so temporary state from one destination does not affect the other.
+Lore, Creative Setups, Skills, and version management are shared between the two workflows. Chapter progress and game state remain separate so temporary state from one destination does not affect the other.
 
 ## Quick Start
 

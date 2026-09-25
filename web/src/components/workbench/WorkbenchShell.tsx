@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { arrayMove } from '@dnd-kit/sortable'
 import { MobileWritingWorkspace } from './MobileWritingWorkspace'
-import { BookOpen, Bot, Clock3, Database, Gamepad2, History, PanelLeft, PenLine, Puzzle, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, Gamepad2, History, Package, PanelLeft, PenLine, Puzzle, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
@@ -245,6 +245,7 @@ export function WorkbenchShell({
   ]
 
   const sharedActivityItems: ActivityItem[] = [
+    { id: 'market', label: t('market.title'), onClick: () => openRoute('market'), active: mode === 'market' && !settingsOpen, icon: <Package className="size-4" /> },
     { id: 'extensions', label: t('platform.extensions.title'), onClick: () => openRoute('extensions'), active: mode === 'extensions' && !settingsOpen, icon: <Puzzle className="size-4" /> },
     {
       id: 'agentchat',

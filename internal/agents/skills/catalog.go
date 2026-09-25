@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/revisionfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -144,14 +145,14 @@ func loadRecords(ctx context.Context, dirs []Directory) []record {
 				continue
 			}
 			path := filepath.Join(dir.Path, entry.Name(), SkillFileName)
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				if !os.IsNotExist(readErr) {
+			snapshot, readErr := revisionfile.Read(ctx, path)
+			if readErr != nil || !snapshot.Exists {
+				if readErr != nil && !os.IsNotExist(readErr) {
 					slog.ErrorContext(ctx, fmt.Sprintf("[skills] read skill failed scope=%s path=%s err=%v", dir.Scope, path, readErr))
 				}
 				continue
 			}
-			rec, parseErr := parseRecord(ctx, dir, path, string(data))
+			rec, parseErr := parseRecord(ctx, dir, path, string(snapshot.Content))
 			if parseErr != nil {
 				slog.ErrorContext(ctx, fmt.Sprintf("[skills] parse skill failed scope=%s path=%s err=%v", dir.Scope, path, parseErr))
 				continue

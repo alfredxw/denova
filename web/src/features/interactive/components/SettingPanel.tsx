@@ -1,3 +1,4 @@
+import { ResourceExchangeActions } from '@/features/market/ResourceExchangeActions'
 import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
@@ -1035,6 +1036,7 @@ function LoreSettingPanel({
               onSaveShortcut={flushActiveAutosave}
               actions={(
                 <>
+                  <ResourceExchangeActions projectID={projectId} resources={isOpeningPresetActive && activeOpeningPresetId ? [{ kind: 'game.opening', scope: 'project', project_id: projectId, id: activeOpeningPresetId }] : draft && !isCreatorActive ? [{ kind: 'lore.item', scope: 'project', project_id: projectId, id: draft.id }] : undefined} beforeOpen={flushActiveAutosave} onImported={async () => { await loadLoreItems(); notifyOpeningPresetUpdated() }} />
                   {isCreatorActive || isOpeningPresetActive || draft ? (
                     <AutosaveStatusIndicator
                       status={activeAutosaveStatus}

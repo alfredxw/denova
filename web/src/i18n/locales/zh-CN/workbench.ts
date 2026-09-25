@@ -17,7 +17,7 @@ const workbench = {
   'workbench.activity.settings': '设置',
   'workbench.activity.skills': 'Skills',
   'workbench.activity.game': '游戏',
-  'workbench.activity.teller': '方案预设',
+  'workbench.activity.teller': '创作方案',
   'workbench.activity.trajectory': '轨迹',
   'workbench.activity.toggleCollapse': '收起',
   'workbench.activity.toggleExpand': '展开',

@@ -104,7 +104,7 @@ const agentChat = {
   'agentChat.empty.noWorkspace': 'No project is available yet. Add a directory to get started.',
   'agentChat.page.reader': 'Writing',
   'agentChat.page.lore': 'Lore',
-  'agentChat.page.presets': 'Presets',
+  'agentChat.page.presets': 'Creative Setups',
   'agentChat.page.skills': 'Skills',
   'agentChat.page.agents': 'Agents',
   'agentChat.page.automations': 'Automations',

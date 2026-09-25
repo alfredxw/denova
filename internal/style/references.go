@@ -1,6 +1,8 @@
 package style
 
 import (
+	"context"
+	"denova/internal/revisionfile"
 	"errors"
 	"fmt"
 	"os"
@@ -159,7 +161,7 @@ func (l *Library) write(req WriteRequest, exclusive bool) (Reference, error) {
 	if exclusive {
 		err = createReferenceFile(l.dir(), filename, data)
 	} else {
-		err = os.WriteFile(path, data, 0o644)
+		_, err = revisionfile.ReplaceIfRevision(context.Background(), path, "", data, revisionfile.Options{FileMode: 0644, DirectoryMode: 0755})
 	}
 	if err != nil {
 		return Reference{}, err
@@ -178,34 +180,8 @@ func (l *Library) write(req WriteRequest, exclusive bool) (Reference, error) {
 }
 
 func createReferenceFile(dir, filename string, data []byte) error {
-	temp, err := os.CreateTemp(dir, "."+filename+".denova-*")
-	if err != nil {
-		return err
-	}
-	tempPath := temp.Name()
-	defer os.Remove(tempPath)
-	if err := temp.Chmod(0o644); err != nil {
-		temp.Close()
-		return err
-	}
-	if _, err := temp.Write(data); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Sync(); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	if err := os.Link(tempPath, filepath.Join(dir, filename)); err != nil {
-		if os.IsExist(err) {
-			return fmt.Errorf("文风参考已存在: %s", StoragePath(filename))
-		}
-		return err
-	}
-	return nil
+	_, err := revisionfile.ReplaceIfRevision(context.Background(), filepath.Join(dir, filename), revisionfile.MissingRevision, data, revisionfile.Options{FileMode: 0644, DirectoryMode: 0755})
+	return err
 }
 
 func (l *Library) Read(path string) (FileDocument, error) {
@@ -217,26 +193,20 @@ func (l *Library) Read(path string) (FileDocument, error) {
 		return FileDocument{}, fmt.Errorf("文风参考路径不能为空")
 	}
 	abs := l.AbsPath(stored)
-	info, err := os.Stat(abs)
+	snapshot, err := revisionfile.Read(context.Background(), abs)
 	if err != nil {
 		return FileDocument{}, err
 	}
-	if info.IsDir() {
-		return FileDocument{}, fmt.Errorf("文风参考路径是目录")
-	}
-	data, err := os.ReadFile(abs)
-	if err != nil {
-		return FileDocument{}, err
+	if !snapshot.Exists {
+		return FileDocument{}, os.ErrNotExist
 	}
 	ref, err := l.referenceFromFile(abs)
 	if err != nil {
 		return FileDocument{}, err
 	}
-	return FileDocument{
-		Reference: ref,
-		Content:   string(data),
-		Revision:  fileRevision(info),
-	}, nil
+	name, description := summarizeMarkdown(filepath.Base(abs), string(snapshot.Content))
+	ref.Name, ref.Description, ref.Size = name, description, int64(len(snapshot.Content))
+	return FileDocument{Reference: ref, Content: string(snapshot.Content), Revision: snapshot.Revision}, nil
 }
 
 func (l *Library) Update(req UpdateRequest) (FileDocument, error) {
@@ -255,17 +225,16 @@ func (l *Library) Update(req UpdateRequest) (FileDocument, error) {
 		return FileDocument{}, fmt.Errorf("content 超过 %d 字节 / exceeds %d bytes", MaxContentBytes, MaxContentBytes)
 	}
 	abs := l.AbsPath(stored)
-	info, err := os.Stat(abs)
+	_, err := revisionfile.Mutate(context.Background(), abs, revisionfile.Options{}, func(current revisionfile.Snapshot) ([]byte, error) {
+		if !current.Exists {
+			return nil, os.ErrNotExist
+		}
+		if req.BaseRevision != "" && req.BaseRevision != current.Revision {
+			return nil, ErrReferenceRevisionConflict
+		}
+		return []byte(ensureTrailingNewline(content)), nil
+	})
 	if err != nil {
-		return FileDocument{}, err
-	}
-	if info.IsDir() {
-		return FileDocument{}, fmt.Errorf("文风参考路径是目录")
-	}
-	if req.BaseRevision != "" && fileRevision(info) != req.BaseRevision {
-		return FileDocument{}, ErrReferenceRevisionConflict
-	}
-	if err := os.WriteFile(abs, []byte(ensureTrailingNewline(content)), 0o644); err != nil {
 		return FileDocument{}, err
 	}
 	return l.Read(stored)
@@ -279,7 +248,8 @@ func (l *Library) Delete(path string) error {
 	if stored == "" {
 		return fmt.Errorf("文风参考路径不能为空")
 	}
-	return os.Remove(l.AbsPath(stored))
+	abs := l.AbsPath(stored)
+	return revisionfile.WithFiles(context.Background(), []string{abs}, func(files *revisionfile.LockedFiles) error { return files.Replace(abs, nil, false) })
 }
 
 func (l *Library) AbsPath(path string) string {
@@ -299,11 +269,14 @@ func (l *Library) referenceFromFile(path string) (Reference, error) {
 	if err != nil {
 		return Reference{}, err
 	}
-	data, err := os.ReadFile(path)
+	snapshot, err := revisionfile.Read(context.Background(), path)
 	if err != nil {
 		return Reference{}, err
 	}
-	name, desc := summarizeMarkdown(filepath.Base(path), string(data))
+	if !snapshot.Exists {
+		return Reference{}, os.ErrNotExist
+	}
+	name, desc := summarizeMarkdown(filepath.Base(path), string(snapshot.Content))
 	return Reference{
 		Name:        name,
 		Description: desc,

@@ -28,6 +28,7 @@ import (
 	projectbookapp "denova/internal/app/projectbook"
 	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
+	"denova/internal/app/resourceexchange"
 	settingsapp "denova/internal/app/settings"
 	apptask "denova/internal/app/task"
 	"denova/internal/book"
@@ -93,6 +94,8 @@ type App struct {
 	activityApp        *activityapp.Service
 	bookApp            *bookapp.Service
 	resourceCatalog    *resourcecatalogapp.Service
+	resourceMarket     *resourceexchange.Market
+	resourceExchange   *resourceexchange.Service
 	settingsApp        *settingsapp.Service
 	modelsApp          *modelsapp.Service
 	imageApp           *imageapp.Service
@@ -149,6 +152,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("initialize Agents Project profiles: %w", err)
 	}
 	registry := projectdomain.NewRegistry(dataDir)
+	if err := resourceexchange.Recover(dataDir, registry); err != nil {
+		return nil, fmt.Errorf("recover resource installation: %w", err)
+	}
 	agentsRecord, err := registry.EnsureAgents(config.AgentProfilesRoot(dataDir))
 	if err != nil {
 		return nil, fmt.Errorf("register Agents Project: %w", err)
@@ -201,6 +207,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("initialize canonical Agent Session Store: %w", err)
 	}
 	app.platform = platform.New(dataDir, registry)
+	if err := resourceexchange.New(dataDir, registry, nil, app.platform).MigrateSources(ctx); err != nil {
+		return nil, fmt.Errorf("migrate resource sources: %w", err)
+	}
 	app.platform.ConfigureAgents(canonicalSessions, platformapp.NewModels(platformHost{app}).Resolve)
 	app.platform.ConfigureResources(platformapp.NewResources(platformHost{app}))
 	app.platform.ConfigureStories(platformapp.NewStories(platformHost{app}))
@@ -250,7 +259,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		slog.InfoContext(ctx, "[app] No workspace or previously opened book at startup; waiting for frontend selection")
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
-		app.startSkillUpdates(ctx)
+		app.startResourceUpdates(ctx)
 		return app, nil
 	}
 
@@ -281,7 +290,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
 	app.Automation().StartScheduler(ctx)
-	app.startSkillUpdates(ctx)
+	app.startResourceUpdates(ctx)
 	return app, nil
 }
 
@@ -327,6 +336,8 @@ func (a *App) ensureServices() {
 		a.activityApp = activityapp.NewService(dataDir, a.automationApp)
 		a.bookApp = bookapp.NewService(dataDir, a.projectRegistry, a.bookMetaStore)
 		a.resourceCatalog = resourcecatalogapp.NewService(dataDir, resourceCatalogHost{app: a})
+		a.resourceMarket = resourceexchange.NewMarket(dataDir)
+		a.resourceExchange = resourceexchange.New(dataDir, a.projectRegistry, a.resourceCatalog, a.platform)
 		a.settingsApp = settingsapp.NewService(settingsHost{app: a})
 		a.modelsApp = modelsapp.NewService(modelHost{app: a})
 		a.imageApp = imageapp.NewService(imageHost{app: a})

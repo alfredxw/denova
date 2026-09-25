@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type RightPanel = 'ai' | null
 type BottomPanel = 'versions' | 'problems' | null
-export type WorkspaceRoute = 'ide' | 'interactive' | 'extensions' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
+export type WorkspaceRoute = 'ide' | 'interactive' | 'market' | 'extensions' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
 /** Historical internal name retained while the persisted key stays stable. */
 export type WorkspaceMode = WorkspaceRoute
 
@@ -10,7 +10,7 @@ export type WorkspaceMode = WorkspaceRoute
  * Shared top-level destinations, alongside Writing and Game. The historical
  * `mode` name remains in persisted state, but navigation no longer has a global mode switch.
  */
-const SHARED_WORKSPACE_MODES = ['extensions', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
+const SHARED_WORKSPACE_MODES = ['market', 'extensions', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
 
 export type SharedWorkspaceMode = (typeof SHARED_WORKSPACE_MODES)[number]
 
@@ -67,6 +67,8 @@ function persistRightPanel(panel: RightPanel) {
 type WorkspaceStore = {
   mode: WorkspaceMode
   selectedProjectId?: string
+  marketInstallationID?: string
+  openMarketInstallation: (id?: string) => void
   selectedChapterId?: string
   rightPanel: RightPanel
   bottomPanel: BottomPanel
@@ -83,6 +85,10 @@ type WorkspaceStore = {
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   mode: readInitialMode(),
   selectedProjectId: undefined,
+  openMarketInstallation: (id) => {
+    persistMode('market')
+    set({ mode: 'market', marketInstallationID: id })
+  },
   selectedChapterId: undefined,
   rightPanel: readInitialRightPanel(),
   bottomPanel: null,
