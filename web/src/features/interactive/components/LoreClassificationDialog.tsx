@@ -1,7 +1,9 @@
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { errorMessage } from '@/lib/error-diagnostics'
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, RefreshCw, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { applyLoreClassification, previewLoreClassification, type LoreClassificationMode, type LoreClassificationPreview, type LoreItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -92,7 +94,7 @@ export function LoreClassificationDialog({
       onOpenChange(false)
     } catch (err) {
       console.warn('[lore-classification] Failed to apply classification', err)
-      setError(t('settingPanel.loreClassification.applyFailed'))
+      setError(errorMessage(err, t('settingPanel.loreClassification.applyFailed')))
     } finally {
       setApplying(false)
     }
@@ -126,7 +128,7 @@ export function LoreClassificationDialog({
             {t('settingPanel.loreClassification.fallbackWarning')}
           </div>
         ) : null}
-        {error ? <div className="rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">{error}</div> : null}
+        {error ? <InlineErrorNotice message={error} /> : null}
 
         <ScrollArea className="h-[min(48vh,420px)] rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
           {loading ? (

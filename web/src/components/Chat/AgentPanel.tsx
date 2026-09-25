@@ -57,7 +57,7 @@ import {
   type ReviewFeedbackComment,
   type ReviewFeedbackSelection,
 } from '@/features/changes/agent/ReviewFeedbackTray'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import type { InputAreaSendOptions } from './InputArea'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'

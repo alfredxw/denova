@@ -1,3 +1,5 @@
+import { errorMessage } from '@/lib/error-diagnostics'
+
 export const MODEL_IMAGE_INPUT_REJECTED_CODE = 'agent_runtime.model_image_input_rejected'
 export const MODEL_REQUEST_TOO_LARGE_CODE = 'agent_runtime.model_request_too_large'
 export const MODEL_OUTPUT_TRUNCATED_CODE = 'agent_runtime.model_output_truncated'
@@ -24,12 +26,9 @@ export function localizeAgentRuntimeReason(reason: unknown, fallback: string, t:
 }
 
 export function localizeAgentRuntimeError(data: Record<string, unknown>, fallback: string, t: Translate) {
-  if (typeof data.error_key === 'string' && data.error_key.trim()) return t(data.error_key)
-  if (typeof data.code === 'string') {
-    const translationKey = modelErrorTranslationKeys[data.code]
-    if (translationKey) return t(translationKey)
-  }
+  const translationKey = typeof data.error_key === 'string' ? data.error_key : typeof data.code === 'string' ? modelErrorTranslationKeys[data.code] : undefined
   const reason = [data.content, data.message, data.error]
     .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-  return localizeAgentRuntimeReason(reason, fallback, t)
+  const summary = translationKey ? t(translationKey) : localizeAgentRuntimeReason(reason, fallback, t)
+  return errorMessage({ ...data, summary })
 }

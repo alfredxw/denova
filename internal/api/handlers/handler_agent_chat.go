@@ -459,7 +459,7 @@ func (h *Handlers) HandleAgentChatAskAnswer(ctx context.Context, c *app.RequestC
 	}
 	result, err := h.app.AgentChat().AnswerAsk(ctx, binding, strings.TrimSpace(c.Param("ask_id")), request.Answers)
 	if err != nil {
-		writeAskResolutionError(c, err)
+		writeAskResolutionError(ctx, c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
@@ -480,7 +480,7 @@ func (h *Handlers) HandleAgentChatAskCancel(ctx context.Context, c *app.RequestC
 	}
 	result, err := h.app.AgentChat().CancelAsk(ctx, binding, strings.TrimSpace(c.Param("ask_id")), request.Reason)
 	if err != nil {
-		writeAskResolutionError(c, err)
+		writeAskResolutionError(ctx, c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)

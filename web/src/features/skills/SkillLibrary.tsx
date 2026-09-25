@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Download, Folder, Globe, LayoutGrid, List, RefreshCw, Search, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'

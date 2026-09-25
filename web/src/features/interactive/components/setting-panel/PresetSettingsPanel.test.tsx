@@ -21,7 +21,7 @@ const apiMocks = vi.hoisted(() => ({
 }))
 const toastMock = vi.hoisted(() => ({ dismiss: vi.fn(), error: vi.fn(), success: vi.fn() }))
 
-vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/toast', () => ({ toast: toastMock }))
 vi.mock('../../api', async importOriginal => ({
   ...await importOriginal<typeof import('../../api')>(),
   ...apiMocks,

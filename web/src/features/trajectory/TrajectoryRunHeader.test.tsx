@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import i18next from '@/i18n'
 import type { AgentRunTrace } from '@/lib/api'
 import { TrajectoryRunHeader } from './TrajectoryRunHeader'
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const trace: AgentRunTrace = {
   summary: { id: 'run-long-complete-identity', created_at: '', path: '', status: 'success', events: 0, context_parts: 0, parent_run_id: 'parent' },

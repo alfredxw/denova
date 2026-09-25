@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ func requestObservabilityMiddleware(ctx context.Context, c *app.RequestContext) 
 	c.Next(ctx)
 
 	status := c.Response.StatusCode()
-	errorMessage, errorCode := enrichJSONErrorResponse(c, requestID, status)
+	errorMessage, errorCode, errorDetail := enrichJSONErrorResponse(c, requestID, status)
 	route := c.FullPath()
 	if strings.TrimSpace(route) == "" {
 		route = string(c.Request.Path())
@@ -51,32 +52,43 @@ func requestObservabilityMiddleware(ctx context.Context, c *app.RequestContext) 
 	if errorMessage != "" {
 		attrs = append(attrs, slog.String("error", errorMessage))
 	}
+	if errorDetail != "" {
+		attrs = append(attrs, slog.String("error_detail", errorDetail))
+	}
 	slog.LogAttrs(ctx, level, "http_request_completed", attrs...)
 }
 
 // enrichJSONErrorResponse guarantees the correlation contract at the HTTP
 // boundary, including errors produced by authentication middleware and new
 // handlers that do not use the shared response helpers yet.
-func enrichJSONErrorResponse(c *app.RequestContext, requestID string, status int) (message, code string) {
+func enrichJSONErrorResponse(c *app.RequestContext, requestID string, status int) (message, code, detail string) {
 	contentType := strings.ToLower(string(c.Response.Header.ContentType()))
 	if status < 400 || c.Response.IsBodyStream() || (!strings.Contains(contentType, "application/json") && !strings.Contains(contentType, "+json")) {
-		return "", ""
+		return "", "", ""
 	}
 	body := c.Response.Body()
 	if len(body) == 0 {
-		return "", ""
+		return "", "", ""
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil || payload == nil {
-		return "", ""
+		return "", "", ""
 	}
 	payload[observability.RequestIDField] = requestID
+	if code, _ := payload["code"].(string); code == "" {
+		payload["code"] = fmt.Sprintf("http.%d", status)
+	}
+	// The registered route identifies the operation without exposing resource
+	// names, query strings, or absolute paths supplied by the user.
+	observability.EnrichError(payload, string(c.Method())+" "+c.FullPath())
 	updated, err := json.Marshal(payload)
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	c.Response.SetBody(updated)
 	message, _ = payload["error"].(string)
 	code, _ = payload["code"].(string)
-	return strings.TrimSpace(message), strings.TrimSpace(code)
+	details, _ := payload["details"].(map[string]any)
+	detail, _ = details["detail"].(string)
+	return strings.TrimSpace(message), strings.TrimSpace(code), detail
 }

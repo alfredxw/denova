@@ -1,10 +1,11 @@
+import { errorMessage } from '@/lib/error-diagnostics'
 import { StorySpeechControls } from './StorySpeechControls'
 import { useImageModelConfigured } from '@/features/settings/use-image-model-configured'
 import { requestSettingsSection } from '@/features/onboarding/events'
 import { Bot, Dices, ImagePlus, UserRound } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Switch } from '@/components/ui/switch'
 import { getActorStates, getEventPackages, getRuleSystems } from '../../api'
 import { normalizeStoryCheckSettings } from '../../check-settings'
@@ -101,7 +102,7 @@ export function StoryTuningView({
       await onUpdate(input)
     } catch (error) {
       console.error('[story-console] Failed to update story tuning', { storyId: story.id, key, error })
-      toast.error(t('directorPanel.tuning.saveFailed'))
+      toast.error(errorMessage(error, t('directorPanel.tuning.saveFailed')))
     } finally {
       setSavingKey('')
     }
@@ -114,7 +115,7 @@ export function StoryTuningView({
       await onPlanningTemplateChange(templateId)
     } catch (error) {
       console.error('[story-console] Failed to update planning template', { storyId: story.id, templateId, error })
-      toast.error(t('directorPanel.tuning.saveFailed'))
+      toast.error(errorMessage(error, t('directorPanel.tuning.saveFailed')))
     } finally {
       setSavingKey('')
     }

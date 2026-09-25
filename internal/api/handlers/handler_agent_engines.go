@@ -59,5 +59,5 @@ func writeEngineError(ctx context.Context, c *app.RequestContext, err error) {
 	}
 	// Do not log raw authentication errors or URLs, which can contain secrets.
 	slog.WarnContext(ctx, "Agent runtime API operation failed", "runtime", c.Param("id"), "reason", key)
-	writeErrorKey(c, status, key)
+	writeErrorKey(c, status, key, "detail", err.Error())
 }

@@ -8,6 +8,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	"denova/internal/i18n"
+	"denova/internal/observability"
 	"denova/internal/update"
 )
 
@@ -29,7 +30,7 @@ func (a *App) ApplyUpdate(ctx context.Context) (update.ApplyResult, error) {
 }
 
 // StartInstallUpdateTask retains the initiating request's language throughout
-// the detached download. Internal diagnostics stay in the server log.
+// the detached download; error details share the task diagnostic envelope.
 func (a *App) StartInstallUpdateTask(locale string) *apptask.Task {
 	return apptask.New(func(ctx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		result, err := update.NewService().InstallWithProgress(ctx, func(progress update.InstallProgress) {
@@ -37,7 +38,7 @@ func (a *App) StartInstallUpdateTask(locale string) *apptask.Task {
 		})
 		if err != nil {
 			slog.ErrorContext(ctx, "[app/update_app_service.go] update installation failed", "error", err)
-			emit(agentrun.Event{Type: "error", Data: map[string]string{"message": i18n.New(locale).T("api.update.installFailed")}})
+			emit(agentrun.Event{Type: "error", Data: map[string]any{"message": i18n.New(locale).T("api.update.installFailed"), "code": "api.update.installFailed", "details": map[string]any{"operation": "update.install", "detail": observability.ErrorCause(err)}}})
 			return
 		}
 		emit(agentrun.Event{Type: "update_result", Data: result})

@@ -35,10 +35,10 @@ describe('api client backend availability toast', () => {
     expect(toast.error).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1500)
 
-    expect(toast.error).toHaveBeenCalledWith('无法连接 Denova', {
+    expect(toast.error).toHaveBeenCalledWith('无法连接 Denova', expect.objectContaining({
       id: 'nova-backend-unavailable',
-      description: '请检查此设备的网络及 Denova 服务所在设备的连接，然后重试。',
-    })
+      duration: Infinity, closeButton: true,
+    }))
   })
 
   it('shows the same backend-unavailable toast for local API network failures', async () => {
@@ -50,10 +50,10 @@ describe('api client backend availability toast', () => {
     expect(toast.error).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1500)
 
-    expect(toast.error).toHaveBeenCalledWith('无法连接 Denova', {
+    expect(toast.error).toHaveBeenCalledWith('无法连接 Denova', expect.objectContaining({
       id: 'nova-backend-unavailable',
-      description: '请检查此设备的网络及 Denova 服务所在设备的连接，然后重试。',
-    })
+      duration: Infinity, closeButton: true,
+    }))
   })
 
   it('does not report a backend outage when a PWA wakeup failure is followed by a reachable service', async () => {
@@ -222,7 +222,7 @@ describe('api client backend availability toast', () => {
     }), { status: 400, headers: { 'Content-Type': 'application/json' } }))
 
     expect(error).toBeInstanceOf(APIError)
-    expect(error).toMatchObject({ status: 400, code: 'agent_runtime.invalid_command', message: 'command rejected' })
+    expect(error).toMatchObject({ status: 400, code: 'agent_runtime.invalid_command', summary: 'command rejected' })
   })
 
   it('uses the response header as the request ID fallback', async () => {

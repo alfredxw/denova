@@ -293,23 +293,7 @@ func newUIWriteHandler(ctx context.Context, w io.Writer) *uiWriteHandler {
 }
 
 func correlateErrorEvent(event novaApp.AgentEvent, requestID string) novaApp.AgentEvent {
-	requestID = strings.TrimSpace(requestID)
-	if event.Type != "error" || requestID == "" {
-		return event
-	}
-	payload := map[string]any{}
-	if raw, err := json.Marshal(event.Data); err == nil {
-		_ = json.Unmarshal(raw, &payload)
-	}
-	payload[observability.RequestIDField] = requestID
-	for _, key := range []string{"message", "error"} {
-		if message, ok := payload[key].(string); ok && strings.TrimSpace(message) != "" {
-			payload[key] = agentui.CorrelatedErrorMessage(message, requestID)
-			break
-		}
-	}
-	event.Data = payload
-	return event
+	return event.WithErrorDiagnostics(requestID, "")
 }
 
 func (h *uiWriteHandler) Handle(item apptask.Event) error {

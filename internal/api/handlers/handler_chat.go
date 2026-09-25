@@ -133,7 +133,7 @@ func writeAgentHistoryError(c *app.RequestContext, err error) bool {
 		return false
 	}
 	writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.invalid_history",
-		messageKey(c, "api.chat.invalidHistory"), nil)
+		messageKey(c, "api.chat.invalidHistory"), map[string]any{"detail": err.Error()})
 	return true
 }
 

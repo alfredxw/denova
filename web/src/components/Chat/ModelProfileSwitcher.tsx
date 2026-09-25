@@ -2,7 +2,7 @@ import { runtimeModel, runtimeModelKey, runtimeModelFromKey } from '@/features/a
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import {
   DropdownMenu,
   DropdownMenuContent,

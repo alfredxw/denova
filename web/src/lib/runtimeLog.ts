@@ -1,3 +1,6 @@
+import { toast } from '@/lib/toast'
+import { errorMessage } from '@/lib/error-diagnostics'
+
 const RUNTIME_LOG_KEY = 'nova.runtime.logs'
 const MAX_LOGS = 80
 
@@ -23,6 +26,12 @@ export function recordRuntimeLog(entry: Omit<RuntimeLogEntry, 'url' | 'userAgent
     timestamp: new Date().toISOString(),
   }
   console.error('[nova-runtime]', fullEntry)
+  // React render failures already have a persistent boundary. Global failures
+  // need a visible, copyable report even when no feature owns an error panel.
+  if (entry.type === 'window_error' || entry.type === 'unhandled_rejection' || entry.type === 'white_screen') {
+    toast.error(errorMessage({ message: entry.message, code: `client.${entry.type}`,
+      details: { operation: `ui.${entry.type}`, detail: entry.stack?.split('\n').slice(1, 3).join('\n') } }), { id: `runtime-${entry.type}` })
+  }
   try {
     const prev = readRuntimeLogs()
     const next = [...prev, fullEntry].slice(-MAX_LOGS)

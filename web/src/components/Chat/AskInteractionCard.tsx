@@ -1,3 +1,5 @@
+import { errorMessage } from '@/lib/error-diagnostics'
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Loader2, MessageCircleQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -113,8 +115,8 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
       setLocalResolution(resolution)
       setExpanded(resolution.status === 'pending')
       if (resolution.status === 'pending') setError(t('chat.verification.stillPending'))
-    } catch {
-      setError(t('chat.ask.submitFailed'))
+    } catch (error) {
+      setError(errorMessage(error, t('chat.ask.submitFailed')))
     } finally {
       setSubmitting(false)
     }
@@ -128,8 +130,8 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
       const resolution = await onResolve(message, { status: 'cancelled', ...(verification ? { reason: 'task_aborted' as const } : {}) })
       setLocalResolution(resolution)
       setExpanded(false)
-    } catch {
-      setError(t('chat.ask.cancelFailed'))
+    } catch (error) {
+      setError(errorMessage(error, t('chat.ask.cancelFailed')))
     } finally {
       setSubmitting(false)
     }
@@ -209,7 +211,7 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
                     />
                   )}
                 </fieldset>
-                {error && <p role="alert" className="m-0 mt-2 text-[11px] text-red-400">{error}</p>}
+                {error && <InlineErrorNotice message={error} />}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                   <Button type="button" size="sm" variant="ghost" disabled={!onResolve || submitting} onClick={() => void cancel()}>
                     {t(verification ? 'chat.runtime.abort' : 'chat.ask.cancel')}

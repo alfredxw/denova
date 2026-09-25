@@ -3,6 +3,7 @@ package interactiveapp
 import (
 	"context"
 	"crypto/sha256"
+	"denova/internal/observability"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -215,7 +216,7 @@ func (turn *ExternalTurn) run(ctx context.Context) (outcome agentrun.Outcome) {
 			outcome.Status = agentrun.OutcomeAborted
 			turn.send(agentrun.NewAbortedEvent(agentrun.AbortReasonUserRequested))
 		} else {
-			turn.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "message": i18n.New(turn.config.Config.Language).T("agentRuntime.operationFailed")}})
+			turn.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "message": i18n.New(turn.config.Config.Language).T("agentRuntime.operationFailed"), "details": map[string]any{"detail": observability.ErrorCause(outcome.Error)}, "run_id": string(turn.identity.OperationID)}})
 		}
 	}()
 	turn.send(agentrun.Event{Type: "agent_cycle_started", Data: map[string]any{

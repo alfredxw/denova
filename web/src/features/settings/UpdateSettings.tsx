@@ -1,3 +1,4 @@
+import { errorMessage } from '@/lib/error-diagnostics'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown, Download, ExternalLink, Loader2, RefreshCw, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -60,7 +61,7 @@ export function useUpdateSettings({ autoCheckEnabled }: { autoCheckEnabled: bool
           setUpdateInstallResult(result)
           setUpdateInstallProgress((prev) => prev ? { ...prev, phase: 'staged', percent: 100 } : { phase: 'staged', percent: 100 })
         } else if (value.event === 'error') {
-          throw new Error(typeof data.message === 'string' && data.message ? data.message : t('settings.updates.error'))
+          throw new Error(errorMessage(data, t('settings.updates.error')))
         }
       }
     } catch (e) {

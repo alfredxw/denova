@@ -107,6 +107,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		"tool-input-available",
 		"tool-output-available",
 		DataTypeInteractiveImage,
+		DataTypeError,
 		"error",
 		"abort",
 		"finish",
@@ -126,7 +127,8 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertChunkAgentPresentation(t, chunks, "tool-input-start", "search", "search")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
 	assertStreamingToolInput(t, chunks, "tool-1", `{"path":"a.md"}`)
-	assertChunk(t, chunks, "error", "errorText", "失败 · 日志 ID / Log ID: 0198-stream-request")
+	assertChunk(t, chunks, "error", "errorText", "失败")
+	assertDataChunkValue(t, chunks, DataTypeError, "request_id", "0198-stream-request")
 	assertChunk(t, chunks, "abort", "reason", "取消")
 	assertStartMetadata(t, chunks[0])
 	assertDataChunksHaveStrictShape(t, chunks)

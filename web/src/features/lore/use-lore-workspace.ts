@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { useTranslation } from 'react-i18next'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import {

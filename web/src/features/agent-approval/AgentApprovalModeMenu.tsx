@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { Check, ChevronDown, Loader2, PencilLine, ShieldAlert, ShieldQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { ComposerMenuSubTrigger } from '@/components/Chat/ComposerMenuRow'
 import {

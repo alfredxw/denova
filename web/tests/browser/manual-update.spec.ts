@@ -15,7 +15,7 @@ test('manual update stays tucked away and stages an upload before explicit resta
     expect(route.request().headers()['content-type']).toContain('multipart/form-data')
     expect(route.request().postDataBuffer()?.toString()).toContain('denova-v0.5.0-windows-x64.zip')
     if (uploads === 1) {
-      await route.fulfill({ status: 400, json: { error: '安装包与当前电脑的操作系统或处理器架构不匹配。' } })
+      await route.fulfill({ status: 400, json: { error: '安装包与当前电脑的操作系统或处理器架构不匹配。', code: 'update.platform_mismatch', request_id: 'update-upload-request', details: { detail: 'archive platform windows/amd64 does not match darwin/arm64', operation: 'update.upload', backend_version: '0.5.0', platform: 'darwin/arm64' } } })
     } else {
       await uploadReady
       await route.fulfill({ json: { previous_version: '0.4.5', installed_version: '0.5.0', status: 'staged', staged: true, apply_ready: true, restart_required: true } })
@@ -40,7 +40,12 @@ test('manual update stays tucked away and stages an upload before explicit resta
   await page.getByRole('button', { name: '手动更新', exact: true }).click()
   await expect(page.getByRole('link', { name: '打开 Release', exact: true })).toHaveAttribute('href', 'https://github.com/alfredxw/denova/releases/latest')
   await page.getByLabel('选择安装包', { exact: true }).setInputFiles(releaseFile)
-  await expect(page.getByText('安装包与当前电脑的操作系统或处理器架构不匹配。', { exact: true })).toBeVisible()
+  const diagnostic = page.getByRole('alert')
+  await expect(diagnostic).toContainText('安装包与当前电脑的操作系统或处理器架构不匹配。')
+  await expect(diagnostic).toContainText('archive platform windows/amd64 does not match darwin/arm64')
+  await expect(diagnostic).toContainText('update-upload-request')
+  await expect(diagnostic).toContainText('update.platform_mismatch')
+  await expect(diagnostic.getByRole('button', { name: '复制诊断信息' })).toBeVisible()
   await expect(page.getByRole('button', { name: '重启并安装', exact: true })).toBeHidden()
   await page.getByLabel('选择安装包', { exact: true }).setInputFiles(releaseFile)
   await expect(page.getByRole('button', { name: '正在上传并校验', exact: true })).toBeDisabled()

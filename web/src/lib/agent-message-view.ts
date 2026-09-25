@@ -1,3 +1,5 @@
+import i18n from '@/i18n'
+import { localizeAgentRuntimeError } from './agent-runtime-error'
 import type { AgentAskInteraction, ChapterIllustration, ChatMessage, ChatPlanAction, InteractiveImage, InteractiveImageError, InteractiveImageStatus, PublicRuleRoll, TokenUsageCall } from './api-client/types'
 import type { AgentMessageMetadata, AgentUIMessage } from './agent-ui'
 import { readToolPresentation } from './tool-presentation'
@@ -581,7 +583,7 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
       if (!content) return null
       return { ...base, kind: 'system', data, content, streaming: false }
     case 'data-agent-error':
-      return { ...base, kind: 'error', data, content, streaming: false }
+      return { ...base, kind: 'error', data, content: localizeAgentRuntimeError(data, content, key => i18n.t(key)), streaming: false }
     case 'data-agent-interactive-image':
       return {
         ...base,

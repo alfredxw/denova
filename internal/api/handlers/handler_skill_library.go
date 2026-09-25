@@ -13,13 +13,13 @@ import (
 func (h *Handlers) HandleSkillPreference(ctx context.Context, c *app.RequestContext) {
 	var change resourcecatalog.SkillPreferenceChange
 	if err := c.BindJSON(&change); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.preferenceFailed")
+		writeErrorKey(c, consts.StatusBadRequest, "api.skills.preferenceFailed", "detail", err.Error())
 		return
 	}
 	snapshot, err := h.app.ResourceCatalog().SetSkillPreference(ctx, skillTarget(c), change)
 	if err != nil {
 		slog.ErrorContext(ctx, "Change Skill preference failed", "error", err)
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.preferenceFailed")
+		writeErrorKey(c, consts.StatusBadRequest, "api.skills.preferenceFailed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, snapshot)
@@ -32,13 +32,13 @@ func (h *Handlers) HandleSkillUpdates(ctx context.Context, c *app.RequestContext
 		Action skills.UpdateAction `json:"action"`
 	}
 	if err := c.BindJSON(&request); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.updateFailed")
+		writeErrorKey(c, consts.StatusBadRequest, "api.skills.updateFailed", "detail", err.Error())
 		return
 	}
 	results, err := h.app.ResourceCatalog().RefreshSkillUpdates(ctx, skillTarget(c), request.Scope, request.Name, request.Action)
 	if err != nil {
 		slog.ErrorContext(ctx, "Refresh Skill updates failed", "error", err)
-		writeErrorKey(c, consts.StatusBadRequest, "api.skills.updateFailed")
+		writeErrorKey(c, consts.StatusBadRequest, "api.skills.updateFailed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, results)

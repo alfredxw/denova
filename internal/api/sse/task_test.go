@@ -173,7 +173,7 @@ func TestSSEErrorIncludesRequestID(t *testing.T) {
 	if !strings.Contains(got, `"request_id":"0198-sse-request"`) {
 		t.Fatalf("SSE error omitted request_id: %q", got)
 	}
-	if !strings.Contains(got, "生成失败 · 日志 ID / Log ID: 0198-sse-request") {
+	if !strings.Contains(got, `"message":"生成失败"`) || !strings.Contains(got, `"backend_version"`) {
 		t.Fatalf("SSE error omitted user-visible Log ID: %q", got)
 	}
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { useShallow } from 'zustand/react/shallow'
 import { readOptionalProjectFile, type LoreItem } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getGamePlanningTemplates, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, selectInteractiveStory, switchInteractiveBranch, updateInteractiveBranchPlan, updateInteractiveStory } from '../api'

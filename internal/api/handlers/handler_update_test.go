@@ -27,7 +27,7 @@ func TestLocalUpdateUploadValidationUsesRequestLocale(t *testing.T) {
 			c := app.NewContext(0)
 			c.Request.Header.Set("X-Denova-Locale", tc.locale)
 			New(nil).HandleUpdateUpload(context.Background(), c)
-			var body map[string]string
+			var body map[string]any
 			if err := json.Unmarshal(c.Response.Body(), &body); err != nil {
 				t.Fatal(err)
 			}
@@ -83,11 +83,11 @@ func TestUpdateFailuresUseRequestLocale(t *testing.T) {
 			request := app.NewContext(0)
 			request.Request.Header.Set("X-Denova-Locale", test.locale)
 			handlers.HandleUpdateCheck(context.Background(), request)
-			var body map[string]string
+			var body map[string]any
 			if err := json.Unmarshal(request.Response.Body(), &body); err != nil {
 				t.Fatal(err)
 			}
-			if request.Response.StatusCode() != 502 || len(body) != 1 || body["error"] != test.want {
+			if request.Response.StatusCode() != 502 || body["code"] != "api.update.checkFailed" || body["error"] != test.want {
 				t.Fatalf("response = %d %s", request.Response.StatusCode(), request.Response.Body())
 			}
 			request.Response.Reset()
@@ -111,7 +111,7 @@ func TestUpdateFailuresUseRequestLocale(t *testing.T) {
 				if event.Event.Type != "error" {
 					continue
 				}
-				data, ok := event.Event.Data.(map[string]string)
+				data, ok := event.Event.Data.(map[string]any)
 				if !ok || data["message"] != test.install {
 					t.Fatalf("stream error = %#v", event)
 				}

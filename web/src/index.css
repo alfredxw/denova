@@ -2985,3 +2985,10 @@ html[data-nova-motion="off"] .nova-change-review-layer {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Diagnostic lines must remain readable in screenshots, including narrow screens. */
+.cn-toast [data-title], .cn-toast [data-description] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
