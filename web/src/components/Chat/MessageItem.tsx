@@ -1,3 +1,4 @@
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { memo } from 'react'
 import type { CSSProperties } from 'react'
 import type { ChapterIllustration, ChatMessage } from '@/lib/api'
@@ -258,9 +259,7 @@ function MessageItemContent({ projectId = '', message, assistantPresentation = '
       return (
         <div className="flex justify-center">
           <div className="nova-message-body-with-meta max-w-full">
-            <div role="alert" className="flex max-w-full items-start gap-2 rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--nova-danger)]">
-              <span className="min-w-0 whitespace-pre-wrap break-words">{content}</span>
-            </div>
+            <InlineErrorNotice message={content} />
             <MessageInlineMeta projectId={projectId} message={message} content={content} align="left" onRegenerate={canRegenerate ? onRegenerate : undefined} />
           </div>
         </div>

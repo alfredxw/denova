@@ -48,7 +48,7 @@ vi.mock('@ai-sdk/react', () => ({
   },
 }))
 
-vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/toast', () => ({ toast: toastMock }))
 
 vi.mock('@/lib/api', () => ({
   analyzeChatContext: vi.fn(),
@@ -651,7 +651,25 @@ describe('useAgentChat', () => {
 
     act(() => chatMock.options?.onData?.(errorPart))
 
-    expect(toastMock.error).toHaveBeenCalledWith('回复已达到输出上限，内容可能不完整。')
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('回复已达到输出上限，内容可能不完整。'))
+  })
+
+  it('shows a terminal diagnostic once and still reports later transport failures', () => {
+    renderHook(() => useAgentChat())
+    act(() => {
+      chatMock.options?.onData?.({ type: 'data-agent-error', data: {
+        terminal: true, message: 'Run failed', code: 'agent_runtime.failed', request_id: 'request-original',
+        details: { detail: 'persist approval: disk full', operation: 'agent.run' },
+      } })
+      chatMock.options?.onError?.(new Error('Run failed'))
+      chatMock.options?.onFinish?.()
+    })
+    expect(toastMock.error).toHaveBeenCalledTimes(1)
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('persist approval: disk full'))
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('request-original'))
+    act(() => chatMock.options?.onError?.(new Error('connection lost')))
+    expect(toastMock.error).toHaveBeenCalledTimes(2)
+    expect(toastMock.error).toHaveBeenLastCalledWith(expect.stringContaining('connection lost'))
   })
 
   it('shows the stream request ID when an Agent error uses localized fallback copy', () => {

@@ -242,7 +242,8 @@ describe('story stage stream event contract', () => {
     )
 
     const error = buildAgentMessageViews(fixture.messages()).find((view) => view.kind === 'error')
-    expect(error?.content).toBe('common.modelOutputTruncated')
+    expect(error?.content).toContain('common.modelOutputTruncated')
+    expect(error?.content).toContain('agent_runtime.model_output_truncated')
   })
 
 })

@@ -102,10 +102,13 @@ func TestCancelledPermissionDoesNotInvokePolicyResolution(t *testing.T) {
 func startPermissionResolutionInvariantRun(
 	t *testing.T,
 	policy PermissionPolicy,
+	middlewares ...Middleware,
 ) (*Run, *atomic.Int32) {
 	t.Helper()
 	var toolRuns atomic.Int32
-	tool, err := InferTool("permission_invariant", "exercise the permission fence", func(context.Context, struct{}) (string, error) {
+	tool, err := InferTool("permission_invariant", "exercise the permission fence", func(context.Context, struct {
+		Value string `json:"value,omitempty"`
+	}) (string, error) {
 		toolRuns.Add(1)
 		return "ran", nil
 	})
@@ -131,7 +134,8 @@ func startPermissionResolutionInvariantRun(
 				MaxResultBytes: 64 << 10,
 			},
 		}),
-		Permission: policy,
+		Permission:  policy,
+		Middlewares: middlewares,
 	})
 	if err != nil {
 		t.Fatal(err)

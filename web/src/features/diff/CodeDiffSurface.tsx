@@ -11,7 +11,7 @@ import {
 import { ChevronDown, ChevronLeft, ChevronRight, Copy } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { InlineCollapsiblePane } from '@/components/layout/panel-motion'
 import { Button } from '@/components/ui/button'
 import { DiffFileIcon, DiffFileIconSprite } from './DiffFileIcon'

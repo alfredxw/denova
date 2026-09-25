@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, LoaderCircle, Plus } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import type { AgentPanelProps, AgentPanelView } from '@/components/Chat/AgentPanel'
 import {

@@ -1,7 +1,8 @@
 import { parseJsonEventStream, uiMessageChunkSchema, type UIMessageChunk } from 'ai'
 import i18next from '@/i18n'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { queryClient } from '@/lib/query-client'
+import { errorMessage } from '@/lib/error-diagnostics'
 
 export { parseSSEStream } from './sse'
 
@@ -26,6 +27,7 @@ type APIRequestInit = RequestInit & {
 
 /** HTTP/API domain failure with transport and machine-readable backend context intact. */
 export class APIError extends Error {
+  readonly summary: string
   readonly status: number
   readonly code?: string
   readonly details?: Record<string, unknown>
@@ -33,8 +35,9 @@ export class APIError extends Error {
   readonly payload: Record<string, unknown>
 
   constructor(message: string, options: { status: number; code?: string; details?: Record<string, unknown>; requestID?: string; payload?: Record<string, unknown> }) {
-    super(formatAPIErrorMessage(message, options.requestID))
+    super(errorMessage({ ...options, message, summary: message }))
     this.name = 'APIError'
+    this.summary = message
     this.status = options.status
     this.code = options.code
     this.details = options.details
@@ -54,7 +57,11 @@ export async function fetchAPI(input: RequestInfo | URL, init?: APIRequestInit):
     return res
   } catch (error) {
     if (!suppressBackendUnavailableToast && shouldNotifyBackendUnavailable(input, error)) notifyBackendUnavailable()
-    throw error
+    if (isAbortError(error)) throw error
+    throw new APIError(i18next.t('inlineError.network'), {
+      status: 0, code: 'client.network_error',
+      details: { operation: `${requestInit.method || 'GET'} ${requestURL(input)?.split('?')[0] || ''}`, detail: error instanceof Error ? error.message : '' },
+    })
   }
 }
 
@@ -109,6 +116,10 @@ function formatAPIErrorMessage(message: string, requestID?: string): string {
 /** Keeps localized UI copy while retaining the server correlation ID for support. */
 export function withErrorLogID(message: string, source: unknown): string {
   const requestID = requestIDFromError(source)
+  if (source && typeof source === 'object') {
+    const value = source as Record<string, unknown>
+    if (value.code || value.details) return errorMessage({ ...value, summary: message, requestID })
+  }
   if (!requestID || message.includes(requestID)) return message
   return formatAPIErrorMessage(message, requestID)
 }
@@ -140,17 +151,8 @@ function requestIDFromText(value: string): string | undefined {
 }
 
 export async function readErrorMessage(res: Response): Promise<string> {
-  let message = `HTTP ${res.status}`
-  let requestID = res.headers.get(REQUEST_ID_HEADER)?.trim() || undefined
   notifyBackendUnavailableIfNeeded(res.url || '/api', res.status)
-  try {
-    const data = await res.json()
-    message = data.error || message
-    requestID ||= (typeof data.request_id === 'string' && data.request_id.trim()) || undefined
-  } catch {
-    // keep HTTP fallback
-  }
-  return formatAPIErrorMessage(message, requestID)
+  return (await responseAPIError(res)).message
 }
 
 export function parseUIMessageStream(body: ReadableStream<Uint8Array>): ReadableStream<UIMessageChunk> {

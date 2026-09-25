@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import type { ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
 import { withErrorLogID } from '@/lib/api-client'

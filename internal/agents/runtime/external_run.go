@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"crypto/rand"
+	"denova/internal/observability"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -71,11 +72,11 @@ func (run *ExternalRun) Wait(ctx context.Context) agentrun.Outcome {
 			case agentrun.OutcomeSuspended:
 				if run.outcome.Error != nil && !errors.Is(run.outcome.Error, context.Canceled) {
 					slog.ErrorContext(ctx, "External task suspended after failure", "operation_id", run.receipt.OperationID, "error", run.outcome.Error)
-					run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed"}})
+					run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "details": map[string]any{"detail": observability.ErrorCause(run.outcome.Error)}, "run_id": string(run.receipt.OperationID)}})
 				}
 				run.send(agentrun.Event{Type: "suspended", Data: map[string]any{"reason": "runtime_paused"}})
 			case agentrun.OutcomeFailed:
-				run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed"}})
+				run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "details": map[string]any{"detail": observability.ErrorCause(run.outcome.Error)}, "run_id": string(run.receipt.OperationID)}})
 			}
 		}()
 		run.outcome = run.drain(ctx)

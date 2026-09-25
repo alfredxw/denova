@@ -45,6 +45,6 @@ describe('conversation runtime application', () => {
     await act(async () => { expect(await view.result.current.patch({ runtime: external.runtime })).toBe(false) })
     expect(api.patchConversationConfig).toHaveBeenCalledTimes(1)
     expect(view.result.current.snapshot?.revision).toBe(3)
-    expect(view.result.current.error).toBe('Configuration changed')
+    expect(view.result.current.error).toContain('Configuration changed')
   })
 })

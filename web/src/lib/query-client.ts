@@ -8,7 +8,7 @@ export const queryClient = new QueryClient({
       retry: (failureCount, error) => {
         if (failureCount >= 1) return false
         if (!(error instanceof APIError)) return true
-        return error.status === 408 || error.status === 429 || error.status >= 500
+        return error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500
       },
       refetchOnWindowFocus: false,
     },

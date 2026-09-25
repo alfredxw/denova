@@ -221,6 +221,10 @@ func (middleware *permissionMiddleware) WrapToolCall(
 				return ToolResult{}, errors.New("Permission requires a durable tool execution ID")
 			}
 			presentation := permissionPresentation(request, decision)
+			presentation.ToolDefinitionHash, err = hashCanonical(tool.Definition)
+			if err != nil {
+				return ToolResult{}, fmt.Errorf("capture permission tool %q: %w", tool.Name, err)
+			}
 			resolution, err := RequestInteraction(ctx, InteractionRequest{
 				ID: interactionID, Kind: InteractionPermission,
 				Permission: &presentation,

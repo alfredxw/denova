@@ -1,5 +1,6 @@
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CircleCheck, CircleX, Loader2, PlugZap } from 'lucide-react'
+import { CircleCheck, Loader2, PlugZap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -67,10 +68,7 @@ export function ImageProfilePingButton({ endpoint, profile }: { endpoint: ImageA
           </span>
         )}
         {state.status === 'error' && (
-          <span className="inline-flex min-w-0 items-start gap-1 text-red-600 dark:text-red-400" role="alert">
-            <CircleX className="mt-0.5 size-3.5 shrink-0" />
-            <span className="break-words">{t('settings.imageApi.pingFailure', { error: state.message })}</span>
-          </span>
+          <InlineErrorNotice message={t('settings.imageApi.pingFailure', { error: state.message })} />
         )}
       </div>
     </div>

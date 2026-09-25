@@ -181,7 +181,7 @@ func (t *Task) Start(run func(ctx context.Context, task *Task, emit func(agentru
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				slog.LogAttrs(ctx, slog.LevelError, "task_panic_recovered", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.Any("error", recovered))
-				t.Emit(agentrun.Event{Type: "error", Data: map[string]string{"message": "Agent 后台任务异常中断 / Agent background task stopped unexpectedly"}})
+				t.Emit(agentrun.Event{Type: "error", Data: map[string]any{"message": "Agent task panicked", "error_key": "agentRuntime.operationFailed", "code": "agent_runtime.panic", "details": map[string]any{"detail": fmt.Sprint(recovered)}}})
 			}
 			t.Finish()
 		}()

@@ -516,6 +516,7 @@ var (
 	ErrDefinitionMismatch         = errors.New("agent Definition does not match the active transcript")
 	ErrCursorExpired              = errors.New("agent event cursor expired")
 	ErrCapabilityUnsupported      = errors.New("agent capability is unsupported")
+	ErrInvalidInteractionResponse = errors.New("invalid agent interaction response")
 	ErrInteractionStale           = errors.New("agent interaction is stale")
 	ErrPermissionDenied           = errors.New("agent permission denied")
 	ErrPermissionArgumentsChanged = errors.New("agent tool arguments changed after authorization")

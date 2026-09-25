@@ -22,7 +22,7 @@ import {
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
 import { FileTreeMenu, FileTreeMenuItem, FileTreeMenuSeparator, FileTreeMenuShortcut } from '@/components/file-tree/FileTreeMenu'
 import { NovaFileTree } from '@/components/file-tree/NovaFileTree'

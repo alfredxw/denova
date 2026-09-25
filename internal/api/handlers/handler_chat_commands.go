@@ -11,6 +11,7 @@ import (
 
 	"denova/internal/agents/conversationconfig"
 	novaApp "denova/internal/app"
+	"denova/internal/observability"
 )
 
 type chatAgentCommandRequest struct {
@@ -107,6 +108,7 @@ func writingAgentCommandKind(value string) (novaApp.CommandKind, error) {
 
 func (h *Handlers) writeAgentCommandError(ctx context.Context, c *app.RequestContext, err error, target string) {
 	details := map[string]any{"target_operation_id": strings.TrimSpace(target)}
+	details["detail"] = observability.DiagnosticText(err.Error())
 	switch {
 	case errors.Is(err, conversationconfig.ErrRuntimeCapabilityUnsupported):
 		slog.WarnContext(ctx, "agent_command_unsupported", "target_operation_id", target, "error", err)
@@ -136,5 +138,8 @@ func (h *Handlers) writeAgentCommandError(ctx context.Context, c *app.RequestCon
 }
 
 func writeAgentRuntimeError(c *app.RequestContext, status int, code, message string, details map[string]any) {
-	c.JSON(status, agentRuntimeErrorResponse{Error: message, Code: code, Details: details})
+	if detail, ok := details["detail"].(string); ok {
+		details["detail"] = observability.DiagnosticText(detail)
+	}
+	c.JSON(status, agentRuntimeErrorResponse{Error: observability.DiagnosticText(message), Code: code, Details: details})
 }

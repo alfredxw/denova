@@ -1,3 +1,5 @@
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { errorMessage } from '@/lib/error-diagnostics'
 import { useEffect, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -87,7 +89,7 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
     setError('')
     void loadChoices(controller).then(next => { if (active) setChoices(next) }).catch(cause => {
       console.warn('[conversation-config] load runtime choices failed', { cause })
-      if (active) { setChoices([]); setError(t('agentRuntime.connectionFailed')) }
+      if (active) { setChoices([]); setError(errorMessage(cause, t('agentRuntime.connectionFailed'))) }
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [open, revision, controller.binding, controller.snapshot?.custom_agent_id, controller.snapshot?.agent_kind, controller.snapshot?.profile_id, t])
@@ -114,7 +116,7 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
       }
     } catch (cause) {
       console.warn('[conversation-config] switch or check runtime failed', { kind: choice.kind, cause })
-      setError(t('agentRuntime.connectionFailed'))
+      setError(errorMessage(cause, t('agentRuntime.connectionFailed')))
     } finally { setPending(null) }
   }
 
@@ -141,7 +143,7 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
         <p className="whitespace-normal px-1.5 py-1 text-[11px] text-muted-foreground">
           {t(draftStory ? 'agentRuntime.switchAfterStoryCreated' : runActive ? 'agentRuntime.switchWhenIdle' : 'agentRuntime.switchConversationHint')}
         </p>
-        {(error || controller.error) && <p role="alert" className="whitespace-normal break-words px-2 py-1 text-xs text-destructive">{error || controller.error}</p>}
+        {(error || controller.error) && <InlineErrorNotice message={error || controller.error} />}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
     <DropdownMenuItem disabled={configurationDisabled} className="shrink-0 cursor-pointer text-xs text-muted-foreground" onSelect={onConfigure}>

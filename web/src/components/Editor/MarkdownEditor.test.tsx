@@ -159,7 +159,7 @@ vi.mock('@tiptap/extension-placeholder', () => ({ default: { configure: () => ({
 vi.mock('@tiptap/extension-image', () => ({ default: { extend: () => ({ configure: () => ({}) }) } }))
 vi.mock('@tiptap/extension-table', () => ({ TableKit: { configure: vi.fn((options) => ({ name: 'tableKit', options })) } }))
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
-vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/toast', () => ({ toast: toastMock }))
 vi.mock('@/lib/api-client/workspace', () => ({
   MISSING_WORKSPACE_REVISION: 'missing',
 }))

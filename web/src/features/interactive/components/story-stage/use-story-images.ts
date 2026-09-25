@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { createAgentCommandID, type InteractiveImage } from '@/lib/api'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { generateInteractiveImage } from '../../api'

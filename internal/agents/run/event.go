@@ -1,6 +1,11 @@
 package agentrun
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+
+	"denova/internal/observability"
+)
 
 // AbortReasonUserRequested identifies an expected pause initiated by the user.
 // Other abort reasons remain operational failures and must not become resumable.
@@ -10,6 +15,37 @@ const AbortReasonUserRequested = "user_requested"
 type Event struct {
 	Type string
 	Data any
+}
+
+// WithErrorDiagnostics captures the originating task identity before replay.
+// Reconnecting transports must not replace it with a new connection's ID.
+func (e Event) WithErrorDiagnostics(requestID, taskID string) Event {
+	if e.Type != "error" {
+		return e
+	}
+	payload := map[string]any{}
+	if raw, err := json.Marshal(e.Data); err == nil {
+		_ = json.Unmarshal(raw, &payload)
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if payload["request_id"] == nil && requestID != "" {
+		payload["request_id"] = requestID
+	}
+	if payload["task_id"] == nil && taskID != "" {
+		payload["task_id"] = taskID
+	}
+	if payload["code"] == nil {
+		if key, ok := payload["error_key"].(string); ok {
+			payload["code"] = key
+		} else {
+			payload["code"] = "agent_runtime.failed"
+		}
+	}
+	observability.EnrichError(payload, "agent.run")
+	e.Data = payload
+	return e
 }
 
 // NewAbortedEvent creates the canonical terminal event consumed by every

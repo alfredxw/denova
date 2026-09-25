@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat as useAIChat } from '@ai-sdk/react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { createAgentCommandID } from '@/lib/api'
 import type { AgentQueuedCommandAction, AgentRuntimeQueuedCommand, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import { withErrorLogID } from '@/lib/api-client'
@@ -84,6 +84,7 @@ interface QueuedComposerDraft {
 export function useAgentChat(options: ChatOptions = {}) {
   const { t } = useTranslation()
   const { projectId = '', client = writingAgentChatClient, onAgentFileChange, onWorkspaceChange } = options
+  const terminalDiagnosticReceived = useRef(false)
   const transport = useMemo(() => new AgentChatTransport(client.transportOptions), [client])
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
   const projectStreamCycleRef = useRef<(operationID: string, cycle?: number) => void>(() => undefined)
@@ -106,7 +107,8 @@ export function useAgentChat(options: ChatOptions = {}) {
       if (part.type === 'data-agent-error') {
         const data = part.data as Record<string, unknown>
         const content = localizeAgentRuntimeError(data, t('chat.activity.unknownError'), t)
-        toast.error(withErrorLogID(content, data))
+        terminalDiagnosticReceived.current = data.terminal === true
+        toast.error(content)
         return
       }
       if (part.type === 'data-agent-activity') {
@@ -149,9 +151,11 @@ export function useAgentChat(options: ChatOptions = {}) {
       void onWorkspaceChange?.(event)
     },
     onError: (error) => {
+      if (terminalDiagnosticReceived.current) { terminalDiagnosticReceived.current = false; return }
       toast.error(withErrorLogID(error.message || t('chat.activity.unknownError'), error))
     },
     onFinish: () => {
+      terminalDiagnosticReceived.current = false
       void onAgentFileChange?.()
       void refreshSessionsRef.current()
     },

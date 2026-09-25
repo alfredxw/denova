@@ -1,7 +1,7 @@
 import { FileCode2, FileWarning, PanelRightClose, PanelRightOpen, Save, WrapText } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
 import { MarkdownViewToggle } from '@/components/common/MarkdownEditPreview'
