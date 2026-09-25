@@ -34,7 +34,7 @@ func prepareExternal(ctx context.Context, runtime Runtime, request agentchat.Cha
 	if err != nil {
 		return external.StartRequest{}, err
 	}
-	history, err := external.ReadHistory(ctx, runtime.Session)
+	history, err := external.PrepareHistory(ctx, runtime.Session)
 	if err != nil {
 		return external.StartRequest{}, err
 	}
@@ -44,7 +44,7 @@ func prepareExternal(ctx context.Context, runtime Runtime, request agentchat.Cha
 	}
 	input.Revision, input.PreparedCursor, input.ContinuesOperationID = history.Revision, history.Cursor, history.ContinuesOperationID
 	input.SourceBoundary = fmt.Sprint(history.ContextRevision)
-	input.Input.Selection, input.Input.History, input.Input.Plan = history.Selection, history.Messages, plan
+	input.Input.Selection, input.LoadHistory, input.Input.Plan = history.Selection, history.Messages, plan
 	input.Input.Text = goalContext + input.Input.Text
 	input.ObservePlan, input.Checkpoint, input.PriorMutations = state.ObservePlan, history.Checkpoint, history.PriorMutations
 	return input, nil

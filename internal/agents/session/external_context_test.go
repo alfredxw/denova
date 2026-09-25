@@ -47,7 +47,7 @@ func TestExternalContextReadsFullCanonicalHistoryAndExcludesPrivateState(t *test
 	}
 	var content []*agent.Message
 	err = sess.ReadExternal(context.Background(), func(state ExternalState) error {
-		return state.ScanContext(func(record ExternalContextRecord) error {
+		return state.ScanContext(state.ContextSource, func(record ExternalContextRecord) error {
 			if record.Message != nil {
 				content = append(content, record.Message)
 			}
@@ -68,7 +68,7 @@ func TestExternalContextReadsFullCanonicalHistoryAndExcludesPrivateState(t *test
 	}
 	content = nil
 	if err := sess.ReadExternal(t.Context(), func(state ExternalState) error {
-		return state.ScanContext(func(record ExternalContextRecord) error {
+		return state.ScanContext(state.ContextSource, func(record ExternalContextRecord) error {
 			if record.Message != nil {
 				content = append(content, record.Message)
 			}
@@ -88,7 +88,7 @@ func TestExternalContextReadsFullCanonicalHistoryAndExcludesPrivateState(t *test
 	}
 	content = nil
 	if err := sess.ReadExternal(context.Background(), func(state ExternalState) error {
-		return state.ScanContext(func(record ExternalContextRecord) error {
+		return state.ScanContext(state.ContextSource, func(record ExternalContextRecord) error {
 			if record.Message != nil {
 				content = append(content, record.Message)
 			}

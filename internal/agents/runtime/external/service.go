@@ -49,12 +49,14 @@ type StartRequest struct {
 	AfterCommit    func(context.Context, *RuntimeSession) error
 	// PrepareGuidance assembles additional product input without committing it.
 	// Only Input, Message and Metadata are used; admission stays with this operation.
-	PrepareGuidance       func(context.Context, agentchat.ChatRequest) (StartRequest, error)
-	ObservePlan           func(context.Context, agentrun.Event) error
-	ContinuesOperationID  string
-	Adapter               Adapter
-	Runtime               *Runtime
-	Input                 Input
+	PrepareGuidance      func(context.Context, agentchat.ChatRequest) (StartRequest, error)
+	ObservePlan          func(context.Context, agentrun.Event) error
+	ContinuesOperationID string
+	Adapter              Adapter
+	Runtime              *Runtime
+	Input                Input
+	// LoadHistory reads the captured pre-admission source only on reconstruction.
+	LoadHistory           func(context.Context) ([]Message, error)
 	Message               agent.Message
 	Metadata              session.MessageMetadata
 	Definitions           []agent.ToolDefinition

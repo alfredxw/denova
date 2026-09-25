@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import { useRef, useState, type ComponentRef, type ReactElement } from 'react'
 import { Bot, Folder } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
@@ -20,13 +20,20 @@ export function AgentChatProjectDetailsCard({
   children,
 }: AgentChatProjectDetailsCardProps) {
   const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const trigger = useRef<ComponentRef<typeof HoverCardTrigger>>(null)
   const name = project.name || project.path
   let Icon = Folder
   if (project.type === 'general' || project.type === 'agents') Icon = Bot
 
   return (
-    <HoverCard openDelay={800} closeDelay={150}>
-      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+    <HoverCard open={open} onOpenChange={next => {
+      // Pointer entry and focus can schedule separate Radix opening timers.
+      // Ignore a late timer after navigation has left this Project row.
+      const target = trigger.current
+      setOpen(next && Boolean(target && (target.matches(':hover') || target.contains(target.ownerDocument.activeElement))))
+    }} openDelay={800} closeDelay={150}>
+      <HoverCardTrigger ref={trigger} asChild>{children}</HoverCardTrigger>
       <HoverCardContent
         data-slot="agent-chat-project-details"
         side="right"

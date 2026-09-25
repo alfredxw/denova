@@ -63,11 +63,11 @@ func TestWritingImageCheckpointSurvivesMovedStoreAndColdReopen(t *testing.T) {
 		return Result{Text: "Continued."}, nil
 	})
 	for attempt := range 2 {
-		history, err := ReadHistory(t.Context(), request.Session)
+		history, err := PrepareHistory(t.Context(), request.Session)
 		if err != nil {
 			t.Fatal(err)
 		}
-		request.PreparedCursor, request.Checkpoint, request.Input.History = history.Cursor, history.Checkpoint, history.Messages
+		request.PreparedCursor, request.Checkpoint, request.LoadHistory = history.Cursor, history.Checkpoint, history.Messages
 		if attempt == 1 {
 			if history.Checkpoint == nil || history.Checkpoint.Version != checkpointVersion {
 				t.Fatal("canonical checkpoint was not restored")
@@ -120,7 +120,7 @@ func TestWritingImageCheckpointSurvivesMovedStoreAndColdReopen(t *testing.T) {
 
 func TestAlignedRuntimeResumeDoesNotReinspectHistoricalImages(t *testing.T) {
 	file := checkpointImage(t, png.BestCompression)
-	turns := 0
+	turns, loads := 0, 0
 	adapter := adapterFunc(func(_ context.Context, input Input, _ Host) (Result, error) {
 		turns++
 		if input.Mode == OperationSummarize || (turns == 2 && (input.SessionID == "" || len(input.History) != 0)) {
@@ -129,9 +129,12 @@ func TestAlignedRuntimeResumeDoesNotReinspectHistoricalImages(t *testing.T) {
 		return Result{SessionID: "provider-session", Settled: true}, nil
 	})
 	runtime := Runtime{CacheRoot: t.TempDir(), Acquire: func(context.Context) (Adapter, func(), error) { return adapter, func() {}, nil }}
-	request := SessionRequest{Key: "writing/image", Boundary: "same", Input: Input{History: []Message{{Role: "user", Attachments: []agent.Attachment{file}, Cursor: 1}}},
+	request := SessionRequest{Key: "writing/image", Boundary: "same",
 		Prepare: func(ctx context.Context, input Input, adapter Adapter) (Input, error) {
-			return (HistoryPreparation{Input: input, Adapter: adapter}).Prepare(ctx)
+			return (HistoryPreparation{Input: input, Adapter: adapter, LoadHistory: func(context.Context) ([]Message, error) {
+				loads++
+				return []Message{{Role: "user", Attachments: []agent.Attachment{file}, Cursor: 1}}, nil
+			}}).Prepare(ctx)
 		}}
 	first, err := runtime.Run(t.Context(), request, maintenanceHost{})
 	if err != nil {
@@ -149,8 +152,8 @@ func TestAlignedRuntimeResumeDoesNotReinspectHistoricalImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = second.Session.Close()
-	if turns != 2 {
-		t.Fatalf("unexpected provider requests: %d", turns)
+	if turns != 2 || loads != 1 {
+		t.Fatalf("unexpected provider requests=%d history loads=%d", turns, loads)
 	}
 }
 
@@ -166,7 +169,11 @@ func TestManualCompactionResolvesHistoryImagesBeforeSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	files[0].RuntimePath = ""
-	request.Input.History = []Message{{Role: "user", Text: strings.Repeat("Old context. ", 10000), Attachments: files, Cursor: 1}}
+	loads := 0
+	request.LoadHistory = func(context.Context) ([]Message, error) {
+		loads++
+		return []Message{{Role: "user", Text: strings.Repeat("Old context. ", 10000), Attachments: files, Cursor: 1}}, nil
+	}
 	images, compactions := 0, 0
 	adapter := adapterFunc(func(ctx context.Context, input Input, host Host) (Result, error) {
 		if input.Mode == OperationSummarize {
@@ -180,17 +187,25 @@ func TestManualCompactionResolvesHistoryImagesBeforeSummary(t *testing.T) {
 			}
 			return Result{Text: "Reference image details."}, nil
 		}
-		if input.Mode != OperationCompact || !strings.Contains(input.History[0].Text, "Reference image details") {
+		if input.Mode != OperationCompact {
+			t.Fatal("manual compaction changed operation mode")
+		}
+		if compactions == 0 && (len(input.History) == 0 || !strings.Contains(input.History[0].Text, "Reference image details")) {
 			t.Fatal("manual compaction lost reconstructed image context")
+		}
+		if compactions == 1 && (input.SessionID != "compacted" || len(input.History) != 0) {
+			t.Fatal("aligned manual compaction reconstructed history")
 		}
 		compactions++
 		return Result{SessionID: "compacted", Settled: true}, host.Emit(agentrun.Event{Type: "context_compaction", Data: map[string]any{"status": "completed"}})
 	})
 	request.Runtime = &Runtime{CacheRoot: t.TempDir(), Acquire: func(context.Context) (Adapter, func(), error) { return adapter, func() {}, nil }}
-	result, err := CompactSession(t.Context(), request, func(ctx context.Context, preparation HistoryPreparation) (Input, error) {
-		return preparation.Prepare(ctx)
-	})
-	if err != nil || !result.Triggered || images != 1 || compactions != 1 {
-		t.Fatalf("manual compaction: %+v, images=%d compactions=%d err=%v", result, images, compactions, err)
+	for attempt := range 2 {
+		result, err := CompactSession(t.Context(), request, func(ctx context.Context, preparation HistoryPreparation) (Input, error) {
+			return preparation.Prepare(ctx)
+		})
+		if err != nil || !result.Triggered || images != 1 || compactions != attempt+1 || loads != 1 {
+			t.Fatalf("manual compaction: %+v, images=%d compactions=%d loads=%d err=%v", result, images, compactions, loads, err)
+		}
 	}
 }

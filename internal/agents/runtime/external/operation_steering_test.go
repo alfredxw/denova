@@ -57,12 +57,16 @@ func TestNativeGuidanceIsCanonicalBeforeSubsequentWork(t *testing.T) {
 	if operation.ConsumedGuidance() != 1 {
 		t.Fatal("accepted guidance prefix was lost")
 	}
-	history, err := ReadHistory(t.Context(), request.Session)
+	history, err := PrepareHistory(t.Context(), request.Session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := history.Messages(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
-	for _, message := range history.Messages {
+	for _, message := range messages {
 		found = found || message.Text == guidance.Request.Message
 	}
 	if !found {
