@@ -350,6 +350,9 @@ func (session *Session) resumeRunCommand(ctx context.Context, request ResumeRequ
 	session.removePendingLocked(previous)
 	for index, pending := range session.pending {
 		if !pending.isSuspended() {
+			// Reopened queued Runs have fresh handles but still need the tree
+			// permit while ancestors are being resumed, descendant first.
+			pending.treeResumeID = treeID
 			continue
 		}
 		fresh := newPublicRun(session, pending.id, pending.commandID, pending.input, pending.delivery, pending.ownership)

@@ -69,8 +69,23 @@ func (session *Session) acceptTreeControl(ctx context.Context, kind, treeID, com
 	if err := session.appendRecordLocked(ctx, sessionControlRecord, control); err != nil {
 		return persistedTreeControl{}, err
 	}
+	var completedID string
+	if kind == "resume_tree" && len(session.treeControl.RunIDs) > 0 {
+		completedID = session.treeControl.RunIDs[0]
+	}
 	session.treeControl = control
 	session.controlReceipts[commandID], session.cursor = control.persistedControlReceipt, control.Receipt.Cursor
+	// A fast resumed Run can settle before this record releases its queue fence.
+	// Recheck the same handoff as finish, preserving its stop-on-error behavior.
+	if completedID != "" {
+		next, err := session.advancePendingLocked(completedID)
+		if err != nil {
+			return control, err
+		}
+		if next != nil {
+			safeGo(next.execute, func(err error) { next.finish(Result{Status: ResultFailed, Reason: err.Error()}, err) })
+		}
+	}
 	return control, nil
 }
 

@@ -82,14 +82,18 @@ for (const kind of ['writing', 'general', 'game'] as const) {
         await page.screenshot({ path: test.info().outputPath('unavailable-runtime.png'), animations: 'disabled' })
         await page.getByRole('menuitem', { name: 'Codex', exact: true }).click()
         await expect(page.getByText('尚未检查', { exact: true })).toHaveCount(0)
+        await expect(page.getByRole('menuitem', { name: 'Codex', exact: true })).toBeEnabled()
         expect(switches).toEqual([])
         await page.keyboard.press('Escape')
-        await page.keyboard.press('Escape')
+        // The closing animation retains Radix's focus and pointer layer until
+        // unmount. Finish dismissal before resizing or opening another menu.
+        await expect(page.getByRole('menu')).toHaveCount(0)
         statuses.claude = 'ready'
       }
       for (const [engine, previous, width] of [['Codex', 'Native', 1440], ['Claude Code', 'Codex', 390], ['Native', 'Claude Code', 390]] as const) {
         await page.setViewportSize({ width, height: 960 })
         if (kind === 'writing' && width === 390) await page.getByRole('tab', { name: 'Agent', exact: true }).click()
+        if (kind === 'writing' && width === 1440) await expect(page.getByRole('tab', { name: 'Agent', exact: true })).toHaveCount(0)
         await trigger.click()
         const runtimeLink = page.getByRole('menuitem', { name: `运行时：${previous}`, exact: true })
         await expect(runtimeLink).toBeVisible()
@@ -108,16 +112,18 @@ for (const kind of ['writing', 'general', 'game'] as const) {
         await option.click()
         const currentRuntime = page.getByRole('menuitem', { name: `运行时：${engine}`, exact: true })
         await expect(currentRuntime).toBeVisible()
-        // Target the parent menu after the asynchronous selection update; an
-        // Escape still focused in the submenu only dismisses that submenu.
+        // A changed label can render before the submenu finishes closing.
+        await expect(page.locator('[data-slot="dropdown-menu-sub-content"]')).toHaveCount(0)
         await currentRuntime.press('Escape')
         await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+        await expect(page.getByRole('menu')).toHaveCount(0)
         await expect(editor).toHaveText('Keep this draft / 保留这段草稿')
         await page.getByRole('button', { name: '输入动作', exact: true }).filter({ visible: true }).click()
         await expect(page.getByText('切换运行时', { exact: true })).toHaveCount(0)
         await expect(page.getByRole('menuitem', { name: '上下文分析', exact: true })).toHaveCount(engine === 'Native' ? 1 : 0)
         await expect(page.getByRole('menuitemcheckbox', { name: '目标', exact: true })).toHaveCount(kind === 'game' ? 0 : 1)
         await page.keyboard.press('Escape')
+        await expect(page.getByRole('menu')).toHaveCount(0)
       }
       expect(switches).toEqual(['codex', 'claude', 'native'])
       expect(gameGoalRequests).toEqual([])
