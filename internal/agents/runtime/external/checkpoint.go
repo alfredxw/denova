@@ -38,7 +38,7 @@ func (operation *Operation) prepareHistory(ctx context.Context) (Input, error) {
 
 func (operation *Operation) prepareRuntimeInput(ctx context.Context, source Input, adapter Adapter) (Input, error) {
 	return (HistoryPreparation{
-		Input: source, Checkpoint: operation.request.Checkpoint,
+		Input: source, Checkpoint: operation.request.Checkpoint, LoadHistory: operation.request.LoadHistory,
 		Adapter: adapter, ProviderInputMaxBytes: operation.request.ProviderInputMaxBytes,
 		ResolveMedia: operation.media().Resolve, AddUsage: operation.addUsage,
 		SaveCheckpoint: func(checkpoint externaljournal.Checkpoint) error {
@@ -57,6 +57,9 @@ type HistoryPreparation struct {
 	ProviderInputMaxBytes int
 	AddUsage              func(*agent.TokenUsage)
 	SaveCheckpoint        func(externaljournal.Checkpoint) error
+	// LoadHistory is product-owned and bound to a fixed canonical source interval.
+	// Aligned provider sessions skip it, including during manual compaction.
+	LoadHistory func(context.Context) ([]Message, error)
 	// ResolveMedia projects product-scoped paths on a copy, without changing text
 	// or portable references. Already resolved callers may leave it nil.
 	ResolveMedia func(context.Context, Input) (Input, error)
@@ -64,6 +67,13 @@ type HistoryPreparation struct {
 
 func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 	input := request.Input
+	if input.SessionID == "" && request.LoadHistory != nil {
+		var err error
+		input.History, err = request.LoadHistory(ctx)
+		if err != nil {
+			return Input{}, err
+		}
+	}
 	if input.SessionID == "" && len(input.Plan) != 0 {
 		plan, err := json.Marshal(input.Plan)
 		if err != nil {

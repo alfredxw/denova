@@ -2,9 +2,11 @@ package external
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"denova/config"
+	externaljournal "denova/internal/agents/runtime/external/journal"
 )
 
 func TestProductAcceptsOnlySettledInterruptedProviderSession(t *testing.T) {
@@ -46,6 +48,35 @@ func TestProductAcceptsOnlySettledInterruptedProviderSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			_ = second.Session.Close()
+		})
+	}
+}
+
+func TestFailedHistoryLoadingNeverStartsProvider(t *testing.T) {
+	for _, failure := range []error{errors.New("canonical source unavailable"), context.Canceled} {
+		t.Run(failure.Error(), func(t *testing.T) {
+			calls, loads, saved := 0, 0, 0
+			adapter := adapterFunc(func(context.Context, Input, Host) (Result, error) {
+				calls++
+				return Result{SessionID: "unexpected"}, nil
+			})
+			runtime := Runtime{CacheRoot: t.TempDir(), Acquire: func(context.Context) (Adapter, func(), error) { return adapter, func() {}, nil }}
+			request := SessionRequest{Key: "failed-history", Boundary: "before-input",
+				Prepare: func(ctx context.Context, input Input, adapter Adapter) (Input, error) {
+					return (HistoryPreparation{Input: input, Adapter: adapter,
+						LoadHistory: func(context.Context) ([]Message, error) {
+							loads++
+							return []Message{{Role: "user", Text: "Partial history must not be used."}}, failure
+						}, SaveCheckpoint: func(externaljournal.Checkpoint) error { saved++; return nil },
+					}).Prepare(ctx)
+				}}
+			result, err := runtime.Run(t.Context(), request, maintenanceHost{})
+			if result.Session != nil {
+				defer result.Session.Close()
+			}
+			if !errors.Is(err, failure) || calls != 0 || loads != 1 || saved != 0 {
+				t.Fatalf("failed reconstruction: provider calls=%d loads=%d checkpoints=%d err=%v", calls, loads, saved, err)
+			}
 		})
 	}
 }

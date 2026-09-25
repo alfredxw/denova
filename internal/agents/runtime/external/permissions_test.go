@@ -30,7 +30,7 @@ func TestCodexHostPermissionsControlActualWrites(t *testing.T) {
 			}
 			request.Revision = snapshot.Revision
 			request.Input.Selection = snapshot.Engine()
-			history, err := ReadHistory(t.Context(), request.Session)
+			history, err := PrepareHistory(t.Context(), request.Session)
 			if err != nil {
 				t.Fatal(err)
 			}

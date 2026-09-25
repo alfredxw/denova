@@ -129,7 +129,7 @@ func TestQueuedHostWriteCancellationSurvivesReopenAndEngineSwitch(t *testing.T) 
 							return external.Result{}, err
 						}),
 					}
-					history, err := external.ReadHistory(t.Context(), sess)
+					history, err := external.PrepareHistory(t.Context(), sess)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -225,7 +225,7 @@ func TestQueuedHostWriteCancellationSurvivesReopenAndEngineSwitch(t *testing.T) 
 					if outcome := replayed.Wait(t.Context()); outcome.Status != agentrun.OutcomeAborted || attempts != 1 {
 						t.Fatalf("cancelled command was rerun: %+v attempts=%d", outcome, attempts)
 					}
-					history, err = external.ReadHistory(t.Context(), request.Session)
+					history, err = external.PrepareHistory(t.Context(), request.Session)
 					if err != nil {
 						t.Fatal(err)
 					}

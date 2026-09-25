@@ -14,6 +14,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 写作与通用对话复用外部运行时会话时，跳过不必要的完整历史加载，减少长会话的准备开销。
+- Skip unnecessary full-history loading when Writing and General conversations reuse an external runtime session, reducing preparation overhead for long conversations.
+
 - 修复写作与通用对话使用外部运行时时，取消排队中的写入后无法继续会话或切换运行时的问题。
 - Fix external-runtime Writing and General conversations remaining blocked after cancelling a queued write, preventing continuation or runtime switching.
 

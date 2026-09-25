@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"denova/config"
 	"denova/internal/agents/conversationjournal"
@@ -15,17 +16,18 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// History is a complete canonical source snapshot, not the resident UI window.
-// Positions allow maintenance checkpoints to cover an exact immutable prefix.
+// History captures admission facts and a canonical source interval, without
+// loading its messages. Messages reconstructs that interval only when needed.
 type History struct {
 	Cursor               conversationjournal.Cursor
 	ContextRevision      uint64
 	Revision             uint64
 	Selection            config.RuntimeSelection
-	Messages             []Message
 	ContinuesOperationID string
 	Checkpoint           *externaljournal.Checkpoint
 	PriorMutations       []agenttool.Mutation
+	session              *session.Session
+	source               session.ExternalContextSource
 }
 
 func CommandReceipt(ctx context.Context, sess *session.Session, commandID string) (agentrun.CommandReceipt, bool, error) {
@@ -45,11 +47,15 @@ func CommandReceipt(ctx context.Context, sess *session.Session, commandID string
 	return receipt, found, err
 }
 
-func ReadHistory(ctx context.Context, sess *session.Session) (History, error) {
-	var history History
+// PrepareHistory requires an idle runtime and captures the pre-admission
+// boundary. Only checkpoint and interrupted-ancestor receipts are read here;
+// callers may load Messages after admission while the Session remains open.
+func PrepareHistory(ctx context.Context, sess *session.Session) (History, error) {
+	history := History{session: sess}
 	err := sess.ReadExternal(ctx, func(state session.ExternalState) error {
 		history.Cursor, history.Revision, history.Selection = state.Cursor, state.Config.Revision, state.Config.Engine()
 		history.ContextRevision = state.ContextRevision
+		history.source = state.ContextSource
 		if state.Projection.Checkpoint != nil {
 			record, err := state.Read(*state.Projection.Checkpoint)
 			if err != nil {
@@ -77,6 +83,7 @@ func ReadHistory(ctx context.Context, sess *session.Session) (History, error) {
 		// Interrupted continuations inherit committed domain effects as well as
 		// prose, so the original post-run verification can finish after recovery.
 		ancestors := map[string]bool{}
+		var receipts []externaljournal.Locator
 		for id := history.ContinuesOperationID; id != ""; {
 			if ancestors[id] {
 				return fmt.Errorf("cyclic external continuation")
@@ -86,6 +93,9 @@ func ReadHistory(ctx context.Context, sess *session.Session) (History, error) {
 				return fmt.Errorf("external continuation source is missing")
 			}
 			ancestors[id] = true
+			for _, tool := range operation.Tools {
+				receipts = append(receipts, *tool.Finished)
+			}
 			record, err := state.Read(operation.Accepted)
 			if err != nil {
 				return err
@@ -96,7 +106,47 @@ func ReadHistory(ctx context.Context, sess *session.Session) (History, error) {
 			}
 			id = accepted.ContinuesOperationID
 		}
-		return state.ScanContext(func(source session.ExternalContextRecord) error {
+		// Preserve canonical effect order without scanning unrelated history.
+		sort.Slice(receipts, func(i, j int) bool {
+			if receipts[i].Cursor == receipts[j].Cursor {
+				return receipts[i].Index < receipts[j].Index
+			}
+			return receipts[i].Cursor < receipts[j].Cursor
+		})
+		for _, locator := range receipts {
+			record, err := state.Read(locator)
+			if err != nil {
+				return err
+			}
+			var finished externaljournal.FinishedTool
+			if err := json.Unmarshal(record.Data, &finished); err != nil {
+				return err
+			}
+			if finished.Receipt == nil {
+				continue
+			}
+			for _, effect := range finished.Receipt.Effects {
+				if effect.Kind != toolruntime.AgentToolMutationEffectKind {
+					continue
+				}
+				mutation, err := toolruntime.DecodeAgentToolMutationEffect(effect)
+				if err != nil {
+					return err
+				}
+				history.PriorMutations = append(history.PriorMutations, mutation)
+			}
+		}
+		return nil
+	})
+	return history, err
+}
+
+// Messages loads the captured pre-admission interval, including after a new
+// operation starts. It never includes that operation's input or later guidance.
+func (history History) Messages(ctx context.Context) ([]Message, error) {
+	var messages []Message
+	err := history.session.ReadExternal(ctx, func(state session.ExternalState) error {
+		return state.ScanContext(history.source, func(source session.ExternalContextRecord) error {
 			if source.Message != nil {
 				message := source.Message
 				role, content := string(message.Role), message.Content
@@ -109,7 +159,7 @@ func ReadHistory(ctx context.Context, sess *session.Session) (History, error) {
 				} else {
 					projected.Attachments = message.Attachments
 				}
-				history.Messages = append(history.Messages, projected)
+				messages = append(messages, projected)
 			}
 			if source.Runtime == nil || source.Runtime.Kind != externaljournal.ToolFinished {
 				return nil
@@ -117,18 +167,6 @@ func ReadHistory(ctx context.Context, sess *session.Session) (History, error) {
 			var finished externaljournal.FinishedTool
 			if err := json.Unmarshal(source.Runtime.Data, &finished); err != nil {
 				return err
-			}
-			if ancestors[source.Runtime.OperationID] && finished.Receipt != nil {
-				for _, effect := range finished.Receipt.Effects {
-					if effect.Kind != toolruntime.AgentToolMutationEffectKind {
-						continue
-					}
-					mutation, err := toolruntime.DecodeAgentToolMutationEffect(effect)
-					if err != nil {
-						return err
-					}
-					history.PriorMutations = append(history.PriorMutations, mutation)
-				}
 			}
 			operation := state.Projection.Operations[source.Runtime.OperationID]
 			if operation == nil {
@@ -149,9 +187,12 @@ func ReadHistory(ctx context.Context, sess *session.Session) (History, error) {
 			if finished.Receipt != nil {
 				projected.ToolImages = finished.Receipt.Attachments
 			}
-			history.Messages = append(history.Messages, projected)
+			messages = append(messages, projected)
 			return nil
 		})
 	})
-	return history, err
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
 }

@@ -58,11 +58,15 @@ func TestExternalStreamPreservesPartialOutputAfterStop(t *testing.T) {
 			if last.Content != "Saved prefix. Unfinished sentence" || last.ID != operation.id+"-output" || last.RunID != operation.id {
 				t.Fatalf("partial output lost after reload: %#v", last)
 			}
-			history, err := ReadHistory(t.Context(), reloaded)
+			history, err := PrepareHistory(t.Context(), reloaded)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if history.Messages[len(history.Messages)-1].Text != last.Content {
+			messages, err := history.Messages(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if messages[len(messages)-1].Text != last.Content {
 				t.Fatal("continuation lost partial output")
 			}
 		})

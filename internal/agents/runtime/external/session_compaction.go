@@ -30,7 +30,7 @@ func CompactSession(ctx context.Context, request StartRequest, prepare func(cont
 		Boundary: request.SourceBoundary, Input: request.Input,
 		Prepare: func(ctx context.Context, input Input, adapter Adapter) (Input, error) {
 			return prepare(ctx, HistoryPreparation{Input: input, Adapter: adapter,
-				ProviderInputMaxBytes: request.ProviderInputMaxBytes, ResolveMedia: projection.media().Resolve})
+				ProviderInputMaxBytes: request.ProviderInputMaxBytes, ResolveMedia: projection.media().Resolve, LoadHistory: request.LoadHistory})
 		},
 	}, observer)
 	if result.Usage != nil {
