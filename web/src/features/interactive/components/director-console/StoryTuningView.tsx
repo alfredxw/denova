@@ -1,4 +1,5 @@
 import { errorMessage } from '@/lib/error-diagnostics'
+import { StoryPresentationControls } from './StoryPresentationControls'
 import { StorySpeechControls } from './StorySpeechControls'
 import { useImageModelConfigured } from '@/features/settings/use-image-model-configured'
 import { requestSettingsSection } from '@/features/onboarding/events'
@@ -348,6 +349,8 @@ export function StoryTuningView({
             />
           </>}
         </ControlSection>
+
+        <StoryPresentationControls projectId={projectId} story={story} disabled={disabled} onChange={presentation_settings => { void save('presentation_settings', { presentation_settings }) }} />
 
         <StorySpeechControls story={story} disabled={disabled} onChange={speech_settings => { void save('speech_settings', { speech_settings }) }} />
 

@@ -10,6 +10,7 @@ import type {
   LoreItemSpeechGenerateRequest,
   LoreTypeApplyResult,
 } from './types'
+import { projectFileAssetURL } from './project-files'
 import { projectAPIPath } from './project-scope'
 
 function lorePath(projectId: string, suffix: string): string {
@@ -88,4 +89,13 @@ export function mutateLoreMaterial(
     headers: jsonHeaders,
     body: JSON.stringify(mutation),
   })
+}
+
+/** Remote media bypasses the project file endpoint; URLs never become file paths. */
+export function loreMaterialURL(projectId: string, asset: Pick<LoreAsset, 'path' | 'url'>): string {
+  return asset.url || (asset.path ? projectFileAssetURL(projectId, asset.path) : '')
+}
+
+export function loreImageURL(projectId: string, item?: LoreItem): string {
+  return item?.image?.image_url || (item?.image?.image_path ? projectFileAssetURL(projectId, item.image.image_path) : '')
 }

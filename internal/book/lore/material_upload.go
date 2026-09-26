@@ -26,10 +26,11 @@ var ErrMaterialTooLarge = errors.New("material exceeds 64 MiB")
 // MaterialFile is a ready payload from an upload or generator. Source and Entry
 // are committed with the file reference; callers never overwrite existing assets.
 type MaterialFile struct {
-	Filename string
-	Data     []byte
-	Source   AssetSource
-	Entry    MaterialEntry
+	Filename       string
+	Data           []byte
+	Source         AssetSource
+	Entry          MaterialEntry
+	ReplaceAssetID string
 }
 
 func (s *Store) UploadMaterial(ctx context.Context, id, filename string, data []byte) (Item, error) {
@@ -93,7 +94,7 @@ func (s *Store) SaveMaterial(ctx context.Context, id string, file MaterialFile) 
 	if err := ctx.Err(); err != nil {
 		return Item{}, err
 	}
-	item, err := s.AttachAsset(id, a, file.Entry)
+	item, err := s.attachAsset(id, a, file.Entry, file.ReplaceAssetID)
 	if err != nil {
 		return Item{}, err
 	}

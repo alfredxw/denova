@@ -131,9 +131,10 @@ type Settings struct {
 	TerminalScrollbackKB       *int `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
 	// 游戏模式
-	InteractiveStoryTellerID   string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
-	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
-	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
+	InteractiveStoryTellerID     string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
+	InteractiveStageFontSize     *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
+	InteractiveStageScrimOpacity *float64 `toml:"interactive_stage_scrim_opacity,omitempty" json:"interactive_stage_scrim_opacity,omitempty"`
+	InteractiveStageLineHeight   *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 }
 
 func boolPtr(v bool) *bool        { return &v }
@@ -221,20 +222,21 @@ func DefaultSettings() Settings {
 			VersionSummary:   AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
 			ToolAgent:        AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
 		},
-		AgentTools:                 DefaultAgentToolSettings(),
-		WebAccess:                  DefaultWebAccessSettings(),
-		Labs:                       DefaultLabSettings(),
-		AgentSkills:                AgentSkillSettings{},
-		AgentContexts:              DefaultAgentContextSettings(),
-		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
-		SubAgents:                  nil,
-		PlanModeDefault:            boolPtr(false),
-		IDEStoryTellerID:           style.DefaultID,
-		IDEImagePresetID:           "game-cg",
-		WritingSkillDefault:        DefaultWritingSkillName,
-		InteractiveStoryTellerID:   style.DefaultID,
-		InteractiveStageFontSize:   intPtr(16),
-		InteractiveStageLineHeight: floatPtr(1.78),
+		AgentTools:                   DefaultAgentToolSettings(),
+		WebAccess:                    DefaultWebAccessSettings(),
+		Labs:                         DefaultLabSettings(),
+		AgentSkills:                  AgentSkillSettings{},
+		AgentContexts:                DefaultAgentContextSettings(),
+		GeneralSubAgents:             DefaultAgentGeneralSubAgentSettings(),
+		SubAgents:                    nil,
+		PlanModeDefault:              boolPtr(false),
+		IDEStoryTellerID:             style.DefaultID,
+		IDEImagePresetID:             "game-cg",
+		WritingSkillDefault:          DefaultWritingSkillName,
+		InteractiveStoryTellerID:     style.DefaultID,
+		InteractiveStageFontSize:     intPtr(16),
+		InteractiveStageLineHeight:   floatPtr(1.78),
+		InteractiveStageScrimOpacity: floatPtr(0.75),
 	}
 }
 
@@ -453,6 +455,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize
+	}
+	if child.InteractiveStageScrimOpacity != nil {
+		out.InteractiveStageScrimOpacity = child.InteractiveStageScrimOpacity
 	}
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight

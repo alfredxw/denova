@@ -39,7 +39,7 @@ import {
   generateLoreItemSpeech,
   getLoreAssets,
   mutateLoreMaterial,
-  projectFileAssetURL,
+  loreMaterialURL,
   uploadLoreItemMaterial,
   type LoreAsset,
   type LoreItem,
@@ -47,6 +47,8 @@ import {
   type LoreMaterialMutation,
 } from '@/lib/api'
 import { notifyLoreUpdated } from './events'
+import { MaterialImage } from './MaterialImage'
+import { LoreMaterialRemoteDialog } from './LoreMaterialRemoteDialog'
 import { LoreMaterialDialog, MaterialAudio } from './LoreMaterialDialog'
 import { LoreMaterialGenerateDialog } from './LoreMaterialGenerateDialog'
 import { LoreMaterialSpeechDialog } from './LoreMaterialSpeechDialog'
@@ -75,6 +77,7 @@ export function LoreMaterialsPanel({
   const [selected, setSelected] = useState<string | null>(null)
   const [generateOpen, setGenerateOpen] = useState<'image' | 'speech' | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [remoteOpen, setRemoteOpen] = useState(false)
   const [assets, setAssets] = useState<LoreAsset[] | null>(null)
   const [assetsError, setAssetsError] = useState('')
   const [pickerQuery, setPickerQuery] = useState('')
@@ -191,6 +194,9 @@ export function LoreMaterialsPanel({
               <DropdownMenuItem onSelect={() => input.current?.click()}>
                 {t('lore.materials.upload')}
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setRemoteOpen(true)}>
+                {t('lore.materials.fromWeb')}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
                   setPickerOpen(true)
@@ -294,7 +300,11 @@ export function LoreMaterialsPanel({
                   key={material.id}
                   projectId={projectId}
                   material={material}
-                  cover={material.path === item.image?.image_path}
+                  cover={
+                    item.materials
+                      ? material.id === item.materials.cover_asset_id
+                      : material.path === item.image?.image_path
+                  }
                   disabled={busy}
                   onOpen={() => setSelected(material.id)}
                   onMutate={mutate}
@@ -319,6 +329,9 @@ export function LoreMaterialsPanel({
               <Upload data-icon="inline-start" />
               {t('lore.materials.upload')}
             </Button>
+            <Button variant="outline" disabled={busy} onClick={() => setRemoteOpen(true)}>
+              {t('lore.materials.fromWeb')}
+            </Button>
             {imageConfigured && (
               <Button variant="outline" disabled={busy} onClick={() => setGenerateOpen('image')}>
                 <ImagePlus data-icon="inline-start" />
@@ -334,13 +347,24 @@ export function LoreMaterialsPanel({
           </div>
         </Empty>
       )}
+      {remoteOpen && (
+        <LoreMaterialRemoteDialog
+          busy={busy}
+          onClose={() => setRemoteOpen(false)}
+          onSave={mutate}
+        />
+      )}
       {selectedMaterial && (
         <LoreMaterialDialog
           key={selectedMaterial.id}
           projectId={projectId}
           itemName={item.name}
           material={selectedMaterial}
-          cover={selectedMaterial.path === item.image?.image_path}
+          cover={
+            item.materials
+              ? selectedMaterial.id === item.materials.cover_asset_id
+              : selectedMaterial.path === item.image?.image_path
+          }
           busy={busy}
           onClose={() => setSelected(null)}
           onMutate={mutate}
@@ -366,7 +390,9 @@ export function LoreMaterialsPanel({
           itemName={item.name}
           busy={busy}
           onClose={() => setGenerateOpen(null)}
-          onGenerate={(request) => perform(() => generateLoreItemSpeech(projectId, item.id, request))}
+          onGenerate={(request) =>
+            perform(() => generateLoreItemSpeech(projectId, item.id, request))
+          }
         />
       )}
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
@@ -400,7 +426,7 @@ export function LoreMaterialsPanel({
               {assets
                 .filter(
                   (asset) =>
-                    !materials.some((material) => material.path === asset.path) &&
+                    !materials.some((material) => material.id === asset.id) &&
                     asset.original_name.toLowerCase().includes(pickerQuery.toLowerCase()),
                 )
                 .map((asset) => (
@@ -418,7 +444,7 @@ export function LoreMaterialsPanel({
                 ))}
               {!assets.some(
                 (asset) =>
-                  !materials.some((material) => material.path === asset.path) &&
+                  !materials.some((material) => material.id === asset.id) &&
                   asset.original_name.toLowerCase().includes(pickerQuery.toLowerCase()),
               ) && (
                 <Empty className="col-span-full">
@@ -460,7 +486,11 @@ function MaterialCard({
     >
       <AttachmentMedia variant={image ? 'image' : 'icon'}>
         {image ? (
-          <img src={projectFileAssetURL(projectId, material.path)} alt="" loading="lazy" />
+          <MaterialImage
+            key={loreMaterialURL(projectId, material)}
+            src={loreMaterialURL(projectId, material)}
+            alt=""
+          />
         ) : (
           <AudioLines />
         )}
@@ -470,6 +500,7 @@ function MaterialCard({
         <AttachmentDescription>
           {material.description || material.original_name}
         </AttachmentDescription>
+        {material.url && <Badge variant="outline">{t('lore.materials.webSource')}</Badge>}
         {cover && <Badge variant="secondary">{t('lore.materials.cover')}</Badge>}
       </AttachmentContent>
       <AttachmentTrigger
@@ -491,6 +522,13 @@ function MaterialCard({
             <DropdownMenuContent>
               <DropdownMenuGroup>
                 <DropdownMenuItem onSelect={onOpen}>{t('lore.materials.details')}</DropdownMenuItem>
+                {material.url && (
+                  <DropdownMenuItem
+                    onSelect={() => void onMutate({ op: 'localize', asset_id: material.id })}
+                  >
+                    {t('lore.materials.saveLocally')}
+                  </DropdownMenuItem>
+                )}
                 {image && (
                   <DropdownMenuItem
                     onSelect={() =>
@@ -512,7 +550,7 @@ function MaterialCard({
       )}
       {!image && onMutate && (
         <AttachmentActions className="w-full">
-          <MaterialAudio src={projectFileAssetURL(projectId, material.path)} name={material.name} />
+          <MaterialAudio src={loreMaterialURL(projectId, material)} name={material.name} />
         </AttachmentActions>
       )}
     </Attachment>

@@ -120,9 +120,9 @@ for (const theme of ['dark', 'light']) {
     await dialog.getByRole('button', { name: '移除关联', exact: true }).click()
     await expect(page.getByRole('tab', { name: '素材 (1)', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '添加素材', exact: true }).click()
-    await page.getByRole('menuitem', { name: '从作品素材选择', exact: true }).click()
+    await page.getByRole('menuitem', { name: '复用素材', exact: true }).click()
     await page
-      .getByRole('dialog', { name: '从作品素材选择', exact: true })
+      .getByRole('dialog', { name: '复用素材', exact: true })
       .getByRole('button', { name: '查看素材：portrait.png', exact: true })
       .click()
     await expect(page.getByRole('tab', { name: '素材 (2)', exact: true })).toBeVisible()

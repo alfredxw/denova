@@ -71,6 +71,8 @@ func normalizeLoreItemImage(image *Image) *Image {
 		return nil
 	}
 	normalized := *image
+	// Remote covers are resolved from Materials; legacy images only persist files.
+	normalized.ImageURL = ""
 	normalized.Schema = strings.TrimSpace(normalized.Schema)
 	normalized.ImagePath = filepath.ToSlash(strings.TrimSpace(normalized.ImagePath))
 	normalized.MetaPath = filepath.ToSlash(strings.TrimSpace(normalized.MetaPath))

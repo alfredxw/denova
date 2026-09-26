@@ -24,7 +24,8 @@ func TestTurnDraftRebuildRetainsPartialModulesRulesAndFullNarrative(t *testing.T
 		t.Fatal(err)
 	}
 	system, state := turnSubmissionTestState()
-	validation := TurnSubmissionContext{ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled,
+	stage := &TurnPresentation{Characters: []PresentationMaterial{{ItemID: "hero", AssetID: "happy", Path: "assets/happy.png", Name: "Happy"}}}
+	validation := TurnSubmissionContext{Presentation: stage, ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled,
 		CurrentPlan: &BranchPlan{Markdown: "## Direction\n\nOld direction.\n\n## Next\n\nOld next."}}
 	prepared, receipt := PrepareTurnSubmission(validation, nil, DecodeInteractiveTurnSubmissionInput(`{"state_changes":[],"plan_update":{"mode":"replace_sections","sections":[{"heading":"Direction","markdown":"Accepted direction."},{"heading":"Next","markdown":"## Invalid heading\n\nRejected"}]}}`))
 	if receipt.Ready || receipt.ModuleStatus.StateChanges != TurnSubmissionModuleAccepted || receipt.ModuleStatus.PlanUpdate != TurnSubmissionModuleRejected {
@@ -54,6 +55,9 @@ func TestTurnDraftRebuildRetainsPartialModulesRulesAndFullNarrative(t *testing.T
 	final, receipt := PrepareTurnSubmission(validation, restored.Submission.Prepared(), DecodeInteractiveTurnSubmissionInput(`{"choices":["One","Two","Three","Four","Five"],"plan_update":{"mode":"replace_sections","sections":[{"heading":"Next","markdown":"Repaired next."}]}}`))
 	if !receipt.Ready || final.TurnResult().PlanUpdate == nil || !strings.Contains(*final.TurnResult().PlanUpdate, "Accepted direction.") {
 		t.Fatalf("partial plan was lost: %#v", receipt)
+	}
+	if final.TurnResult().Presentation == nil || final.TurnResult().Presentation.Characters[0].AssetID != "happy" {
+		t.Fatal("draft recovery lost the accepted presentation")
 	}
 	if restored.RuleResolution.ID != "locked-roll" || len(restored.Narrative) <= 16<<10 {
 		t.Fatal("draft was reduced to feedback text")

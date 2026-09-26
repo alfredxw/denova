@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useInteractiveStore } from '../stores/interactive-store'
+import type { TurnEvent } from '../types'
 import {
   PersistedTurnHarness,
   StoryStageHarness,
@@ -72,6 +73,26 @@ beforeEach(() => {
 })
 
 describe('StoryStage active runtime commands', () => {
+  it('hides text and input without unmounting them, and restores them with Escape', async () => {
+    const user = userEvent.setup()
+    const turn: TurnEvent = {
+      id: 'visual-turn', parent_id: null, branch_id: 'main', ts: '', user: 'Continue', narrative: 'A quiet station.',
+      turn_result: { state_updates: [], choices: [], presentation: { background: { item_id: 'station', asset_id: 'day', path: 'assets/day.png', name: 'Day' } } },
+    }
+    const { container } = render(<StoryStageHarness initialSnapshot={{ story_id: 'story-1', branch_id: 'main', turns: [turn], current_turn: turn, state: {} }} />)
+    const input = getStageInput()
+    const content = container.querySelector('.nova-story-stage-content')!
+    await user.click(await screen.findByRole('button', { name: '隐藏文字，欣赏舞台' }))
+    expect(input).toBeInTheDocument()
+    expect(input).not.toBeVisible()
+    expect(content).toHaveAttribute('inert')
+    expect(container.querySelector('[data-testid="story-stage-scrim"]')).toHaveStyle({ opacity: '0' })
+    await user.keyboard('{Escape}')
+    expect(input).toBeVisible()
+    expect(content).not.toHaveAttribute('inert')
+    expect(container.querySelector('[data-testid="story-stage-scrim"]')).toHaveStyle({ opacity: '0.75' })
+  })
+
   it('resumes an idle paused turn with the exact projected interruption', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()

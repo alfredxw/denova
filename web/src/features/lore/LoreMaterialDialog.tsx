@@ -14,7 +14,9 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
-import { projectFileAssetURL, type LoreMaterial, type LoreMaterialMutation } from '@/lib/api'
+import { loreMaterialURL, type LoreMaterial, type LoreMaterialMutation } from '@/lib/api'
+import { MaterialImage } from './MaterialImage'
+import { LoreMaterialRemoteDialog } from './LoreMaterialRemoteDialog'
 import { speechPlayer } from '@/features/speech/player'
 
 let activePreview: HTMLAudioElement | null = null
@@ -88,8 +90,19 @@ export function LoreMaterialDialog({
   const id = useId()
   const [name, setName] = useState(material.name)
   const [description, setDescription] = useState(material.description ?? '')
-  const src = projectFileAssetURL(projectId, material.path)
+  const [replaceURL, setReplaceURL] = useState(false)
+  const [imageAttempt, setImageAttempt] = useState(0)
+  const src = loreMaterialURL(projectId, material)
   const image = material.mime_type.startsWith('image/')
+  if (replaceURL)
+    return (
+      <LoreMaterialRemoteDialog
+        material={material}
+        busy={busy}
+        onClose={() => setReplaceURL(false)}
+        onSave={onMutate}
+      />
+    )
   return (
     <Dialog
       open
@@ -118,7 +131,8 @@ export function LoreMaterialDialog({
                   aria-label={t('settingPanel.loreImage.openPreview')}
                   className="overflow-hidden rounded-lg bg-muted"
                 >
-                  <img
+                  <MaterialImage
+                    key={`${src}:${imageAttempt}`}
                     src={src}
                     alt={material.name}
                     className="max-h-[50dvh] w-full object-contain"
@@ -129,24 +143,72 @@ export function LoreMaterialDialog({
               <MaterialAudio src={src} name={material.name} preload="metadata" />
             )}
             <p className="break-words text-xs text-muted-foreground">
-              {material.original_name} · {material.mime_type} ·{' '}
-              {(material.size_bytes / 1024 / 1024).toFixed(2)} MB
+              {material.original_name}
+              {!material.url && (
+                <>
+                  {' '}
+                  · {material.mime_type} · {(material.size_bytes / 1024 / 1024).toFixed(2)} MB
+                </>
+              )}
             </p>
             <p className="text-xs text-muted-foreground">
               {t('lore.materials.source')}:{' '}
               {t(
-                material.source.kind === 'generated'
-                  ? 'lore.materials.generatedSource'
-                  : 'lore.materials.uploadSource',
+                material.source.kind === 'web'
+                  ? 'lore.materials.webSource'
+                  : material.source.kind === 'generated'
+                    ? 'lore.materials.generatedSource'
+                    : 'lore.materials.uploadSource',
               )}
             </p>
+            {material.source.url && (
+              <a
+                href={material.source.url}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all text-xs underline"
+              >
+                {new URL(material.source.url).hostname}
+              </a>
+            )}
+            {material.url && (
+              <p className="text-xs text-muted-foreground">{t('lore.materials.webHint')}</p>
+            )}
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <a href={src} download={material.original_name}>
-                  <Download data-icon="inline-start" />
-                  {t('lore.materials.download')}
-                </a>
-              </Button>
+              {material.url ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void onMutate({ op: 'localize', asset_id: material.id })}
+                  >
+                    {t('lore.materials.saveLocally')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setReplaceURL(true)}
+                  >
+                    {t('lore.materials.replaceURL')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setImageAttempt((attempt) => attempt + 1)}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={src} download={material.original_name}>
+                    <Download data-icon="inline-start" />
+                    {t('lore.materials.download')}
+                  </a>
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -157,6 +219,7 @@ export function LoreMaterialDialog({
                         lore: itemName,
                         material_id: material.id,
                         path: material.path,
+                        url: material.url,
                         name,
                         description,
                       }),
@@ -168,7 +231,7 @@ export function LoreMaterialDialog({
                 <Copy data-icon="inline-start" />
                 {t('lore.materials.copyReference')}
               </Button>
-              {image && onInspect && (
+              {image && onInspect && !material.url && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -181,6 +244,11 @@ export function LoreMaterialDialog({
                 </Button>
               )}
             </div>
+            {material.url && (
+              <p className="text-xs text-muted-foreground">
+                {t('lore.materials.remoteInspectHint')}
+              </p>
+            )}
           </div>
           <FieldGroup>
             <Field>

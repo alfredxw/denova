@@ -107,7 +107,19 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 	director := c.StoryRuntimeForMeta(storyCtx.Meta)
 	c.mu.Lock()
 	current := c.turnProtocol.draft()
+	c.mu.Unlock()
+	basePresentation := snapshotPresentation(storyCtx.Snapshot)
+	if current != nil && current.TurnResult().Presentation != nil {
+		basePresentation = current.TurnResult().Presentation
+	}
+	presentation, presentationReceipt := resolvePresentationPatch(c.workspace, basePresentation, input.Presentation, storyCtx.Meta.PresentationSettings)
+	if presentationReceipt != nil && presentationReceipt.Ignored > 0 {
+		slog.WarnContext(ctx, "[interactive-presentation] ignored visual changes", "story_id", c.storyID, "branch_id", c.branchID, "applied", presentationReceipt.Applied, "ignored", presentationReceipt.Ignored, "reasons", presentationReceipt.Reasons)
+	}
+	c.mu.Lock()
 	prepared, receipt := interactive.PrepareTurnSubmission(interactive.TurnSubmissionContext{
+		Presentation:                presentation,
+		PresentationReceipt:         presentationReceipt,
 		ActorState:                  actorState,
 		CurrentState:                currentState,
 		ChoiceCount:                 storyCtx.Meta.ChoiceCount,

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
-import { projectFileAssetURL, type LoreItem } from '@/lib/api'
+import { loreImageURL, type LoreItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { StoryProtagonist } from '../../types'
 
@@ -147,7 +147,7 @@ export function StoryProtagonistSelector({ projectId, value, loreItems, onChange
 }
 
 function LoreAvatar({ projectId, item, name }: { projectId: string; item?: LoreItem; name: string }) {
-  const path = item?.image?.image_path?.trim()
-  if (path) return <img src={projectFileAssetURL(projectId, path)} alt="" className="size-10 shrink-0 rounded-lg border border-border object-cover" />
+  const imageSrc = loreImageURL(projectId, item)
+  if (imageSrc) return <img referrerPolicy="no-referrer" src={imageSrc} alt="" className="size-10 shrink-0 rounded-lg border border-border object-cover" />
   return <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-sm font-semibold text-muted-foreground">{Array.from(name)[0] || '?'}</span>
 }

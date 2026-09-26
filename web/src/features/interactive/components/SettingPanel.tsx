@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
-import { APIError, createProjectLoreItem, deleteProjectLoreItem, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, type LoreItem } from '@/lib/api'
+import { APIError, createProjectLoreItem, deleteProjectLoreItem, getProjectLoreItems, loreImageURL, readOptionalProjectFile, readProjectFile, type LoreItem } from '@/lib/api'
 import { rebaseJSONValue, rebaseText } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { cn } from '@/lib/utils'
@@ -1271,8 +1271,8 @@ function LoreImageBatchDialog({
 }
 
 function LoreImageBatchThumb({ projectId, item }: { projectId: string; item: LoreItem }) {
-  const imagePath = item.image?.image_path || ''
-  if (!imagePath) {
+  const imageSrc = loreImageURL(projectId, item)
+  if (!imageSrc) {
     return (
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)]">
         <ImageIcon className="h-4 w-4" />
@@ -1281,7 +1281,7 @@ function LoreImageBatchThumb({ projectId, item }: { projectId: string; item: Lor
   }
   return (
     <span className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-      <img src={projectFileAssetURL(projectId, imagePath)} alt="" className="h-full w-full object-cover" />
+      <img referrerPolicy="no-referrer" src={imageSrc} alt="" className="h-full w-full object-cover" />
     </span>
   )
 }
@@ -1333,7 +1333,7 @@ function ModeIcon({ mode }: { mode: SettingPanelMode }) {
 }
 
 function loreItemToDirectoryItem(item: LoreItem, projectId: string, t: (key: string) => string): ResourceDirectoryItem {
-  const imagePath = item.image?.image_path || ''
+  const imageSrc = loreImageURL(projectId, item)
   const badges: ResourceDirectoryBadge[] = [{
     label: item.load_mode === 'resident' ? t('settingPanel.lore.loadModeBadge.resident') : t('settingPanel.lore.loadModeBadge.onDemand'),
     title: loreLoadModeLabel(item.load_mode, t),
@@ -1348,7 +1348,7 @@ function loreItemToDirectoryItem(item: LoreItem, projectId: string, t: (key: str
   return {
     id: item.id,
     title: item.name,
-    thumbnailUrl: imagePath ? projectFileAssetURL(projectId, imagePath) : null,
+    thumbnailUrl: imageSrc || null,
     badges,
     disabled: item.enabled === false,
   }

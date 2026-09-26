@@ -315,6 +315,7 @@ func applyCycleStoryConfig(target *interactive.StoryMeta, source interactive.Sto
 	target.ChoiceCount = source.ChoiceCount
 	target.Opening = source.Opening
 	target.ImageSettings = source.ImageSettings
+	target.PresentationSettings = interactive.NormalizeStoryPresentationSettings(source.PresentationSettings)
 	target.CheckSettings = source.CheckSettings
 }
 
@@ -589,6 +590,13 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 			Content: runtimeContext, Placement: agentcontext.PlacementFinalUserPrefix, Limit: StoryRuntimeContextMaxBytes, Included: true,
 		})
 	}
+	presentationSource := buildPresentationContext(c.workspace, storyCtx.Meta.PresentationSettings, snapshotPresentation(storyCtx.Snapshot), activeBranchPlan, input.UserMessage)
+	fragments = append(fragments, agentcontext.Fragment{
+		ID: "interactive_presentation", Source: presentationSource.Source, Title: presentationSource.Title,
+		Purpose: presentationSource.Purpose, Content: presentationSource.Content,
+		Placement: agentcontext.PlacementFinalUserPrefix, Limit: presentationSource.Limit, Included: true,
+		Note: presentationSource.Note,
+	})
 	baseInstruction := prompts.InteractiveStoryTurnInstruction(input.UserMessage, "", "")
 	history = append(history, agent.UserMessageWithAttachments(baseInstruction, input.Attachments))
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{Messages: history, Fragments: fragments})
@@ -608,6 +616,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		}
 	}
 	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, protagonistContext, teller, checkpointSummary, branchPlan, residentVisible, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, turnHistory, input.UserMessage)
+	sourceParts = append(sourceParts, presentationSource)
 	for index, message := range pendingInputMessages {
 		sourceParts = append(sourceParts, interactiveContextSource{
 			Source: "InterruptedPlayerInput", Title: fmt.Sprintf("Accepted Player Input Without Narrative Output %d", index+1),

@@ -427,6 +427,9 @@ func (s *Service) Export(ctx context.Context, request ExportRequest) ([]byte, er
 				}
 				for i := range materials.Entries {
 					entry := &materials.Entries[i]
+					if entry.URL != "" {
+						continue
+					}
 					old := entry.AssetPath
 					data, ok := content[old]
 					if !ok {

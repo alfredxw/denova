@@ -17,9 +17,12 @@ import (
 type portableMaterials struct {
 	Entries   []portableMaterial `json:"entries"`
 	CoverPath string             `json:"cover_asset_path,omitempty"`
+	CoverURL  string             `json:"cover_url,omitempty"`
 }
 type portableMaterial struct {
-	AssetPath    string `json:"asset_path"`
+	AssetPath    string `json:"asset_path,omitempty"`
+	URL          string `json:"url,omitempty"`
+	SourceURL    string `json:"source_url,omitempty"`
 	OriginalName string `json:"original_name,omitempty"`
 	Name         string `json:"name,omitempty"`
 	Description  string `json:"description,omitempty"`
@@ -29,6 +32,13 @@ func (s *Service) exportLoreMaterials(ctx context.Context, ref LocalRef, item lo
 	files := map[string][]byte{}
 	payload := portableMaterials{Entries: []portableMaterial{}}
 	for _, material := range item.ResolvedMaterials {
+		if material.URL != "" {
+			payload.Entries = append(payload.Entries, portableMaterial{URL: material.URL, OriginalName: material.OriginalName, Name: material.Name, Description: material.Description})
+			if item.Materials != nil && item.Materials.CoverAssetID == material.ID {
+				payload.CoverURL = material.URL
+			}
+			continue
+		}
 		snapshot, err := s.snapshot(ctx, FileTarget{ProjectID: ref.ProjectID, Path: material.Path})
 		if err != nil {
 			return nil, err
@@ -38,7 +48,7 @@ func (s *Service) exportLoreMaterials(ctx context.Context, ref LocalRef, item lo
 		}
 		name := "media/" + uuid.NewSHA1(uuid.NameSpaceURL, []byte(ref.ProjectID+":"+material.Path)).String() + path.Ext(material.Path)
 		files[name] = snapshot.Content
-		payload.Entries = append(payload.Entries, portableMaterial{AssetPath: name, OriginalName: material.OriginalName, Name: material.Name, Description: material.Description})
+		payload.Entries = append(payload.Entries, portableMaterial{AssetPath: name, SourceURL: material.Source.URL, OriginalName: material.OriginalName, Name: material.Name, Description: material.Description})
 		if item.Image != nil && item.Image.ImagePath == material.Path {
 			payload.CoverPath = name
 		}
@@ -90,45 +100,73 @@ func importLoreMaterials(ctx context.Context, dir, previewDir string, resource P
 		return err
 	}
 	seen := map[string]bool{}
-	coverFound := materials.CoverPath == ""
+	if materials.CoverPath != "" && materials.CoverURL != "" {
+		return fmt.Errorf("multiple material covers")
+	}
+	coverFound := materials.CoverPath == "" && materials.CoverURL == ""
 	for _, m := range materials.Entries {
-		if seen[m.AssetPath] {
-			return fmt.Errorf("duplicate material path")
+		if (m.AssetPath == "") == (m.URL == "") {
+			return fmt.Errorf("material must have exactly one location")
 		}
-		seen[m.AssetPath] = true
-		data, err := resourceAsset(previewDir, resource, m.AssetPath)
-		if err != nil {
-			return err
+		key := "file:" + m.AssetPath
+		if m.URL != "" {
+			key = "url:" + m.URL
 		}
-		// Reuse the same package file across items without conflating distinct
-		// assets that happen to have identical bytes or different descriptions.
-		key := FileTarget{ProjectID: local.ProjectID, Path: path.Join(resource.Root, m.AssetPath)}
-		asset := importedAssets[key]
-		if asset.ID == "" {
-			filename := m.OriginalName
-			if filename == "" {
-				filename = path.Base(m.AssetPath)
-			}
-			uploaded, err := store.UploadMaterial(ctx, local.ID, filename, data)
+		if seen[key] {
+			return fmt.Errorf("duplicate material location")
+		}
+		seen[key] = true
+		var asset lore.Asset
+		if m.URL != "" {
+			linked, err := store.RemoteMaterial(ctx, local.ID, lore.MaterialMutation{Op: "remote", URL: m.URL})
 			if err != nil {
 				return err
 			}
-			asset = uploaded.ResolvedMaterials[len(uploaded.ResolvedMaterials)-1].Asset
-			content, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(asset.Path)))
+			for _, material := range linked.ResolvedMaterials {
+				if material.URL == m.URL {
+					asset = material.Asset
+					break
+				}
+			}
+		} else {
+			data, err := resourceAsset(previewDir, resource, m.AssetPath)
 			if err != nil {
 				return err
 			}
-			target := FileTarget{ProjectID: local.ProjectID, Path: asset.Path}
-			staged[target] = content
-			*extra = append(*extra, target)
-		} else if _, err = store.AttachAsset(local.ID, asset, lore.MaterialEntry{}); err != nil {
-			return err
+			// Reuse the same package file across items without conflating distinct
+			// assets that happen to have identical bytes or different descriptions.
+			key := FileTarget{ProjectID: local.ProjectID, Path: path.Join(resource.Root, m.AssetPath)}
+			asset = importedAssets[key]
+			if asset.ID == "" {
+				filename := m.OriginalName
+				if filename == "" {
+					filename = path.Base(m.AssetPath)
+				}
+				source := lore.AssetSource{Kind: "upload"}
+				if m.SourceURL != "" {
+					source = lore.AssetSource{Kind: "web", URL: m.SourceURL}
+				}
+				uploaded, err := store.SaveMaterial(ctx, local.ID, lore.MaterialFile{Filename: filename, Data: data, Source: source})
+				if err != nil {
+					return err
+				}
+				asset = uploaded.ResolvedMaterials[len(uploaded.ResolvedMaterials)-1].Asset
+				content, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(asset.Path)))
+				if err != nil {
+					return err
+				}
+				target := FileTarget{ProjectID: local.ProjectID, Path: asset.Path}
+				staged[target] = content
+				*extra = append(*extra, target)
+			} else if _, err = store.AttachAsset(local.ID, asset, lore.MaterialEntry{}); err != nil {
+				return err
+			}
+			importedAssets[key] = asset
 		}
-		importedAssets[key] = asset
 		if _, err = store.MutateMaterial(local.ID, lore.MaterialMutation{Op: "update", AssetID: asset.ID, Name: m.Name, Description: m.Description}); err != nil {
 			return err
 		}
-		if m.AssetPath == materials.CoverPath {
+		if m.AssetPath != "" && m.AssetPath == materials.CoverPath || m.URL != "" && m.URL == materials.CoverURL {
 			coverFound = true
 			if _, err = store.MutateMaterial(local.ID, lore.MaterialMutation{Op: "cover", AssetID: asset.ID}); err != nil {
 				return err

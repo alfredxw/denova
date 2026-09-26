@@ -12,6 +12,7 @@ import (
 // TurnResult is the complete hidden result produced by the Game Agent. The
 // backend compiles StateUpdates into replayable StateDelta operations.
 type TurnResult struct {
+	Presentation *TurnPresentation         `json:"presentation,omitempty"`
 	StateUpdates []interactivestate.Update `json:"state_updates"`
 	Choices      []string                  `json:"choices"`
 	// PlanUpdate is committed as a private branch event, never inside the Turn.
@@ -19,6 +20,7 @@ type TurnResult struct {
 }
 
 func NormalizeTurnResult(result TurnResult) TurnResult {
+	result.Presentation = result.Presentation.Clone()
 	result.StateUpdates = interactivestate.NormalizeUpdates(result.StateUpdates)
 	result.Choices = normalizeChoiceListLimit(result.Choices, MaxStoryChoiceCount+1)
 	if result.PlanUpdate != nil {

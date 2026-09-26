@@ -28,7 +28,7 @@ describe('useStagePreferences', () => {
   it('keeps defaults while a workspace switch has no Project identity', () => {
     const { result } = renderHook(() => useStagePreferences(''))
 
-    expect(result.current).toEqual({ lineHeight: 1.78 })
+    expect(result.current).toEqual({ lineHeight: 1.78, scrimOpacity: 0.75 })
     expect(settingsMock.fetchProjectSettings).not.toHaveBeenCalled()
     expect(settingsMock.projectSettingsTarget).not.toHaveBeenCalled()
     expect(settingsMock.subscribeSettingsTarget).not.toHaveBeenCalled()

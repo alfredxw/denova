@@ -808,19 +808,22 @@ export interface LoreItem {
 
 export interface LoreAsset {
   id: string
-  path: string
+  path?: string
+  url?: string
   original_name: string
   mime_type: string
   size_bytes: number
   created_at?: string
-  source: { kind: string; meta_path?: string }
+  source: { kind: string; meta_path?: string; url?: string }
 }
 export interface LoreMaterial extends LoreAsset {
   name: string
   description?: string
 }
 export interface LoreMaterialMutation {
-  op: 'link' | 'update' | 'remove' | 'cover'
+  url?: string
+  save_locally?: boolean
+  op: 'link' | 'update' | 'remove' | 'cover' | 'remote' | 'localize'
   asset_id?: string
   name?: string
   description?: string
@@ -869,6 +872,7 @@ export interface LoreTypeApplyResult {
 }
 
 interface LoreItemImage {
+  image_url?: string
   schema: 'lore_item_image.v1' | string
   image_path: string
   meta_path: string

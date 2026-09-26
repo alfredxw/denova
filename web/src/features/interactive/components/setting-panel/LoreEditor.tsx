@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { projectFileAssetURL, type LoreItem, type LoreMaterial } from '@/lib/api'
+import { loreImageURL, type LoreItem, type LoreMaterial } from '@/lib/api'
 import { presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
 import { PresetEmptyState as EmptyState } from '../preset-config/PresetEmptyState'
 import { PresetField as Field } from '../preset-config/PresetField'
@@ -54,7 +54,7 @@ export function LoreEditor({
   }
 
   const residentWarning = draft.enabled !== false && draft.load_mode === 'resident' && residentTotalBytes > LORE_RESIDENT_TOTAL_WARNING_BYTES
-  const imageSrc = draft.image?.image_path ? projectFileAssetURL(projectId, draft.image.image_path) : ''
+  const imageSrc = loreImageURL(projectId, draft)
   const protagonistTagActive = draft.type === 'character' && hasLoreProtagonistTag(splitLoreTags(tagDraft))
   const toggleProtagonistTag = () => {
     const tags = toggleLoreProtagonistTag(splitLoreTags(tagDraft))
@@ -88,6 +88,7 @@ export function LoreEditor({
                   className="relative h-56 min-h-48 min-w-0 overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @3xl/lore-detail:h-full"
                 >
                   <img
+                    referrerPolicy="no-referrer"
                     src={imageSrc}
                     alt={draft.image?.alt_text || draft.name}
                     className="absolute inset-0 h-full w-full object-contain"

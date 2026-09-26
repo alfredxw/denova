@@ -23,10 +23,15 @@ type MaterialEntry struct {
 type AssetSource struct {
 	Kind     string `json:"kind"`
 	MetaPath string `json:"meta_path,omitempty"`
+	URL      string `json:"url,omitempty"`
 }
+
+// Asset has exactly one location: a project-relative Path or an HTTPS URL.
+// Source records provenance independently of where the bytes are stored.
 type Asset struct {
 	ID           string      `json:"id"`
-	Path         string      `json:"path"`
+	Path         string      `json:"path,omitempty"`
+	URL          string      `json:"url,omitempty"`
 	OriginalName string      `json:"original_name"`
 	MIMEType     string      `json:"mime_type"`
 	SizeBytes    int         `json:"size_bytes"`
@@ -48,6 +53,8 @@ type MaterialMutation struct {
 	AssetID     string `json:"asset_id,omitempty"`
 	Name        string `json:"name,omitempty"`
 	Description string `json:"description,omitempty"`
+	URL         string `json:"url,omitempty"`
+	SaveLocally bool   `json:"save_locally,omitempty"`
 }
 
 func assetFromImage(image *Image) Asset {
@@ -95,7 +102,7 @@ func resolveItem(item Item, assets []Asset) Item {
 		}
 		item.ResolvedMaterials = append(item.ResolvedMaterials, Material{Asset: asset, Name: name, Description: entry.Description})
 		if entry.AssetID == item.Materials.CoverAssetID {
-			item.Image = &Image{ImagePath: asset.Path, MetaPath: asset.Source.MetaPath, AltText: firstNonEmptyLoreValue(entry.Description, name), MIMEType: asset.MIMEType, SizeBytes: asset.SizeBytes, CreatedAt: asset.CreatedAt}
+			item.Image = &Image{ImagePath: asset.Path, ImageURL: asset.URL, MetaPath: asset.Source.MetaPath, AltText: firstNonEmptyLoreValue(entry.Description, name), MIMEType: asset.MIMEType, SizeBytes: asset.SizeBytes, CreatedAt: asset.CreatedAt}
 		}
 	}
 	return item
@@ -103,15 +110,38 @@ func resolveItem(item Item, assets []Asset) Item {
 func validateMaterials(c Collection) error {
 	byID := map[string]Asset{}
 	paths := map[string]bool{}
+	urls := map[string]bool{}
 	for _, a := range c.Assets {
 		if a.ID == "" || strings.HasPrefix(a.ID, "legacy:") || byID[a.ID].ID != "" {
 			return fmt.Errorf("invalid or duplicate lore asset ID: %q", a.ID)
 		}
-		if err := portablepath.Validate(a.Path); err != nil {
-			return err
+		if (a.Path == "") == (a.URL == "") {
+			return fmt.Errorf("lore asset must have exactly one location")
 		}
-		if !strings.HasPrefix(a.Path, "assets/") || paths[portablepath.FoldKey(a.Path)] {
-			return fmt.Errorf("invalid or duplicate lore asset path: %s", a.Path)
+		if a.URL != "" {
+			if urls[a.URL] {
+				return fmt.Errorf("duplicate lore asset URL")
+			}
+			urls[a.URL] = true
+			if _, err := parseMaterialURL(a.URL); err != nil {
+				return err
+			}
+			if !strings.HasPrefix(a.MIMEType, "image/") || a.Source.MetaPath != "" {
+				return fmt.Errorf("remote lore material must be an image without local metadata")
+			}
+		} else {
+			if err := portablepath.Validate(a.Path); err != nil {
+				return err
+			}
+			if !strings.HasPrefix(a.Path, "assets/") || paths[portablepath.FoldKey(a.Path)] {
+				return fmt.Errorf("invalid or duplicate lore asset path: %s", a.Path)
+			}
+			paths[portablepath.FoldKey(a.Path)] = true
+		}
+		if a.Source.URL != "" {
+			if _, err := parseMaterialURL(a.Source.URL); err != nil {
+				return err
+			}
 		}
 		if a.Source.MetaPath != "" {
 			if err := portablepath.Validate(a.Source.MetaPath); err != nil {
@@ -128,7 +158,6 @@ func validateMaterials(c Collection) error {
 			return fmt.Errorf("negative lore asset size")
 		}
 		byID[a.ID] = a
-		paths[portablepath.FoldKey(a.Path)] = true
 	}
 	for _, item := range c.Items {
 		if item.Materials == nil {
@@ -153,7 +182,7 @@ func validateMaterials(c Collection) error {
 }
 func registerAsset(c *Collection, a Asset) Asset {
 	for _, existing := range c.Assets {
-		if existing.Path == a.Path {
+		if a.Path != "" && existing.Path == a.Path || a.URL != "" && existing.URL == a.URL {
 			return existing
 		}
 	}
@@ -199,11 +228,39 @@ func (s *Store) mutateMaterials(id string, change func(*Collection, *Item) error
 	return resolveItem(*item, c.Assets), nil
 }
 
-// AttachAsset registers a ready file and its association atomically. Callers own
+// AttachAsset registers a ready resource and its association atomically. Callers own
 // file creation and must remove only their uncommitted files on failure.
 func (s *Store) AttachAsset(id string, asset Asset, entry MaterialEntry) (Item, error) {
+	return s.attachAsset(id, asset, entry, "")
+}
+
+// Replacement affects only this association, preserving its latest text and cover.
+// Other items may still use the original asset, which remains available for reuse.
+func (s *Store) attachAsset(id string, asset Asset, entry MaterialEntry, replaceID string) (Item, error) {
 	return s.mutateMaterials(id, func(c *Collection, item *Item) error {
 		promoteMaterials(c, item)
+		if replaceID != "" {
+			index := -1
+			for i, e := range item.Materials.Entries {
+				if e.AssetID == replaceID {
+					index = i
+				}
+			}
+			if index < 0 {
+				return fmt.Errorf("material no longer linked: %s", replaceID)
+			}
+			asset = registerAsset(c, asset)
+			for i, e := range item.Materials.Entries {
+				if i != index && e.AssetID == asset.ID {
+					return fmt.Errorf("replacement material already linked")
+				}
+			}
+			item.Materials.Entries[index].AssetID = asset.ID
+			if item.Materials.CoverAssetID == replaceID {
+				item.Materials.CoverAssetID = asset.ID
+			}
+			return nil
+		}
 		asset = registerAsset(c, asset)
 		for _, e := range item.Materials.Entries {
 			if e.AssetID == asset.ID {

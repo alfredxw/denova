@@ -61,6 +61,7 @@ type TurnSubmissionModuleStatus struct {
 // TurnSubmissionReceipt reports independent module acceptance. Ready becomes
 // true only after all required modules have been accepted, possibly across calls.
 type TurnSubmissionReceipt struct {
+	Presentation         *PresentationReceipt       `json:"presentation,omitempty"`
 	Ready                bool                       `json:"ready"`
 	ModuleStatus         TurnSubmissionModuleStatus `json:"module_status"`
 	Diagnostics          []TurnSubmissionDiagnostic `json:"diagnostics,omitempty"`
@@ -84,6 +85,7 @@ type TurnPlanUpdateReceipt struct {
 // TurnSubmissionInput holds independently retryable modules decoded from one
 // submit_interactive_turn call. Any module may be absent on a targeted retry.
 type TurnSubmissionInput struct {
+	Presentation json.RawMessage
 	StateUpdates *[]interactivestate.Update
 	Choices      *[]string
 	PlanUpdate   *TurnPlanUpdateInput
@@ -93,6 +95,9 @@ type TurnSubmissionInput struct {
 // TurnSubmissionContext contains all story-scoped validation inputs. IDs and
 // current state are backend-bound and never supplied by the model.
 type TurnSubmissionContext struct {
+	// Presentation is resolved by the product layer from this branch and Lore.
+	Presentation                *TurnPresentation
+	PresentationReceipt         *PresentationReceipt
 	ActorState                  StoryDirectorActorStateSystem
 	CurrentState                map[string]any
 	ChoiceCount                 int
@@ -121,6 +126,7 @@ func (s *PreparedTurnSubmission) TurnResult() TurnResult {
 		StateUpdates: append([]interactivestate.Update(nil), s.result.StateUpdates...),
 		Choices:      append([]string(nil), s.result.Choices...),
 		PlanUpdate:   cloneStringPointer(s.result.PlanUpdate),
+		Presentation: s.result.Presentation.Clone(),
 	}
 }
 
@@ -132,6 +138,9 @@ func (s *PreparedTurnSubmission) Ready() bool {
 // module accepted by an earlier call. state_changes remains atomic internally.
 func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTurnSubmission, input TurnSubmissionInput) (*PreparedTurnSubmission, TurnSubmissionReceipt) {
 	prepared := clonePreparedTurnSubmission(current)
+	if validation.Presentation != nil {
+		prepared.result.Presentation = validation.Presentation.Clone()
+	}
 	planningEnabled := normalizeStoryPlanningMode(validation.PlanningMode) == StoryPlanningModeEnabled
 	diagnostics := make([]TurnSubmissionDiagnostic, 0, len(input.Diagnostics))
 	rejected := map[string]bool{}
@@ -234,6 +243,7 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 	}
 
 	receipt := buildTurnSubmissionReceipt(prepared, rejected, diagnostics)
+	receipt.Presentation = validation.PresentationReceipt
 	receipt.PlanUpdateDetail = planDetail
 	return prepared, receipt
 }
@@ -349,6 +359,7 @@ func clonePreparedTurnSubmission(current *PreparedTurnSubmission) *PreparedTurnS
 			StateUpdates: append([]interactivestate.Update(nil), current.result.StateUpdates...),
 			Choices:      append([]string(nil), current.result.Choices...),
 			PlanUpdate:   cloneStringPointer(current.result.PlanUpdate),
+			Presentation: current.result.Presentation.Clone(),
 		},
 		stateUpdatesAccepted: current.stateUpdatesAccepted,
 		choicesAccepted:      current.choicesAccepted,

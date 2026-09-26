@@ -88,6 +88,7 @@ export interface Settings {
   agent_quick_prompts?: AgentQuickPromptRegistry
   agent_quick_prompts_in_commands?: boolean | null
   interactive_stage_font_size?: number | null
+  interactive_stage_scrim_opacity?: number | null
   interactive_stage_line_height?: number | null
 }
 

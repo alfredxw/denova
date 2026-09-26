@@ -1,6 +1,7 @@
 package versions
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -76,5 +77,41 @@ func TestLoreRestoreRetainsNewMediaAndRestoresDependencies(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(workspace, old.ImagePath)); err != nil || string(got) != "old-image" {
 		t.Fatal("dependency not restored", err)
+	}
+}
+
+func TestLoreRestoreRemoteCoverKeepsURLWithoutFileDependencies(t *testing.T) {
+	workspace := t.TempDir()
+	service := newVersionTestService(t, workspace)
+	defer service.Close()
+	store := lore.NewStore(workspace)
+	if _, err := store.Create(lore.ItemInput{ID: "hero", Name: "Hero"}); err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.RemoteMaterial(context.Background(), "hero", lore.MaterialMutation{Op: "remote", URL: "https://unreachable.invalid/old.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := item.ResolvedMaterials[0].ID
+	if _, err = store.MutateMaterial("hero", lore.MaterialMutation{Op: "cover", AssetID: id}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.Create("remote cover", VersionSourceManual, DefaultAutoSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RemoteMaterial(context.Background(), "hero", lore.MaterialMutation{Op: "remote", AssetID: id, URL: "https://unreachable.invalid/new.png"}); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := service.RestorePlan(first.Version.ID, []string{lore.ItemsRelativePath}, DefaultAutoSettings())
+	if err != nil || len(plan.Paths) != 1 || plan.Paths[0] != lore.ItemsRelativePath {
+		t.Fatal(plan, err)
+	}
+	if _, err := service.RestoreWithPaths(first.Version.ID, []string{lore.ItemsRelativePath}, DefaultAutoSettings()); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := store.ReadAny("hero")
+	if err != nil || restored.Image.ImageURL != "https://unreachable.invalid/old.png" || restored.Materials.CoverAssetID != id {
+		t.Fatal(restored, err)
 	}
 }

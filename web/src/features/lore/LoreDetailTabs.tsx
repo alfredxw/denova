@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { projectFileAssetURL, type LoreItem, type LoreMaterial } from '@/lib/api'
+import { loreImageURL, type LoreItem, type LoreMaterial } from '@/lib/api'
 import { LoreMaterialsPanel } from './LoreMaterialsPanel'
 
 /** Both editors share one media surface. Media responses never replace text
@@ -40,7 +40,8 @@ export function LoreDetailTabs({
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-3 py-1">
         {item.image && (
           <img
-            src={projectFileAssetURL(projectId, item.image.image_path)}
+            referrerPolicy="no-referrer"
+            src={loreImageURL(projectId, item)}
             alt=""
             className="size-8 rounded object-cover"
           />

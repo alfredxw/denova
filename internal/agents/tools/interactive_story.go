@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/invopop/jsonschema"
 	"log/slog"
 	"strings"
 
@@ -154,6 +155,7 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, er
 			"choices must match the prose ending and contain exactly the number of distinct suggestions configured for the current story. Submit an empty array only for a terminal turn whose prepare_interactive_turn result has terminal_candidate.",
 			"When a module is rejected, repair the same intended state facts. Do not bypass validation by deleting an important character, ability, item, location, or situation already established in prose. You may merge a new Actor's initial_state or compress redundant descriptions.",
 			fmt.Sprintf("When planning is enabled, plan_update maintains private future intent as Markdown up to %d bytes. If no plan exists, initialize it with mode=replace_document and follow the injected planning template. For routine changes to an existing modular plan, prefer mode=replace_sections and send only changed section bodies; headings must copy existing unique H2 text exactly. Use replace_document for major replans or any heading, order, or module change. Otherwise omit plan_update while the plan remains useful. Valid sibling section edits are retained when another section is rejected, so retry only retry_sections. When planning is disabled, omit plan_update.", 64*1024),
+			"Optionally include presentation to select the background and character images for this turn from the injected enabled Lore material catalog. Use exact item_id and asset_id pairs. Omit unchanged slots; background:null clears the background, and characters:[{item_id,asset_id:null}] removes that character. characters:[] preserves the cast. Never put presentation tags in prose. Invalid visual changes are ignored without retrying the turn. Respect disabled layers and choose one final stage per turn, not a timeline.",
 			"Use the current turn's Actor State Handbook as the authority for the complete parameter template, available IDs, field types, and the number of choices placeholders matching this story's choice_count.",
 		}, "\n")
 		submitTool, err := newSubmitInteractiveTurnTool(desc, ctx.SubmitTurnResult, ctx.RequestTurnCompletion)
@@ -176,9 +178,10 @@ func NewInteractiveTurn(ctx InteractiveContext) ([]agent.ToolDefinition, error) 
 }
 
 type submitInteractiveTurnToolSchema struct {
-	StateChanges []interactive.TurnStateChangeInput `json:"state_changes,omitempty" jsonschema_description:"Incremental Actor state changes established by this turn's prose. Submit a native JSON array, never a serialized string. Submit an empty array when nothing changed."`
-	Choices      []string                           `json:"choices,omitempty" jsonschema_description:"The configured number of distinct next-action suggestions. Use an empty array only when RuleResolution declared terminal_candidate."`
-	PlanUpdate   *interactive.TurnPlanUpdateInput   `json:"plan_update,omitempty" jsonschema_description:"Only when Game Agent planning is enabled. Initialize or restructure with replace_document; routinely update existing unique H2 bodies with replace_sections. Omit while the current plan remains useful."`
+	Presentation *interactive.PresentationPatchSchema `json:"presentation,omitempty" jsonschema_description:"Optional stage changes for this completed turn. Omission and invalid references preserve the previous stage. This field never blocks turn readiness."`
+	StateChanges []interactive.TurnStateChangeInput   `json:"state_changes,omitempty" jsonschema_description:"Incremental Actor state changes established by this turn's prose. Submit a native JSON array, never a serialized string. Submit an empty array when nothing changed."`
+	Choices      []string                             `json:"choices,omitempty" jsonschema_description:"The configured number of distinct next-action suggestions. Use an empty array only when RuleResolution declared terminal_candidate."`
+	PlanUpdate   *interactive.TurnPlanUpdateInput     `json:"plan_update,omitempty" jsonschema_description:"Only when Game Agent planning is enabled. Initialize or restructure with replace_document; routinely update existing unique H2 bodies with replace_sections. Omit while the current plan remains useful."`
 }
 
 const recommendedTurnStateChangesPerSubmission = 24
@@ -214,6 +217,20 @@ func newSubmitInteractiveTurnTool(
 		strings.TrimSpace(stateChanges.Description),
 		recommendedTurnStateChangesPerSubmission,
 	)
+	// Keep reference properties directly visible; only the value type is nullable.
+	// Use Schema's supported union representation so tool-schema clones stay valid.
+	presentation, _ := parameters.Properties.Get("presentation")
+	// Preserve malformed visual slots for the product's nonblocking reducer.
+	presentation.Comments = "agent:independent-batch-item"
+	background, _ := presentation.Properties.Get("background")
+	characters, _ := presentation.Properties.Get("characters")
+	for _, ref := range []*jsonschema.Schema{background, characters.Items} {
+		asset, _ := ref.Properties.Get("asset_id")
+		asset.Type = ""
+		asset.AnyOf = []*jsonschema.Schema{{Type: "string"}, {Type: "null"}}
+	}
+	background.Type = ""
+	background.AnyOf = []*jsonschema.Schema{{Type: "object"}, {Type: "null"}}
 	info.ParamsOneOf = agent.NewParamsOneOfByJSONSchema(parameters)
 	return &submitInteractiveTurnTool{info: info, submit: submit, requestCompletion: requestCompletion}, nil
 }

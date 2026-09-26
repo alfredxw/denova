@@ -378,7 +378,7 @@ function DirectoryItemContent({ item }: { item: ResourceDirectoryItem }) {
     <>
       {item.thumbnailUrl ? (
         <span className="flex size-5 shrink-0 overflow-hidden rounded-md border border-sidebar-border bg-sidebar">
-          <img src={item.thumbnailUrl} alt="" className="size-full object-cover" />
+          <img src={item.thumbnailUrl} alt="" referrerPolicy="no-referrer" className="size-full object-cover" />
         </span>
       ) : (
         <span className="relative flex size-5 shrink-0 items-center justify-center rounded-md border border-sidebar-border bg-sidebar">

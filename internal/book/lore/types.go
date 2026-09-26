@@ -92,6 +92,7 @@ type Provenance struct {
 type Image struct {
 	Schema        string `json:"schema"`
 	ImagePath     string `json:"image_path"`
+	ImageURL      string `json:"image_url,omitempty"` // Read projection for a remote cover; never a file path.
 	MetaPath      string `json:"meta_path"`
 	AltText       string `json:"alt_text,omitempty"`
 	ImagePresetID string `json:"image_preset_id,omitempty"`

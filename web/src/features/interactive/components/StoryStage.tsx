@@ -1,3 +1,5 @@
+import { Eye, EyeOff, Square } from 'lucide-react'
+import { StoryStageArtwork } from './story-stage/StoryStageArtwork'
 import { useGameStories } from '@/features/platform/game-story-context'
 import { GameStorySetup } from '@/features/platform/GameStorySetup'
 import { useStorySpeech } from '../use-story-speech'
@@ -114,6 +116,14 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [activeTurnAnchorId, setActiveTurnAnchorId] = useState('')
+  const [textHidden, setTextHidden] = useState(false)
+  useEffect(() => setTextHidden(false), [stageKey])
+  useEffect(() => {
+    if (!textHidden) return
+    const restore = (event: KeyboardEvent) => { if (event.key === 'Escape') setTextHidden(false) }
+    window.addEventListener('keydown', restore)
+    return () => window.removeEventListener('keydown', restore)
+  }, [textHidden])
   const [turnScrollRequest, setTurnScrollRequest] = useState<TurnScrollRequest>()
 
   useEffect(() => {
@@ -579,7 +589,16 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
     await onDone({ silent: true })
   }
 
+  const presentationTurn = streaming ? snapshot?.current_turn : turnsById.get(activeTurnAnchorId) ?? displaySnapshot?.current_turn
+  const presentation = presentationTurn?.turn_result?.presentation
+  const hasStageArtwork = !creatingStory && Boolean((story?.presentation_settings?.background !== false && presentation?.background) || (story?.presentation_settings?.characters !== false && presentation?.characters?.length))
+  useEffect(() => { if (!hasStageArtwork) setTextHidden(false) }, [hasStageArtwork])
+  const presentationTurnIndex = displaySnapshot?.turns.findIndex(turn => turn.id === presentationTurn?.id) ?? -1
+  const previousPresentationTurnId = presentationTurnIndex > 0 ? displaySnapshot?.turns[presentationTurnIndex - 1]?.id : undefined
+  const artworkOnly = textHidden && hasStageArtwork
   const stageControls = (
+    <>
+
     <StoryStageControls
       isMobile={isMobile}
       picker={gameStories?.picker ?? {
@@ -592,6 +611,11 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
       directorPanelVisible={directorPanelVisible}
       onToggleDirectorPanel={onToggleDirectorPanel}
     />
+    {hasStageArtwork && <Button type="button" variant="ghost" size="icon-sm" aria-label={t(artworkOnly ? 'storyStage.presentation.showText' : 'storyStage.presentation.hideText')} title={t(artworkOnly ? 'storyStage.presentation.showText' : 'storyStage.presentation.hideText')} aria-pressed={artworkOnly} onClick={() => setTextHidden(!artworkOnly)}>
+      {artworkOnly ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+    </Button>}
+    {artworkOnly && streaming && <Button type="button" variant="ghost" size="icon-sm" aria-label={t('chat.runtime.abort')} disabled={commandSubmitting || stageRun.runtime.abortPending} onClick={() => void stop()}><Square className="size-4" /></Button>}
+    </>
   )
   const waitingToStartOpening = Boolean(pendingOpeningStoryId) && pendingOpeningStoryId === storyId
   const committedTurnCount = Math.max(story?.turn_count || 0, snapshot?.turn_count || 0, snapshot?.turns?.length || 0)
@@ -611,13 +635,14 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
 
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
-      <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
+      {!storySetupVisible && <StoryStageArtwork key={`${projectId}:${stageKey}`} previousTurnId={previousPresentationTurnId} projectId={projectId} turn={presentationTurn} latest={historyWindow.followLatest && presentationTurn?.id === snapshot?.current_turn?.id} settings={story?.presentation_settings} textHidden={artworkOnly} scrimOpacity={stagePreferences.scrimOpacity} />}
+      <div data-testid="story-stage-card" className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <StoryStageHeader isMobile={isMobile} controls={stageControls} />
-        <div className="shrink-0 px-3"><SpeechPlayback owner={stageKey} /></div>
+        <div className="shrink-0 px-3" style={{ visibility: artworkOnly ? 'hidden' : undefined }} inert={artworkOnly}><SpeechPlayback owner={stageKey} /></div>
 
-        <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
+        <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden" data-artwork={hasStageArtwork && !storySetupVisible ? 'true' : undefined} style={{ visibility: artworkOnly ? 'hidden' : undefined }} inert={artworkOnly} aria-hidden={artworkOnly || undefined}>
           {!isMobile && <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />}
-          <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
+          <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {historyWindow.stageKey === stageKey && !historyWindow.followLatest ? (
               <Button type="button" variant="secondary" size="sm" className="absolute right-4 top-3 z-30 shadow-md" onClick={resetHistoryToLatest}>
                 {t('storyStage.history.backToLatest')}
@@ -737,6 +762,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
           </section>
         </div>
       </div>
+      <div style={{ visibility: artworkOnly ? 'hidden' : undefined }} inert={artworkOnly} aria-hidden={artworkOnly || undefined}>
       <StoryStageComposer
         taskControls={<AgentTaskControls suspended={stageRun.runtime.phase === 'suspended'} pending={commandSubmitting || stageRun.runtime.abortPending} onResume={() => void resumeTask()} onAbort={() => void stop()} />}
         layout={{ projectId, creatingStory: storySetupVisible || (waitingToStartOpening && (!isMobile || !streaming)), isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
@@ -746,6 +772,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
         actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openContextAnalysis, removeContextCompaction, send, steerQueuedCommand, deleteQueuedCommand, stop: stageRun.runtime.recoveryPaused || stageRun.runtime.connection !== 'connected' || !supportsRuntimeOperation(conversationConfig.snapshot, 'pause') ? stop : suspend }}
       />
+      </div>
     </main>
   )
 

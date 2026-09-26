@@ -119,6 +119,11 @@ func assertDirectBuiltinSchema(t *testing.T, name string, schema map[string]any)
 		switch value := value.(type) {
 		case map[string]any:
 			for _, keyword := range []string{"oneOf", "anyOf", "allOf", "contains", "if", "then", "else"} {
+				// A nullable type union does not hide parameter properties in
+				// conditional branches. Direct properties remain mandatory above.
+				if keyword == "anyOf" && isDirectNullableType(value[keyword]) {
+					continue
+				}
 				if _, exists := value[keyword]; exists {
 					t.Errorf("%s uses conditional schema keyword %s", path, keyword)
 				}
@@ -133,6 +138,17 @@ func assertDirectBuiltinSchema(t *testing.T, name string, schema map[string]any)
 		}
 	}
 	inspect(name, schema)
+}
+
+func isDirectNullableType(value any) bool {
+	variants, ok := value.([]any)
+	if !ok || len(variants) != 2 {
+		return false
+	}
+	first, firstOK := variants[0].(map[string]any)
+	second, secondOK := variants[1].(map[string]any)
+	return firstOK && secondOK && len(first) == 1 && len(second) == 1 &&
+		(first["type"] == "string" || first["type"] == "object") && second["type"] == "null"
 }
 
 type schemaOnlyTaskExecutor struct{ publictools.TaskExecutor }

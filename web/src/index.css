@@ -2993,3 +2993,8 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   overflow-wrap: anywhere;
   min-width: 0;
 }
+
+/* The game stage owns the reading scrim; chat canvases remain opaque elsewhere. */
+.nova-story-stage-content[data-artwork="true"] .nova-chat-canvas {
+  background: transparent;
+}

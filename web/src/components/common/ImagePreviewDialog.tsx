@@ -159,6 +159,7 @@ export function ImagePreviewDialog({ src, title, alt, children }: ImagePreviewDi
                 wrapperProps={viewportProps}
               >
                 <img
+                  referrerPolicy="no-referrer"
                   src={src}
                   alt={alt || title}
                   draggable={false}

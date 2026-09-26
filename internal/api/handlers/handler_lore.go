@@ -154,6 +154,20 @@ func (h *Handlers) HandleLoreMaterialMutation(ctx context.Context, c *app.Reques
 	}
 	item, err := h.app.Lore().MutateMaterial(ctx, scope.ProjectID, c.Param("id"), body)
 	if err != nil {
+		for _, failure := range []struct {
+			err error
+			key string
+		}{
+			{lore.ErrMaterialURL, "api.lore.materialURL"},
+			{lore.ErrMaterialDownload, "api.lore.materialDownload"},
+			{lore.ErrMaterialRemoteImage, "api.lore.materialRemoteImage"},
+			{lore.ErrMaterialTooLarge, "api.lore.materialTooLarge"},
+		} {
+			if errors.Is(err, failure.err) {
+				writeErrorKey(c, consts.StatusBadRequest, failure.key)
+				return
+			}
+		}
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}

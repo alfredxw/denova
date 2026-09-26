@@ -192,7 +192,11 @@ func (service *Service) MutateMaterial(ctx context.Context, projectID, id string
 	var item booklore.Item
 	_, err := service.withStore(ctx, projectID, func(store *booklore.Store) error {
 		var err error
-		item, err = store.MutateMaterial(id, mutation)
+		if mutation.Op == "remote" || mutation.Op == "localize" {
+			item, err = store.RemoteMaterial(ctx, id, mutation)
+		} else {
+			item, err = store.MutateMaterial(id, mutation)
+		}
 		return err
 	})
 	if err != nil {

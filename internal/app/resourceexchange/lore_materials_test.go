@@ -160,3 +160,79 @@ func TestLoreMaterialsRoundTripPreservesSharingAndAssociationText(t *testing.T) 
 		t.Fatalf("undo did not restore metadata: %+v %v", items, err)
 	}
 }
+
+func TestRemoteLoreMaterialsRoundTripWithoutFetching(t *testing.T) {
+	ctx := context.Background()
+	service := testService(t)
+	dirs := map[string]string{}
+	projects := map[string]string{}
+	for _, name := range []string{"remote-source", "remote-target"} {
+		dir := filepath.Join(service.root, "projects", name)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		record, err := service.registry.Add(dir, project.TypeBook, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dirs[name], projects[name] = dir, record.ID
+	}
+	store := lore.NewStore(dirs["remote-source"])
+	const url = "https://unreachable.invalid/portrait.png?token=exact%2Fvalue"
+	refs := []LocalRef{}
+	for _, id := range []string{"hero", "scene"} {
+		if _, err := store.Create(lore.ItemInput{ID: id, Name: id}); err != nil {
+			t.Fatal(err)
+		}
+		item, err := store.RemoteMaterial(ctx, id, lore.MaterialMutation{Op: "remote", URL: url, Name: id + " reference", Description: "Description for " + id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.MutateMaterial(id, lore.MaterialMutation{Op: "cover", AssetID: item.ResolvedMaterials[0].ID}); err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, LocalRef{Kind: "lore.item", Scope: "project", ProjectID: projects["remote-source"], ID: id})
+	}
+	raw, err := service.Export(ctx, ExportRequest{Package: PackageInfo{ID: "remote-materials", Name: "Remote materials"}, Resources: refs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := platform.ArchiveFiles(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range files {
+		if strings.HasPrefix(name, "assets/") {
+			t.Fatalf("remote export created media file: %s", name)
+		}
+	}
+	preview, err := service.Preview(ctx, Source{Kind: "file", Filename: "remote.zip"}, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{}
+	for _, resource := range preview.Candidates[0].Resources {
+		ids = append(ids, resource.ID)
+	}
+	plan, err := service.Plan(ctx, PlanRequest{PreviewID: preview.ID, CandidateID: preview.Candidates[0].ID, Resources: ids, ProjectID: projects["remote-target"]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Apply(ctx, plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	items, err := lore.NewStore(dirs["remote-target"]).ListAll()
+	if err != nil || len(items) != 2 {
+		t.Fatal(items, err)
+	}
+	sharedID := items[0].ResolvedMaterials[0].ID
+	for _, item := range items {
+		if len(item.ResolvedMaterials) != 1 {
+			t.Fatal("lost materials", item)
+		}
+		material := item.ResolvedMaterials[0]
+		if material.ID != sharedID || material.URL != url || material.Path != "" || material.Name != item.Name+" reference" || material.Description != "Description for "+item.Name || item.Image.ImageURL != url || item.Materials.CoverAssetID != sharedID {
+			t.Fatalf("remote round trip changed material: %+v", item)
+		}
+	}
+}

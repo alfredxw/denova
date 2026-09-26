@@ -49,6 +49,7 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 		turnSubmissionStateChangesField: true,
 		TurnSubmissionModuleChoices:     true,
 		TurnSubmissionModulePlanUpdate:  true,
+		"presentation":                  true,
 	}
 	unknown := make([]string, 0)
 	for key := range root {
@@ -62,11 +63,11 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 			TurnSubmissionDiagnosticInvalidTopLevel,
 			"",
 			strings.Join(unknown, ","),
-			"Turn submission arguments may only contain state_changes, choices, and optional plan_update.",
+			"Turn submission arguments may only contain state_changes, choices, and optional plan_update and presentation.",
 		)
 	}
 
-	input := TurnSubmissionInput{}
+	input := TurnSubmissionInput{Presentation: root["presentation"]}
 	if raw, exists := root[turnSubmissionStateChangesField]; exists {
 		updates, diagnostics := decodeStructuredStateChangesModule(raw)
 		input.Diagnostics = append(input.Diagnostics, diagnostics...)

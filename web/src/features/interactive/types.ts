@@ -24,6 +24,7 @@ export interface StorySummary {
   reply_target_chars: number
   choice_count: number
   speech_settings?: StorySpeechSettings
+  presentation_settings?: StoryPresentationSettings
   image_settings?: StoryImageSettings
   check_settings?: Partial<StoryCheckSettings>
   opening: StoryOpeningConfig
@@ -210,6 +211,7 @@ export interface InteractiveStoryUpdateInput {
   reply_target_chars?: number
   choice_count?: number
   speech_settings?: StorySpeechSettings
+  presentation_settings?: StoryPresentationSettings
   image_settings?: StoryImageSettings
   check_settings?: StoryCheckSettings
   opening?: StoryOpeningConfig
@@ -400,7 +402,25 @@ export interface UpdateBranchPlanResult {
   context_revision: number
 }
 
+export interface StoryPresentationSettings {
+  background: boolean
+  characters: boolean
+}
+
+export interface PresentationMaterial {
+  item_id: string
+  asset_id: string
+  path: string
+  name: string
+}
+
+export interface TurnPresentation {
+  background?: PresentationMaterial
+  characters?: PresentationMaterial[]
+}
+
 export interface TurnResult {
+  presentation?: TurnPresentation
   state_updates: Array<{ op: 'replace' | 'delta' | 'create' | string; path: string; value: unknown }>
   choices: string[]
 }

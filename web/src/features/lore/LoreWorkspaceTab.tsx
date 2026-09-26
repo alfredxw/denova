@@ -16,7 +16,7 @@ import type {
   DocumentReviewController,
   DocumentReviewNavigationIntent,
 } from '@/features/document-review/controller'
-import { projectFileAssetURL, type LoreItem } from '@/lib/api'
+import { loreImageURL, type LoreItem } from '@/lib/api'
 import { KNOWLEDGE_SECTIONS, sectionItems } from './knowledge-sections'
 import { loreLoadModeLabel } from './options'
 import { LoreWorkspaceEditor } from './LoreWorkspaceEditor'
@@ -267,7 +267,7 @@ function loreDirectoryItem(
   projectId: string,
   t: (key: string) => string,
 ): ResourceDirectoryItem {
-  const imagePath = item.image?.image_path || ''
+  const imageSrc = loreImageURL(projectId, item)
   const badges: ResourceDirectoryBadge[] = [{
     label:
       item.load_mode === 'resident'
@@ -283,7 +283,7 @@ function loreDirectoryItem(
     id: item.id,
     title: item.name,
     summary: item.brief_description || undefined,
-    thumbnailUrl: imagePath ? projectFileAssetURL(projectId, imagePath) : null,
+    thumbnailUrl: imageSrc || null,
     disabled: item.enabled === false,
     searchText: `${(item.tags || []).join(' ')} ${(item.keywords || []).join(' ')} ${item.content || ''}`,
     badges,

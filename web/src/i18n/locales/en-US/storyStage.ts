@@ -1,4 +1,13 @@
 const storyStage = {
+  'storyStage.presentation.title': 'Stage presentation',
+  'storyStage.presentation.background': 'Show backgrounds',
+  'storyStage.presentation.characters': 'Show characters',
+  'storyStage.presentation.scrim': 'Reading scrim opacity',
+  'storyStage.presentation.scrimHelp': 'Shared across stories. 0% is transparent, 100% is opaque; text remains fully visible.',
+  'storyStage.presentation.hideText': 'Hide text to view the stage',
+  'storyStage.presentation.showText': 'Show text (Esc)',
+  'storyStage.presentation.saveFailed': 'Could not save stage display settings',
+
   'storyStage.replyTarget.compact': '{{count}} chars / turn',
   'storyStage.replyTarget.open': 'Set target chars per turn',
   'storyStage.replyTarget.title': 'Target chars per turn',

@@ -1,4 +1,13 @@
 const storyStage = {
+  'storyStage.presentation.title': '舞台演出',
+  'storyStage.presentation.background': '显示背景',
+  'storyStage.presentation.characters': '显示角色',
+  'storyStage.presentation.scrim': '文字遮罩不透明度',
+  'storyStage.presentation.scrimHelp': '所有故事共用。0% 完全透明，100% 完全遮盖；文字始终清晰显示。',
+  'storyStage.presentation.hideText': '隐藏文字，欣赏舞台',
+  'storyStage.presentation.showText': '显示文字（Esc）',
+  'storyStage.presentation.saveFailed': '保存舞台显示设置失败',
+
   'storyStage.replyTarget.compact': '每轮 {{count}} 字',
   'storyStage.replyTarget.open': '设置每轮目标字数',
   'storyStage.replyTarget.title': '每轮目标字数',
