@@ -137,11 +137,17 @@ func (model *publicBackendSteerModel) next(ctx context.Context) (*agent.Message,
 }
 
 type publicBackendTestProfile struct {
+	id        ProfileID
 	prepare   func(context.Context, CycleRestoreRequest) (Cycle, error)
 	canonical func(context.Context, CanonicalInputRequest) (agent.CanonicalAdapter, error)
 }
 
-func (profile publicBackendTestProfile) ID() ProfileID { return ProfileWriting }
+func (profile publicBackendTestProfile) ID() ProfileID {
+	if profile.id != "" {
+		return profile.id
+	}
+	return ProfileWriting
+}
 
 func (profile publicBackendTestProfile) PrepareCycle(ctx context.Context, request CycleRestoreRequest) (Cycle, error) {
 	return profile.prepare(ctx, request)

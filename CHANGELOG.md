@@ -25,8 +25,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
-- 修复 Native Agent 在本轮引用文件或项目指令修改后，后续工具审批无法允许或拒绝的问题。
-- Fix Native Agent tool approvals failing after referenced files or project instructions change during the same turn.
+- 修复 Native Agent 在本轮引用文件或项目指令修改后，工具审批失败或暂停任务无法继续的问题。新任务恢复时保留本轮已接受的上下文，下一轮读取最新内容。
+- Fix Native Agent tool approvals and paused-task continuation after referenced files or project instructions change. New tasks retain accepted context on resume and read current content on the next turn.
 
 - 写作与通用对话复用外部运行时会话时，跳过不必要的完整历史加载，减少长会话的准备开销。
 - Skip unnecessary full-history loading when Writing and General conversations reuse an external runtime session, reducing preparation overhead for long conversations.
