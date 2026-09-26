@@ -225,7 +225,7 @@ func (engine *definitionEngine) restorePendingToolBatch(ctx context.Context, req
 	if err != nil {
 		return err
 	}
-	if err := engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, batch, encoded); err != nil {
+	if err := engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, batch, runstate.EngineTranscriptUpdated{State: encoded}); err != nil {
 		return err
 	}
 	return emit(runstate.EngineTranscriptUpdated{State: encoded})

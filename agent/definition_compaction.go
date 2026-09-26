@@ -535,7 +535,7 @@ func compactionID(operationID runstate.OperationID) string {
 	return "compaction-" + string(operationID)
 }
 
-func (engine *definitionEngine) applyAutomaticCompaction(
+func (engine *definitionEngine) prepareAutomaticCompaction(
 	ctx context.Context,
 	request runstate.EngineRequest,
 	prepared preparedDefinition,
@@ -576,15 +576,6 @@ func (engine *definitionEngine) applyAutomaticCompaction(
 	}
 	if !changed {
 		return current, present, false, metrics, nil
-	}
-	encoded, err := json.Marshal(next)
-	if err != nil {
-		return compactionRecord{}, false, false, metrics, err
-	}
-	if err := emit(runstate.EngineCapabilityState{
-		Capability: compactionCapability, State: encoded,
-	}); err != nil {
-		return compactionRecord{}, false, false, metrics, err
 	}
 	return next, true, true, metrics, nil
 }

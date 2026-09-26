@@ -156,13 +156,14 @@ type EngineModelRetry struct {
 
 func (EngineModelRetry) engineEvent() {}
 
-// EngineTranscriptUpdated replaces the in-process transcript used by later
-// cycles in this Run. TaskCompletionIDs make one safe-boundary checkpoint
-// durable together with its completion delivery receipts; ordinary unfinished
-// model/tool boundaries remain in-process only.
+// EngineTranscriptUpdated checkpoints the transcript used by later execution.
+// TaskCompletionIDs include completion delivery receipts at a safe boundary.
 type EngineTranscriptUpdated struct {
 	State             json.RawMessage
 	TaskCompletionIDs []string
+	// CapabilityStates commits context-dependent capability values in the same
+	// journal transaction as State, so recovery cannot mix their generations.
+	CapabilityStates map[string]json.RawMessage
 }
 
 func (EngineTranscriptUpdated) engineEvent() {}

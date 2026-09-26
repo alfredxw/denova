@@ -1,11 +1,12 @@
 import { expect, test } from '../support/fixtures'
-import { createAndOpenBook, createStartedStory, getStorySnapshot } from '../support/api'
+import { createAndOpenBook, createProjectFile, createStartedStory, getStorySnapshot, saveProjectFile } from '../support/api'
 import { openWritingAgent, submitAgentChatMessage } from '../support/agent-chat'
 import { getModelStatus, releaseDelayedRequest } from '../support/model'
 
 for (const product of ['writing', 'game'] as const) {
-  test(`${product} pauses, reloads without execution, and continues the original task`, async ({ page, request }) => {
+  test(`${product} pauses, changes project context, reloads, and continues the original task`, async ({ page, request }) => {
     const book = await createAndOpenBook(request, `Pause ${product}`)
+    await createProjectFile(request, book.projectId, 'AGENTS.md', 'Use the accepted project instructions for this task.')
     const story = product === 'game' ? await createStartedStory(request, 'Pause one original turn') : undefined
     const marker = story ? 'E2E_GAME_FOLLOW_UP_DELAY' : 'E2E_DELAYED_AGENT_REPLY'
     const initialRequests = (await getModelStatus(request)).request_counts[marker] ?? 0
@@ -29,6 +30,7 @@ for (const product of ['writing', 'game'] as const) {
       await page.locator('[data-action="stop"]').filter({ visible: true }).click()
       await expect(page.getByRole('button', { name: '继续任务', exact: true })).toBeVisible()
       await expect.poll(async () => (await readActive()).phase).toBe('suspended')
+      await saveProjectFile(request, book.projectId, 'AGENTS.md', 'New project instructions apply to the next task.')
       // The fake provider retains disconnected requests until released. Releasing
       // that abandoned response must not allow a paused runtime to commit it.
       await releaseDelayedRequest(request, marker)

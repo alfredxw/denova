@@ -25,6 +25,7 @@ type ConversationCommitter interface {
 	MaterializeInput(context.Context, agent.InputCommitRequest) (agent.CommitReceipt, error)
 	// ApplyPreparedContext publishes process-local context state after the
 	// accepted input is durable. It must not append another user message.
+	// Same-cycle recovery can reuse journaled context without calling it.
 	ApplyPreparedContext(context.Context, agentchat.AgentContextPreparation) error
 	CommitOutput(context.Context, agentchat.AgentContextPreparation, agent.OutputCommitRequest) (agent.OutputCommitReceipt, error)
 }
@@ -143,6 +144,10 @@ func (adapter conversationBoundaryCanonical) CommitOutput(ctx context.Context, r
 }
 
 func (adapter conversationBoundaryCanonical) PendingOutput(ctx context.Context, identity agent.CommitIdentity) (*agent.Message, error) {
+	run := agent.RunView{ID: identity.RunID, CommandID: identity.CommandID, Cycle: identity.Cycle}
+	if err := bindConversationCycle(adapter.boundary.config.Conversation, adapter.boundary.config.Options.AgentKind, run); err != nil {
+		return nil, err
+	}
 	if source, ok := adapter.boundary.config.Conversation.(agent.CanonicalPreparedOutput); ok {
 		return source.PendingOutput(ctx, identity)
 	}
@@ -185,10 +190,7 @@ func (boundary *ConversationBoundary) commitOutput(ctx context.Context, request 
 		return agent.OutputCommitReceipt{}, errors.New("Denova Conversation Boundary received a non-output commit")
 	}
 	run := agent.RunView{ID: request.Identity.RunID, CommandID: request.Identity.CommandID, Cycle: request.Identity.Cycle}
-	// Context materialization is guaranteed to precede output commit in the
-	// fixed Agent lifecycle. Empty revision therefore means: reuse the newest
-	// successful preparation for this exact cycle.
-	prepared, err := boundary.prepare(ctx, run, "")
+	prepared, err := boundary.prepareOutput(run)
 	if err != nil {
 		return agent.OutputCommitReceipt{}, err
 	}
@@ -209,6 +211,29 @@ func (boundary *ConversationBoundary) commitOutput(ctx context.Context, request 
 		receipt.Transcript = transcript
 	}
 	return receipt, nil
+}
+
+// A restored Agent cycle already owns its model context. Output persistence
+// needs the accepted product route, not another read of mutable prompt sources.
+func (boundary *ConversationBoundary) prepareOutput(run agent.RunView) (agentchat.AgentContextPreparation, error) {
+	if err := bindConversationCycle(boundary.config.Conversation, boundary.config.Options.AgentKind, run); err != nil {
+		return agentchat.AgentContextPreparation{}, err
+	}
+	boundary.mu.Lock()
+	defer boundary.mu.Unlock()
+	if boundary.prepared != nil {
+		if boundary.run.ID != run.ID || boundary.run.CommandID != run.CommandID || boundary.run.Cycle != run.Cycle {
+			return agentchat.AgentContextPreparation{}, errors.New("Denova Conversation Boundary was reused across Agent cycles")
+		}
+		return *boundary.prepared, nil
+	}
+	interruption, err := agentchat.ResolveRequestedInterruption(boundary.config.Request, boundary.config.Conversation.PendingInterruption())
+	if err != nil {
+		return agentchat.AgentContextPreparation{}, err
+	}
+	return agentchat.AgentContextPreparation{
+		OriginalMessage: boundary.config.Request.Message, ResumeInterruption: interruption,
+	}, nil
 }
 
 func (boundary *ConversationBoundary) commitContext(ctx context.Context, request agent.ContextCommitRequest) (agent.CommitReceipt, error) {

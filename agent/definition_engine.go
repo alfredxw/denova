@@ -39,6 +39,7 @@ type engineTranscript struct {
 	DefinitionCommandID     string                 `json:"definition_command_id,omitempty"`
 	DefinitionCycle         int                    `json:"definition_cycle,omitempty"`
 	PreparationStage        enginePreparationStage `json:"preparation_stage,omitempty"`
+	PreparedContext         *preparedContext       `json:"prepared_context,omitempty"`
 	Messages                []*Message             `json:"messages,omitempty"`
 	ContextState            contextStateSnapshot   `json:"context_state,omitempty"`
 	// ContextSequence is the next idempotency slot for this active cycle. It is
@@ -102,7 +103,11 @@ func (engine *definitionEngine) Run(
 		controls.close()
 		if !loopBound {
 			if controlled, controlledErr, handled := controls.controlledPreparationResult(resultErr); handled {
-				if preparationCheckpoint != nil {
+				// Suspension resumes this exact cycle from its last accepted
+				// checkpoint. Rebuilding a partial preparation transcript here can
+				// lose the active input boundary or overwrite committed context.
+				// Abort and preemption instead retain the abandoned raw input.
+				if controlled.Status != runstate.EngineSuspended && preparationCheckpoint != nil {
 					if checkpointErr := preparationCheckpoint(); checkpointErr != nil {
 						result, resultErr = runstate.EngineResult{}, checkpointErr
 						return
@@ -192,7 +197,7 @@ func (engine *definitionEngine) Run(
 	prepared.definitionCommandID = string(request.Snapshot.CommandID)
 	prepared.definitionCycle = request.Snapshot.Cycle
 	prepared.preparationStage = enginePreparationBase
-	controlPrepared = &prepared
+	resumeMaterialized := sameCycle && state.PreparationStage == enginePreparationMaterialized
 	if sameCycle && state.DefinitionKey != "" && state.DefinitionKey != prepared.definitionKey {
 		return runstate.EngineResult{}, fmt.Errorf("%w: definition_key have=%q want=%q", ErrDefinitionMismatch, prepared.definitionKey, state.DefinitionKey)
 	}
@@ -202,12 +207,15 @@ func (engine *definitionEngine) Run(
 	// Persist the exact base Definition before materializing dynamic capability
 	// state. The Run has already committed canonical accepted input; the
 	// prepared Definition must prove it resolves the same canonical boundary.
-	preparedCheckpoint, err := encodeEngineTranscriptState(prepared, state.Messages, prepared.activeModelUser, prepared.activeUserIndex)
-	if err != nil {
-		return runstate.EngineResult{}, fmt.Errorf("encode pre-commit Agent transcript: %w", err)
-	}
-	if err := emit(runstate.EngineTranscriptUpdated{State: preparedCheckpoint}); err != nil {
-		return runstate.EngineResult{}, err
+	if !resumeMaterialized {
+		controlPrepared = &prepared
+		preparedCheckpoint, err := encodeEngineTranscriptState(prepared, state.Messages, prepared.activeModelUser, prepared.activeUserIndex)
+		if err != nil {
+			return runstate.EngineResult{}, fmt.Errorf("encode pre-commit Agent transcript: %w", err)
+		}
+		if err := emit(runstate.EngineTranscriptUpdated{State: preparedCheckpoint}); err != nil {
+			return runstate.EngineResult{}, err
+		}
 	}
 	if err := engine.verifyCanonicalInputCommit(request.Snapshot, input, prepared.definition.Canonical); err != nil {
 		return runstate.EngineResult{}, err
@@ -215,10 +223,11 @@ func (engine *definitionEngine) Run(
 	if request.Snapshot.OutputCommit != nil {
 		return engine.resumeCommittedOutput(ctx, request, input, prepared, state, emit)
 	}
-	if err := materializeDefinitionCapabilities(ctx, prepareRequest, &prepared); err != nil {
-		return runstate.EngineResult{}, err
+	var savedContext *preparedContext
+	if resumeMaterialized {
+		savedContext = state.PreparedContext
 	}
-	if err := engine.applyGoalPreparation(ctx, request, &prepared); err != nil {
+	if err := engine.materializeCycleCapabilities(ctx, prepareRequest, request.Snapshot, savedContext, &prepared); err != nil {
 		return runstate.EngineResult{}, err
 	}
 	materializedFingerprint, err := materializedDefinitionFingerprint(prepared)
@@ -231,6 +240,7 @@ func (engine *definitionEngine) Run(
 	}
 	prepared.materializedFingerprint = materializedFingerprint
 	prepared.preparationStage = enginePreparationMaterialized
+	controlPrepared = &prepared
 	materializedCheckpoint, err := encodeEngineTranscriptState(prepared, state.Messages, prepared.activeModelUser, prepared.activeUserIndex)
 	if err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("encode materialized Agent transcript: %w", err)
@@ -283,7 +293,7 @@ func (engine *definitionEngine) Run(
 			return runstate.EngineResult{}, err
 		}
 		if err := engine.commitCanonicalContext(
-			ctx, request, prepared.definition.Canonical, sequence, stateMessages, checkpoint,
+			ctx, request, prepared.definition.Canonical, sequence, stateMessages, runstate.EngineTranscriptUpdated{State: checkpoint},
 		); err != nil {
 			return runstate.EngineResult{}, err
 		}
@@ -465,7 +475,7 @@ func (engine *definitionEngine) Run(
 				candidatePrepared, candidateStateMessages, candidateModelUser = nextPrepared, stateMessages, modelUser
 				return candidate.call.Snapshot(), nil
 			}
-			next, nextPresent, changed, compactMetrics, compactErr := engine.applyAutomaticCompaction(
+			next, nextPresent, changed, compactMetrics, compactErr := engine.prepareAutomaticCompaction(
 				gateCtx, request, prepared, controlledTranscript(), compactionContext, modelSnapshot,
 				compaction, compactionPresent,
 				currentCompactionStorage,
@@ -510,27 +520,31 @@ func (engine *definitionEngine) Run(
 			if !changed {
 				return elided, nil
 			}
+			candidateTranscript := append(cloneMessages(transcript), cloneMessages(candidateStateMessages)...)
+			sequence := candidatePrepared.contextSequence
+			if len(candidateStateMessages) > 0 {
+				candidatePrepared.contextSequence++
+			}
+			candidatePrepared.activeModelUser, candidatePrepared.activeUserIndex = candidateModelUser, activeUserIndex
+			checkpoint, err := encodeActiveEngineTranscript(candidatePrepared, candidateTranscript, candidateModelUser, activeUserIndex)
+			if err != nil {
+				return nil, err
+			}
+			compactionState, err := json.Marshal(next)
+			if err != nil {
+				return nil, err
+			}
+			transition := runstate.EngineTranscriptUpdated{State: checkpoint, CapabilityStates: map[string]json.RawMessage{compactionCapability: compactionState}}
+			if err := engine.commitCanonicalContext(gateCtx, request, prepared.definition.Canonical, sequence, candidateStateMessages, transition); err != nil {
+				return nil, err
+			}
+			if err := emit(transition); err != nil {
+				return nil, err
+			}
 			compaction, compactionPresent = next, nextPresent
 			prepareRequest.Compaction = compactionStatePointer(compaction, compactionPresent)
-			prepared = candidatePrepared
-			transcript = append(transcript, cloneMessages(candidateStateMessages)...)
+			prepared, transcript, activeModelUser = candidatePrepared, candidateTranscript, candidateModelUser
 			currentCompactionStorage = compaction
-			activeModelUser = candidateModelUser
-			prepared.activeModelUser, prepared.activeUserIndex = activeModelUser, activeUserIndex
-			if len(candidateStateMessages) > 0 {
-				sequence := prepared.contextSequence
-				prepared.contextSequence++
-				checkpoint, err := encodeActiveEngineTranscript(prepared, transcript, activeModelUser, activeUserIndex)
-				if err != nil {
-					return nil, err
-				}
-				if err := engine.commitCanonicalContext(gateCtx, request, prepared.definition.Canonical, sequence, candidateStateMessages, checkpoint); err != nil {
-					return nil, err
-				}
-				if err := emit(runstate.EngineTranscriptUpdated{State: checkpoint}); err != nil {
-					return nil, err
-				}
-			}
 			return candidate, nil
 		}
 	}
@@ -673,7 +687,7 @@ func (engine *definitionEngine) Run(
 				prepared, transcript, activeModelUser, activeUserIndex,
 			)
 			if checkpointErr == nil {
-				checkpointErr = engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, messages, checkpoint)
+				checkpointErr = engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, messages, runstate.EngineTranscriptUpdated{State: checkpoint})
 			}
 			if checkpointErr == nil {
 				checkpointErr = emit(runstate.EngineTranscriptUpdated{
@@ -723,7 +737,7 @@ func (engine *definitionEngine) Run(
 						var checkpoint json.RawMessage
 						checkpoint, boundaryErr = encodeActiveEngineTranscript(prepared, transcript, activeModelUser, activeUserIndex)
 						if boundaryErr == nil {
-							boundaryErr = engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, completed, checkpoint)
+							boundaryErr = engine.commitCanonicalContext(ctx, request, prepared.definition.Canonical, sequence, completed, runstate.EngineTranscriptUpdated{State: checkpoint})
 						}
 					}
 				default:
@@ -1152,7 +1166,8 @@ func encodeEngineTranscriptState(
 		DefinitionOperationID:   prepared.definitionOperationID,
 		DefinitionCommandID:     prepared.definitionCommandID,
 		DefinitionCycle:         prepared.definitionCycle, PreparationStage: prepared.preparationStage,
-		Messages: cloneMessages(messages), ContextState: cloneContextStateSnapshot(prepared.contextState),
+		PreparedContext: snapshotPreparedContext(prepared),
+		Messages:        cloneMessages(messages), ContextState: cloneContextStateSnapshot(prepared.contextState),
 		ContextSequence:     prepared.contextSequence,
 		LastResponseOrdinal: prepared.lastResponseOrdinal,
 		ActiveModelUser:     CloneMessage(activeModelUser), ActiveUserIndex: activeUserIndex,
@@ -1204,6 +1219,14 @@ func decodeEngineTranscript(encoded json.RawMessage) (engineTranscript, error) {
 	}
 	if state.ContextSequence < 0 {
 		return engineTranscript{}, errors.New("decode Agent transcript: context sequence cannot be negative")
+	}
+	if state.PreparedContext != nil {
+		if state.PreparationStage != enginePreparationMaterialized {
+			return engineTranscript{}, errors.New("prepared Agent context has no materialized cycle")
+		}
+		if err := state.PreparedContext.validate(); err != nil {
+			return engineTranscript{}, err
+		}
 	}
 	state.Messages = cloneMessages(state.Messages)
 	state.ContextState = cloneContextStateSnapshot(state.ContextState)

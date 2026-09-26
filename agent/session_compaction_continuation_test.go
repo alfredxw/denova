@@ -22,6 +22,7 @@ type continuationContextKey struct{}
 type continuationModel struct {
 	inputs         [][]*agent.Message
 	requireContext bool
+	postCompaction chan struct{}
 }
 
 func (model *continuationModel) Generate(ctx context.Context, messages []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
@@ -37,12 +38,35 @@ func (model *continuationModel) Generate(ctx context.Context, messages []*agent.
 			ID: "live-read", Type: "function", Function: agent.FunctionCall{Name: "read_live", Arguments: `{}`},
 		}}), nil
 	}
+	if len(model.inputs) == 2 && model.postCompaction != nil {
+		close(model.postCompaction)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	return agent.AssistantMessage("Completed", nil), nil
 }
 
 func (model *continuationModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
 	result, err := model.Generate(ctx, messages, options...)
 	return agent.StreamReaderFromArray([]*agent.Message{result}), err
+}
+
+type continuationContext struct{ unavailable bool }
+
+func (*continuationContext) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{Kind: "test.continuation-context", Version: 1}
+}
+
+func (source *continuationContext) Materialize(_ context.Context, request agent.ContextRequest) ([]agent.ContextFragment, error) {
+	if source.unavailable {
+		return nil, errors.New("project instructions are unavailable after reopen")
+	}
+	content := "Original context before compaction"
+	if request.Compaction != nil {
+		content = "Accepted context after compaction"
+	}
+	return []agent.ContextFragment{{Source: "project", Purpose: "compaction context projection", Resource: "AGENTS.md",
+		Placement: agent.ContextLeadingMessage, Stability: agent.ContextStablePrefix, Content: content, HardLimit: 1024}}, nil
 }
 
 type continuationPreparation struct {
@@ -80,7 +104,7 @@ func (middleware *continuationPreparation) BeforeModelCall(ctx context.Context, 
 // Exercise the public Session API, real tool execution, the standard planner,
 // projection validation and journal recovery. Only model text is deterministic.
 func TestCompactionPreservesLiveToolTailAndExecutesValidatedRequest(t *testing.T) {
-	for _, failure := range []string{"", "preparation", "validation", "abort", "resume"} {
+	for _, failure := range []string{"", "preparation", "validation", "abort", "resume", "post_compaction_resume"} {
 		name := failure
 		if name == "" {
 			name = "success"
@@ -139,6 +163,11 @@ func testCompactionContinuation(t *testing.T, failure string) {
 		Name: "continuation", Model: model, Tools: tools, Permission: permission.FullAccess(),
 		Compaction: manager, Middlewares: []agent.Middleware{middleware},
 	}
+	contextSource := &continuationContext{}
+	if failure == "post_compaction_resume" {
+		definition.Context = contextSource
+		model.postCompaction = make(chan struct{})
+	}
 	owner, err := agent.New(ctx, definition, agent.WithSessionStore(store))
 	if err != nil {
 		t.Fatal(err)
@@ -160,9 +189,13 @@ func testCompactionContinuation(t *testing.T, failure string) {
 		t.Fatal(err)
 	}
 	status := agent.ResultCompleted
-	if failure == "abort" || failure == "resume" {
+	if failure == "abort" || failure == "resume" || failure == "post_compaction_resume" {
+		pausePoint := summaryStarted
+		if failure == "post_compaction_resume" {
+			pausePoint = model.postCompaction
+		}
 		select {
-		case <-summaryStarted:
+		case <-pausePoint:
 		case <-time.After(2 * time.Second):
 			t.Fatal("summary did not start")
 		}
@@ -179,6 +212,7 @@ func testCompactionContinuation(t *testing.T, failure string) {
 			if err := owner.Close(ctx); err != nil {
 				t.Fatal(err)
 			}
+			contextSource.unavailable = true
 			owner, err = agent.New(ctx, definition, agent.WithSessionStore(store))
 			if err != nil {
 				t.Fatal(err)
@@ -202,16 +236,35 @@ func testCompactionContinuation(t *testing.T, failure string) {
 	if failure == "resume" {
 		wantSummaryCalls, wantBeforeAgent, wantIteration = 2, 2, 0
 	}
-	if err != nil || summaryCalls != wantSummaryCalls || (snapshot.Compaction != nil) != (failure == "" || failure == "resume") {
+	wantIterations := []int{wantIteration}
+	wantCheckpoints := 1
+	if failure == "post_compaction_resume" {
+		wantBeforeAgent, wantCheckpoints = 2, 2
+		wantIterations = []int{1, 0}
+	}
+	compacted := failure == "" || failure == "resume" || failure == "post_compaction_resume"
+	if err != nil || summaryCalls != wantSummaryCalls || (snapshot.Compaction != nil) != compacted {
 		t.Fatalf("compaction: snapshot=%+v calls=%d error=%v", snapshot, summaryCalls, err)
 	}
 	if toolCalls != 1 {
 		t.Fatalf("live tool executed %d times", toolCalls)
 	}
-	if middleware.beforeAgentCalls != wantBeforeAgent || failure != "abort" && !reflect.DeepEqual(middleware.iterations, []int{wantIteration}) {
+	if middleware.beforeAgentCalls != wantBeforeAgent || failure != "abort" && !reflect.DeepEqual(middleware.iterations, wantIterations) {
 		t.Fatalf("candidate left the current invocation: BeforeAgent=%d iterations=%v", middleware.beforeAgentCalls, middleware.iterations)
 	}
 	last := model.inputs[len(model.inputs)-1]
+	if failure == "post_compaction_resume" {
+		var found bool
+		for _, message := range last {
+			found = found || strings.Contains(message.Content, "Accepted context after compaction")
+			if strings.Contains(message.Content, "Original context before compaction") {
+				t.Fatal("resume restored the obsolete pre-compaction context")
+			}
+		}
+		if !found {
+			t.Fatal("resume lost the accepted post-compaction context")
+		}
+	}
 	var liveResult *agent.Message
 	if failure == "abort" {
 		if len(model.inputs) != 1 || len(middleware.checkpoints) != 0 {
@@ -227,11 +280,11 @@ func testCompactionContinuation(t *testing.T, failure string) {
 	if liveResult == nil {
 		t.Fatal("post-compaction provider request lost the unselected live tool result")
 	}
-	if failure != "abort" && len(middleware.checkpoints) != 1 {
+	if failure != "abort" && len(middleware.checkpoints) != wantCheckpoints {
 		t.Fatalf("candidate prepared %d times", len(middleware.checkpoints))
 	}
-	if failure == "" || failure == "resume" {
-		if !reflect.DeepEqual(last, middleware.checkpoints[0]) {
+	if compacted {
+		if !reflect.DeepEqual(last, middleware.checkpoints[len(middleware.checkpoints)-1]) {
 			t.Fatal("provider did not use the validated request")
 		}
 	} else if failure != "abort" {
