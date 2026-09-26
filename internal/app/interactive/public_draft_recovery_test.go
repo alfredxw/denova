@@ -16,9 +16,11 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
+	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	producttools "denova/internal/agents/tools"
+	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/project"
 
@@ -34,6 +36,11 @@ func TestGameDraftPauseAndColdResumeThroughCanonicalRuntime(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			workspace, dataDir := t.TempDir(), t.TempDir()
+			const originalContext = "Original accepted game instructions"
+			const changedContext = "Changed game instructions for the next turn"
+			if err := os.WriteFile(filepath.Join(workspace, "AGENTS.md"), []byte(originalContext), 0600); err != nil {
+				t.Fatal(err)
+			}
 			registry := project.NewRegistry(dataDir)
 			record, err := registry.Add(workspace, project.TypeGeneral, "Game draft recovery")
 			if err != nil {
@@ -70,6 +77,10 @@ func TestGameDraftPauseAndColdResumeThroughCanonicalRuntime(t *testing.T) {
 			var rulings atomic.Int32
 			newCycle := func(request agentchat.ChatRequest) agentexecution.Cycle {
 				conversation := NewConversation(store, "", workspace, story.ID, "main", request.Message, 800, cfg)
+				contextSource, err := agentlifecycle.NewProjectInstructionsContextSource(cfg, agentrun.AgentKindInteractiveStory, book.NewState(workspace))
+				if err != nil {
+					t.Fatal(err)
+				}
 				definitions, err := producttools.NewInteractiveTurn(producttools.InteractiveContext{
 					Store: store, StoryID: story.ID, BranchID: "main", RequestTurnCompletion: agentinteractive.RequestTurnCompletion,
 					PrepareTurn: func(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
@@ -89,7 +100,7 @@ func TestGameDraftPauseAndColdResumeThroughCanonicalRuntime(t *testing.T) {
 					t.Fatal(err)
 				}
 				return agentexecution.Cycle{Definition: agent.Definition{
-					Key: "test.game-draft", Name: "game", Model: model, Tools: toolset, Permission: agentpermission.FullAccess(),
+					Key: "test.game-draft", Name: "game", Model: model, Tools: toolset, Context: contextSource, Permission: agentpermission.FullAccess(),
 					ModelIdentity: agent.CapabilityIdentity{Kind: "model.test.draft", Version: 1},
 					Execution:     agent.ExecutionPolicy{ModelMaxAttempts: 4},
 					Middlewares: []agent.Middleware{agentinteractive.NewTurnProtocolMiddleware(agentinteractive.InteractiveStoryToolContext{
@@ -149,6 +160,9 @@ func TestGameDraftPauseAndColdResumeThroughCanonicalRuntime(t *testing.T) {
 				t.Fatalf("pause outcome=%+v", outcome)
 			}
 			if err := runtime.Close(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(workspace, "AGENTS.md"), []byte(changedContext), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "accepted-output" {
@@ -226,6 +240,9 @@ func TestGameDraftPauseAndColdResumeThroughCanonicalRuntime(t *testing.T) {
 			}
 			if wantRequests > 0 && (!containsMessageContent(model.inputs[0], "retry_modules") || !containsMessageContent(model.inputs[0], "already displayed")) {
 				t.Fatal("cold model input did not retain repair context")
+			}
+			if wantRequests > 0 && (!containsMessageContent(model.inputs[0], originalContext) || containsMessageContent(model.inputs[0], changedContext)) {
+				t.Fatal("cold model input replaced the accepted project instructions")
 			}
 			if _, found, err := store.LoadTurnDraft(story.ID, "main", identity); err != nil || found {
 				t.Fatalf("completed draft remained pending: found=%t error=%v", found, err)

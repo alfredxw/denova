@@ -238,7 +238,7 @@ func (engine *definitionEngine) commitCanonicalContext(
 	adapter CanonicalAdapter,
 	sequence int,
 	messages []*Message,
-	state json.RawMessage,
+	checkpointState runstate.EngineTranscriptUpdated,
 ) error {
 	contextAdapter, ok := adapter.(CanonicalContextAdapter)
 	if !ok || len(messages) == 0 {
@@ -255,7 +255,7 @@ func (engine *definitionEngine) commitCanonicalContext(
 		values[index] = *message.Clone()
 	}
 	var receipt CommitReceipt
-	err := withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitContext, Snapshot: request.Snapshot, State: state}, func(checkpoint CanonicalCheckpoint) error {
+	err := withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitContext, Snapshot: request.Snapshot, State: checkpointState.State, CapabilityStates: checkpointState.CapabilityStates}, func(checkpoint CanonicalCheckpoint) error {
 		var err error
 		receipt, err = contextAdapter.CommitContext(ctx, ContextCommitRequest{
 			Identity: canonicalCommitIdentity(engine.key, request.Snapshot, CommitContext), Sequence: sequence, Messages: values, Checkpoint: checkpoint,
@@ -368,17 +368,18 @@ func (engine *definitionEngine) ResolveInteraction(
 	// New approvals carry the exact tool contract in the owning journal. The
 	// behavior fence above still checks policy and implementation identities;
 	// mutable context is not part of the user's authorization. Old approvals
-	// and custom Ask policies retain their original full materialization fence.
+	// and custom Ask policies retain their full fence, restoring accepted context
+	// when the checkpoint contains it and rematerializing legacy checkpoints.
 	toolBound := interactionHeader.Kind == InteractionPermission && interactionHeader.Permission != nil &&
 		interactionHeader.Permission.ToolDefinitionHash != ""
-	materialize := materializeDefinitionCapabilities
 	if toolBound {
-		materialize = materializeDefinitionTools
-	}
-	if err := materialize(ctx, prepareRequest, &prepared); err != nil {
-		return nil, err
-	}
-	if err := engine.applyGoalPreparation(ctx, runstate.EngineRequest{Snapshot: request.Snapshot}, &prepared); err != nil {
+		if err := materializeDefinitionTools(ctx, prepareRequest, &prepared); err != nil {
+			return nil, err
+		}
+		if err := engine.applyGoalPreparation(ctx, runstate.EngineRequest{Snapshot: request.Snapshot}, &prepared); err != nil {
+			return nil, err
+		}
+	} else if err := engine.materializeCycleCapabilities(ctx, prepareRequest, request.Snapshot, transcript.PreparedContext, &prepared); err != nil {
 		return nil, err
 	}
 	if !toolBound {

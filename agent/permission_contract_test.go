@@ -99,6 +99,17 @@ func TestPermissionContractPreservesAuthorizationFences(t *testing.T) {
 			case "legacy_unchanged":
 				presentation.ToolDefinitionHash, wantError = "", false
 			}
+			if strings.HasPrefix(scenario, "legacy_") {
+				var legacy engineTranscript
+				if err := json.Unmarshal(state, &legacy); err != nil {
+					t.Fatal(err)
+				}
+				legacy.PreparedContext = nil
+				state, err = json.Marshal(legacy)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			encodedRequest, err := json.Marshal(InteractionRequest{ID: "permission-call", Kind: InteractionPermission, Permission: &presentation})
 			if err != nil {
 				t.Fatal(err)

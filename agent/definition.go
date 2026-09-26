@@ -42,6 +42,9 @@ type ToolRequest struct {
 }
 
 // ContextSource returns accountable model-visible fragments for one cycle.
+// Accepted fragments are journaled and reused on same-cycle resume. Materialize
+// runs for new cycles and explicit context refreshes such as compaction; it must
+// not be required to restore executable tool or canonical commit state.
 type ContextSource interface {
 	Identity() CapabilityIdentity
 	Materialize(context.Context, ContextRequest) ([]ContextFragment, error)
@@ -576,7 +579,13 @@ func rematerializeDefinitionContext(
 		return err
 	}
 	prepared.fragments = fragments
-	return updatePreparedPrefixFingerprint(prepared)
+	if err := updatePreparedPrefixFingerprint(prepared); err != nil {
+		return err
+	}
+	if prepared.preparationStage == enginePreparationMaterialized {
+		prepared.materializedFingerprint, err = materializedDefinitionFingerprint(*prepared)
+	}
+	return err
 }
 
 func updatePreparedPrefixFingerprint(prepared *preparedDefinition) error {

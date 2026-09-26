@@ -277,6 +277,9 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 			CompletionTokensDetails: CompletionTokensDetails{ReasoningTokens: value.Usage.ReasoningTokens},
 		}, FinishReason: value.FinishReason, RequestedTools: append([]string(nil), value.RequestedTools...), Source: publicEventSource(value.Source)})
 	case runstate.EngineTranscriptUpdated:
+		if len(value.CapabilityStates) != 0 {
+			return run.commitContextCheckpoint(value)
+		}
 		if len(value.TaskCompletionIDs) != 0 {
 			return run.persistTaskCompletionCheckpoint(value.State, value.TaskCompletionIDs)
 		}
