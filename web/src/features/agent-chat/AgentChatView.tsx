@@ -122,6 +122,7 @@ export function AgentChatView({
   const [projects, setProjects] = useState<AgentChatProject[]>([])
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [projectsError, setProjectsError] = useState('')
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [workbench, setWorkbench] = useState(() => readStoredWorkbenchState())
   const [toolNavigationByProject, setToolNavigationByProject] = useState<Record<string, ToolNavigationIntent>>({})
   const toolNavigationNonceRef = useRef(0)
@@ -755,6 +756,11 @@ export function AgentChatView({
             : state.secondaryVisible
         )}
         hasTabs={secondaryTabs.length > 0}
+        expanded={expandedProjectId === project.id}
+        onToggleExpanded={!isPhone && !paneControls.isMobile ? () => {
+          setExpandedProjectId(current => current === project.id ? null : project.id)
+          focusGroup(project.id, 'secondary')
+        } : undefined}
         newChatDisabled={project.status !== 'available'}
         terminalCommands={terminalCommands}
         pageIds={agentChatPageIdsForProjectType(project.type)}
@@ -883,6 +889,13 @@ export function AgentChatView({
   const secondaryVisible = Boolean(
     activeProjectState?.secondaryVisible && tabsInGroup(activeProjectState.tabs, 'secondary').length > 0,
   )
+  const secondaryExpanded = secondaryVisible && !isPhone && activeProjectState?.focusedGroup === 'secondary' && expandedProjectId === activeProjectId
+  useEffect(() => {
+    if (expandedProjectId !== activeProjectId || !secondaryVisible || isPhone || activeProjectState?.focusedGroup === 'primary') {
+      setExpandedProjectId(null)
+    }
+  }, [activeProjectId, expandedProjectId, secondaryVisible, isPhone, activeProjectState?.focusedGroup])
+
   const secondaryProjectLayers = projects.map((project) => {
     const state = workbench.projects[project.id] ?? emptyProjectTabState()
     const visible = project.id === activeProjectId && (isPhone || state.secondaryVisible)
@@ -907,6 +920,7 @@ export function AgentChatView({
             available: Boolean(activeProjectState && tabsInGroup(activeProjectState.tabs, 'secondary').length),
             content: <div className="relative h-full min-h-0">{secondaryProjectLayers}</div>,
             visible: secondaryVisible,
+            expanded: secondaryExpanded,
             layoutKey: `nova-agent-chat-secondary-layout:v1:${activeProjectId || 'empty'}`,
             onOpen: () => {
               if (activeProject) showSecondaryPane(activeProject.id)
@@ -914,10 +928,6 @@ export function AgentChatView({
             onClose: () => {
               if (activeProject) hideSecondaryPane(activeProject.id)
             },
-          }}
-          createDisabled={!activeProject || activeProject.status !== 'available'}
-          onCreateDefaultSession={() => {
-            if (activeProject?.status === 'available') openDraftSessionInProject(activeProject)
           }}
         >
           {(controls) => {
@@ -932,7 +942,7 @@ export function AgentChatView({
                     beforeAction={() => flushProjectDrafts(project.id)}
                     onOpenFile={path => openProjectFiles(project, 'secondary', path)}
                   />
-                  <div className="min-h-0 flex-1">{renderProjectGroup(project, state, 'primary', visible, controls)}</div>
+                  <div className="min-h-0 flex-1">{renderProjectGroup(project, state, 'primary', visible && !(secondaryExpanded && !controls.isMobile), controls)}</div>
                 </section>
               )
             })

@@ -1,0 +1,11 @@
+/* Reserve button space only in the desktop header currently beneath the fixed toggle. */
+[data-agent-chat-surface] [data-nova-adaptive-resizable="left"] [data-agent-chat-sidebar-header] {
+  padding-left: 2.5rem;
+}
+
+[data-agent-chat-surface][data-sidebar-visible="false"][data-secondary-expanded="false"]
+  [data-nova-adaptive-resizable="left"] [data-agent-chat-tab-group="primary"],
+[data-agent-chat-surface][data-sidebar-visible="false"][data-secondary-expanded="true"]
+  [data-nova-adaptive-resizable="left"] [data-agent-chat-tab-group="secondary"] {
+  padding-left: 2.5rem;
+}

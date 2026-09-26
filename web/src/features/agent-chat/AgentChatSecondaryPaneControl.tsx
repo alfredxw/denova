@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -13,6 +13,8 @@ import type {
 interface AgentChatSecondaryPaneControlProps {
   visible: boolean
   hasTabs: boolean
+  expanded?: boolean
+  onToggleExpanded?: () => void
   newChatDisabled?: boolean
   terminalCommands: TerminalCommandProfile[]
   pageIds: readonly AgentChatPageId[]
@@ -25,7 +27,7 @@ interface AgentChatSecondaryPaneControlProps {
 }
 
 /**
- * Persistent split affordance for the primary tab strip.
+ * Split controls in the rightmost visible tab strip.
  *
  * An empty pane opens the same creation menu as New Tab. Once the pane owns tabs, the control
  * only changes visibility; closing tabs and stopping their runtimes remain explicit actions.
@@ -33,6 +35,8 @@ interface AgentChatSecondaryPaneControlProps {
 export function AgentChatSecondaryPaneControl({
   visible,
   hasTabs,
+  expanded = false,
+  onToggleExpanded,
   newChatDisabled = false,
   terminalCommands,
   pageIds,
@@ -60,7 +64,25 @@ export function AgentChatSecondaryPaneControl({
     </Button>
   )
 
-  if (hasTabs) return button
+  if (hasTabs) return (
+    <>
+      {visible && onToggleExpanded && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="h-7 w-8 shrink-0 rounded-lg"
+          aria-label={t(expanded ? 'agentChat.tabs.restoreSecondary' : 'agentChat.tabs.expandSecondary')}
+          title={t(expanded ? 'agentChat.tabs.restoreSecondary' : 'agentChat.tabs.expandSecondary')}
+          aria-pressed={expanded}
+          onClick={onToggleExpanded}
+        >
+          {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+        </Button>
+      )}
+      {button}
+    </>
+  )
 
   return (
     <DropdownMenu>

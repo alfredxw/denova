@@ -247,11 +247,13 @@ describe('AgentChatView project workbenches', () => {
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 
-  it('toggles the activity tree into a persistent compact rail', async () => {
+  it('toggles the activity tree from one persistent header button', async () => {
     const user = userEvent.setup()
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
-    await user.click(await screen.findByRole('button', { name: '隐藏项目导航' }))
+    const toggle = await screen.findByRole('button', { name: '隐藏项目导航' })
+    await user.click(toggle)
+    expect(screen.getByRole('button', { name: '显示项目导航' })).toBe(toggle)
     expect(screen.getByRole('button', { name: '显示项目导航' })).toBeInTheDocument()
     expect(window.localStorage.getItem('nova.agentchat.sidebarVisible.v1')).toBe('false')
 
@@ -482,6 +484,17 @@ describe('AgentChatView project workbenches', () => {
 
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
+    const expandButton = await screen.findByRole('button', { name: '扩展右侧工作区' })
+    const primaryConversation = screen.getByTestId('conversation:/books/a:session-a')
+    await user.click(expandButton)
+    expect(primaryConversation).toHaveTextContent('hidden')
+    expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('active')
+    await user.click(screen.getByRole('button', { name: '还原左右分栏' }))
+    expect(screen.getByTestId('conversation:/books/a:session-a')).toBe(primaryConversation)
+    expect(primaryConversation).toHaveTextContent('active')
+    expect(screen.getByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '扩展右侧工作区' }))
+
     const hideButton = await screen.findByRole('button', { name: '隐藏右侧工作区' })
     expect(hideButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'secondary')
     await user.click(hideButton)
@@ -493,6 +506,8 @@ describe('AgentChatView project workbenches', () => {
     expect(showButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'primary')
     await user.click(showButton)
     expect(await screen.findByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '扩展右侧工作区' })).toBeInTheDocument()
+    expect(primaryConversation).toHaveTextContent('active')
     expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('active')
     expect(screen.getByRole('button', { name: '隐藏右侧工作区' }).closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'secondary')
   })

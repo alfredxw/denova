@@ -47,6 +47,8 @@ interface AdaptiveSurfaceProps {
   leftResize?: AdaptiveSurfaceSideResize
   /** Turns the desktop main/right split into an accessible, persisted resize group. */
   rightResize?: AdaptiveSurfaceSideResize
+  /** Temporarily fills the desktop main/right split with the visible right pane. */
+  rightExpanded?: boolean
   /** Collapse side panes into drawers when this surface is narrower than the given pixel width. */
   collapseAt?: number
   /** Whether collapsed panes cover the viewport or stay inside this surface. */
@@ -79,6 +81,7 @@ export function AdaptiveSurface({
   desktopGridClassName,
   leftResize,
   rightResize,
+  rightExpanded = false,
   collapseAt,
   mobilePaneScope = 'viewport',
 }: AdaptiveSurfaceProps) {
@@ -180,6 +183,7 @@ export function AdaptiveSurface({
     const desktopLeftVisible = Boolean(desktopLeft && desktopLeft.desktopVisible !== false)
     const desktopRightVisible = Boolean(desktopRight && desktopRight.desktopVisible !== false)
 
+    const expandRight = desktopRightVisible && rightExpanded
     const rightResizeSurface = rightResize ? (
       <PanelMotionGroup
         id={rightResize.layoutKey}
@@ -187,15 +191,22 @@ export function AdaptiveSurface({
         resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
         defaultLayout={desktopRightVisible ? rightPanelLayout.defaultLayout : undefined}
         onLayoutChanged={(layout) => {
-          if (desktopRightVisible) rightPanelLayout.persistUserLayout(layout)
+          if (desktopRightVisible && !expandRight) rightPanelLayout.persistUserLayout(layout)
         }}
         className="h-full min-h-0 min-w-0"
       >
-        <Panel id="main" minSize={rightResize.mainMinSize ?? '240px'} className="min-w-0">
+        <CollapsibleResizablePanel
+          id="main"
+          visible={!expandRight}
+          side="left"
+          restorationKey={rightResize.layoutKey}
+          minSize={rightResize.mainMinSize ?? '240px'}
+          className="min-w-0"
+        >
           {mainContentSlot}
-        </Panel>
+        </CollapsibleResizablePanel>
         <CollapsiblePanelSeparator
-          visible={desktopRightVisible}
+          visible={desktopRightVisible && !expandRight}
           aria-label={rightResize.label}
           className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
           {...rightPanelLayout.resizeHandleIntentProps}
@@ -212,7 +223,7 @@ export function AdaptiveSurface({
           restorationKey={rightResize.layoutKey}
           defaultSize={rightResize.defaultSize ?? '420px'}
           minSize={rightResize.minSize ?? '300px'}
-          maxSize={rightResize.maxSize ?? '65%'}
+          maxSize={expandRight ? '100%' : rightResize.maxSize ?? '65%'}
           groupResizeBehavior="preserve-pixel-size"
           collapsedSize={retainedDesktopRight?.desktopCollapsedSize}
           collapsedChildren={retainedDesktopRight?.desktopCollapsedContent}

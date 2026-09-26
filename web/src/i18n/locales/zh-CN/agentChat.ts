@@ -92,6 +92,8 @@ const agentChat = {
   'agentChat.tabs.primaryWorkspace': '左侧工作区',
   'agentChat.tabs.secondaryWorkspace': '右侧工作区',
   'agentChat.tabs.showSecondary': '显示右侧工作区',
+  'agentChat.tabs.expandSecondary': '扩展右侧工作区',
+  'agentChat.tabs.restoreSecondary': '还原左右分栏',
   'agentChat.tabs.hideSecondary': '隐藏右侧工作区',
   'agentChat.review.tab': '审阅',
   'agentChat.tabs.collapse': '折叠标签栏',

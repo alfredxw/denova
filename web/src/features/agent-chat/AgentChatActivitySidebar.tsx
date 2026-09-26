@@ -1,9 +1,9 @@
 import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { DndContext, KeyboardSensor, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownUp, Check, Clock3, Loader2, PanelLeft, Plus } from 'lucide-react'
+import { ArrowDownUp, Check, Clock3, Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -19,8 +19,6 @@ export interface AgentChatActivitySidebarProps {
   loading: boolean
   error: string
   activeProjectId: string
-  /** Rendered in the header when the tree can be collapsed to a rail. */
-  onCollapse?: () => void
   onSelectProject: (project: AgentChatProject) => void
   onOpenActivity: (project: AgentChatProject, activity: AgentChatSidebarActivity) => void
   onOpenSession: (project: AgentChatProject, session: AgentChatSession) => void
@@ -41,7 +39,6 @@ export function AgentChatActivitySidebar({
   loading,
   error,
   activeProjectId,
-  onCollapse,
   onSelectProject,
   onOpenActivity,
   onOpenSession,
@@ -111,7 +108,7 @@ export function AgentChatActivitySidebar({
 
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
-      <div className="flex h-9 shrink-0 items-center gap-1 pl-2.5 pr-1">
+      <div data-agent-chat-sidebar-header className="flex h-9 shrink-0 items-center gap-1 pl-2.5 pr-1">
         <span className="min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-wide text-[var(--nova-text-faint)]">
           {t('agentChat.sidebar.projects')}
         </span>
@@ -137,18 +134,7 @@ export function AgentChatActivitySidebar({
           <Clock3 />
         </Button>
         <SidebarSortMenu sortMode={preferences.sortMode} onSortModeChange={preferences.setSortMode} />
-        {onCollapse ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="shrink-0"
-            onClick={onCollapse}
-            aria-label={t('agentChat.sidebar.hide')}
-          >
-            <PanelLeft />
-          </Button>
-        ) : null}
+
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -230,133 +216,6 @@ function SidebarSortMenu({ sortMode, onSortModeChange }: { sortMode: AgentChatSi
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-}
-
-/** Grace period before a peek closes, so crossing the rail's edge diagonally does not dismiss it. */
-const PEEK_CLOSE_DELAY_MS = 160
-/** Avoid mounting the full project tree when the pointer is only crossing toward a rail action. */
-const PEEK_OPEN_DELAY_MS = 120
-
-interface AgentChatSidebarRailProps extends Omit<AgentChatActivitySidebarProps, 'onCollapse'> {
-  onExpand: () => void
-  /** Starts a conversation in the current project without expanding the tree first. */
-  onCreateDefaultSession: () => void
-  createDisabled: boolean
-}
-
-/** Compact launcher plus a temporary full activity-tree peek. */
-export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createDisabled, ...tree }: AgentChatSidebarRailProps) {
-  const { t } = useTranslation()
-  const [peeking, setPeeking] = useState(false)
-  const openTimerRef = useRef<number | null>(null)
-  const closeTimerRef = useRef<number | null>(null)
-
-  const cancelOpen = () => {
-    if (openTimerRef.current === null) return
-    window.clearTimeout(openTimerRef.current)
-    openTimerRef.current = null
-  }
-  const cancelClose = () => {
-    if (closeTimerRef.current === null) return
-    window.clearTimeout(closeTimerRef.current)
-    closeTimerRef.current = null
-  }
-  const schedulePeek = () => {
-    cancelClose()
-    if (peeking || openTimerRef.current !== null) return
-    openTimerRef.current = window.setTimeout(() => {
-      openTimerRef.current = null
-      setPeeking(true)
-    }, PEEK_OPEN_DELAY_MS)
-  }
-  const closePeek = () => {
-    cancelOpen()
-    cancelClose()
-    closeTimerRef.current = window.setTimeout(() => {
-      closeTimerRef.current = null
-      setPeeking(false)
-    }, PEEK_CLOSE_DELAY_MS)
-  }
-  const expandSidebar = () => {
-    cancelOpen()
-    cancelClose()
-    setPeeking(false)
-    onExpand()
-  }
-
-  useEffect(() => () => {
-    cancelOpen()
-    cancelClose()
-  }, [])
-
-  return (
-    <div
-      className="relative z-40 flex h-full w-10 shrink-0 flex-col items-center gap-1 border-r border-[var(--nova-border)] bg-[var(--nova-surface)] py-1"
-      onMouseEnter={schedulePeek}
-      onMouseLeave={closePeek}
-      onFocusCapture={schedulePeek}
-      onBlurCapture={closePeek}
-    >
-      <Button type="button" variant="ghost" size="icon-xs" onClick={expandSidebar} aria-label={t('agentChat.sidebar.show')}>
-        <PanelLeft className="rotate-180" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        disabled={createDisabled}
-        onClick={onCreateDefaultSession}
-        aria-label={t('agentChat.sidebar.newChat')}
-      >
-        <Plus />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        onClick={() => tree.onOpenHistory()}
-        aria-label={t('agentChat.history.open')}
-      >
-        <Clock3 />
-      </Button>
-
-      {peeking ? (
-        <div
-          className="absolute left-full top-0 h-full w-[clamp(200px,18vw,280px)] shadow-[8px_0_24px_-18px_rgba(0,0,0,0.8)]"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setPeeking(false)
-          }}
-        >
-          <AgentChatActivitySidebar
-            {...tree}
-            onSelectProject={(project) => {
-              setPeeking(false)
-              tree.onSelectProject(project)
-            }}
-            onOpenActivity={(project, activity) => {
-              setPeeking(false)
-              tree.onOpenActivity(project, activity)
-                      closeMobilePanes()
-            }}
-            onOpenSession={(project, session) => {
-              setPeeking(false)
-              tree.onOpenSession(project, session)
-                      closeMobilePanes()
-            }}
-            onCreateSession={(project, customAgentId) => {
-              setPeeking(false)
-              tree.onCreateSession(project, customAgentId)
-                      closeMobilePanes()
-            }}
-            onOpenHistory={(project) => {
-              setPeeking(false)
-              tree.onOpenHistory(project)
-            }}
-          />
-        </div>
-      ) : null}
-    </div>
   )
 }
 

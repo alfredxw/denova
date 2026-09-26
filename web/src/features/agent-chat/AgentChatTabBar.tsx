@@ -167,7 +167,7 @@ export function AgentChatTabBar({
 
   return (
     <>
-      <div ref={setStripDropRef} className="h-full">
+      <div ref={setStripDropRef} className="h-full" data-agent-chat-tab-group={group}>
         <SortableContext
           id={stripDropId}
           items={tabs.map((tab) => agentChatTabSortableId(projectId, tab.id))}

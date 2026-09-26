@@ -92,6 +92,8 @@ const agentChat = {
   'agentChat.tabs.primaryWorkspace': 'Primary workspace',
   'agentChat.tabs.secondaryWorkspace': 'Secondary workspace',
   'agentChat.tabs.showSecondary': 'Show secondary workspace',
+  'agentChat.tabs.expandSecondary': 'Expand secondary workspace',
+  'agentChat.tabs.restoreSecondary': 'Restore split workspace',
   'agentChat.tabs.hideSecondary': 'Hide secondary workspace',
   'agentChat.review.tab': 'Review',
   'agentChat.tabs.collapse': 'Collapse tab bar',
