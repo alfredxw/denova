@@ -42,7 +42,7 @@ export function LoreContentEditor({
   return (
     <div className={cn('flex min-h-0 min-w-0 flex-1 bg-[var(--nova-bg)] p-2 sm:p-3', className)}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-bg)]">
-        <div className="flex h-9 shrink-0 items-center border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3">
+        <div className="flex min-h-9 shrink-0 items-center border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1">
           <div
             role="group"
             aria-label={t('settingPanel.field.content')}

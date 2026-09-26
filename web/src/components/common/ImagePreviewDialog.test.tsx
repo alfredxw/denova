@@ -31,11 +31,31 @@ describe('ImagePreviewDialog interactions', () => {
 
     expect(screen.getByText('100%')).toBeInTheDocument()
     fireEvent.wheel(viewport, { deltaY: -100, clientX: 500, clientY: 400 })
-    expect(screen.getByText('120%')).toBeInTheDocument()
+    expect(screen.getByText('149%')).toBeInTheDocument()
 
     fireEvent.wheel(viewport, { deltaY: 100, clientX: 500, clientY: 400 })
     fireEvent.wheel(viewport, { deltaY: -100, clientX: 500, clientY: 400, ctrlKey: true })
-    expect(screen.getByText('120%')).toBeInTheDocument()
+    expect(screen.getByText('149%')).toBeInTheDocument()
+  })
+
+  it('keeps equal wheel gestures proportional and reversible at different scales', () => {
+    const viewport = renderOpenViewer()
+    const content = viewport.querySelector('.react-transform-component') as HTMLElement
+    const scale = () => Number(content.style.transform.match(/scale\(([^)]+)\)/)?.[1])
+    const wheel = (deltaY: number) => fireEvent.wheel(viewport, { deltaY, clientX: 500, clientY: 400 })
+
+    wheel(-100)
+    const firstScale = scale()
+    wheel(-100)
+    expect(scale() / firstScale).toBeCloseTo(firstScale, 5)
+    wheel(100)
+    expect(scale()).toBeCloseTo(firstScale, 5)
+    wheel(100)
+    expect(scale()).toBeCloseTo(1, 5)
+    wheel(10_000)
+    expect(scale()).toBe(0.25)
+    wheel(-10_000)
+    expect(scale()).toBe(5)
   })
 
   it('toggles between fit and 2x zoom on double click', async () => {

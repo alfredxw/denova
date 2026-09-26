@@ -18,7 +18,7 @@ const lore = {
   "lore.materials.tab": "Materials ({{count}})",
   "lore.materials.add": "Add material",
   "lore.materials.upload": "Upload files",
-  "lore.materials.chooseExisting": "Choose from project",
+  "lore.materials.chooseExisting": "Reuse assets",
   "lore.materials.generate": "Generate image",
   'lore.materials.generateSpeech': 'Generate speech',
   'lore.materials.speechHint': 'Use your configured speech model and voice to generate an MP3 from dialogue or narration and attach it to this lore item.',

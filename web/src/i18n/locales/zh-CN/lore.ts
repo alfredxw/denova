@@ -18,7 +18,7 @@ const lore = {
   "lore.materials.tab": "素材 ({{count}})",
   "lore.materials.add": "添加素材",
   "lore.materials.upload": "上传文件",
-  "lore.materials.chooseExisting": "从作品素材选择",
+  "lore.materials.chooseExisting": "复用素材",
   "lore.materials.generate": "生成图片",
   'lore.materials.generateSpeech': '生成语音',
   'lore.materials.speechHint': '使用已配置的语音模型与声线，将台词或旁白生成 MP3 并添加到当前资料。',

@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
+import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { type LoreItem, type LoreMaterial } from '@/lib/api'
+import { projectFileAssetURL, type LoreItem, type LoreMaterial } from '@/lib/api'
 import { presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
 import { PresetEmptyState as EmptyState } from '../preset-config/PresetEmptyState'
 import { PresetField as Field } from '../preset-config/PresetField'
@@ -53,6 +54,7 @@ export function LoreEditor({
   }
 
   const residentWarning = draft.enabled !== false && draft.load_mode === 'resident' && residentTotalBytes > LORE_RESIDENT_TOTAL_WARNING_BYTES
+  const imageSrc = draft.image?.image_path ? projectFileAssetURL(projectId, draft.image.image_path) : ''
   const protagonistTagActive = draft.type === 'character' && hasLoreProtagonistTag(splitLoreTags(tagDraft))
   const toggleProtagonistTag = () => {
     const tags = toggleLoreProtagonistTag(splitLoreTags(tagDraft))
@@ -69,17 +71,39 @@ export function LoreEditor({
         role="region"
         aria-label={t('settingPanel.lore.editorScrollArea')}
       >
-        <div className="flex min-h-full min-w-0 flex-col">
-          <div className="shrink-0 border-b px-3 py-2.5 sm:px-4">
-            <div className="grid min-w-0 gap-1.5" role="group" aria-label={t('settingPanel.lore.metadata')}>
+        <div className="@container/lore-detail flex min-h-full min-w-0 flex-col">
+          <div className={cn(
+            'grid shrink-0 items-stretch gap-3 border-b px-3 py-2.5 sm:px-4',
+            imageSrc && '@3xl/lore-detail:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]',
+          )}>
+            {imageSrc && (
+              <ImagePreviewDialog
+                src={imageSrc}
+                title={draft.name || t('settingPanel.loreImage.current')}
+                alt={draft.image?.alt_text || draft.name}
+              >
+                <button
+                  type="button"
+                  aria-label={t('settingPanel.loreImage.openPreview')}
+                  className="relative h-56 min-h-48 min-w-0 overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @3xl/lore-detail:h-full"
+                >
+                  <img
+                    src={imageSrc}
+                    alt={draft.image?.alt_text || draft.name}
+                    className="absolute inset-0 h-full w-full object-contain"
+                  />
+                </button>
+              </ImagePreviewDialog>
+            )}
+            <div className="@container/lore-fields grid min-w-0 gap-1.5" role="group" aria-label={t('settingPanel.lore.metadata')}>
               <div
                 data-slot="lore-primary-fields"
                 className={cn(
-                  'grid min-w-0 grid-cols-2 gap-2 md:grid-cols-3',
-                  'xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]',
+                  'grid min-w-0 grid-cols-2 gap-2 @lg/lore-fields:grid-cols-3',
+                  '@3xl/lore-fields:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]',
                 )}
               >
-                <Field label={t('settingPanel.field.name')} className={cn('col-span-2', 'xl:col-span-1')}>
+                <Field label={t('settingPanel.field.name')} className="col-span-2 @3xl/lore-fields:col-span-1">
                   <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
                 </Field>
                 <BooleanSwitchField label={t('settingPanel.field.enabled')} checked={draft.enabled ?? true} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} />
@@ -126,7 +150,7 @@ export function LoreEditor({
                   </Select>
                 </Field>
               </div>
-              <div data-slot="lore-secondary-fields" className="grid min-w-0 items-start gap-2 md:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
+              <div data-slot="lore-secondary-fields" className="grid min-w-0 items-start gap-2 @lg/lore-fields:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
                 <Field label={t('settingPanel.field.tags')} htmlFor={tagInputId}>
                   <div className="flex min-w-0 items-center gap-1.5">
                     <Input id={tagInputId} className={cn(inputClassName, 'min-w-0 flex-1')} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />

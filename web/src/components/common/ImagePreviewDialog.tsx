@@ -1,4 +1,4 @@
-import { useRef, useState, type HTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useRef, useState, type HTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react'
 import { RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
@@ -10,7 +10,7 @@ const MAX_ZOOM = 5
 const ZOOM_STEP = 0.25
 const CONTROL_ZOOM_STEP = Math.log(1 + ZOOM_STEP)
 const DOUBLE_CLICK_ZOOM_STEP = Math.log(2)
-const WHEEL_ZOOM_STEP = 0.002
+const WHEEL_ZOOM_STEP = 0.004
 const KEYBOARD_PAN_STEP = 80
 const CONTROL_ZOOM_ANIMATION_MS = 0
 
@@ -32,12 +32,33 @@ export function ImagePreviewDialog({ src, title, alt, children }: ImagePreviewDi
   const viewportProps: HTMLAttributes<HTMLDivElement> & { 'data-testid': string } = {
     'aria-label': description,
     'data-testid': 'image-preview-viewport',
+    onWheel: handleWheelZoom,
     role: 'region',
     tabIndex: 0,
   }
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
     if (nextOpen) setZoom(1)
+  }
+  function handleWheelZoom(event: ReactWheelEvent<HTMLDivElement>) {
+    const transform = transformRef.current
+    const content = transform?.instance.contentComponent
+    if (!transform || !content) return
+
+    event.stopPropagation()
+    const { scale, positionX, positionY } = transform.state
+    // The library's wheel step is additive; use an exponential factor so equal
+    // gestures have the same relative effect and opposite gestures undo each other.
+    const nextScale = clamp(scale * Math.exp(-event.deltaY * WHEEL_ZOOM_STEP), MIN_ZOOM, MAX_ZOOM)
+    const rect = content.getBoundingClientRect()
+    const pointerX = (event.clientX - rect.left) / scale
+    const pointerY = (event.clientY - rect.top) / scale
+    transform.setTransform(
+      positionX - pointerX * (nextScale - scale),
+      positionY - pointerY * (nextScale - scale),
+      nextScale,
+      CONTROL_ZOOM_ANIMATION_MS,
+    )
   }
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return
@@ -103,8 +124,7 @@ export function ImagePreviewDialog({ src, title, alt, children }: ImagePreviewDi
           maxScale={MAX_ZOOM}
           centerOnInit
           centerZoomedOut
-          smooth
-          wheel={{ step: WHEEL_ZOOM_STEP }}
+          wheel={{ disabled: true }}
           panning={{ allowLeftClickPan: true, allowMiddleClickPan: false, allowRightClickPan: false, velocityDisabled: false }}
           pinch={{ allowPanning: true }}
           doubleClick={{ mode: 'toggle', step: DOUBLE_CLICK_ZOOM_STEP, animationTime: CONTROL_ZOOM_ANIMATION_MS }}
