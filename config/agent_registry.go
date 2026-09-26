@@ -243,7 +243,7 @@ var agentToolCapabilities = []AgentToolCapability{
 		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationGeneric,
 	), agent.ToolSourceWrite))),
 	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinition(AgentToolEventRead, "agents.tool.eventRead.title", "agents.tool.eventRead.subtitle", []string{"read"}, descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead))),
-	capabilityDefinition(AgentToolLoreRead, "agents.tool.loreRead.title", "agents.tool.loreRead.subtitle", []string{"list_lore_items", "read_lore_items"}, descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSource("denova.lore"))),
+	capabilityDefinition(AgentToolLoreRead, "agents.tool.loreRead.title", "agents.tool.loreRead.subtitle", []string{"list_lore_items", "read_lore_items", "list_lore_materials"}, descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSource("denova.lore"))),
 	capabilityDefinition(AgentToolLoreWrite, "agents.tool.loreWrite.title", "agents.tool.loreWrite.subtitle", []string{"write_lore_items"}, descriptorWithSource(workspaceWriteDescriptor(agent.ToolRecoveryReconcilable, agent.ToolPresentationFile), agent.ToolSource("denova.lore"))),
 	capabilityDefinition(AgentToolImageGeneration, "agents.tool.imageGeneration.title", "agents.tool.imageGeneration.subtitle", []string{"generate_image"}, descriptorWithSource(workspaceWriteDescriptor(agent.ToolRecoveryNonIdempotent, agent.ToolPresentationImage), agent.ToolSourceImage)),
 }

@@ -1,5 +1,6 @@
 import i18n from '@/i18n'
 import { APIError, jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import { errorMessage } from '@/lib/error-diagnostics'
 
 export type PackageKind = 'plugin' | 'game'
 export type LocalizedText = { 'zh-CN': string; 'en-US': string }
@@ -177,9 +178,16 @@ export function platformError(error: unknown): string {
     error instanceof APIError && typeof error.payload.messageKey === 'string'
       ? error.payload.messageKey
       : 'platform.errors.RUNTIME_FAILED'
-  return i18n.exists(key)
+  const summary = i18n.exists(key)
     ? i18n.t(key)
     : i18n.t('platform.errors.RUNTIME_FAILED')
+  if (error instanceof APIError) {
+    return errorMessage({
+      summary, code: error.code, status: error.status, requestID: error.requestID,
+      details: { ...error.details, detail: error.details?.detail || error.payload.diagnostic },
+    })
+  }
+  return errorMessage({ summary, details: { detail: error instanceof Error ? error.message : undefined } })
 }
 export function localized(text: LocalizedText | undefined, language: string) {
   return text?.[language.startsWith('zh') ? 'zh-CN' : 'en-US'] ?? ''

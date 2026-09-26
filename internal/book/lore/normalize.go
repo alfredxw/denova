@@ -66,13 +66,6 @@ func normalizeLoreProvenance(value *Provenance) *Provenance {
 	return normalized
 }
 
-func firstLoreImage(value, fallback *Image) *Image {
-	if value != nil {
-		return value
-	}
-	return fallback
-}
-
 func normalizeLoreItemImage(image *Image) *Image {
 	if image == nil {
 		return nil

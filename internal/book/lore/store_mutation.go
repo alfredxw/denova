@@ -49,7 +49,7 @@ func (s *Store) Get(id string) (Item, error) {
 	}
 	for _, item := range collection.Items {
 		if item.ID == id {
-			return item, nil
+			return resolveItem(item, collection.Assets), nil
 		}
 	}
 	return Item{}, fmt.Errorf("资料不存在: %s: %w", id, os.ErrNotExist)
@@ -81,7 +81,7 @@ func (s *Store) list(includeDisabled bool) ([]Item, error) {
 		if !includeDisabled && !item.Enabled {
 			continue
 		}
-		items = append(items, item)
+		items = append(items, resolveItem(item, collection.Assets))
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].Enabled != items[j].Enabled {
@@ -143,7 +143,7 @@ func (s *Store) Create(input ItemInput) (Item, error) {
 	if err := s.save(collection); err != nil {
 		return Item{}, err
 	}
-	return item, nil
+	return resolveItem(item, collection.Assets), nil
 }
 
 func (s *Store) Update(id string, input ItemInput) (Item, error) {
@@ -184,7 +184,8 @@ func (s *Store) Update(id string, input ItemInput) (Item, error) {
 			Content:          input.Content,
 			CreatedAt:        collection.Items[i].CreatedAt,
 			UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
-			Image:            firstLoreImage(input.Image, collection.Items[i].Image),
+			Image:            previous.Image,
+			Materials:        previous.Materials,
 			Provenance:       collection.Items[i].Provenance,
 		})
 		if updated.Name == "" {
@@ -200,7 +201,7 @@ func (s *Store) Update(id string, input ItemInput) (Item, error) {
 		if err := s.save(collection); err != nil {
 			return Item{}, err
 		}
-		return updated, nil
+		return resolveItem(updated, collection.Assets), nil
 	}
 	return Item{}, fmt.Errorf("资料不存在: %s", id)
 }
@@ -284,7 +285,7 @@ func (s *Store) ApplyOperations(message string, ops []Operation) (ApplyResult, e
 				return ApplyResult{}, fmt.Errorf("资料 ID 已存在: %s", item.ID)
 			}
 			next = append(next, item)
-			result.Created = append(result.Created, item)
+			result.Created = append(result.Created, resolveItem(item, collection.Assets))
 		case "update":
 			id := normalizeLoreID(firstNonEmptyLoreValue(op.ID, op.Item.ID))
 			if id == "" {
@@ -313,7 +314,8 @@ func (s *Store) ApplyOperations(message string, ops []Operation) (ApplyResult, e
 				Content:          firstNonEmptyLoreValue(op.Item.Content, next[idx].Content),
 				CreatedAt:        next[idx].CreatedAt,
 				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
-				Image:            firstLoreImage(op.Item.Image, next[idx].Image),
+				Image:            next[idx].Image,
+				Materials:        next[idx].Materials,
 				Provenance:       next[idx].Provenance,
 			})
 			if op.Item.Tags == nil {
@@ -332,7 +334,7 @@ func (s *Store) ApplyOperations(message string, ops []Operation) (ApplyResult, e
 				return ApplyResult{}, fmt.Errorf("资料名称已存在: %s", updated.Name)
 			}
 			next[idx] = updated
-			result.Updated = append(result.Updated, updated)
+			result.Updated = append(result.Updated, resolveItem(updated, collection.Assets))
 		case "delete":
 			id := normalizeLoreID(firstNonEmptyLoreValue(op.ID, op.Item.ID))
 			if id == "" {

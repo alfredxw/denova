@@ -11,7 +11,6 @@ import (
 	imageapp "denova/internal/app/image"
 	loreapp "denova/internal/app/lore"
 	"denova/internal/book/lore"
-	imageasset "denova/internal/image/asset"
 )
 
 func (h *Handlers) HandleLoreClassificationPreview(ctx context.Context, c *app.RequestContext) {
@@ -86,43 +85,43 @@ func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, item)
 }
 
-func (h *Handlers) HandleLoreItemImageUpload(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleLoreItemMaterialUpload(ctx context.Context, c *app.RequestContext) {
 	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageUploadRequired")
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.materialUploadRequired")
 		return
 	}
-	if fileHeader.Size > imageasset.MaxLoreImageUploadBytes {
-		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+	if fileHeader.Size > lore.MaxMaterialUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.materialTooLarge")
 		return
 	}
 	file, err := fileHeader.Open()
 	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageReadFailed", "detail", err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.materialReadFailed", "detail", err.Error())
 		return
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, imageasset.MaxLoreImageUploadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, lore.MaxMaterialUploadBytes+1))
 	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageReadFailed", "detail", err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.materialReadFailed", "detail", err.Error())
 		return
 	}
-	if len(data) > imageasset.MaxLoreImageUploadBytes {
-		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+	if len(data) > lore.MaxMaterialUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.materialTooLarge")
 		return
 	}
-	item, err := h.app.Lore().UploadItemImage(ctx, scope.ProjectID, c.Param("id"), fileHeader.Filename, data)
+	item, err := h.app.Lore().UploadItemMaterial(ctx, scope.ProjectID, c.Param("id"), fileHeader.Filename, data)
 	if err != nil {
 		switch {
-		case errors.Is(err, imageasset.ErrLoreImageUploadEmpty), errors.Is(err, imageasset.ErrLoreImageUploadInvalid):
-			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageInvalid")
+		case errors.Is(err, lore.ErrMaterialInvalid):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.materialInvalid")
 			return
-		case errors.Is(err, imageasset.ErrLoreImageUploadTooLarge):
-			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+		case errors.Is(err, lore.ErrMaterialTooLarge):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.materialTooLarge")
 			return
 		}
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
@@ -131,12 +130,29 @@ func (h *Handlers) HandleLoreItemImageUpload(ctx context.Context, c *app.Request
 	writeJSON(c, consts.StatusOK, item)
 }
 
-func (h *Handlers) HandleLoreItemImageDelete(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleLoreMaterialAssets(ctx context.Context, c *app.RequestContext) {
 	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
-	item, err := h.app.Lore().ClearItemImage(ctx, scope.ProjectID, c.Param("id"))
+	assets, err := h.app.Lore().MaterialAssets(ctx, scope.ProjectID)
+	if err != nil {
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
+		return
+	}
+	writeJSON(c, consts.StatusOK, assets)
+}
+func (h *Handlers) HandleLoreMaterialMutation(ctx context.Context, c *app.RequestContext) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
+		return
+	}
+	var body lore.MaterialMutation
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
+		return
+	}
+	item, err := h.app.Lore().MutateMaterial(ctx, scope.ProjectID, c.Param("id"), body)
 	if err != nil {
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return

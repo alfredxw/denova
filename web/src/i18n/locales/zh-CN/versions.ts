@@ -79,6 +79,7 @@ const versions = {
   'versions.tryAnotherSearch': '可尝试搜索版本说明、来源或版本 ID。',
   'versions.unknownDate': '未知日期',
   'versions.title': '版本管理',
+  'versions.retainedMedia': '将保留 {{count}} 个较新的素材文件，保护历史记录的引用。这些文件仍会显示为目标版本之外的变更。',
 } as const
 
 export default versions

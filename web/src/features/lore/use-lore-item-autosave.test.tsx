@@ -62,7 +62,7 @@ describe('useLoreItemAutosave', () => {
     })
   vi.mocked(getProjectLoreItems).mockResolvedValue([latest])
   vi.mocked(updateProjectLoreItem)
-      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
+      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409, code: 'api.resource.revisionConflict' }))
       .mockResolvedValueOnce(saved)
     const onSaved = vi.fn()
     render(

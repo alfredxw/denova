@@ -155,7 +155,7 @@ func TestReadImageFailuresDoNotPublishSnapshots(t *testing.T) {
 	}
 }
 
-func imageReadDefinition(t *testing.T, workspaceRoot, stateRoot string) (agent.ToolDefinition, context.Context) {
+func imageReadDefinition(t *testing.T, workspaceRoot, stateRoot string, maxBytes ...int) (agent.ToolDefinition, context.Context) {
 	t.Helper()
 	workspace, err := agenttools.OpenWorkspaceWithOptions(agenttools.WorkspaceOptions{Root: workspaceRoot})
 	if err != nil {
@@ -165,7 +165,11 @@ func imageReadDefinition(t *testing.T, workspaceRoot, stateRoot string) (agent.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition, err := agenttools.Read([]agenttools.ReadAdapter{adapter}, agenttools.WithMaxResultBytes(256))
+	limit := 256
+	if len(maxBytes) > 0 {
+		limit = maxBytes[0]
+	}
+	definition, err := agenttools.Read([]agenttools.ReadAdapter{adapter}, agenttools.WithMaxResultBytes(limit))
 	if err != nil {
 		t.Fatal(err)
 	}

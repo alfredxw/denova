@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"denova/internal/agents/skills"
+	"denova/internal/book/lore"
 	"denova/internal/platform"
 	"denova/internal/revisionfile"
 	"github.com/google/uuid"
@@ -102,6 +103,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 		plan.ExpiresAt = preview.ExpiresAt
 	}
 	staged := map[FileTarget][]byte{}
+	importedAssets := map[FileTarget]lore.Asset{}
 	expected := map[FileTarget]string{}
 	targets := map[string][]FileTarget{}
 	refs := map[string]string{}
@@ -290,7 +292,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 			var target FileTarget
 			if binding.Local.Scope == "project" {
 				var extra []FileTarget
-				target, err = s.stageProject(ctx, dir, &extra, resource, binding.Local, raw, staged, expected)
+				target, err = s.stageProject(ctx, dir, &extra, resource, binding.Local, raw, staged, expected, importedAssets)
 				targets[resource.ID] = append(targets[resource.ID], extra...)
 			} else {
 				var content []byte

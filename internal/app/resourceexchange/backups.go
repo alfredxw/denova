@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/book/lore"
 	"denova/internal/revisionfile"
 	"github.com/google/uuid"
 )
@@ -114,6 +115,9 @@ func (s *Service) PlanRestore(ctx context.Context, id string) (Plan, error) {
 		plan.Items = append(plan.Items, item)
 	}
 	for _, change := range txn.Changes {
+		if change.Target.ProjectID != "" && !change.Existed && lore.IsManagedMaterialPath(change.Target.Path) {
+			continue
+		}
 		expected := revisionfile.Revision(change.After)
 		if change.Delete {
 			expected = revisionfile.MissingRevision

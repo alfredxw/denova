@@ -19,7 +19,7 @@ interface SaveWithRevisionRecoveryOptions<Value, Saved> {
 /** Revision mismatches are internal concurrency signals that callers may reload and rebase. */
 export function isRevisionConflict(error: unknown): error is APIError {
   if (!(error instanceof APIError)) return false
-  if (error.code) return error.code === 'revision_conflict'
+  if (error.code) return error.code === 'revision_conflict' || error.code === 'api.resource.revisionConflict'
   return error.status === 409 || error.status === 412
 }
 

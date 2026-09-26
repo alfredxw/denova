@@ -55,11 +55,15 @@ func (s *Store) save(collection Collection) error {
 	collection.Version = loreItemsVersion
 	normalized := make([]Item, 0, len(collection.Items))
 	for _, item := range collection.Items {
+		item.ResolvedMaterials = nil
 		normalized = append(normalized, normalizeLoreItem(item))
 	}
 	collection.Items = normalized
 	if err := validateLoreItemIdentities(collection.Items); err != nil {
 		return fmt.Errorf("拒绝保存无效 Lore collection: %w", err)
+	}
+	if err := validateMaterials(collection); err != nil {
+		return err
 	}
 	path := s.itemsPath()
 	data, err := json.MarshalIndent(collection, "", "  ")

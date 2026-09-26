@@ -50,16 +50,6 @@ func (service *Service) DeleteItem(ctx context.Context, projectID, id string) er
 	return err
 }
 
-func (service *Service) ClearItemImage(ctx context.Context, projectID, id string) (booklore.Item, error) {
-	var item booklore.Item
-	_, err := service.withStore(ctx, projectID, func(store *booklore.Store) error {
-		var updateErr error
-		item, updateErr = store.SetImage(id, nil)
-		return updateErr
-	})
-	return item, err
-}
-
 func (service *Service) GenerateItemImage(ctx context.Context, projectID, id string, request ItemImageGenerateRequest) (booklore.Item, error) {
 	if strings.TrimSpace(request.Mode) == "agent" {
 		return service.generateItemImageWithAgent(ctx, projectID, id, request)
@@ -105,10 +95,12 @@ func (service *Service) GenerateItemImage(ctx context.Context, projectID, id str
 		return booklore.Item{}, err
 	}
 	if err := runtime.Context().Err(); err != nil {
+		imageasset.DiscardUnlinkedLore(ctx, store, runtime.BookService, generated)
 		return booklore.Item{}, err
 	}
-	updated, err := store.SetImage(item.ID, &generated)
+	updated, err := store.AppendImage(item.ID, &generated)
 	if err != nil {
+		imageasset.DiscardUnlinkedLore(ctx, store, runtime.BookService, generated)
 		return booklore.Item{}, err
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[lore-image] generated item_id=%s path=%s", updated.ID, generated.ImagePath))
@@ -127,9 +119,9 @@ func (service *Service) generateItemImageWithAgent(ctx context.Context, projectI
 	}); err != nil {
 		return booklore.Item{}, err
 	}
-	previousImagePath := ""
-	if item.Image != nil {
-		previousImagePath = item.Image.ImagePath
+	previousPaths := map[string]bool{}
+	for _, material := range item.ResolvedMaterials {
+		previousPaths[material.Path] = true
 	}
 	source, err := json.Marshal(struct {
 		ItemID            string   `json:"item_id"`
@@ -163,7 +155,13 @@ func (service *Service) generateItemImageWithAgent(ctx context.Context, projectI
 	}); err != nil {
 		return booklore.Item{}, err
 	}
-	if item.Image == nil || strings.TrimSpace(item.Image.ImagePath) == "" || item.Image.ImagePath == previousImagePath {
+	hasNewImage := false
+	for _, material := range item.ResolvedMaterials {
+		if strings.HasPrefix(material.MIMEType, "image/") && !previousPaths[material.Path] {
+			hasNewImage = true
+		}
+	}
+	if !hasNewImage {
 		err := result.MissingImageError()
 		slog.WarnContext(ctx, "[lore-image] Image Agent completed without a new lore image",
 			"project_id", projectID, "item_id", item.ID, "command_id", request.CommandID, "error", err)
@@ -172,38 +170,35 @@ func (service *Service) generateItemImageWithAgent(ctx context.Context, projectI
 	return item, nil
 }
 
-func (service *Service) UploadItemImage(ctx context.Context, projectID, id, filename string, data []byte) (booklore.Item, error) {
-	if service == nil || service.images == nil {
-		return booklore.Item{}, ErrNoWorkspace
-	}
-	runtime, err := service.images.AcquireProjectRuntime(ctx, projectID)
-	if err != nil {
-		return booklore.Item{}, err
-	}
-	defer runtime.Release()
-
-	store := booklore.NewStore(runtime.Workspace)
-	item, err := store.ReadAny(id)
-	if err != nil {
-		return booklore.Item{}, err
-	}
-	uploaded, err := imageasset.NewService().UploadLore(runtime.Context(), runtime.BookService, imageasset.LoreUploadRequest{
-		Item:     item,
-		Filename: filename,
-		Data:     data,
+func (service *Service) UploadItemMaterial(ctx context.Context, projectID, id, filename string, data []byte) (booklore.Item, error) {
+	var item booklore.Item
+	_, err := service.withStore(ctx, projectID, func(store *booklore.Store) error {
+		var err error
+		item, err = store.UploadMaterial(ctx, id, filename, data)
+		return err
+	})
+	return item, err
+}
+func (service *Service) MaterialAssets(ctx context.Context, projectID string) ([]booklore.Asset, error) {
+	var assets []booklore.Asset
+	_, err := service.withStore(ctx, projectID, func(store *booklore.Store) error {
+		var err error
+		assets, err = store.Assets()
+		return err
+	})
+	return assets, err
+}
+func (service *Service) MutateMaterial(ctx context.Context, projectID, id string, mutation booklore.MaterialMutation) (booklore.Item, error) {
+	var item booklore.Item
+	_, err := service.withStore(ctx, projectID, func(store *booklore.Store) error {
+		var err error
+		item, err = store.MutateMaterial(id, mutation)
+		return err
 	})
 	if err != nil {
-		return booklore.Item{}, err
+		slog.WarnContext(ctx, "[lore-material] mutation failed", "project_id", projectID, "item_id", id, "operation", mutation.Op, "error", err)
 	}
-	if err := runtime.Context().Err(); err != nil {
-		return booklore.Item{}, err
-	}
-	updated, err := store.SetImage(item.ID, &uploaded)
-	if err != nil {
-		return booklore.Item{}, err
-	}
-	slog.InfoContext(ctx, fmt.Sprintf("[lore-image] uploaded item_id=%s filename=%q path=%s", updated.ID, filename, uploaded.ImagePath))
-	return updated, nil
+	return item, err
 }
 
 func (service *Service) withStore(ctx context.Context, projectID string, action func(*booklore.Store) error) (string, error) {

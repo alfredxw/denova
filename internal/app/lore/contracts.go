@@ -1,4 +1,4 @@
-// Package lore owns Project-scoped lore classification and image generation.
+// Package lore owns Project-scoped lore classification and material generation.
 // Stable Project resolution and generation fencing remain host responsibilities
 // so this package never depends on foreground navigation state or the root App.
 package loreapp

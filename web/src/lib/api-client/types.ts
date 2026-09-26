@@ -740,6 +740,7 @@ export interface VersionRestorePlan {
   current_dirty: boolean
   backup_message?: string
   warnings?: string[]
+  retained_media?: string[]
 }
 
 export interface VersionRestoreResult {
@@ -795,12 +796,39 @@ export interface LoreItem {
   created_at: string
   updated_at: string
   image?: LoreItemImage
+  materials?: { entries: Array<{ asset_id: string; name?: string; description?: string }>; cover_asset_id?: string }
+  resolved_materials?: LoreMaterial[]
   provenance?: {
     kind: string
     source_name: string
     source_record_id: string
     source_hash: string
   }
+}
+
+export interface LoreAsset {
+  id: string
+  path: string
+  original_name: string
+  mime_type: string
+  size_bytes: number
+  created_at?: string
+  source: { kind: string; meta_path?: string }
+}
+export interface LoreMaterial extends LoreAsset {
+  name: string
+  description?: string
+}
+export interface LoreMaterialMutation {
+  op: 'link' | 'update' | 'remove' | 'cover'
+  asset_id?: string
+  name?: string
+  description?: string
+}
+
+export interface LoreItemSpeechGenerateRequest {
+  name: string
+  text: string
 }
 
 export type LoreClassificationMode = 'heuristic' | 'semantic'
@@ -966,7 +994,7 @@ export interface SkillInstallResult {
   installed: SkillSummary[]
 }
 
-export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at' | 'provenance'>
+export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at' | 'provenance' | 'materials' | 'resolved_materials'>
 
 type AutomationScope = 'user' | 'workspace'
 type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'

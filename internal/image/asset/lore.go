@@ -1,42 +1,30 @@
 package asset
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"image"
-	_ "image/jpeg"
-	_ "image/png"
-	"path/filepath"
+	"log/slog"
+	"path"
 	"strings"
 	"time"
-	"unicode"
 
 	"denova/config"
 	"denova/internal/book"
 	"denova/internal/book/lore"
 	imagegen "denova/internal/image/generation"
+	"github.com/google/uuid"
 )
 
 const (
-	LoreResultSchema        = "lore_item_image.v1"
-	MaxLoreImageUploadBytes = 16 * 1024 * 1024
-	loreSourceTool          = "generate_image"
-	loreSourceUpload        = "user_upload"
-	defaultImageSize        = "2048x2048"
-	defaultOutputFormat     = "png"
-	maxPresetChars          = 4000
-	maxBriefChars           = 1000
-	maxContentChars         = 4000
-	maxInstructionChars     = 1000
-)
-
-var (
-	ErrLoreImageUploadEmpty    = errors.New("uploaded lore image is empty")
-	ErrLoreImageUploadTooLarge = errors.New("uploaded lore image exceeds 16 MB")
-	ErrLoreImageUploadInvalid  = errors.New("uploaded lore image must be PNG or JPEG")
+	LoreResultSchema    = "lore_item_image.v1"
+	loreSourceTool      = "generate_image"
+	defaultImageSize    = "2048x2048"
+	defaultOutputFormat = "png"
+	maxPresetChars      = 4000
+	maxBriefChars       = 1000
+	maxContentChars     = 4000
+	maxInstructionChars = 1000
 )
 
 type LoreGenerateRequest struct {
@@ -51,12 +39,6 @@ type LoreGenerateRequest struct {
 	Size              string
 	Quality           string
 	OutputFormat      string
-}
-
-type LoreUploadRequest struct {
-	Item     lore.Item
-	Filename string
-	Data     []byte
 }
 
 type loreMeta struct {
@@ -136,7 +118,16 @@ func (s *Service) GenerateLore(ctx context.Context, cfg *config.Config, bookServ
 	}
 
 	createdAt := s.now().UTC()
-	imagePath, metaPath := newLoreImageRunPaths(item.ID, createdAt, s.suffix(), ext)
+	dir := "assets/lore/media/asset_" + uuid.NewString()
+	imagePath, metaPath := dir+"/file."+ext, dir+"/meta.json"
+	ready := false
+	defer func() {
+		if !ready {
+			if err := bookService.Delete(dir); err != nil {
+				slog.WarnContext(ctx, "[lore-material] cleanup incomplete generation failed", "path", dir, "error", err)
+			}
+		}
+	}()
 	if err := bookService.WriteBinaryFile(imagePath, image.Data); err != nil {
 		return lore.Image{}, fmt.Errorf("保存资料项图像失败: %w", err)
 	}
@@ -188,103 +179,8 @@ func (s *Service) GenerateLore(ctx context.Context, cfg *config.Config, bookServ
 	if err := bookService.WriteFile(metaPath, string(data)+"\n"); err != nil {
 		return lore.Image{}, fmt.Errorf("保存资料项图像元数据失败: %w", err)
 	}
+	ready = true
 	return result, nil
-}
-
-// UploadLore validates and stores a user-provided image using the same durable
-// asset and metadata shape as generated lore images.
-func (s *Service) UploadLore(ctx context.Context, bookService *book.Service, request LoreUploadRequest) (lore.Image, error) {
-	if s == nil {
-		s = NewService()
-	}
-	if bookService == nil || strings.TrimSpace(bookService.Workspace()) == "" {
-		return lore.Image{}, fmt.Errorf("workspace is unavailable")
-	}
-	item := request.Item
-	if strings.TrimSpace(item.ID) == "" {
-		return lore.Image{}, fmt.Errorf("lore item ID is required")
-	}
-	if len(request.Data) == 0 {
-		return lore.Image{}, ErrLoreImageUploadEmpty
-	}
-	if len(request.Data) > MaxLoreImageUploadBytes {
-		return lore.Image{}, ErrLoreImageUploadTooLarge
-	}
-	_, format, err := image.DecodeConfig(bytes.NewReader(request.Data))
-	if err != nil {
-		return lore.Image{}, fmt.Errorf("%w: %v", ErrLoreImageUploadInvalid, err)
-	}
-	ext := normalizeImageExtension(format)
-	if ext == "" {
-		return lore.Image{}, ErrLoreImageUploadInvalid
-	}
-	if err := ctx.Err(); err != nil {
-		return lore.Image{}, err
-	}
-
-	createdAt := s.now().UTC()
-	imagePath, metaPath := newLoreImageRunPaths(item.ID, createdAt, s.suffix(), ext)
-	if err := bookService.WriteBinaryFile(imagePath, request.Data); err != nil {
-		return lore.Image{}, fmt.Errorf("save uploaded lore image: %w", err)
-	}
-
-	result := lore.Image{
-		Schema:       LoreResultSchema,
-		ImagePath:    imagePath,
-		MetaPath:     metaPath,
-		AltText:      defaultLoreAltText(item),
-		ProfileID:    "manual",
-		Provider:     loreSourceUpload,
-		Model:        "manual",
-		OutputFormat: ext,
-		CreatedAt:    createdAt.Format(time.RFC3339),
-		MIMEType:     loreImageMIMEType(ext),
-		SizeBytes:    len(request.Data),
-	}
-	meta := loreMeta{
-		Schema:       LoreResultSchema,
-		Source:       loreSourceUpload,
-		SourceName:   filepath.Base(strings.TrimSpace(request.Filename)),
-		ItemID:       item.ID,
-		ItemType:     item.Type,
-		ItemName:     item.Name,
-		ImagePath:    result.ImagePath,
-		MetaPath:     result.MetaPath,
-		AltText:      result.AltText,
-		ProfileID:    result.ProfileID,
-		Provider:     result.Provider,
-		Model:        result.Model,
-		OutputFormat: result.OutputFormat,
-		MIMEType:     result.MIMEType,
-		SizeBytes:    result.SizeBytes,
-		CreatedAt:    result.CreatedAt,
-	}
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return lore.Image{}, err
-	}
-	if err := bookService.WriteFile(metaPath, string(data)+"\n"); err != nil {
-		return lore.Image{}, fmt.Errorf("save lore image metadata: %w", err)
-	}
-	return result, nil
-}
-
-func newLoreImageRunPaths(itemID string, createdAt time.Time, suffix, ext string) (string, string) {
-	dir := filepath.ToSlash(filepath.Join(
-		"assets",
-		"lore",
-		"images",
-		safeLorePathSegment(itemID),
-		fmt.Sprintf("%s-%s", createdAt.Format("20060102-150405"), suffix),
-	))
-	return filepath.ToSlash(filepath.Join(dir, "image."+ext)), filepath.ToSlash(filepath.Join(dir, "meta.json"))
-}
-
-func loreImageMIMEType(ext string) string {
-	if ext == "jpeg" {
-		return "image/jpeg"
-	}
-	return "image/png"
 }
 
 func BuildLorePrompt(request LoreGenerateRequest) string {
@@ -369,29 +265,20 @@ func loreTypeLabel(value string) string {
 	}
 }
 
-func safeLorePathSegment(value string) string {
-	value = strings.TrimSpace(value)
-	var b strings.Builder
-	lastDash := false
-	for _, r := range value {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(unicode.ToLower(r))
-			lastDash = false
-		case r == '-' || r == '_':
-			if !lastDash && b.Len() > 0 {
-				b.WriteRune(r)
-				lastDash = true
-			}
-		default:
-			if !lastDash && b.Len() > 0 {
-				b.WriteByte('-')
-				lastDash = true
-			}
+// DiscardUnlinkedLore cleans up only a newly generated result owned by the
+// caller. Keep files if a failed commit may already have published references.
+func DiscardUnlinkedLore(ctx context.Context, store *lore.Store, bookService *book.Service, image lore.Image) {
+	assets, err := store.Assets()
+	if err != nil {
+		slog.WarnContext(ctx, "[lore-material] retain generation after uncertain commit", "path", image.ImagePath, "error", err)
+		return
+	}
+	for _, a := range assets {
+		if a.Path == image.ImagePath {
+			return
 		}
 	}
-	if segment := strings.Trim(b.String(), "-_"); segment != "" {
-		return segment
+	if err := bookService.Delete(path.Dir(image.ImagePath)); err != nil {
+		slog.WarnContext(ctx, "[lore-material] cleanup uncommitted generation failed", "path", image.ImagePath, "error", err)
 	}
-	return "lore-item"
 }

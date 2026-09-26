@@ -312,7 +312,8 @@ func generateLoreImageForTool(ctx context.Context, cfg *config.Config, bookServi
 	if err != nil {
 		return generatedImageToolResult{}, err
 	}
-	if _, err := store.SetImage(item.ID, &generated); err != nil {
+	if _, err := store.AppendImage(item.ID, &generated); err != nil {
+		imageasset.DiscardUnlinkedLore(ctx, store, bookService, generated)
 		return generatedImageToolResult{}, err
 	}
 	return generatedImageToolResult{

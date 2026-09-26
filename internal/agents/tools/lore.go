@@ -186,7 +186,11 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if err != nil {
 		return nil, err
 	}
-	tools := []agent.ToolDefinition{definedListTool, definedReadTool}
+	materialTool, err := newLoreMaterialsTool(workspace)
+	if err != nil {
+		return nil, err
+	}
+	tools := []agent.ToolDefinition{definedListTool, definedReadTool, materialTool}
 	if !allowWrite {
 		return tools, nil
 	}
@@ -271,6 +275,7 @@ func formatLoreItems(items []lore.Item) string {
 	fmt.Fprintln(&sb)
 	for _, item := range items {
 		fmt.Fprintln(&sb, lore.ReferenceMarkdown(item))
+		fmt.Fprintln(&sb, loreMaterialReadHint(item))
 		fmt.Fprintln(&sb)
 	}
 	return strings.TrimSpace(sb.String())

@@ -33,21 +33,24 @@ const (
 
 // Item 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
 type Item struct {
-	ID               string      `json:"id"`
-	Enabled          bool        `json:"enabled"`
-	Type             string      `json:"type"`
-	TypeSource       string      `json:"type_source"`
-	Name             string      `json:"name"`
-	Importance       string      `json:"importance"`
-	Tags             []string    `json:"tags"`
-	BriefDescription string      `json:"brief_description"`
-	Keywords         []string    `json:"keywords"`
-	LoadMode         string      `json:"load_mode"`
-	Content          string      `json:"content"`
-	CreatedAt        string      `json:"created_at"`
-	UpdatedAt        string      `json:"updated_at"`
-	Image            *Image      `json:"image,omitempty"`
-	Provenance       *Provenance `json:"provenance,omitempty"`
+	ID               string     `json:"id"`
+	Enabled          bool       `json:"enabled"`
+	Type             string     `json:"type"`
+	TypeSource       string     `json:"type_source"`
+	Name             string     `json:"name"`
+	Importance       string     `json:"importance"`
+	Tags             []string   `json:"tags"`
+	BriefDescription string     `json:"brief_description"`
+	Keywords         []string   `json:"keywords"`
+	LoadMode         string     `json:"load_mode"`
+	Content          string     `json:"content"`
+	CreatedAt        string     `json:"created_at"`
+	UpdatedAt        string     `json:"updated_at"`
+	Image            *Image     `json:"image,omitempty"`
+	Materials        *Materials `json:"materials,omitempty"`
+	// ResolvedMaterials is a read projection, never persisted by Store.
+	ResolvedMaterials []Material  `json:"resolved_materials,omitempty"`
+	Provenance        *Provenance `json:"provenance,omitempty"`
 }
 
 type ItemInput struct {
@@ -106,8 +109,9 @@ type Image struct {
 }
 
 type Collection struct {
-	Version int    `json:"version"`
-	Items   []Item `json:"items"`
+	Version int     `json:"version"`
+	Items   []Item  `json:"items"`
+	Assets  []Asset `json:"assets,omitempty"`
 }
 
 type Operation struct {
@@ -163,6 +167,13 @@ func (item *Item) UnmarshalJSON(data []byte) error {
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if raw, ok := fields["materials"]; ok && string(raw) == "null" {
+		return errors.New("materials must be an object, not null")
 	}
 	item.Enabled = true
 	if raw.Enabled != nil {

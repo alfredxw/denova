@@ -145,7 +145,7 @@ func validatePayload(kind string, raw []byte) error {
 	case "preset.rules":
 		allowed = append(allowed, "actor_state_ref")
 	case "lore.item":
-		allowed = append(allowed, "image")
+		allowed = append(allowed, "image", "materials")
 	case "project.cover":
 		allowed = []string{"asset_path", "alt_text"}
 	}

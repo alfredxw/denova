@@ -14,9 +14,7 @@ import (
 	"strings"
 
 	"denova/internal/app/resourcecatalog"
-	"denova/internal/book"
 	"denova/internal/book/lore"
-	imageasset "denova/internal/image/asset"
 	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
 	"denova/internal/interactive/teller"
@@ -160,7 +158,7 @@ func stageDefinition(resource PreviewResource, id string, raw []byte, refs map[s
 	return filepath.ToSlash(relative), content, err
 }
 
-func (s *Service) stageProject(ctx context.Context, previewDir string, extra *[]FileTarget, resource PreviewResource, local LocalRef, raw []byte, staged map[FileTarget][]byte, expected map[FileTarget]string) (FileTarget, error) {
+func (s *Service) stageProject(ctx context.Context, previewDir string, extra *[]FileTarget, resource PreviewResource, local LocalRef, raw []byte, staged map[FileTarget][]byte, expected map[FileTarget]string, importedAssets map[FileTarget]lore.Asset) (FileTarget, error) {
 	target := FileTarget{ProjectID: local.ProjectID}
 	switch resource.Kind {
 	case "lore.item":
@@ -232,12 +230,6 @@ func (s *Service) stageProject(ctx context.Context, previewDir string, extra *[]
 		}
 		input.ID = local.ID
 		input.Provenance = nil
-		var payload struct {
-			Image *portableImage `json:"image"`
-		}
-		if err := json.Unmarshal(raw, &payload); err != nil {
-			return target, err
-		}
 		input.Image = nil
 		dir, err := os.MkdirTemp("", "denova-lore-")
 		if err != nil {
@@ -269,32 +261,8 @@ func (s *Service) stageProject(ctx context.Context, previewDir string, extra *[]
 		if err != nil {
 			return target, err
 		}
-		if payload.Image != nil {
-			data, err := resourceAsset(previewDir, resource, payload.Image.AssetPath)
-			if err != nil {
-				return target, err
-			}
-			item, err := store.ReadAny(input.ID)
-			if err != nil {
-				return target, err
-			}
-			imported, err := imageasset.NewService().UploadLore(ctx, book.NewService(dir), imageasset.LoreUploadRequest{Item: item, Filename: path.Base(payload.Image.AssetPath), Data: data})
-			if err != nil {
-				return target, err
-			}
-			imported.AltText = payload.Image.AltText
-			if _, err := store.SetImage(item.ID, &imported); err != nil {
-				return target, err
-			}
-			for _, name := range []string{imported.ImagePath, imported.MetaPath} {
-				content, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
-				if err != nil {
-					return target, err
-				}
-				assetTarget := FileTarget{ProjectID: local.ProjectID, Path: name}
-				staged[assetTarget] = content
-				*extra = append(*extra, assetTarget)
-			}
+		if err := importLoreMaterials(ctx, dir, previewDir, resource, local, raw, staged, extra, importedAssets); err != nil {
+			return target, err
 		}
 		staged[target], err = os.ReadFile(lore.ItemsPath(dir))
 		if err != nil {

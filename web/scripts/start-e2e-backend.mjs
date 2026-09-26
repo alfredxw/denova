@@ -33,6 +33,7 @@ const binaryPath = packageDir
 let config = `language = "zh-CN"
 update_check_enabled = false
 model_max_retries = 1
+default_image_api_profile_id = "e2e-image"
 
 [[model_endpoints]]
 id = "e2e"

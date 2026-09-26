@@ -19,13 +19,14 @@ import (
 	"unicode/utf8"
 
 	"denova/internal/book"
+	"denova/internal/book/lore"
 	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
 
 const (
-	maxAssetBytes = 32 * 1024 * 1024
+	maxAssetBytes = lore.MaxMaterialUploadBytes
 	// DefaultTreeEntryLimit intentionally sits far above an ordinary creator
 	// project. It bounds response size without turning normal directory depth
 	// into repeated network round trips.
@@ -459,7 +460,11 @@ func (service *Service) ReadAsset(_ context.Context, projectID, path string) ([]
 	}
 	contentType := detectMIMEType(rel, data)
 	if !isPreviewableImageMIME(contentType) {
-		return nil, "", fmt.Errorf("project asset %q is not a previewable image", rel)
+		mime, _, err := lore.MaterialFormat(data)
+		if err != nil || !strings.HasPrefix(mime, "audio/") {
+			return nil, "", fmt.Errorf("project asset %q is not a previewable image or supported audio file", rel)
+		}
+		contentType = mime
 	}
 	return data, contentType, nil
 }

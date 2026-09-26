@@ -1,3 +1,4 @@
+import { LoreDetailTabs } from './LoreDetailTabs'
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   AtSign,
@@ -177,6 +178,7 @@ export function LoreWorkspaceEditor({
         </Button>
       </div>
 
+      <LoreDetailTabs projectId={projectId} item={draft} onChange={onDraftChange}>
       <Collapsible
         open={metadataOpen}
         onOpenChange={setMetadataOpen}
@@ -363,6 +365,7 @@ export function LoreWorkspaceEditor({
           sourceAriaLabel={t('loreWorkspace.rawContentLabel', { name: draft.name })}
           editorClassName="bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
       />
+      </LoreDetailTabs>
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {

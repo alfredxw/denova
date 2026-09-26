@@ -663,7 +663,7 @@ func TestLoreStoreImageSurvivesTextUpdateAndCanBeCleared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withImage, err := store.SetImage(item.ID, &Image{
+	withImage, err := store.AppendImage(item.ID, &Image{
 		Schema:    "lore_item_image.v1",
 		ImagePath: "assets/lore/images/hero/run/image.png",
 		MetaPath:  "assets/lore/images/hero/run/meta.json",
@@ -671,6 +671,10 @@ func TestLoreStoreImageSurvivesTextUpdateAndCanBeCleared(t *testing.T) {
 		Provider:  "openai",
 		Model:     "gpt-image-1",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withImage, err = store.MutateMaterial(item.ID, MaterialMutation{Op: "cover", AssetID: withImage.ResolvedMaterials[0].ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +688,7 @@ func TestLoreStoreImageSurvivesTextUpdateAndCanBeCleared(t *testing.T) {
 	if updated.Image == nil || updated.Image.ImagePath != withImage.Image.ImagePath {
 		t.Fatalf("text update should preserve current image: %#v", updated)
 	}
-	cleared, err := store.SetImage(item.ID, nil)
+	cleared, err := store.MutateMaterial(item.ID, MaterialMutation{Op: "cover"})
 	if err != nil {
 		t.Fatal(err)
 	}

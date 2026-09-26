@@ -288,26 +288,8 @@ func (s *Service) exportResource(ctx context.Context, ref LocalRef) (map[string]
 		if err != nil {
 			return nil, err
 		}
-		files := map[string][]byte{"resource.json": raw}
-		if item.Image != nil {
-			snapshot, err := s.snapshot(ctx, FileTarget{ProjectID: ref.ProjectID, Path: item.Image.ImagePath})
-			if err != nil {
-				return nil, err
-			}
-			if !snapshot.Exists {
-				return nil, fmt.Errorf("Lore image attachment missing")
-			}
-			name := "image" + path.Ext(item.Image.ImagePath)
-			files[name] = snapshot.Content
-			var body map[string]json.RawMessage
-			_ = json.Unmarshal(raw, &body)
-			body["image"], _ = json.Marshal(portableImage{AssetPath: name, AltText: item.Image.AltText})
-			files["resource.json"], err = json.MarshalIndent(body, "", "  ")
-			if err != nil {
-				return nil, err
-			}
-		}
-		return files, nil
+		return s.exportLoreMaterials(ctx, ref, item, raw)
+
 	case "game.opening":
 		snapshot, readErr := s.snapshot(ctx, FileTarget{ProjectID: ref.ProjectID, Path: openingPath})
 		if readErr != nil {
@@ -438,25 +420,38 @@ func (s *Service) Export(ctx context.Context, request ExportRequest) ([]byte, er
 			if err := json.Unmarshal(raw, &body); err != nil {
 				return "", err
 			}
-			if ref.Kind == "lore.item" || ref.Kind == "project.cover" {
+			if ref.Kind == "lore.item" {
+				var materials portableMaterials
+				if err := json.Unmarshal(body["materials"], &materials); err != nil {
+					return "", err
+				}
+				for i := range materials.Entries {
+					entry := &materials.Entries[i]
+					old := entry.AssetPath
+					data, ok := content[old]
+					if !ok {
+						return "", fmt.Errorf("missing material payload")
+					}
+					name := path.Join("assets", path.Base(old))
+					files[name] = data
+					delete(content, old)
+					entry.AssetPath = name
+					resource.Assets = append(resource.Assets, name)
+					if materials.CoverPath == old {
+						materials.CoverPath = name
+					}
+				}
+				body["materials"], _ = json.Marshal(materials)
+			} else if ref.Kind == "project.cover" {
 				var attachment portableImage
-				var payload json.RawMessage = raw
-				if ref.Kind == "lore.item" {
-					payload = body["image"]
+				if err := json.Unmarshal(raw, &attachment); err != nil {
+					return "", err
 				}
-				if len(payload) > 0 {
-					if err := json.Unmarshal(payload, &attachment); err != nil {
-						return "", err
-					}
-					attachment.AssetPath = path.Join(prefix, attachment.AssetPath)
-					resource.Assets = []string{attachment.AssetPath}
-					if ref.Kind == "lore.item" {
-						body["image"], _ = json.Marshal(attachment)
-					} else {
-						body["asset_path"], _ = json.Marshal(attachment.AssetPath)
-					}
-				}
+				attachment.AssetPath = path.Join(prefix, attachment.AssetPath)
+				resource.Assets = []string{attachment.AssetPath}
+				body["asset_path"], _ = json.Marshal(attachment.AssetPath)
 			}
+
 			dependency := func(kind, key string) (string, error) {
 				dep := LocalRef{Kind: kind, Scope: "global", ID: key}
 				depID, err := add(dep)

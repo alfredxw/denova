@@ -79,6 +79,7 @@ const versions = {
   'versions.tryAnotherSearch': 'Try a message, source, or version ID.',
   'versions.unknownDate': 'Unknown date',
   'versions.title': 'Version Management',
+  'versions.retainedMedia': 'Keeps {{count}} newer material files used by history. They remain changes outside the target version.',
 } as const
 
 export default versions

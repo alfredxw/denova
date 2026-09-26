@@ -110,6 +110,9 @@ export function loreAutosavePayload(
     created_at: _createdAt,
     updated_at: _updatedAt,
     provenance: _provenance,
+    image: _image,
+    materials: _materials,
+    resolved_materials: _resolvedMaterials,
     ...item
   } = draft
   return {
@@ -137,6 +140,9 @@ export function loreResourceSignature(
     created_at: _createdAt,
     updated_at: _updatedAt,
     provenance: _provenance,
+    image: _image,
+    materials: _materials,
+    resolved_materials: _resolvedMaterials,
     ...item
   } = value as Partial<LoreAutosaveDraft>
   return JSON.stringify({

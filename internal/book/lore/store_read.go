@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 )
 
 func (s *Store) Read(id string) (Item, error) {
@@ -38,33 +37,6 @@ func (s *Store) ReadAny(id string) (Item, error) {
 		if item.ID == id {
 			return item, nil
 		}
-	}
-	return Item{}, fmt.Errorf("资料不存在: %s", id)
-}
-
-func (s *Store) SetImage(id string, image *Image) (Item, error) {
-	id = normalizeLoreID(id)
-	if id == "" {
-		return Item{}, errors.New("资料 ID 不能为空")
-	}
-	s.mutationMu.Lock()
-	defer s.mutationMu.Unlock()
-
-	collection, err := s.loadOrCreate()
-	if err != nil {
-		return Item{}, err
-	}
-	for i := range collection.Items {
-		if collection.Items[i].ID != id {
-			continue
-		}
-		collection.Items[i].Image = normalizeLoreItemImage(image)
-		collection.Items[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		collection.Items[i] = normalizeLoreItem(collection.Items[i])
-		if err := s.save(collection); err != nil {
-			return Item{}, err
-		}
-		return collection.Items[i], nil
 	}
 	return Item{}, fmt.Errorf("资料不存在: %s", id)
 }

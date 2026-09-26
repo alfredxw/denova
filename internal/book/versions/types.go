@@ -82,6 +82,7 @@ type VersionRestorePlan struct {
 	CurrentDirty     bool                   `json:"current_dirty"`
 	BackupMessage    string                 `json:"backup_message,omitempty"`
 	Warnings         []string               `json:"warnings,omitempty"`
+	RetainedMedia    []string               `json:"retained_media,omitempty"`
 }
 
 type VersionRestoreResult struct {

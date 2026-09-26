@@ -50,7 +50,16 @@ func decodeLoreCollectionJSON(data []byte) (Collection, error) {
 	if err := validateLoreItemIdentities(items); err != nil {
 		return Collection{}, err
 	}
-	return Collection{Version: loreItemsVersion, Items: normalizeLoreItems(items)}, nil
+	collection := Collection{Version: loreItemsVersion, Items: normalizeLoreItems(items)}
+	if raw, ok := envelope["assets"]; ok {
+		if err := json.Unmarshal(raw, &collection.Assets); err != nil {
+			return Collection{}, fmt.Errorf("invalid lore assets: %w", err)
+		}
+	}
+	if err := validateMaterials(collection); err != nil {
+		return Collection{}, err
+	}
+	return collection, nil
 }
 
 func validateLoreItemIdentities(items []Item) error {

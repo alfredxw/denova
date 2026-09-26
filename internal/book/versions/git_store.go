@@ -411,7 +411,7 @@ func (s *Service) restoreCommitToWorkspace(id string) error {
 		return err
 	}
 	if err := s.withProtectedExcludedWorkspaceDirs(func() error {
-		return s.gitStore().CheckoutWhole(repo, id)
+		return s.preservingNewerLoreMedia(id, func() error { return s.gitStore().CheckoutWhole(repo, id) })
 	}); err != nil {
 		return err
 	}

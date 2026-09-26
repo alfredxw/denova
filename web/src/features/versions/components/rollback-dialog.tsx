@@ -65,6 +65,7 @@ export function RollbackDialog({
                 <span className="min-w-0">{t('versions.restorePathNotice')}</span>
               </div>
             )}
+            {!!plan.retained_media?.length && <p role="status" className="text-muted-foreground">{t('versions.retainedMedia', { count: plan.retained_media.length })}</p>}
             {changes.length === 0 && (
               <div className="flex min-w-0 items-start gap-2 rounded border border-[var(--nova-warning-bg)] bg-[var(--nova-warning-bg)] px-2 py-2 text-[var(--nova-warning)]">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

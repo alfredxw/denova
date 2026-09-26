@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
-import { APIError, clearLoreItemImage, createAgentCommandID, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, uploadLoreItemImage, type LoreItem } from '@/lib/api'
+import { APIError, createProjectLoreItem, deleteProjectLoreItem, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, type LoreItem } from '@/lib/api'
 import { rebaseJSONValue, rebaseText } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { cn } from '@/lib/utils'
@@ -53,7 +53,6 @@ const UTF8_ENCODER = new TextEncoder()
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
 
 const LORE_TYPE_FILTER_OPTIONS: LoreType[] = ['character', 'world', 'location', 'faction', 'rule', 'item', 'other']
-type LoreImageBusyAction = 'generate' | 'upload' | 'clear'
 
 interface SettingPanelProps {
   mode?: SettingPanelMode
@@ -149,9 +148,6 @@ function LoreSettingPanel({
   const [activeOpeningPresetId, setActiveOpeningPresetId] = useState('')
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
   const [activeImagePresetId, setActiveImagePresetId] = useState('')
-  const [loreImageInstruction, setLoreImageInstruction] = useState('')
-  const [loreImageGenerationMode, setLoreImageGenerationMode] = useState<'agent' | 'custom'>('agent')
-  const [loreImageBusy, setLoreImageBusy] = useState<{ itemId: string; action: LoreImageBusyAction } | null>(null)
   const [loreImageBatchOpen, setLoreImageBatchOpen] = useState(false)
   const [loreClassificationOpen, setLoreClassificationOpen] = useState(false)
   const [loreImageBatchSelectedIds, setLoreImageBatchSelectedIds] = useState<string[]>([])
@@ -159,7 +155,7 @@ function LoreSettingPanel({
   const [loreImageBatchType, setLoreImageBatchType] = useState<LoreType | 'all'>('all')
   const [loreImageBatchPresetId, setLoreImageBatchPresetId] = useState('')
   const [loreImageBatchInstruction, setLoreImageBatchInstruction] = useState('')
-  const [loreImageBatchOverwrite, setLoreImageBatchOverwrite] = useState(false)
+  const [loreImageBatchIncludeExisting, setLoreImageBatchIncludeExisting] = useState(false)
   const [pendingLoreImageTask, setPendingLoreImageTask] = useState<{ key: string; instruction: string } | null>(null)
   const [agentOpen, setAgentOpen] = useResponsiveAgentOpen()
   const [deleteLoreTarget, setDeleteLoreTarget] = useState<LoreItem | null>(null)
@@ -631,7 +627,7 @@ function LoreSettingPanel({
     const onLoreUpdated = (event: Event) => {
       const detail = (event as CustomEvent<LoreUpdatedDetail>).detail
       if (detail?.projectId !== projectId) return
-      void refreshItems(detail.ids?.[0])
+      void refreshItems(detail.source === 'materials' ? undefined : detail.ids?.[0])
     }
     window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
     return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
@@ -783,63 +779,6 @@ function LoreSettingPanel({
 
   const selectedLoreImagePresetId = () => activeImagePresetId || imagePresets.find((preset) => !preset.invalid)?.id || 'game-cg'
 
-  const handleGenerateLoreImage = async () => {
-    if (!draft || loreImageBusy) return
-    setLoreImageBusy({ itemId: draft.id, action: 'generate' })
-    try {
-      const saved = await flushLoreAutosave()
-      const target = saved || loreDraftRef.current || draft
-      const item = await generateLoreItemImage(projectId, target.id, {
-        mode: loreImageGenerationMode,
-        command_id: loreImageGenerationMode === 'agent' ? createAgentCommandID() : undefined,
-        instruction: loreImageGenerationMode === 'agent' ? loreImageInstruction : undefined,
-        prompt: loreImageGenerationMode === 'custom' ? loreImageInstruction : undefined,
-        image_preset_id: loreImageGenerationMode === 'agent' ? selectedLoreImagePresetId() : undefined,
-      })
-      mergeSavedLoreItem(item)
-      notifyLoreUpdated({ projectId, ids: [item.id] })
-      toast.success(t('settingPanel.loreImage.generated'))
-    } catch (err) {
-      toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
-    } finally {
-      setLoreImageBusy(null)
-    }
-  }
-
-  const handleUploadLoreImage = async (file: File) => {
-    if (!draft || loreImageBusy) return
-    setLoreImageBusy({ itemId: draft.id, action: 'upload' })
-    try {
-      const saved = await flushLoreAutosave()
-      const target = saved || loreDraftRef.current || draft
-      const item = await uploadLoreItemImage(projectId, target.id, file)
-      mergeSavedLoreItem(item)
-      notifyLoreUpdated({ projectId, ids: [item.id] })
-      toast.success(t('settingPanel.loreImage.uploaded'))
-    } catch (err) {
-      toast.error((err as Error).message || t('settingPanel.loreImage.uploadFailed'))
-    } finally {
-      setLoreImageBusy(null)
-    }
-  }
-
-  const handleClearLoreImage = async () => {
-    if (!draft || loreImageBusy) return
-    setLoreImageBusy({ itemId: draft.id, action: 'clear' })
-    try {
-      const saved = await flushLoreAutosave()
-      const target = saved || loreDraftRef.current || draft
-      const item = await clearLoreItemImage(projectId, target.id)
-      mergeSavedLoreItem(item)
-      notifyLoreUpdated({ projectId, ids: [item.id] })
-      toast.success(t('settingPanel.loreImage.cleared'))
-    } catch (err) {
-      toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
-    } finally {
-      setLoreImageBusy(null)
-    }
-  }
-
   const handleOpenLoreImageBatch = () => {
     setLoreImageBatchSelectedIds([])
     setLoreImageBatchPresetId(selectedLoreImagePresetId())
@@ -857,7 +796,7 @@ function LoreSettingPanel({
         itemIds: loreImageBatchSelectedIds,
         imagePresetId: loreImageBatchPresetId || selectedLoreImagePresetId(),
         instruction: loreImageBatchInstruction,
-        overwriteExisting: loreImageBatchOverwrite,
+        includeExisting: loreImageBatchIncludeExisting,
       }),
     })
     setLoreImageBatchOpen(false)
@@ -1078,23 +1017,16 @@ function LoreSettingPanel({
                   ) : (
                     <LoreEditor
                       projectId={projectId}
+                      onInspectMaterial={(material) => {
+                        setPendingLoreImageTask({ key: `lore-material-${Date.now()}`, instruction: `Read the selected image using the read tool and describe it as a creative reference. Do not modify lore. Selected material: ${JSON.stringify({ item_id: draft?.id, material_id: material.id, path: material.path, name: material.name, description: material.description })}` })
+                        setAgentOpen(true)
+                      }}
                       draft={draft}
                       tagDraft={tagDraft}
                       residentTotalBytes={residentLoreBytes}
-                      imagePresets={imagePresets}
-                      imagePresetId={selectedLoreImagePresetId()}
-                      imageInstruction={loreImageInstruction}
-                      imageGenerationMode={loreImageGenerationMode}
-                      imageBusyAction={loreImageBusy && loreImageBusy.itemId === draft?.id ? loreImageBusy.action : ''}
                       searchQuery={query}
                       setDraft={setDraft}
                       setTagDraft={setTagDraft}
-                      onImagePresetChange={setActiveImagePresetId}
-                      setImageInstruction={setLoreImageInstruction}
-                      onImageGenerationModeChange={setLoreImageGenerationMode}
-                      onGenerateImage={() => void handleGenerateLoreImage()}
-                      onUploadImage={(file) => void handleUploadLoreImage(file)}
-                      onClearImage={() => void handleClearLoreImage()}
                       onSave={flushActiveAutosave}
                       documentReview={documentReview}
                       documentReviewNavigationIntent={documentReviewNavigationIntent}
@@ -1130,14 +1062,14 @@ function LoreSettingPanel({
         imagePresets={imagePresets.filter((preset) => !preset.invalid)}
         imagePresetId={loreImageBatchPresetId || selectedLoreImagePresetId()}
         instruction={loreImageBatchInstruction}
-        overwriteExisting={loreImageBatchOverwrite}
+        includeExisting={loreImageBatchIncludeExisting}
         onOpenChange={setLoreImageBatchOpen}
         onQueryChange={setLoreImageBatchQuery}
         onTypeChange={setLoreImageBatchType}
         onSelectedIdsChange={setLoreImageBatchSelectedIds}
         onImagePresetChange={setLoreImageBatchPresetId}
         onInstructionChange={setLoreImageBatchInstruction}
-        onOverwriteExistingChange={setLoreImageBatchOverwrite}
+        onIncludeExistingChange={setLoreImageBatchIncludeExisting}
         onRun={handleRunLoreImageBatch}
       />
       <ConfirmDialog
@@ -1165,14 +1097,14 @@ interface LoreImageBatchDialogProps {
   imagePresets: ImagePreset[]
   imagePresetId: string
   instruction: string
-  overwriteExisting: boolean
+  includeExisting: boolean
   onOpenChange: (open: boolean) => void
   onQueryChange: (value: string) => void
   onTypeChange: (value: LoreType | 'all') => void
   onSelectedIdsChange: (ids: string[]) => void
   onImagePresetChange: (id: string) => void
   onInstructionChange: (value: string) => void
-  onOverwriteExistingChange: (value: boolean) => void
+  onIncludeExistingChange: (value: boolean) => void
   onRun: () => void
 }
 
@@ -1186,14 +1118,14 @@ function LoreImageBatchDialog({
   imagePresets,
   imagePresetId,
   instruction,
-  overwriteExisting,
+  includeExisting,
   onOpenChange,
   onQueryChange,
   onTypeChange,
   onSelectedIdsChange,
   onImagePresetChange,
   onInstructionChange,
-  onOverwriteExistingChange,
+  onIncludeExistingChange,
   onRun,
 }: LoreImageBatchDialogProps) {
   const { t } = useTranslation()
@@ -1281,7 +1213,7 @@ function LoreImageBatchDialog({
                     <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{loreTypeLabel(item.type, t)} · {item.brief_description || t('settingPanel.loreImage.missingImage')}</span>
                   </span>
                   <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] ${loreImageStatusClassName(item)}`}>
-                    {item.image?.image_path ? t('settingPanel.loreImage.hasImage') : t('settingPanel.loreImage.missingImage')}
+                    {item.resolved_materials?.some((material) => material.mime_type.startsWith('image/')) ? t('settingPanel.loreImage.hasImage') : t('settingPanel.loreImage.missingImage')}
                   </span>
                 </label>
               )
@@ -1318,8 +1250,8 @@ function LoreImageBatchDialog({
               </Select>
             </label>
             <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2">
-              <span className="min-w-0 text-xs text-[var(--nova-text-muted)]">{t('settingPanel.loreImage.overwriteExisting')}</span>
-              <Switch checked={overwriteExisting} onCheckedChange={onOverwriteExistingChange} />
+              <span className="min-w-0 text-xs text-[var(--nova-text-muted)]">{t('settingPanel.loreImage.includeExisting')}</span>
+              <Switch checked={includeExisting} onCheckedChange={onIncludeExistingChange} />
             </div>
           </div>
         </div>
@@ -1368,24 +1300,24 @@ function buildLoreImageBatchAgentInstruction(input: {
   itemIds: string[]
   imagePresetId: string
   instruction: string
-  overwriteExisting: boolean
+  includeExisting: boolean
 }) {
   const userInstruction = input.instruction.trim() || 'No additional user requirements.'
   return [
     'Generate images for the selected lore items as one managed task.',
     `Exact lore item IDs: ${JSON.stringify(input.itemIds)}`,
     `Image preset ID: ${JSON.stringify(input.imagePresetId)}`,
-    `Overwrite existing images: ${input.overwriteExisting ? 'yes' : 'no'}.`,
+    `Generate additional images for items that already have image materials: ${input.includeExisting ? 'yes' : 'no'}. Always append images, preserve the cover and lore text.`,
     `Additional user requirements: ${userInstruction}`,
     '',
     'Read the exact lore items with read_lore_items. Read the selected image_preset with config_read when available.',
     'For each eligible item, author a complete final model-native prompt from its lore content, the image preset, the additional requirements, and the prompt guide in generate_image. Then call generate_image once with purpose=lore_item and that exact lore_item_id.',
-    'When overwrite is no, skip items that already have an image. Continue after an individual failure and report generated, skipped, and failed item IDs at the end. Do not create or edit lore text. Do not add a negative prompt.',
+    'Use list_lore_materials to check each item. When including existing images is no, skip items that already have image materials. Continue after an individual failure and report generated, skipped, and failed item IDs at the end. Do not create or edit lore text. Do not add a negative prompt.',
   ].join('\n')
 }
 
 function loreImageStatusClassName(item: LoreItem) {
-  if (item.image?.image_path) return 'border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 text-[var(--nova-text-muted)]'
+  if (item.resolved_materials?.some((material) => material.mime_type.startsWith('image/'))) return 'border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 text-[var(--nova-text-muted)]'
   return 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)]'
 }
 
