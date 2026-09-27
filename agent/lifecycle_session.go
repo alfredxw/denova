@@ -41,10 +41,12 @@ type persistedSessionTranscript struct {
 }
 
 type persistedMessageCheckpoint struct {
-	Hash         string `json:"hash"`
-	MessageCount int    `json:"message_count"`
-	// Metadata never duplicates committed product messages. Pending contains
-	// only a tool batch that has not yet reached the product commit boundary.
+	Archive      *historyArchive `json:"archive,omitempty"`
+	Hash         string          `json:"hash"`
+	MessageCount int             `json:"message_count"`
+	// Metadata is a message-free locator before compaction, or a bounded active
+	// recovery window for archived history. Pending contains only a tool batch
+	// that has not yet reached the product commit boundary.
 	Metadata json.RawMessage `json:"metadata,omitempty"`
 	Pending  []*Message      `json:"pending,omitempty"`
 }
@@ -95,6 +97,7 @@ type Session struct {
 	capabilities        map[string]json.RawMessage
 	durableCapabilities map[string]json.RawMessage
 	canonicalMessages   bool
+	canonicalSource     CanonicalHistorySource
 	messageCheckpoint   persistedMessageCheckpoint
 	active              *Run
 	maintenance         bool
@@ -669,6 +672,14 @@ func (session *Session) appendRecordsLocked(ctx context.Context, records ...agen
 
 func (session *Session) persistTranscriptLocked(ctx context.Context) error {
 	if session.canonicalMessages {
+		state, err := decodeEngineTranscript(session.engineState)
+		if err != nil {
+			return err
+		}
+		session.engineState, err = encodeCanonicalWindow(state, session.capabilities)
+		if err != nil {
+			return err
+		}
 		checkpoint, err := canonicalMessageCheckpoint(session.engineState)
 		if err != nil {
 			return err

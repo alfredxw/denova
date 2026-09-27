@@ -38,10 +38,14 @@ func interactionBoundaries(messages []*Message) []int {
 
 // compactionGroups maps offered groups back to private journal coordinates.
 func compactionGroups(raw, projected []*Message, current compactionRecord, present bool) ([]CompactionGroup, []int, int) {
+	return (*historyArchive)(nil).compactionGroups(raw, projected, current, present)
+}
+
+func (archive *historyArchive) compactionGroups(raw, projected []*Message, current compactionRecord, present bool) ([]CompactionGroup, []int, int) {
 	boundaries := interactionBoundaries(raw)
 	start := 0
 	if present && !current.Removed {
-		start = current.ReplacementTo
+		start = archive.local(current.ReplacementTo)
 	}
 	groups := make([]CompactionGroup, 0)
 	ends := make([]int, 0)
@@ -50,7 +54,7 @@ func compactionGroups(raw, projected []*Message, current compactionRecord, prese
 			continue
 		}
 		groups = append(groups, CompactionGroup{Messages: cloneMessages(projected[start:end])})
-		ends = append(ends, end)
+		ends = append(ends, archive.raw(end))
 		start = end
 	}
 	return groups, ends, compactionMessagesBytes(projected[start:])

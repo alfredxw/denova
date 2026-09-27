@@ -98,10 +98,14 @@ func elisionStateFrom(states map[string]json.RawMessage) (elisionRecord, error) 
 }
 
 func (state elisionRecord) project(messages []*Message) ([]*Message, error) {
+	return state.projectArchive(messages, nil)
+}
+
+func (state elisionRecord) projectArchive(messages []*Message, archive *historyArchive) ([]*Message, error) {
 	projected := cloneMessages(messages)
 	for _, replacement := range state.Replacements {
-		index := replacement.MessageIndex
-		if index < 0 || index >= len(messages) {
+		index := archive.local(replacement.MessageIndex)
+		if index < 0 || index >= len(messages) || !archive.contains(replacement.MessageIndex) {
 			return nil, errors.New("Elision source is outside canonical history")
 		}
 		message := messages[index]
@@ -140,9 +144,13 @@ func elisionForHistory(state elisionRecord, compaction compactionRecord, present
 }
 
 func effectiveHistoryMessages(messages []*Message, elision elisionRecord, compaction compactionRecord, present bool, summaryLimit int) ([]*Message, error) {
-	projected, err := elisionForHistory(elision, compaction, present).project(messages)
+	return (*historyArchive)(nil).effectiveHistoryMessages(messages, elision, compaction, present, summaryLimit)
+}
+
+func (archive *historyArchive) effectiveHistoryMessages(messages []*Message, elision elisionRecord, compaction compactionRecord, present bool, summaryLimit int) ([]*Message, error) {
+	projected, err := elisionForHistory(elision, compaction, present).projectArchive(messages, archive)
 	if err != nil {
 		return nil, err
 	}
-	return effectiveCompactionMessages(projected, compaction, present, summaryLimit)
+	return archive.effectiveCompactionMessages(projected, compaction, present, summaryLimit)
 }

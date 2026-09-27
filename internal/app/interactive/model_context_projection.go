@@ -168,3 +168,25 @@ func interactivePlayerInputTurnBoundary(history interactive.StoryModelHistory, i
 	}
 	return boundary, nil
 }
+
+// settledTurnContextWindow uses the same product codec as journal replay,
+// restricted to the accepted cycle. Tool IDs may repeat in older turns, so
+// matching IDs across the whole window would corrupt their retained results.
+func settledTurnContextWindow(messages []*agent.Message, activeUserIndex int, narrative string, extra map[string]any) ([]*agent.Message, error) {
+	if activeUserIndex < 0 || activeUserIndex >= len(messages)-1 || messages[activeUserIndex].Role != agent.User {
+		return nil, fmt.Errorf("canonical output requires an exact active user boundary")
+	}
+	result := make([]*agent.Message, len(messages))
+	for index, message := range messages {
+		result[index] = message.Clone()
+		if index > activeUserIndex && index < len(messages)-1 {
+			if stored, ok := interactiveContextMessageFromSchema(message); ok {
+				result[index] = settledTurnToolContextMessages([]interactive.ModelContextMessage{stored})[0]
+			}
+		}
+	}
+	final := agent.AssistantMessage(narrative, nil)
+	final.Extra = providers.ContinuationExtra(extra)
+	result[len(result)-1] = final
+	return result, nil
+}

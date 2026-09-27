@@ -422,6 +422,8 @@ func initializeDefinition(ctx context.Context, definition Definition) (Definitio
 }
 
 type preparedDefinition struct {
+	historyHead             CanonicalHistoryHead
+	archive                 *historyArchive
 	activeModelUser         *Message
 	activeUserIndex         int
 	lastResponseOrdinal     int

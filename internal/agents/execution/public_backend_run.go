@@ -80,11 +80,17 @@ func loadCanonicalMessages(
 	if !ok {
 		return nil
 	}
-	messages, err := source.CanonicalMessages(ctx)
-	if err != nil {
-		return err
+	var err error
+	if history, ok := source.(agent.CanonicalHistorySource); ok {
+		err = session.LoadCanonicalHistory(ctx, history)
+	} else {
+		var messages []*agent.Message
+		messages, err = source.CanonicalMessages(ctx)
+		if err == nil {
+			err = session.LoadCanonicalMessages(ctx, messages)
+		}
 	}
-	if err := session.LoadCanonicalMessages(ctx, messages); err != nil {
+	if err != nil {
 		if errors.Is(err, agent.ErrInvalidCanonicalMessages) {
 			key := session.Key()
 			slog.ErrorContext(ctx, "[agent] rejected invalid canonical history for Session",

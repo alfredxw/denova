@@ -11,8 +11,17 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
+func (c *Conversation) CanonicalHistoryHead(ctx context.Context) (agent.CanonicalHistoryHead, error) {
+	head, err := c.store.CanonicalHistoryHead(ctx, c.storyID, c.branchID)
+	if target := c.regenerateTargetSnapshot(); target != "" {
+		// Regeneration reads the target's parent instead of the current branch.
+		head.Identity += "/regenerate/" + target
+	}
+	return head, err
+}
+
 // CanonicalMessages projects the exact Story branch model history. Story JSONL
-// is the sole durable conversation lane; Agent keeps only an in-memory copy.
+// is the sole durable conversation lane, including Agent's bounded checkpoints.
 func (c *Conversation) CanonicalMessages(ctx context.Context) ([]*agent.Message, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("interactive canonical transcript is unavailable")

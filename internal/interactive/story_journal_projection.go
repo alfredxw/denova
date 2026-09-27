@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// Version 16 rebuilds compact Agent recovery state and historical locators.
-	storyProjectionVersion      = 16
+	// Version 17 adds derived canonical history identities for active checkpoints.
+	storyProjectionVersion      = 17
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -36,6 +36,8 @@ type storyCommitLocator struct {
 type storyBranchProjection struct {
 	Head                  string                     `json:"head"`
 	ContextRevision       uint64                     `json:"context_revision"`
+	HistoryRevision       string                     `json:"history_revision,omitempty"`
+	HistoryEpoch          string                     `json:"history_epoch,omitempty"`
 	LatestTurnID          string                     `json:"latest_turn_id,omitempty"`
 	LatestTurnParentID    string                     `json:"latest_turn_parent_id,omitempty"`
 	Depth                 int                        `json:"depth"`
@@ -204,6 +206,26 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 	branch := projection.branch(record.Envelope.BranchID)
 	branch.TailCursor = cursor
 	parentID := parentIDFromRaw(record.Raw)
+	if changesModelContext {
+		// These three publications append to the canonical lane. A replacement
+		// Turn or a creator edit invalidates checkpoints even when only archived
+		// bodies changed. Both markers are derived from existing event IDs.
+		switch record.Envelope.Type {
+		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch:
+			branch.HistoryRevision = record.Envelope.ID
+		case StoryEventTypeTurn:
+			branch.HistoryRevision = record.Envelope.ID
+			if parentID != branch.Head {
+				branch.HistoryEpoch = record.Envelope.ID
+			}
+		case StoryEventTypeStateDelta, StoryEventTypeTurnInterrupted, StoryEventTypeTurnStateRevised, StoryEventTypeStoryConfigUpdated, StoryEventTypeBranchPlanRevised:
+			// These affect next-turn preparation, not canonical raw messages.
+		case StoryEventTypeBranch, StoryEventTypeBranchHeadMoved, StoryEventTypeTurnVersionSelected, StoryEventTypeTurnNarrativeRevised:
+			branch.HistoryEpoch, branch.HistoryRevision = record.Envelope.ID, record.Envelope.ID
+		default:
+			return fmt.Errorf("canonical history does not handle model context event %q", record.Envelope.Type)
+		}
+	}
 	switch record.Envelope.Type {
 	case StoryEventTypeTurn:
 		var turn TurnEvent

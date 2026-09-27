@@ -136,7 +136,11 @@ func compactionModelRequest(
 }
 
 func effectiveCompactionMessages(messages []*Message, state compactionRecord, present bool, summaryLimit int) ([]*Message, error) {
-	if !present || state.Removed || state.ReplacementFrom < 0 || state.ReplacementTo > len(messages) || state.ReplacementTo <= state.ReplacementFrom {
+	return (*historyArchive)(nil).effectiveCompactionMessages(messages, state, present, summaryLimit)
+}
+
+func (archive *historyArchive) effectiveCompactionMessages(messages []*Message, state compactionRecord, present bool, summaryLimit int) ([]*Message, error) {
+	if !present || state.Removed || state.ReplacementFrom < 0 || state.ReplacementTo > archive.count(messages) || state.ReplacementTo <= state.ReplacementFrom {
 		return cloneMessages(messages), nil
 	}
 	if summaryLimit <= 0 {
@@ -145,15 +149,15 @@ func effectiveCompactionMessages(messages []*Message, state compactionRecord, pr
 	if len(state.Summary) > summaryLimit {
 		return nil, fmt.Errorf("%w: durable Compaction checkpoint is %d bytes and exceeds the target Agent summary limit %d", ErrContextLimit, len(state.Summary), summaryLimit)
 	}
-	result := make([]*Message, 0, len(messages)-(state.ReplacementTo-state.ReplacementFrom)+1)
-	result = append(result, cloneMessages(messages[:state.ReplacementFrom])...)
+	result := make([]*Message, 0, len(messages)+1)
+	result = append(result, cloneMessages(messages[:archive.local(state.ReplacementFrom)])...)
 	result = append(result, compactionCheckpointMessage(state, summaryLimit))
-	for index := state.ReplacementFrom; index < state.ReplacementTo; index++ {
-		if compactionRetainsUser(messages, state, index) {
+	for index := archive.local(state.ReplacementFrom); index < archive.local(state.ReplacementTo); index++ {
+		if state.RetainedUserFrom != nil && archive.raw(index) >= *state.RetainedUserFrom && messages[index].Role == User && !IsContextStateMessage(messages[index]) {
 			result = append(result, messages[index].Clone())
 		}
 	}
-	result = append(result, cloneMessages(messages[state.ReplacementTo:])...)
+	result = append(result, cloneMessages(messages[archive.local(state.ReplacementTo):])...)
 	return result, nil
 }
 
@@ -165,17 +169,25 @@ func compactionRetainsUser(messages []*Message, state compactionRecord, index in
 // compactionMessageIndex maps a surviving raw journal message to the effective
 // transcript, including verbatim instructions preserved inside a checkpoint.
 func compactionMessageIndex(messages []*Message, state compactionRecord, present bool, index int) int {
-	if !present || state.Removed || index < state.ReplacementFrom {
-		return index
+	return (*historyArchive)(nil).compactionMessageIndex(messages, state, present, index)
+}
+
+func (archive *historyArchive) compactionMessageIndex(messages []*Message, state compactionRecord, present bool, index int) int {
+	if !archive.contains(index) {
+		return -1
 	}
-	projected := state.ReplacementFrom + 1
-	for cursor := state.ReplacementFrom; cursor < min(index, state.ReplacementTo); cursor++ {
-		if compactionRetainsUser(messages, state, cursor) {
+	if !present || state.Removed || index < state.ReplacementFrom {
+		return archive.local(index)
+	}
+	projected := archive.local(state.ReplacementFrom) + 1
+	for local := archive.local(state.ReplacementFrom); local < archive.local(min(index, state.ReplacementTo)); local++ {
+		if state.RetainedUserFrom != nil && archive.raw(local) >= *state.RetainedUserFrom && messages[local].Role == User && !IsContextStateMessage(messages[local]) {
 			projected++
 		}
 	}
 	if index < state.ReplacementTo {
-		if !compactionRetainsUser(messages, state, index) {
+		message := messages[archive.local(index)]
+		if state.RetainedUserFrom == nil || index < *state.RetainedUserFrom || message.Role != User || IsContextStateMessage(message) {
 			return -1
 		}
 		return projected
@@ -183,7 +195,7 @@ func compactionMessageIndex(messages []*Message, state compactionRecord, present
 	return projected + index - state.ReplacementTo
 }
 
-func compactionIncrementalSource(
+func (archive *historyArchive) compactionIncrementalSource(
 	messages []*Message,
 	plan compactionExecutionPlan,
 	current compactionRecord,
@@ -193,9 +205,9 @@ func compactionIncrementalSource(
 	if present && !current.Removed && current.ReplacementFrom == plan.SourceFrom &&
 		current.ReplacementTo >= plan.SourceFrom && current.ReplacementTo <= plan.SourceTo {
 		result := []*Message{compactionCheckpointMessage(current, summaryLimit)}
-		return append(result, cloneMessages(messages[current.ReplacementTo:plan.SourceTo])...)
+		return append(result, cloneMessages(messages[archive.local(current.ReplacementTo):archive.local(plan.SourceTo)])...)
 	}
-	return cloneMessages(messages[plan.SourceFrom:plan.SourceTo])
+	return cloneMessages(messages[archive.local(plan.SourceFrom):archive.local(plan.SourceTo)])
 }
 
 func compactionCheckpointMessage(state compactionRecord, summaryLimit int) *Message {

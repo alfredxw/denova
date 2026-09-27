@@ -166,6 +166,10 @@ func (agent *modelToolLoop) Description(context.Context) string {
 func (agent *modelToolLoop) Run(ctx context.Context, input *loopInput, opts ...loopRunOption) *asyncIterator[*loopEvent] {
 	iterator, generator := newAsyncIteratorPair[*loopEvent]()
 	options := collectLoopRunOptions(opts)
+	if input != nil {
+		owned := *input
+		input = &owned
+	}
 	safeGo(func() {
 		agent.run(ctx, input, options, generator)
 		generator.Close()
@@ -260,6 +264,9 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 	}
 	state.Messages = append(state.Messages, cloneMessages(input.Messages)...)
 	stablePrefixMessages := input.stablePrefixMessages
+	// Run owns this header. The mutable state replaces history after compaction;
+	// retaining the original seed here would keep the archived bodies alive.
+	input.Messages = nil
 	if runContext.Instruction != "" {
 		stablePrefixMessages++
 	}

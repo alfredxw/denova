@@ -33,10 +33,54 @@ func contextCapabilityRecords(states map[string]json.RawMessage) ([]agentsession
 func (run *Run) commitContextCheckpoint(update runstate.EngineTranscriptUpdated) error {
 	session := run.session
 	session.mu.Lock()
+	state, err := session.commitContextCheckpointLocked(context.Background(), update)
+	session.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	update.State = state
+	run.mu.Lock()
+	run.snapshot.State = append(json.RawMessage(nil), update.State...)
+	if run.snapshot.Capabilities == nil {
+		run.snapshot.Capabilities = make(map[string]json.RawMessage)
+	}
+	for key, value := range update.CapabilityStates {
+		run.snapshot.Capabilities[key] = append(json.RawMessage(nil), value...)
+	}
+	run.mu.Unlock()
+	for key, value := range update.CapabilityStates {
+		run.publishCapabilityUpdate(runstate.EngineCapabilityState{Capability: key, State: value})
+	}
+	return nil
+}
+
+// Commit the capability and the exact active window in the same journal batch.
+// Callers hold session.mu and publish events only after this succeeds.
+func (session *Session) commitContextCheckpointLocked(ctx context.Context, update runstate.EngineTranscriptUpdated) (json.RawMessage, error) {
+	if session.canonicalMessages {
+		capabilities := cloneRawStateMap(session.capabilities)
+		for key, value := range update.CapabilityStates {
+			capabilities[key] = value
+		}
+		state, err := decodeEngineTranscript(update.State)
+		if err != nil {
+			return nil, err
+		}
+		if len(session.messageCheckpoint.Metadata) != 0 {
+			var previous engineTranscript
+			if err := json.Unmarshal(session.messageCheckpoint.Metadata, &previous); err != nil {
+				return nil, err
+			}
+			state.HistoryHead = previous.HistoryHead
+		}
+		update.State, err = encodeCanonicalWindow(state, capabilities)
+		if err != nil {
+			return nil, err
+		}
+	}
 	checkpoint, err := canonicalMessageCheckpoint(update.State)
 	if err != nil {
-		session.mu.Unlock()
-		return err
+		return nil, err
 	}
 	alreadyCommitted := bytes.Equal(session.engineState, update.State)
 	for key, value := range update.CapabilityStates {
@@ -54,11 +98,10 @@ func (run *Run) commitContextCheckpoint(update runstate.EngineTranscriptUpdated)
 			records = append(records, record)
 		}
 		if err == nil {
-			err = session.appendRecordsLocked(context.Background(), records...)
+			err = session.appendRecordsLocked(ctx, records...)
 		}
 		if err != nil {
-			session.mu.Unlock()
-			return err
+			return nil, err
 		}
 		session.engineState = append(json.RawMessage(nil), update.State...)
 		if session.canonicalMessages {
@@ -69,18 +112,5 @@ func (run *Run) commitContextCheckpoint(update runstate.EngineTranscriptUpdated)
 			session.durableCapabilities[key] = append(json.RawMessage(nil), value...)
 		}
 	}
-	session.mu.Unlock()
-	run.mu.Lock()
-	run.snapshot.State = append(json.RawMessage(nil), update.State...)
-	if run.snapshot.Capabilities == nil {
-		run.snapshot.Capabilities = make(map[string]json.RawMessage)
-	}
-	for key, value := range update.CapabilityStates {
-		run.snapshot.Capabilities[key] = append(json.RawMessage(nil), value...)
-	}
-	run.mu.Unlock()
-	for key, value := range update.CapabilityStates {
-		run.publishCapabilityUpdate(runstate.EngineCapabilityState{Capability: key, State: value})
-	}
-	return nil
+	return update.State, nil
 }

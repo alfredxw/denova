@@ -100,11 +100,12 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	}
 	prepared.materializedFingerprint = materialized
 	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
+	prepared.archive = transcript.Archive
 	prepared.elision, err = elisionStateFrom(capabilities)
 	if err != nil {
 		return Inspection{}, err
 	}
-	stateMessages, inspectedContextState, err := advanceContextState(
+	stateMessages, inspectedContextState, err := prepared.archive.advanceContextState(
 		transcript.Messages, prepared.fragments, prepared.contextState, compaction, compactionPresent,
 	)
 	if err != nil {
@@ -119,7 +120,7 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	} else if compactionPresent && !compaction.Removed {
 		return Inspection{}, fmt.Errorf("%w: active Compaction has no Manager in the selected Definition", ErrDefinitionMismatch)
 	}
-	effective, err := effectiveHistoryMessages(inspectionTranscript, prepared.elision, compaction, compactionPresent, summaryLimit)
+	effective, err := prepared.archive.effectiveHistoryMessages(inspectionTranscript, prepared.elision, compaction, compactionPresent, summaryLimit)
 	if err != nil {
 		return Inspection{}, err
 	}

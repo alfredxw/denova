@@ -188,6 +188,8 @@ func (engine *definitionEngine) commitCanonicalOutput(
 	ctx context.Context,
 	request runstate.EngineRequest,
 	message *Message,
+	messages []*Message,
+	activeUserIndex int,
 	adapter CanonicalAdapter,
 ) (committedOutput, error) {
 	if adapter == nil {
@@ -204,7 +206,7 @@ func (engine *definitionEngine) commitCanonicalOutput(
 	var receipt OutputCommitReceipt
 	err = withCanonicalCheckpoint(ctx, canonicalUpdate{Stage: CommitOutput, Snapshot: request.Snapshot, Hash: hash}, func(checkpoint CanonicalCheckpoint) error {
 		var err error
-		receipt, err = adapter.CommitOutput(ctx, OutputCommitRequest{Identity: identity, Hash: hash, Message: *CloneMessage(message), Checkpoint: checkpoint})
+		receipt, err = adapter.CommitOutput(ctx, OutputCommitRequest{Identity: identity, Hash: hash, Message: *CloneMessage(message), ContextMessages: cloneMessages(messages), ActiveUserIndex: activeUserIndex, Checkpoint: checkpoint})
 		return err
 	})
 	if err != nil {
@@ -220,8 +222,11 @@ func (engine *definitionEngine) commitCanonicalOutput(
 		effective.ReasoningContent = receipt.Transcript.Thinking
 	}
 	var canonicalMessages []*Message
-	if receipt.Transcript != nil && receipt.Transcript.CanonicalMessages != nil {
-		canonicalMessages = canonicalContextStateOrder(receipt.Transcript.CanonicalMessages)
+	if receipt.Transcript != nil && receipt.Transcript.ContextMessages != nil {
+		canonicalMessages = receipt.Transcript.ContextMessages
+		if len(canonicalMessages) != len(messages) {
+			return committedOutput{}, errors.New("canonical output projection changed active history coordinates")
+		}
 		if err := validateImportedTranscript(canonicalMessages); err != nil {
 			return committedOutput{}, fmt.Errorf("invalid canonical output transcript: %w", err)
 		}

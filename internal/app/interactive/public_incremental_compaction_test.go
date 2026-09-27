@@ -15,6 +15,7 @@ import (
 	agentstructural "denova/internal/agents/context/structural"
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
+	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	productsession "denova/internal/agents/session"
 	agenttoolruntime "denova/internal/agents/toolruntime"
@@ -26,6 +27,30 @@ import (
 )
 
 const incrementalIntent = "Verify 24 sources. Corrected budget is 72519, not 72591; preserve evidence IDs."
+
+type countedWritingHistory struct {
+	*agentconversation.SessionConversation
+	reads   *int
+	request agentchat.ChatRequest
+}
+
+func (c countedWritingHistory) CanonicalMessages(ctx context.Context) ([]*agent.Message, error) {
+	*c.reads++
+	return c.SessionConversation.CanonicalMessages(ctx)
+}
+func (c countedWritingHistory) NewAgentConversationCommitter(options agentrun.Options) (agentlifecycle.ConversationCommitter, error) {
+	return agentlifecycle.NewSessionConversationCommitter(agentlifecycle.SessionCommitterConfig{Conversation: c.SessionConversation, Session: c.CanonicalSession(), Options: options, Request: c.request})
+}
+
+type countedGameHistory struct {
+	*Conversation
+	reads *int
+}
+
+func (c countedGameHistory) CanonicalMessages(ctx context.Context) ([]*agent.Message, error) {
+	*c.reads++
+	return c.Conversation.CanonicalMessages(ctx)
+}
 
 // Model responses are deterministic; both products use the actual Denova
 // manager, primary snapshot fork, final request validator and canonical store.
@@ -150,16 +175,17 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 					options = publicGameOptions(workspace, story.ID, "main")
 					options.ProjectID = record.ID
 				}
+				historyReads := 0
 				cycle := func(input, command string) agentexecution.Cycle {
 					definition := agent.Definition{Key: "long-product", Name: "long-product", Model: model, ModelIdentity: identity, Tools: toolset, Permission: permission.FullAccess(), Compaction: manager}
 					if maintenance == "elision_then_summary" {
 						definition.Elision = agentcompaction.NewElisionPolicyForModel(cfg, kind, 64_000)
 						definition.ResultProcessor = toolresult.Standard(toolresult.Policy{MaxBytes: 32 << 10, ContextWindowTokens: 64_000})
 					}
-					var conversation agentchat.Conversation = agentconversation.NewSessionConversationForAgent(writing, cfg, kind)
+					var conversation agentchat.Conversation = countedWritingHistory{agentconversation.NewSessionConversationForAgent(writing, cfg, kind), &historyReads, agentchat.ChatRequest{CommandID: command, Message: input}}
 					if kind == agentrun.AgentKindInteractiveStory {
 						game := NewConversation(stories, "", workspace, story.ID, "main", input, 800, cfg)
-						conversation = game
+						conversation = countedGameHistory{game, &historyReads}
 						if input != "" {
 							definition.Middlewares = []agent.Middleware{gameSubmissionForTest(t, game, input, input)}
 						}
@@ -214,6 +240,7 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 					t.Fatalf("manual compaction before reopen: %+v %v", manual, err)
 				}
 				checkpointRevision := manual.Compaction.Revision
+				readsBeforeReopen := historyReads
 				summariesBeforeReopen := model.summaries
 				if err := runtime.Close(ctx); err != nil {
 					t.Fatal(err)
@@ -226,6 +253,12 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 				}
 				if outcome := resumed.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
 					t.Fatalf("cold continuation failed: %+v", outcome)
+				}
+				if historyReads != readsBeforeReopen {
+					t.Fatalf("aligned cold continuation reloaded full history: before=%d after=%d", readsBeforeReopen, historyReads)
+				}
+				if maintenance == "summary_only" && historyReads != 1 {
+					t.Fatalf("warm execution reloaded compacted history %d times", historyReads)
 				}
 				latest := model.inputs[len(model.inputs)-1]
 				if !containsMessageContent(latest, "Incremental evidence checkpoint") || !containsMessageContent(latest, "72519") {

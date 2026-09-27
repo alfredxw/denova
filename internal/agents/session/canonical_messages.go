@@ -5,12 +5,34 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/conversationjournal"
 	externaljournal "denova/internal/agents/runtime/external/journal"
 )
+
+// CanonicalHistoryHead reads only the reducer. Clear and journal replacement
+// start a different lane; ordinary message appends advance its existing revision.
+func (s *Session) CanonicalHistoryHead(ctx context.Context) (agent.CanonicalHistoryHead, error) {
+	if err := ctx.Err(); err != nil {
+		return agent.CanonicalHistoryHead{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.refreshCanonicalTailLocked(); err != nil {
+		return agent.CanonicalHistoryHead{}, err
+	}
+	if s.journal == nil || s.projection == nil {
+		return agent.CanonicalHistoryHead{}, fmt.Errorf("session canonical journal is unavailable")
+	}
+	head := s.journal.Head()
+	return agent.CanonicalHistoryHead{
+		Identity: fmt.Sprintf("%s/%s/%d", head.Identity.ID, head.Identity.Generation, s.projection.ClearCursor),
+		Revision: strconv.FormatUint(s.contextCursorLocked().Revision, 10),
+	}, nil
+}
 
 // ReadCanonicalMessages rebuilds the complete model-visible lane after the
 // latest clear marker. The Session's resident window is intentionally bounded

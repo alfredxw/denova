@@ -30,6 +30,7 @@ const (
 )
 
 type engineTranscript struct {
+	HistoryHead             CanonicalHistoryHead   `json:"history_head,omitempty"`
 	Version                 uint16                 `json:"version"`
 	DefinitionKey           string                 `json:"definition_key"`
 	BehaviorKey             string                 `json:"behavior_key"`
@@ -40,6 +41,7 @@ type engineTranscript struct {
 	DefinitionCycle         int                    `json:"definition_cycle,omitempty"`
 	PreparationStage        enginePreparationStage `json:"preparation_stage,omitempty"`
 	PreparedContext         *preparedContext       `json:"prepared_context,omitempty"`
+	Archive                 *historyArchive        `json:"archive,omitempty"`
 	Messages                []*Message             `json:"messages,omitempty"`
 	ContextState            contextStateSnapshot   `json:"context_state,omitempty"`
 	// ContextSequence is the next idempotency slot for this active cycle. It is
@@ -189,6 +191,8 @@ func (engine *definitionEngine) Run(
 	prepared.hostData = cloneHostData(input.HostData)
 	prepared.clearRevision = state.ClearRevision
 	prepared.contextState = cloneContextStateSnapshot(state.ContextState)
+	prepared.archive = state.Archive
+	prepared.historyHead = state.HistoryHead
 	prepared.elision, err = elisionStateFrom(request.Snapshot.Capabilities)
 	if err != nil {
 		return runstate.EngineResult{}, err
@@ -264,7 +268,7 @@ func (engine *definitionEngine) Run(
 				if err := admitRunWork(ctx); err != nil {
 					return runstate.EngineResult{}, err
 				}
-				committed, err := engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical)
+				committed, err := engine.commitCanonicalOutput(ctx, request, final, append(cloneMessages(state.Messages), final), prepared.archive.local(state.ActiveUserIndex), prepared.definition.Canonical)
 				if err != nil {
 					return runstate.EngineResult{}, err
 				}
@@ -276,8 +280,11 @@ func (engine *definitionEngine) Run(
 			}
 		}
 	}
+	// Closures below retain the request throughout the loop. The decoded
+	// active window owns recovery now; do not pin its original serialized body.
+	request.Snapshot.State = nil
 	compaction, compactionPresent := currentCompaction, currentCompactionPresent
-	stateMessages, nextContextState, err := advanceContextState(
+	stateMessages, nextContextState, err := prepared.archive.advanceContextState(
 		state.Messages, prepared.fragments, prepared.contextState, compaction, compactionPresent,
 	)
 	if err != nil {
@@ -303,15 +310,15 @@ func (engine *definitionEngine) Run(
 	if prepared.definition.Compaction != nil {
 		summaryLimit = prepared.definition.Compaction.SummaryLimitBytes()
 	}
-	effectiveTranscript, err := effectiveHistoryMessages(cycleStateTranscript, prepared.elision, compaction, compactionPresent, summaryLimit)
+	effectiveTranscript, err := prepared.archive.effectiveHistoryMessages(cycleStateTranscript, prepared.elision, compaction, compactionPresent, summaryLimit)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	activeUserIndex := len(cycleStateTranscript)
+	activeUserIndex := prepared.archive.count(cycleStateTranscript)
 	var resumedTail []*Message
 	if continuingInput {
 		activeUserIndex = state.ActiveUserIndex
-		modelUserIndex := compactionMessageIndex(cycleStateTranscript, compaction, compactionPresent, activeUserIndex)
+		modelUserIndex := prepared.archive.compactionMessageIndex(cycleStateTranscript, compaction, compactionPresent, activeUserIndex)
 		if modelUserIndex < 0 || modelUserIndex >= len(effectiveTranscript) {
 			return runstate.EngineResult{}, errors.New("active Agent input was removed from the recoverable context")
 		}
@@ -412,12 +419,12 @@ func (engine *definitionEngine) Run(
 			if prepared.definition.Compaction == nil {
 				return elided, nil
 			}
-			compactionContext, projectionErr := elisionForHistory(prepared.elision, compaction, compactionPresent).project(controlledTranscript())
+			compactionContext, projectionErr := elisionForHistory(prepared.elision, compaction, compactionPresent).projectArchive(controlledTranscript(), prepared.archive)
 			if projectionErr != nil {
 				return nil, projectionErr
 			}
 			// Preserve the exact rendered active instruction in the summary source.
-			compactionContext[activeUserIndex] = activeModelUser.Clone()
+			compactionContext[prepared.archive.local(activeUserIndex)] = activeModelUser.Clone()
 			compactionContext, projectionErr = projectToolArtifactPaths(gateCtx, prepared.definition.Artifacts, compactionContext)
 			if projectionErr != nil {
 				return nil, projectionErr
@@ -456,7 +463,7 @@ func (engine *definitionEngine) Run(
 				if err := rematerializeDefinitionContext(gateCtx, nextRequest, &nextPrepared); err != nil {
 					return nil, err
 				}
-				stateMessages, contextState, err := advanceContextState(
+				stateMessages, contextState, err := prepared.archive.advanceContextState(
 					transcript, nextPrepared.fragments, nextPrepared.contextState, next, true,
 				)
 				if err != nil {
@@ -544,6 +551,10 @@ func (engine *definitionEngine) Run(
 			compaction, compactionPresent = next, nextPresent
 			prepareRequest.Compaction = compactionStatePointer(compaction, compactionPresent)
 			prepared, transcript, activeModelUser = candidatePrepared, candidateTranscript, candidateModelUser
+			if prepared.historyHead.Identity != "" {
+				transcript, prepared.archive = archiveHistory(transcript, prepared.archive, compaction, prepared.contextState)
+				baseTranscript = transcript[:prepared.archive.local(activeUserIndex)+1]
+			}
 			currentCompactionStorage = compaction
 			return candidate, nil
 		}
@@ -586,6 +597,7 @@ func (engine *definitionEngine) Run(
 	interactions := newEngineInteractionClient(effectiveInteractionPolicy(prepared.definition.Interaction), emit)
 	acceptedControl := controls.bindLoop(cancelLoop, interactions)
 	loopBound = true
+	state.Messages, controlTranscript, cycleStateTranscript, effectiveTranscript = nil, nil, nil, nil
 	if acceptedControl == runstate.EngineControlPreempt {
 		return engine.controlledResult(runstate.EnginePreempted, prepared, baseTranscript, emit)
 	}
@@ -908,7 +920,7 @@ loopControlsStopped:
 	emitTrace(ctx, engine.trace, TraceEvent{
 		Kind: TraceModelFinished, Session: engine.key, RunID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 	})
-	committed, err := engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical)
+	committed, err := engine.commitCanonicalOutput(ctx, request, final, transcript, prepared.archive.local(activeUserIndex), prepared.definition.Canonical)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -1146,8 +1158,8 @@ func encodeActiveEngineTranscript(
 	if activeModelUser == nil || activeModelUser.Role != User {
 		return nil, errors.New("encode active Agent transcript requires a model user projection")
 	}
-	if activeUserIndex < 0 || activeUserIndex >= len(messages) ||
-		messages[activeUserIndex] == nil || messages[activeUserIndex].Role != User || IsContextStateMessage(messages[activeUserIndex]) {
+	if activeUserIndex < 0 || activeUserIndex >= prepared.archive.count(messages) || !prepared.archive.contains(activeUserIndex) ||
+		messages[prepared.archive.local(activeUserIndex)] == nil || messages[prepared.archive.local(activeUserIndex)].Role != User || IsContextStateMessage(messages[prepared.archive.local(activeUserIndex)]) {
 		return nil, errors.New("encode active Agent transcript requires an exact raw user boundary")
 	}
 	return encodeEngineTranscriptState(prepared, messages, activeModelUser, activeUserIndex)
@@ -1160,14 +1172,14 @@ func encodeEngineTranscriptState(
 	activeUserIndex int,
 ) (json.RawMessage, error) {
 	encoded, err := json.Marshal(engineTranscript{
-		Version: engineTranscriptVersion, DefinitionKey: prepared.definitionKey,
+		Version: transcriptVersion(prepared.archive), HistoryHead: prepared.historyHead, DefinitionKey: prepared.definitionKey,
 		BehaviorKey: prepared.behaviorKey, PrefixFingerprint: prepared.prefixFingerprint,
 		MaterializedFingerprint: prepared.materializedFingerprint,
 		DefinitionOperationID:   prepared.definitionOperationID,
 		DefinitionCommandID:     prepared.definitionCommandID,
 		DefinitionCycle:         prepared.definitionCycle, PreparationStage: prepared.preparationStage,
 		PreparedContext: snapshotPreparedContext(prepared),
-		Messages:        cloneMessages(messages), ContextState: cloneContextStateSnapshot(prepared.contextState),
+		Archive:         prepared.archive, Messages: cloneMessages(messages), ContextState: cloneContextStateSnapshot(prepared.contextState),
 		ContextSequence:     prepared.contextSequence,
 		LastResponseOrdinal: prepared.lastResponseOrdinal,
 		ActiveModelUser:     CloneMessage(activeModelUser), ActiveUserIndex: activeUserIndex,
@@ -1210,7 +1222,7 @@ func decodeEngineTranscript(encoded json.RawMessage) (engineTranscript, error) {
 	if err := json.Unmarshal(encoded, &header); err != nil {
 		return engineTranscript{}, fmt.Errorf("decode Agent transcript header: %w", err)
 	}
-	if header.Version != engineTranscriptVersion {
+	if header.Version != engineTranscriptVersion && header.Version != 2 {
 		return engineTranscript{}, &unsupportedEngineTranscriptVersionError{version: header.Version}
 	}
 	var state engineTranscript
@@ -1228,18 +1240,21 @@ func decodeEngineTranscript(encoded json.RawMessage) (engineTranscript, error) {
 			return engineTranscript{}, err
 		}
 	}
+	if err := state.Archive.validate(state.Messages); err != nil {
+		return engineTranscript{}, err
+	}
 	state.Messages = cloneMessages(state.Messages)
 	state.ContextState = cloneContextStateSnapshot(state.ContextState)
 	state.ActiveModelUser = CloneMessage(state.ActiveModelUser)
 	state.HostData = cloneHostData(state.HostData)
 	if state.ActiveModelUser != nil {
 		if state.ActiveModelUser.Role != User || state.ActiveUserIndex < 0 ||
-			state.ActiveUserIndex >= len(state.Messages) || state.Messages[state.ActiveUserIndex] == nil ||
-			state.Messages[state.ActiveUserIndex].Role != User || IsContextStateMessage(state.Messages[state.ActiveUserIndex]) {
+			state.ActiveUserIndex >= state.Archive.count(state.Messages) || !state.Archive.contains(state.ActiveUserIndex) || state.Messages[state.Archive.local(state.ActiveUserIndex)] == nil ||
+			state.Messages[state.Archive.local(state.ActiveUserIndex)].Role != User || IsContextStateMessage(state.Messages[state.Archive.local(state.ActiveUserIndex)]) {
 			return engineTranscript{}, errors.New("Agent transcript has an invalid active model user projection")
 		}
 	}
-	if err := validateContextStateSnapshot(state.ContextState, state.Messages); err != nil {
+	if err := validateContextStateSnapshotInArchive(state.ContextState, state.Messages, state.Archive); err != nil {
 		return engineTranscript{}, err
 	}
 	return state, nil

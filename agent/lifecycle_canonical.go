@@ -35,12 +35,14 @@ func canonicalMessageCheckpoint(encoded json.RawMessage) (persistedMessageCheckp
 		return persistedMessageCheckpoint{}, err
 	}
 	pending := cloneMessages(state.Messages[committed:])
-	state.Messages = nil
+	if state.Archive == nil {
+		state.Messages = nil
+	}
 	metadata, err := json.Marshal(state)
 	if err != nil {
 		return persistedMessageCheckpoint{}, err
 	}
-	return persistedMessageCheckpoint{Hash: hash, MessageCount: committed, Metadata: metadata, Pending: pending}, nil
+	return persistedMessageCheckpoint{Hash: hash, MessageCount: state.Archive.raw(committed), Archive: state.Archive, Metadata: metadata, Pending: pending}, nil
 }
 
 // canonicalUpdate describes one existing product boundary. The Session lock
@@ -98,7 +100,7 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 			state.DefinitionOperationID, state.DefinitionCommandID, state.DefinitionCycle = run.id, string(nextSnapshot.CommandID), nextSnapshot.Cycle
 			state.ContextSequence = 0
 			state.LastResponseOrdinal = 0
-			state.ActiveUserIndex, state.ActiveModelUser = len(state.Messages), UserMessageWithAttachments(input.Text, input.Attachments)
+			state.ActiveUserIndex, state.ActiveModelUser = state.Archive.count(state.Messages), UserMessageWithAttachments(input.Text, input.Attachments)
 			state.Messages = append(state.Messages, state.ActiveModelUser.Clone())
 			state.HostData = cloneHostData(input.HostData)
 			nextState, err = json.Marshal(state)
@@ -125,6 +127,24 @@ func withCanonicalCheckpoint(ctx context.Context, update canonicalUpdate, commit
 			}
 		default:
 			return JournalCheckpoint{}, fmt.Errorf("unsupported canonical checkpoint stage %q", update.Stage)
+		}
+		projected, err := decodeEngineTranscript(nextState)
+		if err != nil {
+			return JournalCheckpoint{}, err
+		}
+		// The output transaction precedes the product's final transcript
+		// projection. A crash here must reconstruct from the canonical source.
+		projected.HistoryHead.Revision = receipt.Revision
+		if update.Stage == CommitOutput {
+			projected.HistoryHead.Revision = ""
+		}
+		capabilities := cloneRawStateMap(session.capabilities)
+		for key, value := range update.CapabilityStates {
+			capabilities[key] = value
+		}
+		nextState, err = encodeCanonicalWindow(projected, capabilities)
+		if err != nil {
+			return JournalCheckpoint{}, err
 		}
 		cycle, err := sessionRecord(turnCheckpointRecord, cycleFact(nextSnapshot))
 		if err != nil {

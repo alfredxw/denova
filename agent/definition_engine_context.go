@@ -179,11 +179,11 @@ func prepareHistoryModelCall(prepared preparedDefinition, raw []*Message, compac
 	if prepared.definition.Compaction != nil {
 		summaryLimit = prepared.definition.Compaction.SummaryLimitBytes()
 	}
-	effective, err := effectiveHistoryMessages(raw, prepared.elision, compaction, present, summaryLimit)
+	effective, err := prepared.archive.effectiveHistoryMessages(raw, prepared.elision, compaction, present, summaryLimit)
 	if err != nil {
 		return nil, nil, err
 	}
-	userIndex := compactionMessageIndex(raw, compaction, present, activeUserIndex)
+	userIndex := prepared.archive.compactionMessageIndex(raw, compaction, present, activeUserIndex)
 	if userIndex < 0 || userIndex >= len(effective) {
 		return nil, nil, errors.New("context maintenance removed the active Agent input")
 	}

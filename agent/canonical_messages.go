@@ -20,6 +20,10 @@ var ErrInvalidCanonicalMessages = errors.New("agent canonical history is invalid
 // checkpoint; standalone logs remain self-contained and persist the imported
 // transcript normally.
 func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*Message) error {
+	return session.loadCanonicalMessages(ctx, messages, CanonicalHistoryHead{})
+}
+
+func (session *Session) loadCanonicalMessages(ctx context.Context, messages []*Message, head CanonicalHistoryHead) error {
 	if err := session.usable(); err != nil {
 		return err
 	}
@@ -33,7 +37,7 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	if session.active != nil && !session.active.isSuspended() {
+	if session.active != nil && !session.active.isSuspended() || session.maintenance {
 		return ErrSessionBusy
 	}
 	hadCurrentTranscript := len(session.engineState) != 0
@@ -45,28 +49,51 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 		if decodeErr != nil {
 			return decodeErr
 		}
-		currentMessageCount = len(current.Messages)
-		if len(current.Messages) <= len(ordered) {
+		currentMessageCount = current.Archive.count(current.Messages)
+		if currentMessageCount <= len(ordered) && (head.Identity == "" || current.HistoryHead.Identity == "" || head.Identity == current.HistoryHead.Identity) {
 			currentHash, hashErr := hashCanonical(current.Messages)
 			if hashErr != nil {
 				return hashErr
 			}
-			prefixHash, hashErr := hashCanonical(ordered[:len(current.Messages)])
+			prefix, selectErr := current.Archive.selectMessages(ordered[:currentMessageCount])
+			if selectErr != nil {
+				return selectErr
+			}
+			prefixHash, hashErr := hashCanonical(prefix)
 			if hashErr != nil {
 				return hashErr
 			}
 			currentCompatible = currentHash == prefixHash
-			currentMatches = currentCompatible && len(current.Messages) == len(ordered)
+			currentMatches = currentCompatible && currentMessageCount == len(ordered)
 		}
 	}
 	hadCheckpoint := strings.TrimSpace(session.messageCheckpoint.Hash) != ""
 	checkpointCompatible := false
-	if hadCheckpoint && session.messageCheckpoint.MessageCount <= len(ordered) {
-		prefixHash, hashErr := hashCanonical(ordered[:session.messageCheckpoint.MessageCount])
+	var metadata engineTranscript
+	if len(session.messageCheckpoint.Metadata) != 0 {
+		if err := json.Unmarshal(session.messageCheckpoint.Metadata, &metadata); err != nil {
+			return err
+		}
+	}
+	if hadCheckpoint && session.messageCheckpoint.MessageCount <= len(ordered) && (head.Identity == "" || metadata.HistoryHead.Identity == "" || head.Identity == metadata.HistoryHead.Identity) {
+		prefix, selectErr := session.messageCheckpoint.Archive.selectMessages(ordered[:session.messageCheckpoint.MessageCount])
+		if selectErr != nil {
+			return selectErr
+		}
+		prefixHash, hashErr := hashCanonical(prefix)
 		if hashErr != nil {
 			return hashErr
 		}
 		checkpointCompatible = session.messageCheckpoint.Hash == prefixHash
+	}
+	outputCommitted := false
+	if session.active != nil {
+		session.active.mu.RLock()
+		outputCommitted = session.active.snapshot.OutputCommit != nil
+		session.active.mu.RUnlock()
+		if hadCheckpoint && !checkpointCompatible && !outputCommitted {
+			return fmt.Errorf("%w: canonical history changed under an unfinished Run (imported=%d checkpoint=%d)", ErrInvalidCanonicalMessages, len(ordered), session.messageCheckpoint.MessageCount)
+		}
 	}
 	// Capability records live in the same canonical journal as host messages.
 	// A cold session with no message checkpoint can therefore trust them (this
@@ -102,18 +129,32 @@ func (session *Session) LoadCanonicalMessages(ctx context.Context, messages []*M
 	}
 	next := engineTranscript{Version: engineTranscriptVersion, Messages: cloneMessages(ordered), ContextState: contextState}
 	if session.active != nil && len(session.messageCheckpoint.Metadata) != 0 {
-		if !checkpointCompatible && session.active.snapshot.OutputCommit == nil {
-			return fmt.Errorf("%w: canonical history changed under an unfinished Run (imported=%d checkpoint=%d)", ErrInvalidCanonicalMessages, len(ordered), session.messageCheckpoint.MessageCount)
-		}
 		if err := json.Unmarshal(session.messageCheckpoint.Metadata, &next); err != nil {
 			return err
 		}
+		next.Archive = nil
 		next.Messages = cloneMessages(ordered)
-		if session.active.snapshot.OutputCommit != nil {
+		if outputCommitted {
 			next.ActiveModelUser, next.ActiveUserIndex = nil, 0
 			next.ContextState = contextState
 		} else {
 			next.Messages = append(next.Messages, cloneMessages(session.messageCheckpoint.Pending)...)
+		}
+	}
+	next.HistoryHead = head
+	if session.canonicalMessages && head.Identity != "" {
+		compact, present, compactErr := compactionStateFrom(session.capabilities)
+		if compactErr != nil {
+			return compactErr
+		}
+		clear, clearPresent, clearErr := clearStateFrom(session.capabilities)
+		if clearErr != nil {
+			return clearErr
+		}
+		compact, present = clearCompaction(compact, present, clear, clearPresent)
+		if present {
+			next.Messages, next.Archive = archiveHistory(next.Messages, nil, compact, next.ContextState)
+			next.Version = transcriptVersion(next.Archive)
 		}
 	}
 	encoded, err := json.Marshal(next)

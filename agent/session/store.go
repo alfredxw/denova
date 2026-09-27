@@ -203,7 +203,8 @@ type Log interface {
 
 // CanonicalMessageLog marks a host journal whose conversation messages are
 // committed by the host itself. Agent still appends capability and turn
-// records to the same log, but it must not persist a second message snapshot.
+// records to the same log. A compaction checkpoint may retain a bounded active
+// recovery window there, but must not duplicate the complete canonical history.
 //
 // The marker is intentionally optional: Agent's built-in memory and file
 // stores remain self-contained for standalone embedding.

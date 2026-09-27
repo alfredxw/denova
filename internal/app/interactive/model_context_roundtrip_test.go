@@ -429,3 +429,22 @@ func joinedInteractiveMessageContent(messages []*agents.Message) string {
 	}
 	return result.String()
 }
+
+func TestSettledContextWindowPreservesEarlierCyclesWithRepeatedToolIDs(t *testing.T) {
+	oldCall := agent.AssistantMessage("earlier unresolved tool prose", []agent.ToolCall{{ID: "reused", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}})
+	newCall := agent.AssistantMessage("current tool prose", []agent.ToolCall{{ID: "reused", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}})
+	messages := []*agent.Message{agent.UserMessage("earlier input"), oldCall, agent.ToolMessage(agent.TextToolResult("earlier result"), "reused"), agent.UserMessage("current input"), newCall, agent.ToolMessage(agent.TextToolResult("current result"), "reused"), agent.AssistantMessage("provider narrative", nil)}
+	projected, err := settledTurnContextWindow(messages, 3, "accepted narrative", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(projected[:4], messages[:4]) {
+		t.Fatal("settling one cycle changed earlier evidence")
+	}
+	if projected[4].Content != "" || projected[4].ToolCalls[0].Type != "function" || projected[5].Content != "current result" || projected[6].Content != "accepted narrative" {
+		t.Fatalf("incorrect settled window: %+v", projected)
+	}
+	if messages[4].Content != "current tool prose" {
+		t.Fatal("output projection mutated its input")
+	}
+}

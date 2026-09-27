@@ -72,6 +72,10 @@ func advanceContextState(
 	compaction compactionRecord,
 	compactionPresent bool,
 ) ([]*Message, contextStateSnapshot, error) {
+	return (*historyArchive)(nil).advanceContextState(raw, fragments, current, compaction, compactionPresent)
+}
+
+func (archive *historyArchive) advanceContextState(raw []*Message, fragments []ContextFragment, current contextStateSnapshot, compaction compactionRecord, compactionPresent bool) ([]*Message, contextStateSnapshot, error) {
 	next := cloneContextStateSnapshot(current)
 	if next.Sections == nil {
 		next.Sections = make(map[string]contextStateSection)
@@ -88,7 +92,7 @@ func advanceContextState(
 
 	appended := make([]*Message, 0)
 	appendUpsert := func(fragment ContextFragment, fingerprint, operation, previousRevision string) {
-		index := len(raw) + len(appended)
+		index := archive.count(raw) + len(appended)
 		appended = append(appended, newContextStateMessage(fragment, fingerprint, operation, previousRevision))
 		next.Sections[fragment.StateID] = contextStateSection{
 			StateID: fragment.StateID, Source: fragment.Source, Purpose: fragment.Purpose,
@@ -120,7 +124,7 @@ func advanceContextState(
 	sort.Strings(removed)
 	for _, id := range removed {
 		section := next.Sections[id]
-		section.MessageIndex = len(raw) + len(appended)
+		section.MessageIndex = archive.count(raw) + len(appended)
 		section.Removed = true
 		appended = append(appended, newContextStateRemovalMessage(section))
 		next.Sections[id] = section
@@ -138,7 +142,7 @@ func advanceContextState(
 				continue
 			}
 			if section.Removed {
-				section.MessageIndex = len(raw) + len(appended)
+				section.MessageIndex = archive.count(raw) + len(appended)
 				appended = append(appended, newContextStateRemovalMessage(section))
 				next.Sections[id] = section
 				continue
@@ -264,13 +268,17 @@ func rebuildContextStateSnapshot(messages []*Message) (contextStateSnapshot, err
 }
 
 func validateContextStateSnapshot(state contextStateSnapshot, messages []*Message) error {
+	return validateContextStateSnapshotInArchive(state, messages, nil)
+}
+
+func validateContextStateSnapshotInArchive(state contextStateSnapshot, messages []*Message, archive *historyArchive) error {
 	for id, section := range state.Sections {
 		if strings.TrimSpace(id) == "" || section.StateID != id || strings.TrimSpace(section.Source) == "" ||
 			strings.TrimSpace(section.Purpose) == "" || strings.TrimSpace(section.Resource) == "" ||
-			len(section.Fingerprint) != 64 || section.MessageIndex < 0 || section.MessageIndex >= len(messages) {
+			len(section.Fingerprint) != 64 || section.MessageIndex < 0 || section.MessageIndex >= archive.count(messages) || !archive.contains(section.MessageIndex) {
 			return fmt.Errorf("Agent transcript Context State section %q is invalid", id)
 		}
-		message := messages[section.MessageIndex]
+		message := messages[archive.local(section.MessageIndex)]
 		if message == nil {
 			return fmt.Errorf("Agent transcript Context State section %q lost its latest update", id)
 		}

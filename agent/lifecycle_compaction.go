@@ -14,7 +14,7 @@ func (session *Session) Compact(ctx context.Context, request CompactionRequest) 
 	if commandID == "" {
 		commandID = newPublicID("compact")
 	}
-	preparation, release, err := session.prepareStructuralDefinition(ctx, runstate.CommandID(commandID))
+	preparation, release, err := session.prepareStructuralDefinition(ctx, runstate.CommandID(commandID), runstate.StructuralCompactContext)
 	if err != nil {
 		return CompactionResult{}, err
 	}
@@ -84,7 +84,7 @@ func (session *Session) RemoveCompaction(ctx context.Context, request Compaction
 	if commandID == "" {
 		commandID = newPublicID("remove-compaction")
 	}
-	preparation, release, err := session.prepareStructuralDefinition(ctx, runstate.CommandID(commandID))
+	preparation, release, err := session.prepareStructuralDefinition(ctx, runstate.CommandID(commandID), runstate.StructuralRemoveCompaction)
 	if err != nil {
 		return false, err
 	}
@@ -138,7 +138,7 @@ type structuralDefinitionPreparation struct {
 	compactionPresent bool
 }
 
-func (session *Session) prepareStructuralDefinition(ctx context.Context, commandID runstate.CommandID) (structuralDefinitionPreparation, func(), error) {
+func (session *Session) prepareStructuralDefinition(ctx context.Context, commandID runstate.CommandID, kind runstate.StructuralOperationKind) (structuralDefinitionPreparation, func(), error) {
 	if err := session.usable(); err != nil {
 		return structuralDefinitionPreparation{}, nil, err
 	}
@@ -187,7 +187,19 @@ func (session *Session) prepareStructuralDefinition(ctx context.Context, command
 		return failed(err)
 	}
 	prepared.materializedFingerprint = materialized
+	if transcript.Archive != nil && (kind == runstate.StructuralRemoveCompaction || prepared.definition.Compaction != nil && len(current.Summary) > prepared.definition.Compaction.SummaryLimitBytes()) {
+		transcript, err = session.expandCanonicalArchive(ctx, transcript)
+		if err != nil {
+			return failed(err)
+		}
+		state, err = json.Marshal(transcript)
+		if err != nil {
+			return failed(err)
+		}
+	}
 	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
+	prepared.archive = transcript.Archive
+	prepared.historyHead = transcript.HistoryHead
 	prepared.elision, err = elisionStateFrom(capabilities)
 	if err != nil {
 		return failed(err)
@@ -208,16 +220,13 @@ func (session *Session) executeStructural(ctx context.Context, preparation struc
 		Capabilities: preparation.capabilities, Controls: make(chan runstate.EngineControl),
 	}, func(event runstate.EngineEvent) error {
 		update, ok := event.(runstate.EngineCapabilityState)
-		if !ok {
+		if !ok || update.Delete || update.Capability != compactionCapability {
 			return fmt.Errorf("unsupported structural Agent event %T", event)
 		}
 		session.mu.Lock()
-		if update.Delete {
-			delete(session.capabilities, update.Capability)
-		} else {
-			session.capabilities[update.Capability] = append(json.RawMessage(nil), update.State...)
-		}
-		persistErr := session.persistCapabilitiesLocked(context.Background())
+		_, persistErr := session.commitContextCheckpointLocked(context.Background(), runstate.EngineTranscriptUpdated{
+			State: preparation.state, CapabilityStates: map[string]json.RawMessage{update.Capability: update.State},
+		})
 		session.mu.Unlock()
 		if persistErr != nil {
 			return persistErr

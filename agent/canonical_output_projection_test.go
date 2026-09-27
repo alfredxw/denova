@@ -27,7 +27,7 @@ func TestCanonicalOutputProjectionPreservesCurrentTurnFinishReason(t *testing.T)
 					return OutputCommitReceipt{
 						Revision: "output-1",
 						Transcript: &OutputProjection{
-							Content: "approved answer", Thinking: "approved thinking", CanonicalMessages: canonical,
+							Content: "approved answer", Thinking: "approved thinking", ContextMessages: canonical,
 						},
 					}, nil
 				},

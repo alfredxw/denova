@@ -14,12 +14,40 @@ func (run *Run) updateEngineTranscript(state json.RawMessage, persist bool) erro
 	if state == nil {
 		return nil
 	}
+	run.mu.RLock()
+	outputCommit := run.snapshot.OutputCommit
+	run.mu.RUnlock()
 	run.session.mu.Lock()
+	if run.session.canonicalMessages {
+		next, err := decodeEngineTranscript(state)
+		if err != nil {
+			run.session.mu.Unlock()
+			return err
+		}
+		var previous engineTranscript
+		if err := json.Unmarshal(run.session.messageCheckpoint.Metadata, &previous); err != nil {
+			run.session.mu.Unlock()
+			return err
+		}
+		next.HistoryHead = previous.HistoryHead
+		if outputCommit != nil {
+			next.HistoryHead.Revision = ""
+			if next.ActiveModelUser == nil {
+				next.HistoryHead.Revision = outputCommit.Revision
+			}
+		}
+		state, err = json.Marshal(next)
+		if err != nil {
+			run.session.mu.Unlock()
+			return err
+		}
+	}
 	run.session.engineState = append(json.RawMessage(nil), state...)
 	var err error
 	if persist {
 		err = run.session.persistTranscriptLocked(context.Background())
 	}
+	state = append(json.RawMessage(nil), run.session.engineState...)
 	run.session.mu.Unlock()
 	run.mu.Lock()
 	run.snapshot.State = append(json.RawMessage(nil), state...)

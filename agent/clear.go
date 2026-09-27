@@ -83,6 +83,7 @@ func applyClearToTranscript(transcript *engineTranscript, capabilities map[strin
 	}
 	if clearState.Revision > transcript.ClearRevision {
 		transcript.Messages = nil
+		transcript.Archive = nil
 		transcript.ContextState = contextStateSnapshot{}
 		transcript.ClearRevision = clearState.Revision
 	}

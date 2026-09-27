@@ -35,7 +35,7 @@ func prepareElision(
 	if pressure < int(float64(policy.ContextWindowTokens)*policy.TriggerRatio) {
 		return prepared.elision, nil, nil
 	}
-	projected, err := prepared.elision.project(raw)
+	projected, err := elisionForHistory(prepared.elision, compaction, compactionPresent).projectArchive(raw, prepared.archive)
 	if err != nil {
 		return elisionRecord{}, nil, err
 	}
@@ -51,14 +51,14 @@ func prepareElision(
 	}
 	start := 0
 	if compactionPresent && !compaction.Removed {
-		start = compaction.ReplacementTo
+		start = prepared.archive.local(compaction.ReplacementTo)
 	}
 	next := elisionRecord{Version: 1, Revision: prepared.elision.Revision + 1, ClearRevision: prepared.clearRevision}
 	selected := make(map[int]bool)
 	for _, replacement := range prepared.elision.Replacements {
-		if replacement.MessageIndex >= start {
+		if prepared.archive.local(replacement.MessageIndex) >= start && prepared.archive.contains(replacement.MessageIndex) {
 			next.Replacements = append(next.Replacements, replacement)
-			selected[replacement.MessageIndex] = true
+			selected[prepared.archive.local(replacement.MessageIndex)] = true
 		}
 	}
 	previousCount := len(next.Replacements)
@@ -105,7 +105,7 @@ func prepareElision(
 			if err != nil {
 				return elisionRecord{}, nil, err
 			}
-			next.Replacements = append(next.Replacements, elisionReplacement{MessageIndex: index, SourceHash: fingerprint})
+			next.Replacements = append(next.Replacements, elisionReplacement{MessageIndex: prepared.archive.raw(index), SourceHash: fingerprint})
 			selected[index] = true
 			saved += gain
 		}
