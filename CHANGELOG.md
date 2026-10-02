@@ -22,6 +22,8 @@ Denova records only major user-visible features, important compatibility or data
 - External runtimes persist control receipts incrementally instead of rewriting all historical receipts when accepting guidance, pausing, or finishing tasks. Existing records are backed up and converted while preserving unfinished tasks and command retry results.
 - 修复打开或切换到包含大量整章写入的长会话时，页面长时间占满 CPU、无法操作的问题。
 - Fix the page pinning the CPU and becoming unresponsive when opening or switching to a long session with many whole-chapter writes.
+- 修复单次提问中 Agent 连续编辑过多时，会话历史一次返回整个回合（可达数十 MB）、导致页面长时间加载不出来的问题。超长回合现在按页加载，单页传输量有上限，可通过“加载更早消息”继续查看；首次打开已有会话时会自动重建一次历史索引。
+- Fix conversations becoming unable to load when one Agent turn made many edits, because history returned the entire turn (up to tens of megabytes) at once. Very long turns now load page by page with a bounded response size and remain reachable through “Load earlier messages”; existing sessions rebuild their history index once on first open.
 
 ## [v0.5.1] - 2026-09-28
 

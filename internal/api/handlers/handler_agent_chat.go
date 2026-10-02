@@ -12,7 +12,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	agentruntime "denova/internal/agents/runtime"
-	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
 	agentchatapp "denova/internal/app/agentchat"
@@ -436,12 +435,7 @@ func (h *Handlers) HandleAgentChatMessages(ctx context.Context, c *app.RequestCo
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{
-		Messages: agentui.MessagesFromHistoryAtOffset(page.Entries, page.NextBefore),
-		Page: sessionMessagePageMeta{
-			NextBefore: strconv.Itoa(page.NextBefore), HasMore: page.HasMore, Total: page.Total,
-		},
-	})
+	writeJSON(c, consts.StatusOK, sessionMessagesPageResponse(page))
 }
 
 func (h *Handlers) HandleAgentChatAskAnswer(ctx context.Context, c *app.RequestContext) {

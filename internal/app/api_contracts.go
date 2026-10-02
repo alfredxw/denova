@@ -32,6 +32,7 @@ type (
 	AgentRuntimeRecoveryAction     = agentexecution.RuntimeRecoveryAction
 
 	AgentSessionHistoryEntry         = session.HistoryEntry
+	AgentSessionHistoryPage          = session.HistoryPage
 	AgentSessionUserMessageReference = agentcontext.UserReference
 	AgentSessionMeta                 = session.SessionMeta
 	AgentSession                     = session.Session

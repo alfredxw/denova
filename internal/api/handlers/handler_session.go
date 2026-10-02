@@ -96,14 +96,19 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{
-		Messages: agentui.MessagesFromHistoryAtOffset(page.Entries, page.NextBefore),
+	writeJSON(c, consts.StatusOK, sessionMessagesPageResponse(page))
+}
+
+func sessionMessagesPageResponse(page appsvc.AgentSessionHistoryPage) sessionMessagesPageDTO {
+	messages, page := agentui.MessagesPage(page)
+	return sessionMessagesPageDTO{
+		Messages: messages,
 		Page: sessionMessagePageMeta{
 			NextBefore: strconv.Itoa(page.NextBefore),
 			HasMore:    page.HasMore,
 			Total:      page.Total,
 		},
-	})
+	}
 }
 
 // handleSessions GET /api/sessions — 返回当前 workspace 下的会话列表。

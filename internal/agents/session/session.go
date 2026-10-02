@@ -265,7 +265,9 @@ func (s *Session) History() []HistoryEntry {
 			if record.message.Role == agent.Assistant {
 				if coverage := segmentedAssistantContentByRun[strings.TrimSpace(record.messageMetadata.RunID)]; coverage != nil {
 					_, segmentMatches := coverage.segments[sha256.Sum256([]byte(record.message.Content))]
-					if segmentMatches || coverage.combined.String() == record.message.Content {
+					combined := coverage.combined.String()
+					if segmentMatches || combined == record.message.Content ||
+						(s.replayStartsInsideTurn && combined != "" && strings.HasSuffix(record.message.Content, combined)) {
 						continue
 					}
 				}

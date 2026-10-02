@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 27
+	sessionProjectionVersion      = 28
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -29,9 +29,14 @@ const (
 // historyAnchor maps a stable visible-history position to the physical
 // transaction containing the next row. Anchors contain no user content and
 // make backwards paging independent from the total journal size.
+//
+// A Turn anchor sits inside one long Agent turn, at the first visible row of
+// its transaction. Replaying from it lacks earlier run state, so readers must
+// verify the replayed row count and fall back to a turn-boundary anchor.
 type historyAnchor struct {
 	Before int                        `json:"before"`
 	Cursor conversationjournal.Cursor `json:"cursor"`
+	Turn   bool                       `json:"turn,omitempty"`
 }
 
 type messageLocator struct {
@@ -101,6 +106,8 @@ type sessionJournalProjection struct {
 	MessageLocators            []messageLocator                               `json:"message_locators,omitempty"`
 	MessageTransactionLocators []messageLocator                               `json:"message_transaction_locators,omitempty"`
 	HistoryAnchors             []historyAnchor                                `json:"history_anchors,omitempty"`
+	HistoryTurnStart           int                                            `json:"history_turn_start,omitempty"`
+	HistoryRowCursor           conversationjournal.Cursor                     `json:"history_row_cursor,omitempty"`
 	RecentCommits              []domainCommitLocator                          `json:"recent_commits,omitempty"`
 	RecentContextBatches       []contextBatchLocator                          `json:"recent_context_batches,omitempty"`
 	PendingInterrupt           *Interruption                                  `json:"pending_interrupt,omitempty"`
@@ -539,9 +546,24 @@ func (projection *sessionJournalProjection) rememberMessage(location conversatio
 }
 
 func (projection *sessionJournalProjection) rememberHistoryRow(cursor conversationjournal.Cursor, safeBoundary bool) {
-	if len(projection.HistoryAnchors) == 0 || (safeBoundary && projection.HistoryCount-projection.HistoryAnchors[len(projection.HistoryAnchors)-1].Before >= sessionHistoryAnchorEvery) {
-		projection.HistoryAnchors = append(projection.HistoryAnchors, historyAnchor{Before: projection.HistoryCount, Cursor: cursor})
+	sinceAnchor := sessionHistoryAnchorEvery
+	if count := len(projection.HistoryAnchors); count > 0 {
+		sinceAnchor = projection.HistoryCount - projection.HistoryAnchors[count-1].Before
 	}
+	switch {
+	case len(projection.HistoryAnchors) == 0 || (safeBoundary && sinceAnchor >= sessionHistoryAnchorEvery):
+		projection.HistoryAnchors = append(projection.HistoryAnchors, historyAnchor{Before: projection.HistoryCount, Cursor: cursor})
+	case !safeBoundary && sinceAnchor >= sessionHistoryAnchorEvery &&
+		projection.HistoryCount-projection.HistoryTurnStart >= sessionHistoryAnchorEvery &&
+		cursor != projection.HistoryRowCursor:
+		// Without these, the newest page of a tool-heavy turn replays the
+		// entire turn, which grows with every edit the Agent makes.
+		projection.HistoryAnchors = append(projection.HistoryAnchors, historyAnchor{Before: projection.HistoryCount, Cursor: cursor, Turn: true})
+	}
+	if safeBoundary {
+		projection.HistoryTurnStart = projection.HistoryCount
+	}
+	projection.HistoryRowCursor = cursor
 	projection.HistoryCount++
 }
 

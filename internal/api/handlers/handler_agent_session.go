@@ -38,10 +38,7 @@ func (h *Handlers) HandleAgentSessionMessages(ctx context.Context, c *app.Reques
 			writeError(c, consts.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{
-			Messages: agentui.MessagesFromHistoryAtOffset(page.Entries, page.NextBefore),
-			Page:     sessionMessagePageMeta{NextBefore: strconv.Itoa(page.NextBefore), HasMore: page.HasMore, Total: page.Total},
-		})
+		writeJSON(c, consts.StatusOK, sessionMessagesPageResponse(page))
 		return
 	}
 	entries, err := h.app.AgentSessionMessages(agentKind)

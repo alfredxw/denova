@@ -346,6 +346,11 @@ type Session struct {
 	messageCount           int
 	historyBaseIndex       int
 	partialMaterialization bool
+	// replayStartsInsideTurn marks a history window replayed from a Turn
+	// anchor: display segments emitted before the window are absent, so a
+	// canonical assistant row counts as covered when it ends with the
+	// window's segments.
+	replayStartsInsideTurn bool
 	mu                     sync.Mutex
 	messages               []*agent.Message
 	records                []historyRecord

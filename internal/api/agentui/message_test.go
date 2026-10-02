@@ -1,6 +1,8 @@
 package agentui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,5 +191,27 @@ func assertMessagePartType(t *testing.T, message Message, role, partType string)
 	}
 	if message.Parts[0]["type"] != partType {
 		t.Fatalf("message %s part type mismatch: want %s got %#v", message.ID, partType, message.Parts[0])
+	}
+}
+
+func TestMessagesPageLeavesOldestRowsForLaterPagesWhenOverBudget(t *testing.T) {
+	args := `{"new_string":"` + strings.Repeat("x", 200<<10) + `"}`
+	entries := make([]session.HistoryEntry, 0, 6)
+	for index := 0; index < 6; index++ {
+		entries = append(entries, session.HistoryEntry{ID: fmt.Sprintf("edit-%d", index), Role: "tool_call", Name: "edit", Args: args, Status: "success"})
+	}
+	messages, page := MessagesPage(session.HistoryPage{Entries: entries, NextBefore: 10, HasMore: false, Total: 16})
+	// Each row is sent with its arguments twice, so two rows fit in 1 MiB.
+	if len(messages) != 2 || page.NextBefore != 14 || !page.HasMore || page.Total != 16 {
+		t.Fatalf("messages=%d next=%d has_more=%t total=%d", len(messages), page.NextBefore, page.HasMore, page.Total)
+	}
+	if messages[0].ID != historyMessageID(entries[4], 14) || messages[1].ID != historyMessageID(entries[5], 15) {
+		t.Fatalf("budgeted page lost position-derived IDs: %s, %s", messages[0].ID, messages[1].ID)
+	}
+
+	huge := session.HistoryEntry{ID: "huge", Role: "tool_call", Name: "write", Args: `{"content":"` + strings.Repeat("y", 2<<20) + `"}`}
+	messages, page = MessagesPage(session.HistoryPage{Entries: []session.HistoryEntry{huge}, NextBefore: 3, HasMore: true, Total: 4})
+	if len(messages) != 1 || page.NextBefore != 3 {
+		t.Fatalf("oversized newest row must still page forward: messages=%d next=%d", len(messages), page.NextBefore)
 	}
 }

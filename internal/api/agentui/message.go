@@ -54,6 +54,33 @@ func MessagesFromHistoryAtOffset(entries []appsvc.AgentSessionHistoryEntry, offs
 	return result
 }
 
+// historyPageByteBudget bounds the estimated wire size of one history page.
+// Edit-heavy turns carry whole chapter text in every tool call, so a 100-row
+// page could otherwise reach tens of megabytes before compression.
+const historyPageByteBudget = 1 << 20
+
+// historyEntryOverheadBytes approximates the per-message JSON envelope.
+const historyEntryOverheadBytes = 512
+
+// MessagesPage converts one history page and, when it exceeds the response
+// budget, leaves its oldest entries for the next "load earlier" request. The
+// newest entry is always returned so paging keeps making progress.
+func MessagesPage(page appsvc.AgentSessionHistoryPage) ([]Message, appsvc.AgentSessionHistoryPage) {
+	used := 0
+	for index := len(page.Entries) - 1; index >= 0; index-- {
+		entry := page.Entries[index]
+		// Tool arguments are sent both parsed and as recorded input text.
+		used += historyEntryOverheadBytes + len(entry.Content) + 2*len(entry.Args) + len(entry.Result)
+		if used > historyPageByteBudget && index < len(page.Entries)-1 {
+			page.Entries = page.Entries[index+1:]
+			page.NextBefore += index + 1
+			page.HasMore = true
+			break
+		}
+	}
+	return MessagesFromHistoryAtOffset(page.Entries, page.NextBefore), page
+}
+
 func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (Message, bool) {
 	if entry.Status == "discarded" {
 		return Message{}, false

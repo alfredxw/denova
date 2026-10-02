@@ -157,6 +157,110 @@ func TestHistoryPageDoesNotSplitSingleLongRun(t *testing.T) {
 	}
 }
 
+func TestHistoryPageSplitsToolHeavyTurnAtTurnAnchors(t *testing.T) {
+	directory := t.TempDir()
+	store, err := NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("tool-heavy-turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		runID        = "run-edits"
+		transactions = 260
+	)
+	now := time.Now().UTC()
+	if err := sess.AppendWithMetadata(agent.UserMessage("rewrite every chapter"), MessageMetadata{RunID: runID, ContextRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Repeat("章节正文", 512)
+	var canonical strings.Builder
+	for index := 0; index < transactions; index++ {
+		// Like a live run, each step commits separately; prose segments span
+		// Turn anchors so the canonical assistant row must stay deduplicated.
+		prose := fmt.Sprintf("progress-%03d ", index)
+		canonical.WriteString(prose)
+		records := []any{
+			displayRecord{Type: historyTypeDisplay, RecordID: newDisplayRecordID(), DisplayEvent: DisplayEvent{
+				ID: fmt.Sprintf("prose-%03d", index), Role: "assistant", Content: prose, RunID: runID, CreatedAt: now,
+			}},
+			displayRecord{Type: historyTypeDisplay, RecordID: newDisplayRecordID(), DisplayEvent: DisplayEvent{
+				ID: fmt.Sprintf("edit-%03d", index), Role: "tool_call", Name: "edit", Args: args,
+				Status: "success", Result: "edited", RunID: runID, CreatedAt: now,
+			}},
+		}
+		if err := sess.withCanonicalMutation(context.Background(), "append tool-heavy turn fixture", func() error {
+			_, err := sess.appendJournalRecordsLocked(records...)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sess.AppendWithMetadata(agent.AssistantMessage(canonical.String(), nil), MessageMetadata{RunID: runID, ContextRevision: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopenedStore, err := NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopenedStore.Close() })
+	reopened, err := reopenedStore.Get("tool-heavy-turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wantTotal = 1 + 2*transactions
+	whole, err := reopened.ReadHistoryPage(context.Background(), -1, wantTotal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if whole.Total != wantTotal || len(whole.Entries) != wantTotal || whole.HasMore {
+		t.Fatalf("whole turn rows=%d total=%d has_more=%t want=%d", len(whole.Entries), whole.Total, whole.HasMore, wantTotal)
+	}
+	wholeRead := reopened.JournalReplayStats().LastRangeBytesRead
+
+	latest, err := reopened.ReadHistoryPage(context.Background(), -1, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(latest.Entries) != 50 || latest.NextBefore != wantTotal-50 || !latest.HasMore {
+		t.Fatalf("latest page rows=%d next=%d has_more=%t", len(latest.Entries), latest.NextBefore, latest.HasMore)
+	}
+	// The Turn anchor near row 257 lets the newest page skip the first half of
+	// the turn instead of replaying it from the user message.
+	if read := reopened.JournalReplayStats().LastRangeBytesRead; read*10 >= wholeRead*6 {
+		t.Fatalf("latest page replayed %d bytes, whole turn is %d", read, wholeRead)
+	}
+
+	paged := make([]HistoryEntry, 0, wantTotal)
+	before := -1
+	for {
+		page, pageErr := reopened.ReadHistoryPage(context.Background(), before, 50)
+		if pageErr != nil {
+			t.Fatal(pageErr)
+		}
+		paged = append(append([]HistoryEntry(nil), page.Entries...), paged...)
+		if !page.HasMore {
+			break
+		}
+		before = page.NextBefore
+	}
+	if len(paged) != wantTotal {
+		t.Fatalf("paged rows=%d want=%d", len(paged), wantTotal)
+	}
+	for index := range paged {
+		got, want := paged[index], whole.Entries[index]
+		if got.ID != want.ID || got.Role != want.Role || got.Content != want.Content || got.Args != want.Args {
+			t.Fatalf("paged row %d=%s/%s want %s/%s", index, got.Role, got.ID, want.Role, want.ID)
+		}
+	}
+}
+
 func TestHistoryPageKeepsSegmentedRunsWholeAcrossSparseAnchors(t *testing.T) {
 	directory := t.TempDir()
 	store, err := NewStore(directory)
