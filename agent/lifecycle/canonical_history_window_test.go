@@ -95,14 +95,14 @@ func TestCanonicalContextRetiresCompactedBodies(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertWindow()
-			if source.reads != 1 {
-				t.Fatalf("cold aligned checkpoint reread archived bodies: %d", source.reads)
+			if source.reads != 2 {
+				t.Fatalf("cold checkpoint did not read its canonical window: %d", source.reads)
 			}
 			removed, err := sess.RemoveCompaction(ctx, agentcompaction.CompactionRemoveRequest{})
 			if err != nil || !removed {
 				t.Fatalf("remove: %t %v", removed, err)
 			}
-			if source.reads != 2 {
+			if source.reads != 3 {
 				t.Fatalf("explicit removal did not read the original journal once: %d", source.reads)
 			}
 			state, err := decodeJournalTranscript(sess.engineState)
@@ -201,6 +201,16 @@ func (s *testHistorySource) CanonicalMessages(context.Context) ([]*agentschema.M
 	return agentschema.CloneMessages(s.messages), nil
 }
 
+func (s *testHistorySource) VisitCanonicalMessages(_ context.Context, visit func(*agentschema.Message) error) error {
+	s.reads++
+	for _, message := range s.messages {
+		if err := visit(message.Clone()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *testHistorySource) Identity() agentschema.CapabilityIdentity {
 	return agentschema.CapabilityIdentity{Kind: "test.window.canonical", Version: 1}
 }
@@ -285,8 +295,8 @@ func TestCanonicalArchivedCheckpointRetainsIncompleteBatchOnColdLoad(t *testing.
 	if err := sess.LoadCanonicalHistory(ctx, source); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(before, sess.engineState) || source.reads != 1 {
-		t.Fatal("cold active window lost partial tool batch or reread source")
+	if !reflect.DeepEqual(before, sess.engineState) || source.reads != 2 {
+		t.Fatal("cold canonical recovery lost the partial tool batch")
 	}
 }
 

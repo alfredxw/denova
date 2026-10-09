@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useChat as useAIChat } from '@ai-sdk/react'
+import { useAgentStream } from './use-agent-stream'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
 import { createAgentCommandID } from '@/lib/api'
@@ -102,7 +102,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     stop: stopAIStream,
     status,
     error,
-  } = useAIChat<AgentUIMessage>({
+  } = useAgentStream({
     transport,
     throttle: STREAMING_RENDER_INTERVAL_MS,
     onData: (part) => {
@@ -162,23 +162,6 @@ export function useAgentChat(options: ChatOptions = {}) {
       void refreshSessionsRef.current()
     },
   })
-  const prepareStreamResumeBoundary = useCallback(() => {
-    setUIMessages((current) => {
-      const tail = current.at(-1)
-      if (tail?.role !== 'assistant') return current
-      // AI SDK reconnects by mutating the last assistant message. Keep the
-      // canonical tail intact so a SubAgent message cannot lend its metadata
-      // to the root Task replay (or vice versa).
-      return [
-        ...current,
-        {
-          id: `agent-stream-resume-boundary:${tail.id}`,
-          role: 'system',
-          parts: [],
-        },
-      ]
-    })
-  }, [setUIMessages])
   const messages = useMemo(() => (
     messageNormalizerRef.current!.normalize(uiMessages).flatMap<AgentUIMessage>((message) => {
       const visibleParts = message.parts.filter((part) => part.type !== 'data-agent-error')
@@ -284,7 +267,6 @@ export function useAgentChat(options: ChatOptions = {}) {
     onDisplayRehydrated: notifyDisplayRehydrated,
     onDisplayTerminalRestored: restoreDisplayTerminal,
     onSettled: () => setAbortPending(false),
-    prepareStreamResumeBoundary,
     runtimeRecoverySignal,
     resumeStream,
     transport,

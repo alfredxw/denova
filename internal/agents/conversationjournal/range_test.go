@@ -4,11 +4,39 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestVisitRangeMatchesReadsAndStopsOnVisitorFailure(t *testing.T) {
+	journal, _ := largeJournal(t, 12, 512)
+	defer journal.Close()
+	selected := Range{After: 3, Through: 11, Limit: 4}
+	want, err := journal.ReadRange(t.Context(), selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []Record
+	if err := journal.VisitRange(t.Context(), selected, func(record Record) error {
+		record.Payload = bytes.Clone(record.Payload)
+		got = append(got, record)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("streamed range differs from the collected range")
+	}
+	failure := errors.New("stop visiting")
+	visits := 0
+	if err := journal.VisitRange(t.Context(), selected, func(Record) error { visits++; return failure }); !errors.Is(err, failure) || visits != 1 {
+		t.Fatalf("visitor failure: visits=%d err=%v", visits, err)
+	}
+}
 
 // largeJournal mimics a long writing session: every transaction carries a
 // whole chapter, and older transactions sit between sparse anchors.

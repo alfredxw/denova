@@ -18,11 +18,15 @@ func ProjectCheckpoint(raw json.RawMessage, capabilities map[string]json.RawMess
 	if err != nil {
 		return nil, PersistedMessageCheckpoint{}, err
 	}
-	encoded, err := encodeCanonicalWindow(state, capabilities)
+	state, err = projectCanonicalWindow(state, capabilities)
 	if err != nil {
 		return nil, PersistedMessageCheckpoint{}, err
 	}
-	checkpoint, err := CanonicalMessageCheckpoint(encoded)
+	checkpoint, err := canonicalMessageCheckpoint(state)
+	if err != nil {
+		return nil, PersistedMessageCheckpoint{}, err
+	}
+	encoded, err := json.Marshal(state)
 	return encoded, checkpoint, err
 }
 
@@ -49,12 +53,9 @@ func AlignCheckpoint(raw json.RawMessage, previous PersistedMessageCheckpoint, o
 	return json.Marshal(state)
 }
 
-// AlignedCanonicalState answers whether a cold checkpoint already represents
+// AlignedCanonicalState answers whether an in-memory checkpoint already represents
 // the current canonical source, without exposing its transcript to lifecycle.
-func AlignedCanonicalState(raw json.RawMessage, checkpoint PersistedMessageCheckpoint, head canonical.CanonicalHistoryHead) (json.RawMessage, bool, error) {
-	if len(raw) == 0 && checkpoint.Archive != nil {
-		raw = checkpoint.Metadata
-	}
+func AlignedCanonicalState(raw json.RawMessage, head canonical.CanonicalHistoryHead) (json.RawMessage, bool, error) {
 	if len(raw) == 0 {
 		return nil, false, nil
 	}

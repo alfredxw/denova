@@ -48,6 +48,9 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Fixed / 修复
 
+- 修复 Agent 连续读取大量长文本时的内存与会话日志膨胀；历史分页与压缩后恢复保留完整内容。
+- Fix excessive memory and session-log growth during Agent runs with many large text results, preserving complete content through history paging and recovery after compaction.
+
 - 修复手动压缩 AgentChat 上下文时阻塞其他会话发送、配置和恢复请求的问题，并避免应用关闭等待压缩模型响应。
 - Fix manual AgentChat context compaction blocking message, configuration and recovery requests in other conversations and app shutdown waiting for the compaction provider.
 

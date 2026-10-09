@@ -26,3 +26,7 @@ func (c *SessionConversation) CanonicalMessages(ctx context.Context) ([]*agentsc
 	}
 	return c.session.ReadCanonicalMessages(ctx)
 }
+
+func (c *SessionConversation) VisitCanonicalMessages(ctx context.Context, visit func(*agentschema.Message) error) error {
+	return c.session.VisitCanonicalMessages(ctx, visit)
+}

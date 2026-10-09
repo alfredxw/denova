@@ -38,9 +38,39 @@ func (journal *Journal) ReadRange(ctx context.Context, selected Range) ([]Record
 	}
 	result, bytesRead, err := journal.readFromAnchorLocked(ctx, selected.After+1, func(cursor Cursor) bool {
 		return cursor > selected.After && cursor <= through
-	}, through, limit)
+	}, through, limit, nil)
 	journal.stats.LastRangeBytesRead = bytesRead
 	return result, err
+}
+
+// VisitRange holds a stable read lease and visits one record at a time. Payload
+// bytes belong to the scan; copy them if retained. The visitor must not reenter
+// this journal. Unlike ReadRange, memory does not grow with the selected range.
+func (journal *Journal) VisitRange(ctx context.Context, selected Range, visit func(Record) error) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	release, err := journal.lockForRead(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	through := selected.Through
+	if through == 0 || through > journal.head.Cursor {
+		through = journal.head.Cursor
+	}
+	if selected.After >= through {
+		return nil
+	}
+	limit := selected.Limit
+	if limit <= 0 {
+		limit = int(through - selected.After)
+	}
+	_, bytesRead, err := journal.readFromAnchorLocked(ctx, selected.After+1, func(cursor Cursor) bool {
+		return cursor > selected.After && cursor <= through
+	}, through, limit, visit)
+	journal.stats.LastRangeBytesRead = bytesRead
+	return err
 }
 
 // ReadTransactions reads the given transactions in cursor order with one
@@ -71,7 +101,7 @@ func (journal *Journal) ReadTransactions(ctx context.Context, cursors []Cursor) 
 	if len(wanted) == 0 {
 		return []Record{}, nil
 	}
-	result, bytesRead, err := journal.readFromAnchorLocked(ctx, first, func(cursor Cursor) bool { return wanted[cursor] }, last, len(wanted))
+	result, bytesRead, err := journal.readFromAnchorLocked(ctx, first, func(cursor Cursor) bool { return wanted[cursor] }, last, len(wanted), nil)
 	journal.stats.LastRangeBytesRead = bytesRead
 	if err != nil {
 		return nil, err
@@ -121,7 +151,7 @@ func (journal *Journal) lockForRead(ctx context.Context) (func(), error) {
 
 // readFromAnchorLocked starts at the nearest indexed anchor at or before target and
 // returns up to limit selected transactions, stopping after through.
-func (journal *Journal) readFromAnchorLocked(ctx context.Context, target Cursor, selected func(Cursor) bool, through Cursor, limit int) ([]Record, int64, error) {
+func (journal *Journal) readFromAnchorLocked(ctx context.Context, target Cursor, selected func(Cursor) bool, through Cursor, limit int, visit func(Record) error) ([]Record, int64, error) {
 	anchor := Location{}
 	for _, candidate := range journal.sparse {
 		if candidate.Cursor > target {
@@ -145,7 +175,7 @@ func (journal *Journal) readFromAnchorLocked(ctx context.Context, target Cursor,
 		previousCursor = anchor.Cursor - 1
 		previousSHA = anchor.PreviousRecordSHA256
 	}
-	return journal.readSelectedLocked(ctx, startOffset, previousCursor, previousSHA, selected, through, limit)
+	return journal.readSelectedLocked(ctx, startOffset, previousCursor, previousSHA, selected, through, limit, visit)
 }
 
 func (journal *Journal) readSelectedLocked(
@@ -156,6 +186,7 @@ func (journal *Journal) readSelectedLocked(
 	selected func(Cursor) bool,
 	through Cursor,
 	limit int,
+	visit func(Record) error,
 ) ([]Record, int64, error) {
 	file, err := os.Open(journal.path)
 	if err != nil {
@@ -213,7 +244,7 @@ func (journal *Journal) readSelectedLocked(
 		if err != nil {
 			return nil, bytesRead, err
 		}
-		payloads := []json.RawMessage{append(json.RawMessage(nil), trimmed...)}
+		payloads := []json.RawMessage{trimmed}
 		legacy := true
 		if common {
 			if body.Identity != journal.identity || body.Cursor != cursor || body.PreviousRecordSHA256 != previousSHA {
@@ -224,9 +255,16 @@ func (journal *Journal) readSelectedLocked(
 		}
 		location := Location{Cursor: cursor, Offset: lineStart, Length: len(trimmed), PreviousRecordSHA256: previousSHA}
 		for index, payload := range payloads {
-			record := Record{Location: location, Payload: append(json.RawMessage(nil), payload...), Legacy: legacy}
+			record := Record{Location: location, Payload: payload, Legacy: legacy}
 			record.Location.RecordIndex = index
-			result = append(result, record)
+			if visit != nil {
+				if err := visit(record); err != nil {
+					return nil, bytesRead, err
+				}
+			} else {
+				record.Payload = append(json.RawMessage(nil), payload...)
+				result = append(result, record)
+			}
 		}
 		transactions++
 		previousCursor = cursor

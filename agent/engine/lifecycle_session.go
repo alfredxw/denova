@@ -22,9 +22,9 @@ type PersistedMessageCheckpoint struct {
 	Archive      *agenthistory.HistoryArchive `json:"archive,omitempty"`
 	Hash         string                       `json:"hash"`
 	MessageCount int                          `json:"message_count"`
-	// Metadata is a message-free locator before compaction, or a bounded active
-	// recovery window for archived history. Pending contains only a tool batch
-	// that has not yet reached the product commit boundary.
+	// Metadata contains execution state and canonical coordinates, never committed
+	// message bodies. Pending preserves a tool batch before its product commit.
+	// Released checkpoints may still contain Messages; recovery reads the journal.
 	Metadata json.RawMessage        `json:"metadata,omitempty"`
 	Pending  []*agentschema.Message `json:"pending,omitempty"`
 }

@@ -11,6 +11,10 @@ func CanonicalMessageCheckpoint(encoded json.RawMessage) (PersistedMessageCheckp
 	if err != nil {
 		return PersistedMessageCheckpoint{}, err
 	}
+	return canonicalMessageCheckpoint(state)
+}
+
+func canonicalMessageCheckpoint(state engineTranscript) (PersistedMessageCheckpoint, error) {
 	committed := len(state.Messages)
 	for index := len(state.Messages) - 1; index >= 0; index-- {
 		message := state.Messages[index]
@@ -29,9 +33,7 @@ func CanonicalMessageCheckpoint(encoded json.RawMessage) (PersistedMessageCheckp
 		return PersistedMessageCheckpoint{}, err
 	}
 	pending := agentschema.CloneMessages(state.Messages[committed:])
-	if state.Archive == nil {
-		state.Messages = nil
-	}
+	state.Messages = nil
 	metadata, err := json.Marshal(state)
 	if err != nil {
 		return PersistedMessageCheckpoint{}, err

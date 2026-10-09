@@ -32,7 +32,8 @@ func (session *Session) LoadCanonicalHistory(ctx context.Context, source agentca
 	}
 	session.canonicalSource = source
 	checkpoint := session.messageCheckpoint
-	state, aligned, err := agentengine.AlignedCanonicalState(session.engineState, checkpoint, head)
+	revision := session.revision
+	state, aligned, err := agentengine.AlignedCanonicalState(session.engineState, head)
 	if err != nil {
 		session.mu.Unlock()
 		return err
@@ -43,6 +44,25 @@ func (session *Session) LoadCanonicalHistory(ctx context.Context, source agentca
 		return nil
 	}
 	session.mu.Unlock()
+	if len(state) == 0 {
+		restored, matched, err := agentengine.RestoreCanonicalCheckpoint(ctx, checkpoint, head, source)
+		if err != nil {
+			return err
+		}
+		if matched {
+			after, err := source.CanonicalHistoryHead(ctx)
+			if err != nil {
+				return err
+			}
+			session.mu.Lock()
+			defer session.mu.Unlock()
+			if after != head || session.revision != revision || session.active != nil && !session.active.isSuspended() || session.maintenance {
+				return agentschema.ErrSessionBusy
+			}
+			session.engineState = restored
+			return nil
+		}
+	}
 	messages, err := source.CanonicalMessages(ctx)
 	if err != nil {
 		return err

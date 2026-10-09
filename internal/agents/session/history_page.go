@@ -63,41 +63,25 @@ func (s *Session) ReadHistoryPage(ctx context.Context, before, limit int) (Histo
 			break
 		}
 	}
-	records, err := s.journal.ReadRange(ctx, conversationjournal.Range{After: anchor.Cursor - 1, Through: through})
-	if err != nil {
-		return HistoryPage{}, fmt.Errorf("read session history range: %w", err)
-	}
 	temporary := &Session{
 		ID: s.ID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		title: s.title, journalIncarnation: s.journalIncarnation,
 		partialMaterialization: true,
 		messages:               make([]*agentschema.Message, 0), records: make([]historyRecord, 0),
 	}
-	for _, record := range records {
-		if err := appendConversationRecord(temporary, record); err != nil {
-			return HistoryPage{}, fmt.Errorf("project session history cursor %d: %w", record.Location.Cursor, err)
-		}
+	projection := historyPageProjection{
+		rows: temporary, index: newSessionJournalProjection(s.ID, s.journalIncarnation),
+		start: requestedStart, end: end, maxRows: max(limit, 2*sessionHistoryAnchorEvery),
 	}
-	entries := temporary.History()
-	// The row limit is a paging target, not permission to split one Agent
-	// turn. Display progress and tool events can make a single turn much larger
-	// than the target, so align the page to the latest user/clear boundary at
-	// or before it. The sparse anchor bounds the extra scan for normal turns
-	// while still restoring an unusually large turn as one coherent unit.
-	start := anchor.Before
-	boundaryLimit := min(len(entries)-1, requestedStart-anchor.Before)
-	for index := 0; index <= boundaryLimit; index++ {
-		entry := entries[index]
-		if entry.Role == string(agentschema.User) || entry.Type == historyTypeClear {
-			start = anchor.Before + index
-		}
+	projection.index.HistoryCount = anchor.Before
+	if err := s.journal.VisitRange(ctx, conversationjournal.Range{After: anchor.Cursor - 1, Through: through}, projection.apply); err != nil {
+		return HistoryPage{}, fmt.Errorf("project session history range: %w", err)
 	}
-	from := max(0, start-anchor.Before)
-	to := min(len(entries), end-anchor.Before)
-	if from > to {
-		from = to
+	pageEntries := temporary.History()
+	start := end
+	if len(projection.positions) > 0 {
+		start = projection.positions[0]
 	}
-	pageEntries := append([]HistoryEntry(nil), entries[from:to]...)
 	if err := applyJournalAskAnswers(pageEntries, &s.projection.AgentSessions, s.journal); err != nil {
 		return HistoryPage{}, err
 	}

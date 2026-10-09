@@ -23,3 +23,12 @@ type CanonicalHistorySource interface {
 	CanonicalHistoryHead(context.Context) (CanonicalHistoryHead, error)
 	CanonicalMessages(context.Context) ([]*agentschema.Message, error)
 }
+
+// CanonicalHistoryVisitor streams the same physical message order as
+// CanonicalMessages. A visitor must not call back into the source while it is
+// walking. Each message is detached and may be retained by the visitor.
+// Sources implement this to restore an archived window without keeping
+// discarded bodies in memory; the journal remains the sole recovery authority.
+type CanonicalHistoryVisitor interface {
+	VisitCanonicalMessages(context.Context, func(*agentschema.Message) error) error
+}

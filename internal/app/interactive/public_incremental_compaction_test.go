@@ -44,6 +44,10 @@ func (c countedWritingHistory) CanonicalMessages(ctx context.Context) ([]*agents
 	*c.reads++
 	return c.SessionConversation.CanonicalMessages(ctx)
 }
+func (c countedWritingHistory) VisitCanonicalMessages(ctx context.Context, visit func(*agentschema.Message) error) error {
+	*c.reads++
+	return c.SessionConversation.VisitCanonicalMessages(ctx, visit)
+}
 func (c countedWritingHistory) NewAgentConversationCommitter(options agentrun.Options) (agentlifecycle.ConversationCommitter, error) {
 	return agentlifecycle.NewSessionConversationCommitter(agentlifecycle.SessionCommitterConfig{Conversation: c.SessionConversation, Session: c.CanonicalSession(), Options: options, Request: c.request})
 }
@@ -261,11 +265,11 @@ func TestProductsCompactRepeatedlyWithinOneRunAndColdReopen(t *testing.T) {
 				if outcome := resumed.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
 					t.Fatalf("cold continuation failed: %+v", outcome)
 				}
-				if historyReads != readsBeforeReopen {
-					t.Fatalf("aligned cold continuation reloaded full history: before=%d after=%d", readsBeforeReopen, historyReads)
+				if historyReads != readsBeforeReopen+1 {
+					t.Fatalf("cold continuation must restore the canonical window once: before=%d after=%d", readsBeforeReopen, historyReads)
 				}
-				if maintenance == "summary_only" && historyReads != 1 {
-					t.Fatalf("warm execution reloaded compacted history %d times", historyReads)
+				if maintenance == "summary_only" && readsBeforeReopen != 1 {
+					t.Fatalf("warm execution reloaded compacted history %d times", readsBeforeReopen)
 				}
 				latest := model.inputs[len(model.inputs)-1]
 				if !containsMessageContent(latest, "Incremental evidence checkpoint") || !containsMessageContent(latest, "72519") {
