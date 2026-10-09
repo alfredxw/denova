@@ -20,6 +20,8 @@ import {
   FieldSet,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import type { CatalogEntry } from '@/features/platform/api'
+import { ImportSourceFields, type ResourceInput } from './ImportSourceFields'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
@@ -56,6 +58,7 @@ export interface ImportDialogProps {
   installation?: Installation
   projectID?: string
   initialScope?: string
+  installedExtensions?: CatalogEntry[]
   onClose: () => void
   onInstalled: (installation: Installation) => void | Promise<void>
 }
@@ -65,6 +68,7 @@ export function ImportDialog({
   installation,
   projectID: defaultProject,
   initialScope = 'user',
+  installedExtensions = [],
   onClose,
   onInstalled,
 }: ImportDialogProps) {
@@ -95,11 +99,7 @@ export function ImportDialog({
   const [plan, setPlan] = useState<Plan>()
   const [planRequest, setPlanRequest] = useState<PlanRequest>()
   const [resolutions, setResolutions] = useState<Record<string, Record<string, string>>>({})
-  const [sourceKind, setSourceKind] = useState('github')
-  const [url, setURL] = useState(source?.url || '')
-  const [ref, setRef] = useState(source?.ref || '')
-  const [path, setPath] = useState(source?.path || '')
-  const [file, setFile] = useState<File>()
+  const [input, setInput] = useState<ResourceInput>(installation?.source.kind === 'file' ? { kind: 'file' } : { kind: 'github', url: '' })
   const [projectID, setProjectID] = useState(
     installation?.project_id || defaultProject || '',
   )
@@ -143,9 +143,19 @@ export function ImportDialog({
     resources.some((r) =>
       ['lore.collection', 'game.openings', 'project.cover', 'project.creator'].includes(r.kind),
     ) || (resources.some((r) => r.kind === 'skill') && scope === 'workspace') || defaultFields.length > 0
+  const permissionGrants = (resource: Preview['candidates'][number]['resources'][number]) => {
+    if (grants[resource.id]) return grants[resource.id]
+    const extension = installation && resource.extension
+      ? installedExtensions.find(item => !item.removed && item.kind === resource.extension?.kind && item.id === resource.extension.manifest.id)
+      : undefined
+    const release = extension?.releases.find(item => item.ref.releaseId === extension.currentRelease)
+    const permissions = resource.extension?.manifest.permissions
+    return (release?.grants ?? extension?.grants ?? []).filter(permission => permissions?.required.includes(permission) || permissions?.optional?.includes(permission))
+  }
+  const sourceReady = source || (input.kind === 'file' ? input.file : input.kind === 'directory' ? input.directory.trim() : input.url.trim())
   const missingConsent = resources.some((r) =>
     r.extension?.manifest.permissions.required.some(
-      (p) => !(grants[r.id] || []).includes(p),
+      (p) => !permissionGrants(r).includes(p),
     ),
   )
   useEffect(() => {
@@ -180,15 +190,14 @@ export function ImportDialog({
   const loadPreview = () => {
     if (pending.current) return pending.current
     pending.current = (async () => {
-      const result = await previewSource(file || source || {
-        kind: sourceKind as Source['kind'], url,
-        ref: ref || undefined, path: path || undefined,
-      })
+      const result = await previewSource(source || (input.kind === 'file' ? input.file! : input))
       if (!alive.current) { discardPreview(result); return }
       downloadedPreview.current = result
       setPreview(result)
-      setCandidateID(result.candidates[0].candidate_id)
-      setSelected(result.candidates[0].resources.filter((r) => r.kind !== 'project.creator').map((r) => r.id))
+      const candidate = result.candidates.find(item => item.package.id === installation?.package.id) ?? result.candidates[0]
+      setCandidateID(candidate.candidate_id)
+      setSelected(candidate.resources.filter(resource => resource.kind !== 'project.creator' &&
+        (!installation || installation.bindings.some(binding => binding.resource_id === resource.id))).map(resource => resource.id))
     })().finally(() => { pending.current = undefined })
     return pending.current
   }
@@ -228,94 +237,17 @@ export function ImportDialog({
       >
         <DialogHeader>
           <DialogTitle>
-            {t(plan ? 'market.import.confirmTitle' : 'market.import.title')}
+            {t(plan ? 'market.import.confirmTitle' : installation ? 'market.update.review' : 'market.import.title')}
           </DialogTitle>
           <DialogDescription>
-            {t(plan ? 'market.import.confirmHelp' : source ? 'market.contents.selectHelp' : 'market.import.help')}
+            {t(plan ? 'market.import.confirmHelp' : installation ? 'market.update.sourceHelp' : source ? 'market.contents.selectHelp' : 'market.import.help')}
           </DialogDescription>
         </DialogHeader>
         {preview?.character && (
           <CompatibilityReport preview={preview.character} />
         )}
         {!preview && source && <p role="status" className="text-sm text-muted-foreground">{t(busy ? 'market.import.downloading' : 'market.contents.failed')}</p>}
-        {!preview && !source && (
-          <FieldGroup>
-            <Field>
-              <FieldLabel>{t('market.import.source')}</FieldLabel>
-              <Select
-                value={sourceKind}
-                onValueChange={(value) => {
-                  setSourceKind(value)
-                  setFile(undefined)
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="github">GitHub</SelectItem>
-                  <SelectItem value="https_zip">
-                    {t('market.import.url')}
-                  </SelectItem>
-                  <SelectItem value="file">
-                    {t('market.import.file')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            {sourceKind === 'file' ? (
-              <Field>
-                <FieldLabel htmlFor="market-file">
-                  {t('market.import.file')}
-                </FieldLabel>
-                <Input
-                  id="market-file"
-                  type="file"
-                  accept=".zip,.png,.json"
-                  onChange={(event) => setFile(event.target.files?.[0])}
-                />
-              </Field>
-            ) : (
-              <>
-                <Field>
-                  <FieldLabel htmlFor="market-url">
-                    {t('market.import.url')}
-                  </FieldLabel>
-                  <Input
-                    id="market-url"
-                    value={url}
-                    onChange={(event) => setURL(event.target.value)}
-                    placeholder="https://github.com/owner/repository"
-                  />
-                </Field>
-                {sourceKind === 'github' && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field>
-                      <FieldLabel htmlFor="market-ref">
-                        {t('market.import.ref')}
-                      </FieldLabel>
-                      <Input
-                        id="market-ref"
-                        value={ref}
-                        onChange={(event) => setRef(event.target.value)}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="market-path">
-                        {t('market.import.path')}
-                      </FieldLabel>
-                      <Input
-                        id="market-path"
-                        value={path}
-                        onChange={(event) => setPath(event.target.value)}
-                      />
-                    </Field>
-                  </div>
-                )}
-              </>
-            )}
-          </FieldGroup>
-        )}
+        {!preview && !source && <ImportSourceFields value={input} onChange={setInput} busy={busy} run={run} onImportedSource={onClose} />}
         {preview && !plan && (
           <FieldGroup>
             {preview.candidates.length > 1 && <Field>
@@ -398,7 +330,7 @@ export function ImportDialog({
                         <Field key={permission} orientation="horizontal">
                           <Checkbox
                             id={`permission-${resource.id}-${permission}`}
-                            checked={(grants[resource.id] || []).includes(
+                            checked={permissionGrants(resource).includes(
                               permission,
                             )}
                             onCheckedChange={(checked) =>
@@ -406,10 +338,10 @@ export function ImportDialog({
                                 ...current,
                                 [resource.id]: checked
                                   ? [
-                                      ...(current[resource.id] || []),
+                                      ...(current[resource.id] ?? permissionGrants(resource)),
                                       permission,
                                     ]
-                                  : (current[resource.id] || []).filter(
+                                  : (current[resource.id] ?? permissionGrants(resource)).filter(
                                       (p) => p !== permission,
                                     ),
                               }))
@@ -587,7 +519,7 @@ export function ImportDialog({
           <Button
             disabled={
               busy ||
-              (!preview && !url && !file) ||
+              (!preview && !sourceReady) ||
               (!!preview &&
                 !plan &&
                 (!chosen.length ||
@@ -622,7 +554,7 @@ export function ImportDialog({
                       project_id: targetProject,
                       skill_scope: scope,
                       installation_id: installation?.installation_id,
-                      grants,
+                      grants: Object.fromEntries(resources.filter(resource => resource.extension).map(resource => [resource.id, permissionGrants(resource)])),
                       names,
                       shared_resources: sharedResources,
                       replace_modified: replace,
@@ -661,7 +593,7 @@ export function ImportDialog({
               busy
                 ? !preview ? 'market.import.downloading' : 'market.working'
                 : plan
-                  ? needsPlanReview ? 'market.import.refreshPlan' : installation ? 'market.update.apply' : 'market.import.install'
+                  ? needsPlanReview ? 'market.import.refreshPlan' : installation ? 'market.update.apply' : resources.every(resource => resource.kind.startsWith('extension.')) ? 'market.import.installExtensions' : 'market.import.install'
                   : preview
                     ? creatingBook ? 'market.import.createAndReview' : 'market.import.review'
                     : source ? 'market.contents.retry' : 'market.import.preview',

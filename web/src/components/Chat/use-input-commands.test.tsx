@@ -5,8 +5,8 @@ import { inputCommandValue } from './InputCommandMenu'
 import { useInputCommands, type CommandScope } from './use-input-commands'
 
 const quickPrompts: AgentQuickPromptSettings[] = [
-  { id: 'first', name: '/clear', prompt: 'Discuss the scene', enabled: true, behavior: 'send' },
-  { id: 'second', name: '/clear', prompt: 'Review the scene', enabled: true, behavior: 'fill' },
+  { id: 'first', name: '/new', prompt: 'Discuss the scene', enabled: true, behavior: 'send' },
+  { id: 'second', name: '/new', prompt: 'Review the scene', enabled: true, behavior: 'fill' },
   { id: 'hidden', name: 'Hidden prompt', prompt: 'Hidden', enabled: false, behavior: 'fill' },
   { id: 'ideas', name: '梳理思路', prompt: 'Explore ideas', enabled: true, behavior: 'fill' },
 ]
@@ -14,7 +14,7 @@ const quickPrompts: AgentQuickPromptSettings[] = [
 describe('useInputCommands', () => {
   it('keeps duplicate prompt names separate from commands and Skills, preserving prompt identity', () => {
     const { result } = renderHook(() => useInputCommands({
-      scope: 'all', skills: [{ name: 'clear', description: 'Reserved' }, { name: 'review', description: 'Review Skill' }],
+      scope: 'all', skills: [{ name: 'new', description: 'Reserved' }, { name: 'review', description: 'Review Skill' }],
       quickPrompts, goalEnabled: false,
     }))
     act(() => result.current.setCommandQuery(''))

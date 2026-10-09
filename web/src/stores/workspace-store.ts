@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type RightPanel = 'ai' | null
 type BottomPanel = 'versions' | 'problems' | null
-export type WorkspaceRoute = 'ide' | 'interactive' | 'market' | 'extensions' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
+export type WorkspaceRoute = 'ide' | 'interactive' | 'market' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
 /** Historical internal name retained while the persisted key stays stable. */
 export type WorkspaceMode = WorkspaceRoute
 
@@ -10,7 +10,7 @@ export type WorkspaceMode = WorkspaceRoute
  * Shared top-level destinations, alongside Writing and Game. The historical
  * `mode` name remains in persisted state, but navigation no longer has a global mode switch.
  */
-const SHARED_WORKSPACE_MODES = ['market', 'extensions', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
+const SHARED_WORKSPACE_MODES = ['market', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
 
 export type SharedWorkspaceMode = (typeof SHARED_WORKSPACE_MODES)[number]
 
@@ -31,6 +31,7 @@ const RIGHT_PANEL_STORAGE_KEY = 'nova:right-panel'
 function readInitialMode(): WorkspaceMode {
   if (typeof window === 'undefined') return 'ide'
   const stored = window.localStorage.getItem(MODE_STORAGE_KEY)
+  if (stored === 'extensions') return 'market'
   return isWorkspaceMode(stored) ? stored : 'ide'
 }
 
@@ -67,8 +68,6 @@ function persistRightPanel(panel: RightPanel) {
 type WorkspaceStore = {
   mode: WorkspaceMode
   selectedProjectId?: string
-  marketInstallationID?: string
-  openMarketInstallation: (id?: string) => void
   selectedChapterId?: string
   rightPanel: RightPanel
   bottomPanel: BottomPanel
@@ -85,10 +84,6 @@ type WorkspaceStore = {
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   mode: readInitialMode(),
   selectedProjectId: undefined,
-  openMarketInstallation: (id) => {
-    persistMode('market')
-    set({ mode: 'market', marketInstallationID: id })
-  },
   selectedChapterId: undefined,
   rightPanel: readInitialRightPanel(),
   bottomPanel: null,

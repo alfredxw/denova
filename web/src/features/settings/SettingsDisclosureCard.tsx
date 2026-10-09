@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react'
+import { useLayoutEffect, useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
+import type { SettingsFieldRequest } from './settings-sections'
 
 type SettingsDisclosureLevel = 'connection' | 'model'
 
@@ -13,16 +14,22 @@ interface SettingsDisclosureCardProps {
   title: string
   subtitle: string
   defaultOpen: boolean
+  revealRequest?: SettingsFieldRequest
   actions?: ReactNode
   children: ReactNode
 }
 
-export function SettingsDisclosureCard({ level, badge, title, subtitle, defaultOpen, actions, children }: SettingsDisclosureCardProps) {
+export function SettingsDisclosureCard({ level, badge, title, subtitle, defaultOpen, revealRequest, actions, children }: SettingsDisclosureCardProps) {
   const isConnection = level === 'connection'
+  const [open, setOpen] = useState(defaultOpen || Boolean(revealRequest))
+  useLayoutEffect(() => {
+    if (revealRequest) setOpen(true)
+  }, [revealRequest])
 
   return (
     <Collapsible
-      defaultOpen={defaultOpen}
+      open={open}
+      onOpenChange={setOpen}
       data-settings-level={level}
       className={cn(
         'overflow-hidden border bg-[var(--nova-surface-2)]',

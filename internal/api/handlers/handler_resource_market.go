@@ -15,7 +15,7 @@ func (h *Handlers) HandleResourceMarketRefresh(ctx context.Context, c *app.Reque
 }
 
 func (h *Handlers) resourceMarketCatalog(ctx context.Context, c *app.RequestContext, refresh bool) {
-	result, err := h.app.ResourceMarket().Catalog(ctx, refresh)
+	result, err := h.app.ResourceMarketCatalog(ctx, refresh)
 	if err != nil {
 		writeErrorKey(c, 503, "market.errors.catalogUnavailable")
 		return

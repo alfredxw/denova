@@ -461,6 +461,7 @@ describe('agent-ui', () => {
 
   it('AgentChatTransport 只发送本轮 body 并解析 UI message stream', async () => {
     let requestBody: Record<string, unknown> | undefined
+    const onSubmissionAccepted = vi.fn()
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
       requestBody = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
       return new Response(
@@ -492,7 +493,9 @@ describe('agent-ui', () => {
           references: ['chapters/a.md'],
           plan_mode: true,
         },
+        metadata: { onSubmissionAccepted },
       })
+      expect(onSubmissionAccepted).toHaveBeenCalledTimes(1)
       const chunks = await readStream(stream)
 
       expect(requestBody).toEqual({
@@ -529,6 +532,7 @@ describe('agent-ui', () => {
   })
 
   it('preserves structured API errors and request IDs from a rejected initial turn', async () => {
+    const onSubmissionAccepted = vi.fn()
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
       JSON.stringify({
         error: 'Agent transcript source revision conflict',
@@ -542,12 +546,14 @@ describe('agent-ui', () => {
       await expect(transport.sendMessages({
         ...agentSendOptions(),
         body: { command_id: 'command-correlated', message: 'continue' },
+        metadata: { onSubmissionAccepted },
       })).rejects.toMatchObject({
         name: 'APIError',
         status: 500,
         requestID: '019ffb1f-0171-7436-828c-1d8f45095fe4',
       } satisfies Partial<APIError>)
       expect(transport.takeInitialSubmissionOutcome('command-correlated')).toBe('uncertain')
+      expect(onSubmissionAccepted).not.toHaveBeenCalled()
     } finally {
       fetchSpy.mockRestore()
     }

@@ -12,36 +12,6 @@ import (
 	"denova/internal/agents/session"
 )
 
-func (a *App) ClearSession() error {
-	return a.chat().ClearSession()
-}
-
-func (s *ChatAppService) ClearSession() error {
-	s.admission.Lock()
-	defer s.admission.Unlock()
-	fence, err := s.drainWritingBinding(context.Background(), "")
-	if err != nil {
-		return err
-	}
-	a := s.app
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if err := fence.validateLocked(a, true); err != nil {
-		return err
-	}
-	if fence.chat == nil {
-		return ErrNoWorkspace
-	}
-	if err := fence.chat.ClearSession(context.Background(), agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, ProjectID: fence.projectID, StateRoot: fence.stateRoot,
-		Workspace: fence.workspace, SessionID: fence.sessionID, Mode: "ide",
-	}); err != nil {
-		return err
-	}
-	cursor := fence.selected.ContextCursor()
-	return fence.selected.AppendClearMarkerAt(cursor)
-}
-
 // Sessions 返回当前 workspace 下的会话列表。
 func (a *App) Sessions() ([]session.SessionMeta, error) {
 	return a.chat().Sessions()

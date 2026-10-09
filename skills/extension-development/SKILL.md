@@ -9,7 +9,7 @@ agent: general,ide
 
 Work in the current Project in the workbench, which owns source files, ordinary
 Project Agent conversations, terminal, version history, and development actions.
-The Extensions page manages installed releases and links back to source Projects.
+Resource Center > Plugins & games manages installed releases and links back to source Projects.
 
 1. Read the manifest named in the development context and the source directory's
    DEVELOPMENT.md when present. Inspect the existing implementation before edits.
@@ -25,7 +25,7 @@ The Extensions page manages installed releases and links back to source Projects
    stable across renames. Preserve unrelated manifest fields. Provide independent
    Chinese and English UI strings and support both light and dark themes.
    Extension-specific options use declarative settings with JSON Schema, TOML
-   defaults and locale keys; the Extensions page owns the form and persistence.
+   defaults and locale keys; Resource Center > Plugins & games owns the form and persistence.
    Keep per-story game.setup distinct from release-scoped extension settings.
 4. Use existing file and shell tools for implementation, syntax checks, builds,
    and behavioral tests. Inspect development.build in the manifest before running
@@ -45,7 +45,7 @@ The Extensions page manages installed releases and links back to source Projects
 7. Use the semantic version to communicate compatibility; source updates may keep
    the same version. Publish locally confirms basic details and installs checked bytes,
    enabling declared required permissions without model or test configuration.
-   ZIP export in Extensions uses the exact installed release. Preserve frozen code and real
+   ZIP export in Resource Center uses the exact installed release. Preserve frozen code and real
    saves while iterating. Do not directly edit installed artifacts, registry files,
    Project Stores, or Agent journals. Report what works and what remains unverified.
 

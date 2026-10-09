@@ -1,3 +1,4 @@
+import { openExtensions, selectExtension } from '../support/resource-center'
 import { cp, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type APIRequestContext, type Page } from '../support/fixtures'
@@ -41,7 +42,7 @@ async function installSource(request: APIRequestContext, fixture: string, id: st
 }
 
 async function navigate(page: Page, name: string) {
-  await page.getByLabel('工作台侧边栏').getByRole('button', { name, exact: true }).click()
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: name === '扩展' ? '资源中心' : name, exact: true }).click()
 }
 
 for (const language of ['zh-CN', 'en-US'] as const) {
@@ -53,70 +54,39 @@ for (const language of ['zh-CN', 'en-US'] as const) {
     await page.route('**/api/platform/manage/catalog', route => route.fulfill({ json: [] }))
     await page.goto('/')
     const createLabel = chinese ? '创建扩展' : 'Create extension'
-    const installLabel = chinese ? '安装扩展' : 'Install extension'
-    const actions = page.locator('[data-slot="sidebar-header"]').filter({ has: page.getByRole('button', { name: createLabel, exact: true }) })
-    await expect(actions.getByRole('button', { name: createLabel, exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: installLabel, exact: true })).toHaveCount(1)
-    await actions.getByRole('button', { name: installLabel, exact: true }).click()
-    await expect(page.getByRole('dialog', { name: installLabel, exact: true })).toBeVisible()
-    await page.keyboard.press('Escape')
-    await actions.getByRole('button', { name: createLabel, exact: true }).click()
-    const create = page.getByRole('dialog', { name: createLabel })
+    const addLabel = chinese ? '添加资源' : 'Add resources'
     const templateLabel = chinese ? '模板' : 'Template'
-    await expect(create.getByLabel(templateLabel, { exact: true })).toHaveCount(0)
-    const types = create.getByRole('group', { name: chinese ? '扩展类型' : 'Extension type', exact: true })
-    const plugin = types.getByRole('radio', { name: chinese ? '插件' : 'Plugin', exact: true })
-    const game = types.getByRole('radio', { name: chinese ? '游戏' : 'Game', exact: true })
-    await expect(plugin).toBeChecked()
-    await game.click()
-    await game.click()
-    await expect(game).toBeChecked()
-    await expect(plugin).not.toBeChecked()
-    await create.locator('summary').filter({ hasText: chinese ? '高级选项' : 'Advanced options' }).first().click()
-    await expect(create.getByLabel(templateLabel, { exact: true })).toHaveCount(0)
-    const name = create.getByLabel(chinese ? '扩展名称' : 'Extension name')
+    await expect(page.getByRole('button', { name: addLabel, exact: true })).toHaveCount(1)
+    await page.getByRole('button', { name: addLabel, exact: true }).click()
+    await expect(page.getByRole('dialog', { name: addLabel, exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 })
-      await name.fill(width === 390 ? 'A long example project name '.repeat(8) : '')
-      await page.screenshot({ path: `test-results/extension-create-${language}-${width}.png`, fullPage: true })
-      const bounds = (await create.boundingBox())!
-      expect(bounds.x).toBeGreaterThanOrEqual(0)
-      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
-      const pluginBounds = (await plugin.boundingBox())!
-      const gameBounds = (await game.boundingBox())!
-      expect(pluginBounds.y).toBe(gameBounds.y)
-      expect(pluginBounds.x + pluginBounds.width).toBeLessThanOrEqual(gameBounds.x)
-    }
-    await create.getByRole('button', { name: chinese ? '取消' : 'Cancel', exact: true }).click()
-    for (const label of [createLabel, installLabel]) {
-      await page.getByRole('button', { name: chinese ? '扩展目录' : 'Extensions directory', exact: true }).click()
-      await expect(actions.getByRole('button', { name: label, exact: true })).toBeVisible()
-      await page.screenshot({ path: `test-results/extension-directory-${language}-390.png`, fullPage: true, animations: 'disabled' })
-      await actions.getByRole('button', { name: label, exact: true }).click()
-      await expect(page.getByRole('dialog', { name: label, exact: true })).toBeVisible()
-      await expect(page.getByRole('dialog')).toHaveCount(1)
-      await page.keyboard.press('Escape')
-    }
-    for (const width of [390, 1440]) {
-      await page.setViewportSize({ width, height: 900 })
-      for (const kind of ['game', 'plugin'] as const) {
-        if (width === 390) await page.getByRole('button', { name: chinese ? '扩展目录' : 'Extensions directory', exact: true }).click()
+      for (const kind of ['plugin', 'game'] as const) {
+        await page.getByRole('button', { name: chinese ? '开发扩展' : 'Develop extensions', exact: true }).click()
         const label = chinese ? (kind === 'game' ? '创建游戏' : '创建插件') : (kind === 'game' ? 'Create game' : 'Create plugin')
-        const group = page.locator('[data-slot="sidebar-group"]').filter({ has: page.getByRole('button', { name: label, exact: true }) })
-        const collapse = group.getByRole('button', { expanded: true })
-        await collapse.click()
-        await group.getByRole('button', { name: label, exact: true }).click()
-        await expect(create).toBeVisible()
-        await expect(page.getByRole('dialog')).toHaveCount(1)
+        await page.getByRole('menuitem', { name: label, exact: true }).click()
+        const create = page.getByRole('dialog', { name: createLabel })
+        await expect(create.getByLabel(templateLabel, { exact: true })).toHaveCount(0)
+        const types = create.getByRole('group', { name: chinese ? '扩展类型' : 'Extension type', exact: true })
+        const plugin = types.getByRole('radio', { name: chinese ? '插件' : 'Plugin', exact: true })
+        const game = types.getByRole('radio', { name: chinese ? '游戏' : 'Game', exact: true })
         await expect(kind === 'game' ? game : plugin).toBeChecked()
-        await expect(name).toHaveValue('')
+        await game.click()
+        await game.click()
+        await expect(game).toBeChecked()
+        await expect(plugin).not.toBeChecked()
+        const name = create.getByLabel(chinese ? '扩展名称' : 'Extension name')
+        await name.fill(width === 390 ? 'A long example project name '.repeat(8) : '')
+        await page.screenshot({ path: `test-results/extension-create-${language}-${width}-${kind}.png`, fullPage: true })
+        const bounds = (await create.boundingBox())!
+        expect(bounds.x).toBeGreaterThanOrEqual(0)
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+        const pluginBounds = (await plugin.boundingBox())!
+        const gameBounds = (await game.boundingBox())!
+        expect(pluginBounds.y).toBe(gameBounds.y)
+        expect(pluginBounds.x + pluginBounds.width).toBeLessThanOrEqual(gameBounds.x)
         await page.keyboard.press('Escape')
-        await expect(create).not.toBeVisible()
-        if (width === 390) await expect(group).not.toBeVisible()
-        if (width === 1440) {
-          await expect(group.getByRole('button', { expanded: false })).toBeVisible()
-          await group.getByRole('button', { expanded: false }).click()
-        }
       }
     }
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -137,11 +107,12 @@ test('creates from Extensions and develops, previews and installs in one workben
   // This journey checks the empty state even when other suites installed packages.
   await page.route('**/api/platform/manage/catalog', route => route.fulfill({ json: [] }))
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: '扩展', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源中心', exact: true })).toBeVisible()
   await expect(page.getByText('尚未安装扩展', { exact: true })).toBeVisible()
   await page.screenshot({ path: 'test-results/platform-empty-dark-wide.png', fullPage: true })
   await page.unroute('**/api/platform/manage/catalog')
-  await page.getByRole('button', { name: '创建游戏', exact: true }).click()
+  await page.getByRole('button', { name: '开发扩展', exact: true }).click()
+  await page.getByRole('menuitem', { name: '创建游戏', exact: true }).click()
   const create = page.getByRole('dialog', { name: '创建扩展' })
   await create.getByLabel('扩展名称').fill('Workbench Extension')
   await expect(create.getByRole('radio', { name: '游戏', exact: true })).toBeChecked()
@@ -151,7 +122,7 @@ test('creates from Extensions and develops, previews and installs in one workben
   await create.getByRole('button', { name: '创建并打开工作台' }).click()
   await expect(create).not.toBeVisible()
   await expect(page.getByRole('tab', { name: /开发 Workbench Extension/ })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '扩展', exact: true })).not.toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源中心', exact: true })).not.toBeVisible()
   await expect(page.getByText('General Project write completed: alpha-project-only.', { exact: true }).filter({ visible: true })).toBeVisible()
   expect(await page.getByText('画面中的运行尚未准备好接收指令，请等待重新连接', { exact: true }).count()).toBe(0)
   const projects = await (await request.get('/api/agent-chat/projects')).json()
@@ -197,13 +168,15 @@ test('creates from Extensions and develops, previews and installs in one workben
   const index = await (await request.get('/api/agent-chat/projects')).json()
   const directory = index.projects.find((item: { id: string }) => item.id === plugin.project.id).path
   const pluginManifestPath = path.join(directory, 'denova.plugin.json')
-  await page.getByRole('button', { name: '安装扩展', exact: true }).first().click()
-  const install = page.getByRole('dialog', { name: '安装扩展' })
-  await install.getByRole('tab', { name: '本地文件', exact: true }).click()
+  await page.getByRole('button', { name: '添加资源', exact: true }).click()
+  const install = page.getByRole('dialog', { name: '添加资源' })
+  await install.getByRole('combobox').click()
+  await page.getByRole('option', { name: '本地扩展目录（开发）', exact: true }).click()
   await install.getByLabel('本地包目录').fill(directory)
-  await install.getByRole('button', { name: '检查作品包' }).click()
-  await install.getByRole('switch', { name: /调用已声明工具/ }).click()
-  await install.getByRole('button', { name: '安装扩展', exact: true }).click()
+  await install.getByRole('button', { name: '下载并预览' }).click()
+  await install.getByRole('checkbox', { name: /调用已声明工具/ }).click()
+  await install.getByRole('button', { name: '生成安装计划', exact: true }).click()
+  await page.getByRole('dialog', { name: '确认安装计划', exact: true }).getByRole('button', { name: '安装扩展', exact: true }).click()
   await selectExtension(page, 'test.import-plugin')
   const settings = page.getByRole('region', { name: '使用配置与授权' }).filter({ visible: true })
   await settings.getByRole('switch', { name: '启用测试行为' }).click()
@@ -213,7 +186,9 @@ test('creates from Extensions and develops, previews and installs in one workben
   expect(savedSettings.overrides).toEqual({ enabled: true })
   expect((await readFile(path.join(directory, 'plugin.toml'), 'utf8')).trim()).toBe('enabled = false')
   await page.getByRole('button', { name: '打开源码' }).click()
-  await page.getByRole('button', { name: '试运行', exact: true }).filter({ visible: true }).click()
+  const developmentTools = page.getByLabel('扩展开发', { exact: true }).filter({ visible: true })
+  await expect(developmentTools).toContainText('插件')
+  await developmentTools.getByRole('button', { name: '试运行', exact: true }).click()
   await page.getByRole('button', { name: '启动试运行' }).filter({ visible: true }).click()
   await page.getByLabel('工具输入（JSON）').fill('{"text":"A🌷中"}')
   await page.getByRole('button', { name: '运行', exact: true }).filter({ visible: true }).click()
@@ -242,13 +217,10 @@ test('creates from Extensions and develops, previews and installs in one workben
   expect(JSON.parse(await readFile(pluginManifestPath, 'utf8')).id).toBe('test.import-plugin')
 })
 
-async function selectExtension(page: Page, name: string) {
-  await page.locator('[data-slot="sidebar-menu-button"]').filter({ hasText: name, visible: true }).click()
-  await expect(page.getByRole('heading', { name, exact: true }).filter({ visible: true })).toBeVisible()
-}
-
 test('edits extension settings through bilingual forms with persistent defaults', async ({ page, request, browserDiagnostics }) => {
   browserDiagnostics.allow(/console\.error:.*(400|configuration operation failed)/)
+  browserDiagnostics.allow(/(?:http\.5xx: GET .*\/api\/resource-market\/catalog returned 503|console\.error: Failed to load resource:.*503.*resource-market\/catalog)/)
+  await page.route('**/api/resource-market/catalog', route => route.fulfill({ status: 503, json: { error: 'Index unavailable', messageKey: 'market.errors.catalogUnavailable' } }))
   const release = await installSource(request, 'static', 'test.settings-ui')
   await installSource(request, 'static', 'test.settings-other')
   await page.addInitScript(() => localStorage.setItem('nova:mode', 'extensions'))
@@ -262,6 +234,14 @@ test('edits extension settings through bilingual forms with persistent defaults'
   await expect(page.getByRole('dialog', { name: '使用配置与授权' })).toHaveCount(0)
   await expect(settings.getByRole('tab')).toHaveCount(0)
   await settings.getByRole('switch', { name: '使用选定模型生成内容', exact: true }).click()
+  const navigation = page.getByRole('navigation', { name: '资源中心导航', exact: true })
+  await navigation.getByRole('button', { name: '发现资源', exact: true }).click()
+  await expect(page.getByText('资源索引暂时无法访问，请稍后刷新；仍可从文件或链接导入。', { exact: true }).first()).toBeVisible()
+  await navigation.getByRole('button', { name: '资源包', exact: true }).click()
+  await expect(page.getByRole('button', { name: '添加资源', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: '查看未保存设置', exact: true }).click()
+  await expect(settings.getByRole('combobox', { name: '显示方式' })).toHaveText('完整')
+  await expect(settings.getByRole('switch', { name: '使用选定模型生成内容', exact: true })).toBeChecked()
   await selectExtension(page, 'test.settings-other')
   await expect(settings.getByRole('switch', { name: '显示标签' })).toBeChecked()
   await settings.getByRole('switch', { name: '显示标签' }).click()
@@ -293,7 +273,10 @@ test('edits extension settings through bilingual forms with persistent defaults'
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: 'test-results/platform-settings-dark-narrow.png', fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  const savedSettings = page.waitForResponse(response => response.request().method() === 'PUT'
+    && new URL(response.url()).pathname === '/api/platform/manage/packages/game/test.settings-ui/settings')
   await settings.getByRole('button', { name: '保存设置', exact: true }).click()
+  expect((await savedSettings).ok()).toBe(true)
   await expect(settings.getByRole('button', { name: '保存设置', exact: true })).toBeDisabled()
   const saved = await (await request.get('/api/platform/manage/packages/game/test.settings-ui/settings?locale=en-US')).json()
   expect(saved.values).toEqual({ display: { variant: 'full', showLabel: false } })
@@ -302,7 +285,7 @@ test('edits extension settings through bilingual forms with persistent defaults'
   await page.evaluate(() => { localStorage.setItem('theme', 'light'); localStorage.setItem('nova.locale.configured', 'en-US') })
   await page.reload()
   await page.setViewportSize({ width: 1440, height: 900 })
-  await selectExtension(page, 'test.settings-ui')
+  await selectExtension(page, 'test.settings-ui', false)
   const english = page.getByRole('region', { name: 'Usage settings and permissions' }).filter({ visible: true })
   await expect(english.getByRole('switch', { name: 'Show label' })).not.toBeChecked()
   await expect(english.getByRole('combobox', { name: 'Display variant' })).toHaveText('Full')
@@ -312,7 +295,10 @@ test('edits extension settings through bilingual forms with persistent defaults'
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({ path: 'test-results/platform-settings-light-wide.png', fullPage: true })
   await english.getByRole('button', { name: 'Restore defaults' }).click()
+  const restoredSettings = page.waitForResponse(response => response.request().method() === 'PUT'
+    && new URL(response.url()).pathname === '/api/platform/manage/packages/game/test.settings-ui/settings')
   await english.getByRole('button', { name: 'Save settings', exact: true }).click()
+  expect((await restoredSettings).ok()).toBe(true)
   await expect(english.getByRole('button', { name: 'Save settings', exact: true })).toBeDisabled()
   expect((await (await request.get('/api/platform/manage/packages/game/test.settings-ui/settings')).json()).overrides).toEqual({})
   await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'zh-CN', theme: 'dark' } } })
@@ -336,10 +322,12 @@ test('shows frozen installed metadata with source links across themes and screen
   await writeFile(manifestPath, JSON.stringify({ ...manifest, version: '2.0.0', name: { ...manifest.name, 'zh-CN': 'Uninstalled draft' } }))
   await page.reload()
   await selectExtension(page, manifest.name['zh-CN'])
+  await openExtensions(page)
   await page.getByRole('textbox', { name: '搜索扩展' }).fill('no matching extension')
   await expect(page.getByText('未找到扩展', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '清除搜索', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '搜索扩展' })).toHaveValue('')
+  await selectExtension(page, manifest.name['zh-CN'])
   await expect(page.getByRole('button', { name: /\d+ 个版本/, exact: true })).toHaveCount(0)
   await expect(page.locator('article').filter({ visible: true }).getByText('v1.0.0', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: `管理 ${manifest.name['zh-CN']}`, exact: true }).click()
@@ -361,7 +349,7 @@ test('shows frozen installed metadata with source links across themes and screen
   await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'en-US', theme: 'light' } } })
   await page.evaluate(() => { localStorage.setItem('theme', 'light'); localStorage.setItem('nova.locale.configured', 'en-US') })
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Extensions', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resource Center', exact: true })).toBeVisible()
   await page.screenshot({ path: 'test-results/platform-installed-light-narrow.png', fullPage: true })
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({ path: 'test-results/platform-installed-light-wide.png', fullPage: true })
@@ -450,7 +438,8 @@ test('chooses game types and stops disabled games while preserving their saves',
   await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'en-US', theme: 'light' } } })
   await page.evaluate(() => { localStorage.setItem('theme', 'light'); localStorage.setItem('nova.locale.configured', 'en-US'); localStorage.setItem('nova:mode', 'extensions') })
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Extensions', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resource Center', exact: true })).toBeVisible()
+  await selectExtension(page, 'test.story-state', false)
   await expect(page.getByRole('region', { name: 'Usage settings and permissions', exact: true })).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.screenshot({ path: 'test-results/platform-extensions-light-narrow.png', fullPage: true })

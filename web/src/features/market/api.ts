@@ -71,6 +71,7 @@ export interface MarketEntry {
   usage?: Record<string, string>
 }
 export interface Catalog {
+  registry_url?: string
   schema_version: number
   entries: MarketEntry[]
   fetched_at?: string
@@ -191,7 +192,7 @@ export const exchange = <T>(
       ? {}
       : { headers: jsonHeaders, body: JSON.stringify(body) }),
   })
-export async function previewSource(source: Source | File) {
+export async function previewSource(source: Source | File | { kind: 'directory'; directory: string }) {
   if (source instanceof File) {
     const body = new FormData()
     body.set('file', source)
@@ -202,12 +203,11 @@ export async function previewSource(source: Source | File) {
   }
   return exchange<Preview>('/previews', source)
 }
-export async function getCatalog(refresh = false): Promise<Catalog> {
-  const response = await fetchAPI(
+export function getCatalog(refresh = false): Promise<Catalog> {
+  return requestJSON<Catalog>(
     `/api/resource-market/catalog${refresh ? '/refresh' : ''}`,
     { method: refresh ? 'POST' : 'GET', suppressBackendUnavailableToast: true },
   )
-  return response.json()
 }
 export interface ExportRequest {
   package: PackageInfo

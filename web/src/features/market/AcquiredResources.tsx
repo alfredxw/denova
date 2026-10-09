@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   ArchiveRestore,
   ChevronDown,
@@ -46,7 +47,9 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
-import { useWorkspaceStore } from '@/stores/workspace-store'
+import { getBooks } from '@/lib/api'
+import { localized, type CatalogEntry } from '@/features/platform/api'
+import { openInstalledExtension } from '@/features/platform/extension-navigation'
 import { exchange, type Installation, type Preview } from './api'
 import { BackupDialog } from './BackupDialog'
 import type { ImportDialogProps } from './ImportDialog'
@@ -58,15 +61,21 @@ export function AcquiredResources({
   onImport,
   onExport,
   onDiscover,
+  requested,
+  extensions,
+  blockedReason,
 }: {
   installations: Installation[]
   onChanged: () => Promise<void>
   onImport: (props: Omit<ImportDialogProps, 'onClose' | 'onInstalled'>) => void
   onExport: (props: { installation?: Installation }) => void
   onDiscover: () => void
+  requested?: string
+  extensions: CatalogEntry[]
+  blockedReason?: string
 }) {
-  const { t } = useTranslation()
-  const requested = useWorkspaceStore((state) => state.marketInstallationID)
+  const { t, i18n } = useTranslation()
+  const books = useQuery({ queryKey: ['resources', 'books'], queryFn: getBooks, enabled: installations.some(item => !!item.project_id) })
   const [expanded, setExpanded] = useState<string>()
   const [backup, setBackup] = useState<Installation>()
   const [defaults, setDefaults] = useState<Installation>()
@@ -124,6 +133,7 @@ export function AcquiredResources({
                         </CollapsibleTrigger>
                       </CardTitle>
                       <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <span>{item.project_id ? books.data?.find(book => book.project_id === item.project_id)?.name || item.project_id : t('market.import.global')}</span>
                         <span>
                           {t('market.acquired.resourceCount', {
                             count: item.bindings.length,
@@ -231,7 +241,10 @@ export function AcquiredResources({
                       <div className="flex min-w-0 flex-col gap-2">
                         <h3 className="text-sm font-medium">{t('market.contents.title')}</h3>
                         <ul className="grid min-w-0 gap-x-4 gap-y-2 @xl/installation:grid-cols-2">
-                          {item.bindings.map((binding) => (
+                          {item.bindings.map((binding) => {
+                            const extension = extensions.find(entry => !entry.removed && `extension.${entry.kind}` === binding.local.kind && entry.id === binding.local.id)
+                            const manifest = extension?.releases.find(release => release.ref.releaseId === extension.currentRelease)?.manifest
+                            return (
                             <li
                               key={binding.resource_id}
                               className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
@@ -243,8 +256,9 @@ export function AcquiredResources({
                                 title={binding.local.id}
                                 className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
                               >
-                                {binding.local.id}
+                                {localized(manifest?.name, i18n.language) || binding.local.id}
                               </span>
+                              {extension && <Button size="sm" variant="link" className="h-auto p-0" onClick={() => openInstalledExtension(extension.kind, extension.id)}>{t('market.manageExtension')}</Button>}
                               {(binding.upstream_removed || binding.ownership === 'reference') && (
                                 <div className="flex basis-full flex-wrap gap-1.5">
                                   {binding.upstream_removed && (
@@ -260,7 +274,7 @@ export function AcquiredResources({
                                 </div>
                               )}
                             </li>
-                          ))}
+                          )})}
                         </ul>
                       </div>
                     </CardContent>
@@ -268,7 +282,7 @@ export function AcquiredResources({
                       {canCheckUpdate && (
                         <Button
                           size="sm"
-                          disabled={!!pending}
+                          disabled={!!pending || !!blockedReason}
                           onClick={() =>
                             void run(item.installation_id, async () => {
                               const preview = await exchange<Preview>(
@@ -287,6 +301,9 @@ export function AcquiredResources({
                           {t('market.checkUpdate')}
                         </Button>
                       )}
+                      {item.tracking === 'tracked' && item.source.kind === 'file' && <Button size="sm" disabled={!!pending || !!blockedReason} onClick={() => onImport({ installation: item })}>
+                        <Upload data-icon="inline-start" />{t('market.update.fromFile')}
+                      </Button>}
                       <Button
                         size="sm"
                         variant="outline"
@@ -296,7 +313,7 @@ export function AcquiredResources({
                         <Upload data-icon="inline-start" />
                         {t('market.export.title')}
                       </Button>
-                      <Button size="sm" variant="outline" disabled={!!pending} onClick={() => setBackup(item)}>
+                      <Button size="sm" variant="outline" disabled={!!pending || !!blockedReason} onClick={() => setBackup(item)}>
                         <ArchiveRestore data-icon="inline-start" />
                         {t('market.backups.title')}
                       </Button>

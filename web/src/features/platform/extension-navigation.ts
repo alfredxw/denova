@@ -1,14 +1,13 @@
 import { create } from 'zustand'
-import { createAgentChatSession, getAgentChatProjects } from '@/features/agent-chat/api'
+import { createAgentChatSession, getAgentChatProjects, notifyAgentChatProjectUpdated } from '@/features/agent-chat/api'
 import { readAgentChatActiveSession } from '@/features/agent-chat/session-preferences'
 import { requestAgentChatSessionNavigation } from '@/features/agent-chat/session-navigation'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { type DevelopmentSource, type PackageKind } from './api'
+import { management, type DevelopmentSource, type PackageKind, type GitHubSource } from './api'
+import { queryClient } from '@/lib/query-client'
 import { sourceManifestPath } from './extension-directory'
 import { useDevelopmentContext } from './development-context'
-
-/** Cross-page selection is transient; installed records and Projects own their identities. */
-export const useExtensionNavigation = create<{ selected: string }>(() => ({ selected: '' }))
+import { openResourceDestination } from '@/features/market/resource-navigation'
 
 /** One-shot navigation intent, retained until the game destination has loaded its catalog. */
 export const useGameCreationRequest = create<{ gameId: string | null }>(() => ({ gameId: null }))
@@ -20,8 +19,7 @@ export function startExtensionGame(gameId: string) {
 }
 
 export function openInstalledExtension(kind: PackageKind, id: string) {
-  useExtensionNavigation.setState({ selected: `installed:${kind}:${id}` })
-  useWorkspaceStore.getState().setMode('extensions')
+  openResourceDestination({ section: 'extensions', extensionKey: `installed:${kind}:${id}` })
 }
 
 export async function openExtensionSource(source: DevelopmentSource) {
@@ -33,4 +31,12 @@ export async function openExtensionSource(source: DevelopmentSource) {
   useDevelopmentContext.getState().select(project.id, source.developmentId)
   requestAgentChatSessionNavigation({ projectId: project.id, sessionId, sourcePath: sourceManifestPath(source) })
   useWorkspaceStore.getState().setMode('agentchat')
+}
+
+/** Importing source creates a development Project; it never builds or installs the extension. */
+export async function importExtensionSource(source: GitHubSource) {
+  const imported = await management<DevelopmentSource>('/packages/github/import', 'POST', source)
+  notifyAgentChatProjectUpdated(imported.projectId)
+  await queryClient.invalidateQueries({ queryKey: ['platform', 'development'] })
+  await openExtensionSource(imported)
 }

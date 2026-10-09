@@ -64,6 +64,11 @@ export interface AgentChatTransportOptions {
   scope?: Record<string, string>
 }
 
+/** Local request lifecycle callbacks; these are never sent to the server. */
+export interface AgentChatRequestMetadata {
+  onSubmissionAccepted?: () => void
+}
+
 interface AgentChatRequestBody {
   command_id?: string
   resume_interruption_id?: string
@@ -129,13 +134,17 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
     })
   }
 
-  sendMessages(options: Parameters<ChatTransport<AgentUIMessage>['sendMessages']>[0]) {
+  async sendMessages(options: Parameters<ChatTransport<AgentUIMessage>['sendMessages']>[0]) {
     // A new POST creates a new backend task. It must be rebound from `/active`
     // before any reconnect can target a stream.
     this.activeStreamTaskID = ''
     this.activeStreamAfter = 0
     this.activeStreamScope = {}
-    return this.transport.sendMessages(options)
+    const stream = await this.transport.sendMessages(options)
+    // A successful HTTP response proves durable acceptance before the model finishes its turn.
+    const metadata = options.metadata as AgentChatRequestMetadata | undefined
+    metadata?.onSubmissionAccepted?.()
+    return stream
   }
 
   reconnectToStream(options: Parameters<ChatTransport<AgentUIMessage>['reconnectToStream']>[0]) {

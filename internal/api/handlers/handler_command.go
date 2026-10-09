@@ -30,15 +30,6 @@ func (h *Handlers) HandleCommand(ctx context.Context, c *app.RequestContext) {
 	var result string
 	localizer := requestLocalizer(c)
 	switch cmd {
-	case "clear":
-		if !h.requireWorkspace(c) {
-			return
-		}
-		if err := h.app.ClearSession(); err != nil {
-			result = localizer.T("api.command.clearFailed", "detail", err.Error())
-		} else {
-			result = localizer.T("api.command.cleared")
-		}
 	case "compact":
 		if !h.requireWorkspace(c) {
 			return

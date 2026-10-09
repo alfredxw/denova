@@ -163,43 +163,6 @@ func TestPersistAgentCallInStoreWritesFullMessages(t *testing.T) {
 	}
 }
 
-func TestClearAgentSessionInStoreMarksEffectiveContextForEveryBuiltInAgent(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, agentKind := range persistentAgentKinds() {
-		if err := persistAgentCallInStore(store, agentKind, "清理前", "旧输出"); err != nil {
-			t.Fatalf("persist before clear %s: %v", agentKind, err)
-		}
-		if err := clearAgentSessionInStore(store, agentKind); err != nil {
-			t.Fatalf("clear %s: %v", agentKind, err)
-		}
-		if err := persistAgentCallInStore(store, agentKind, "清理后", "新输出"); err != nil {
-			t.Fatalf("persist after clear %s: %v", agentKind, err)
-		}
-		sess, err := agentSessionFromStore(store, agentKind)
-		if err != nil {
-			t.Fatal(err)
-		}
-		effective := sess.GetEffectiveMessages()
-		if len(effective) != 2 || effective[0].Content != "清理后" || effective[1].Content != "新输出" {
-			t.Fatalf("agent %s effective messages should only include messages after clear: %#v", agentKind, effective)
-		}
-		history := sess.History()
-		hasClear := false
-		for _, entry := range history {
-			if entry.Type == "clear" {
-				hasClear = true
-				break
-			}
-		}
-		if !hasClear {
-			t.Fatalf("agent %s history should keep clear marker: %#v", agentKind, history)
-		}
-	}
-}
-
 func persistentAgentKinds() []string {
 	var kinds []string
 	for _, definition := range config.AgentKindDefinitions() {
@@ -208,23 +171,4 @@ func persistentAgentKinds() []string {
 		}
 	}
 	return kinds
-}
-
-func TestAppClearAgentSessionSupportsBackgroundAgents(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := &App{sessionStore: store}
-
-	if err := app.ClearAgentSession(config.AgentKindVersionSummary); err != nil {
-		t.Fatal(err)
-	}
-	history, err := app.AgentSessionMessages(config.AgentKindVersionSummary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(history) != 1 || history[0].Type != "clear" {
-		t.Fatalf("version summary agent should expose clear marker history: %#v", history)
-	}
 }

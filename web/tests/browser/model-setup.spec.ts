@@ -21,6 +21,7 @@ for (const theme of ['dark', 'light']) {
       for (const destination of ['写作', '游戏']) {
         await sidebar.getByRole('button', { name: destination, exact: true }).click()
         await sidebar.getByRole('button', { name: '设置', exact: true }).click()
+        await page.locator('.nova-settings-view nav').getByRole('button', { name: '语言模型', exact: true }).click()
         await expect(page.getByText('尚未配置语言模型。', { exact: false })).toBeVisible()
         await expect(page.getByText('默认（尚未配置）', { exact: true })).toBeVisible()
         await expect(page.getByText('deepseek-v4-pro', { exact: true })).toHaveCount(0)
@@ -47,6 +48,7 @@ for (const theme of ['dark', 'light']) {
       await expect(page.getByText('所有更改均已保存', { exact: true })).toBeVisible()
       await page.reload()
       await expect(sidebar.getByRole('button', { name: '设置', exact: true })).toHaveAttribute('aria-current', 'page')
+      await page.locator('.nova-settings-view nav').getByRole('button', { name: '语言模型', exact: true }).click()
       await expect(page.getByText('my-first-model', { exact: true }).first()).toBeVisible()
       await expect(page.getByText('尚未配置语言模型。', { exact: false })).toHaveCount(0)
     } finally {

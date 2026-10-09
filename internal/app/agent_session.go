@@ -98,22 +98,8 @@ func (a *App) AgentSessionMessagesPage(ctx context.Context, agentKind string, be
 	return sess.ReadHistoryPage(ctx, before, limit)
 }
 
-func (a *App) ClearAgentSession(agentKind string) error {
-	a.mu.RLock()
-	store := a.sessionStore
-	a.mu.RUnlock()
-	if store == nil {
-		return ErrNoWorkspace
-	}
-	return session.ClearAgentSession(store, agentKind)
-}
-
 func persistAgentCallInStore(store *session.Store, agentKind, instruction, response string) error {
 	return session.PersistAgentCall(store, agentKind, instruction, response)
-}
-
-func clearAgentSessionInStore(store *session.Store, agentKind string) error {
-	return session.ClearAgentSession(store, agentKind)
 }
 
 func agentSessionFromStore(store *session.Store, agentKind string) (*session.Session, error) {

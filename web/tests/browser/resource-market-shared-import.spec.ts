@@ -28,7 +28,7 @@ for (const theme of ['dark', 'light']) {
     await page.addInitScript(() => { localStorage.setItem('nova:mode', 'market'); localStorage.setItem('nova.locale.configured', 'en-US') })
     await page.route('**/api/resource-market/catalog', route => route.fulfill({ json: { schema_version: 1, entries: [] } }))
     await page.goto('/')
-    await page.getByTestId('resource-market').getByRole('button', { name: 'Import package', exact: true }).click()
+    await page.getByTestId('resource-market').getByRole('button', { name: 'Add resources', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByRole('combobox').click()
     await page.getByRole('option', { name: 'Local file', exact: true }).click()
@@ -49,7 +49,7 @@ for (const theme of ['dark', 'light']) {
     await dialog.getByRole('button', { name: 'Review plan', exact: true }).click()
     await expect(dialog.getByText(`${skillName}-2`, { exact: true })).toBeVisible()
     await expect(dialog.getByText('Reuse existing resource', { exact: false })).toHaveCount(0)
-    await dialog.getByRole('button', { name: 'Install', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Add resources', exact: true }).click()
     await expect(dialog).toBeHidden()
   })
 }

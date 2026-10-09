@@ -16,13 +16,13 @@ import (
 	"sync"
 	"time"
 
+	"denova/config"
 	"denova/internal/hostruntime"
 	"denova/internal/portablepath"
 	"denova/internal/revisionfile"
 )
 
-const CatalogURL = "https://alfredxw.github.io/denova-index/index.json"
-const SubmissionURL = "https://github.com/alfredxw/denova-index/issues/new?template=package.yml"
+const CatalogURL = config.DefaultMarketRegistryURL
 const maxCatalogBytes = 4 << 20
 
 type Source struct {
@@ -57,9 +57,10 @@ type Catalog struct {
 
 type MarketSnapshot struct {
 	Catalog
-	FetchedAt time.Time `json:"fetched_at"`
-	Stale     bool      `json:"stale"`
-	ErrorKey  string    `json:"error_key,omitempty"`
+	RegistryURL string    `json:"registry_url"`
+	FetchedAt   time.Time `json:"fetched_at"`
+	Stale       bool      `json:"stale"`
+	ErrorKey    string    `json:"error_key,omitempty"`
 }
 
 // Market fetches only after an explicit discovery-page request. Its cache is
@@ -74,35 +75,42 @@ func NewMarket(root string) *Market {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = hostruntime.NewHTTPProxy()
 	return &Market{path: filepath.Join(root, "resource-exchange", "cache", "market.json"), client: &http.Client{Transport: transport, Timeout: 20 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) > 3 || req.URL.Scheme != "https" || req.URL.Host != "alfredxw.github.io" {
+		if len(via) > 3 || req.URL.Scheme != "https" || req.URL.User != nil || req.URL.Host != via[0].URL.Host {
 			return fmt.Errorf("unexpected catalog redirect")
 		}
 		return nil
 	}}}
 }
 
-func (m *Market) Catalog(ctx context.Context, refresh bool) (MarketSnapshot, error) {
+func (m *Market) Catalog(ctx context.Context, registryURL string, refresh bool) (MarketSnapshot, error) {
+	registryURL = strings.TrimSpace(registryURL)
+	if registryURL == "" {
+		registryURL = CatalogURL
+	}
+	if err := (config.MarketSettings{RegistryURL: registryURL}).Validate(); err != nil {
+		return MarketSnapshot{}, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var cached MarketSnapshot
 	if snapshot, err := revisionfile.Read(ctx, m.path); err == nil && snapshot.Exists && len(snapshot.Content) <= maxCatalogBytes+4096 {
-		if json.Unmarshal(snapshot.Content, &cached) != nil || validateCatalog(cached.Catalog) != nil {
+		if json.Unmarshal(snapshot.Content, &cached) != nil || cached.RegistryURL != registryURL || validateCatalog(cached.Catalog) != nil {
 			cached = MarketSnapshot{}
 		}
 	}
 	if !refresh && !cached.FetchedAt.IsZero() && time.Since(cached.FetchedAt) < time.Hour {
 		return cached, nil
 	}
-	catalog, err := m.fetch(ctx)
+	catalog, err := m.fetch(ctx, registryURL)
 	if err != nil {
-		slog.WarnContext(ctx, "resource_market_refresh_failed", "reason", err)
+		slog.WarnContext(ctx, "resource_market_refresh_failed", "registry", registryURL, "reason", err)
 		if cached.FetchedAt.IsZero() {
 			return MarketSnapshot{}, err
 		}
 		cached.Stale, cached.ErrorKey = true, "market.errors.catalogUnavailable"
 		return cached, nil
 	}
-	result := MarketSnapshot{Catalog: catalog, FetchedAt: time.Now().UTC()}
+	result := MarketSnapshot{Catalog: catalog, RegistryURL: registryURL, FetchedAt: time.Now().UTC()}
 	raw, err := json.Marshal(result)
 	if err != nil {
 		return MarketSnapshot{}, err
@@ -110,12 +118,12 @@ func (m *Market) Catalog(ctx context.Context, refresh bool) (MarketSnapshot, err
 	if _, err := revisionfile.ReplaceIfRevision(ctx, m.path, "", raw, revisionfile.Options{}); err != nil {
 		return MarketSnapshot{}, err
 	}
-	slog.InfoContext(ctx, "resource_market_refreshed", "entries", len(catalog.Entries))
+	slog.InfoContext(ctx, "resource_market_refreshed", "registry", registryURL, "entries", len(catalog.Entries))
 	return result, nil
 }
 
-func (m *Market) fetch(ctx context.Context) (Catalog, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CatalogURL, nil)
+func (m *Market) fetch(ctx context.Context, registryURL string) (Catalog, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, registryURL, nil)
 	if err != nil {
 		return Catalog{}, err
 	}

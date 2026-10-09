@@ -65,7 +65,7 @@ export async function fetchAPI(input: RequestInfo | URL, init?: APIRequestInit):
   }
 }
 
-export async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
+export async function requestJSON<T>(url: string, init?: APIRequestInit): Promise<T> {
   const res = await fetchAPI(url, init)
   const text = await res.text()
   let data: Record<string, any> = {}

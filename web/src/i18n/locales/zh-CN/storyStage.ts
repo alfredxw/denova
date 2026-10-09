@@ -1,4 +1,5 @@
 const storyStage = {
+  'storyStage.presentation.lineHeight': '行间距',
   'storyStage.presentation.characterLayout': '角色布局',
   'storyStage.presentation.characterSize': '角色大小',
   'storyStage.presentation.layout.center': '居中',

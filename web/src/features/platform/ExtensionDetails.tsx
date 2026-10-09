@@ -11,14 +11,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { management, localized, platformError, type Candidate, type RuntimeSnapshot } from './api'
+import { management, localized, platformError, type RuntimeSnapshot } from './api'
+import type { Installation } from '@/features/market/api'
 import { type ExtensionEntry } from './extension-directory'
-import { openExtensionSource, startExtensionGame } from './extension-navigation'
+import { importExtensionSource, openExtensionSource, startExtensionGame } from './extension-navigation'
 import { InstalledExtensionSettings } from './InstalledExtensionSettings'
-import { GitHubInstallation } from './GitHubInstallation'
+import { ExtensionSource } from './ExtensionSource'
 import { PluginActionsButton } from './PluginWorkspace'
 
-export function ExtensionDetails({ entry, runtimes, active, dirty, onDirtyChange, onRefresh, onUpdate }: {
+export function ExtensionDetails({ entry, runtimes, active, dirty, onDirtyChange, onRefresh, owner, onUpdate, blockedReason }: {
   entry: ExtensionEntry
   runtimes: RuntimeSnapshot[]
   active: boolean
@@ -26,7 +27,9 @@ export function ExtensionDetails({ entry, runtimes, active, dirty, onDirtyChange
   /** Keep this editor mounted while it has unsaved changes or a pending save. */
   onDirtyChange: (dirty: boolean) => void
   onRefresh: () => void
-  onUpdate: (candidate: Candidate) => void
+  owner?: Installation
+  onUpdate: (installation: Installation) => Promise<void>
+  blockedReason?: string
 }) {
   const { t, i18n } = useTranslation()
   const { installed: item, manifest, sources } = entry
@@ -95,7 +98,7 @@ export function ExtensionDetails({ entry, runtimes, active, dirty, onDirtyChange
         {item.kind === 'game' && <p className="text-xs leading-relaxed text-muted-foreground @xl:col-span-2">{t('platform.extensions.startGameHelp')}</p>}
       </div>
     </header>
-    {item.source && <GitHubInstallation key={`${item.currentRelease}:${JSON.stringify(item.source)}`} item={item} disabled={dirty} onUpdate={onUpdate} />}
+    {owner && <ExtensionSource key={owner.installation_id} owner={owner} blockedReason={blockedReason} onUpdate={onUpdate} />}
     {item.unavailableReason && <InlineErrorNotice message={t(item.unavailableReason)} />}
     <Separator />
     <section className="flex min-w-0 flex-col gap-2" aria-label={t('platform.extensions.introduction.' + item.kind)}>
@@ -120,6 +123,13 @@ export function ExtensionDetails({ entry, runtimes, active, dirty, onDirtyChange
       <h2 className="text-sm font-semibold">{t('platform.dependency')}</h2>
       <ul className="divide-y">{manifest?.requires?.map(dependency => <li key={dependency.pluginId} className="flex flex-wrap items-center justify-between gap-2 py-3 text-xs"><span className="[overflow-wrap:anywhere]">{dependency.pluginId}</span><Badge variant="outline">{dependency.versionRange}</Badge></li>)}</ul>
     </section></>}
+    {item.source && <details>
+      <summary className="cursor-pointer text-sm text-muted-foreground">{t('market.development')}</summary>
+      <div className="mt-3 flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">{t('platform.github.buildHelp')}</p>
+        <div><Button variant="outline" size="sm" disabled={busy || dirty} onClick={() => void run(() => importExtensionSource(item.source!))}>{t('platform.github.importSource')}</Button></div>
+      </div>
+    </details>}
     <Dialog open={confirm} onOpenChange={value => { if (!busy) setConfirm(value) }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{t('platform.uninstall')}</DialogTitle><DialogDescription>{t('platform.uninstallDescription')}</DialogDescription></DialogHeader>

@@ -1,4 +1,22 @@
 const market = {
+  'market.update.fromFile': 'Update from a local file',
+  'market.update.sourceHelp': 'Review changes to the existing package. For a local source, select its new package file or extension directory. Keep the same package identity and review any new permissions.',
+  'market.checkUpdates': 'Check for updates',
+  "market.checkFailedCount": "Could not check {{count}} sources. Other sources have been checked.",
+  "market.manageExtension": "Manage extension",
+  "market.bundleUpdateHelp": "This extension updates with its package. Review the package changes before updating; the extension is not replaced separately.",
+  "market.providedBy": "Provided by",
+  "market.reviewSettings": "Review unsaved settings",
+  "market.unsavedExtensions": "Save or discard extension settings before adding, updating or restoring resources.",
+  "market.import.advanced": "Branch, directory and source development",
+  "market.import.directoryHelp": "Inspect a plugin or game directory on this computer. Previewing does not build or run code.",
+  "market.import.directory": "Local extension directory (development)",
+  "market.import.installExtensions": "Install extension",
+  "market.development": "Develop extensions",
+  "market.extensions": "Plugins & games",
+  "market.added": "Added",
+  'market.registrySettings': 'Configure resource registry',
+  'market.errors.invalidRegistryURL': 'Enter an absolute HTTPS registry URL without credentials or a fragment.',
   "market.update.review": "Update contents",
   "market.update.help": "Update unchanged content and preserve local-only edits. Choose how to handle all conflicts or adjust each one, then update the plan to check dependent changes. Pending content and dependent updates stay local; independent changes can still be applied. Replacements are backed up.",
   "market.update.resolveAll": "Resolve all conflicts",
@@ -47,14 +65,13 @@ const market = {
   'market.contents.source': "View source",
   'market.contents.compatibility': "Requirements",
   'market.contents.usage': "How to use",
-  'market.contents.acquired': "Manage installations · {{count}}",
+  "market.contents.acquired": "Manage added · {{count}} destinations",
   'market.contents.noMatches': "No matching contents. Your selection is unchanged.",
 
-  'market.navigation': 'Market navigation',
+  "market.navigation": "Resource Center navigation",
   'market.updates': 'Updates',
   'market.updatesEmpty': 'No updates available',
-  'market.updatesHelp':
-    'Check a package for updates in Acquired, or turn on daily update checks.',
+  "market.updatesHelp": "Check for updates to see available changes to your added resources.",
   'market.category.presets': 'Creative Setups',
   'market.category.styles': 'Style references',
   'market.category.skills': 'Skills',
@@ -112,8 +129,7 @@ const market = {
     'A Skill with this name already exists. Choose a different local name.',
   'market.errors.sourceChanged':
     'The source differs from this installation. Stop tracking its source before adopting a different one.',
-  'market.errors.bundleOwned':
-    'This extension belongs to a package. Update the entire package from Acquired in the Marketplace.',
+  "market.errors.bundleOwned": "This extension is managed by a package. Update its owner in Resource Center > Packages.",
   'market.errors.busy':
     'Resources are in use. Retry when the running task or extension has stopped.',
   'market.errors.referenceChanged':
@@ -124,10 +140,10 @@ const market = {
   'market.policy.notify': 'Check daily and notify',
   'market.policy.auto_apply': 'Auto-update unchanged resources',
 
-  'market.title': 'Marketplace',
+  "market.title": "Resource Center",
   'market.description': 'Discover packages with creative setups, Lore, Skills, plugins, or games.',
-  'market.discover': 'Discover',
-  'market.acquired': 'Acquired',
+  "market.discover": "Discover resources",
+  "market.acquired": "Packages",
   'market.submit': 'Submit a package',
   'market.refresh': 'Refresh index',
   'market.search': 'Search name, description or author',
@@ -156,9 +172,8 @@ const market = {
   'market.updateAvailable': 'Update available',
   'market.detach': 'Stop tracking source',
   'market.detached': 'Tracking stopped. Resources remain in their libraries.',
-  'market.acquiredEmpty': 'No acquired packages yet',
-  'market.acquiredHelp':
-    'Manage package sources and updates here. Edit and use their contents in Creative Setups, Lore, Skills, and other relevant modules.',
+  "market.acquiredEmpty": "No added packages yet",
+  "market.acquiredHelp": "Discover resources or add them from a file or link. Plugins and games can also be managed in their own list.",
   'market.errors.catalogUnavailable':
     'The resource index is unavailable. Retry later, or import from a file or link.',
   'market.errors.operationFailed':
@@ -167,9 +182,8 @@ const market = {
     'Choose a valid ZIP, character PNG or JSON file (up to 256 MiB).',
   'market.errors.projectsUnavailable':
     'Projects could not load. Close and retry.',
-  'market.import.title': 'Import package',
-  'market.import.help':
-    'Import a file, GitHub repository or ZIP URL. Previewing does not change existing resources.',
+  "market.import.title": "Add resources",
+  "market.import.help": "Add packages, plugins or games from a file or link. Review their contents and permissions before confirming.",
   'market.import.confirmTitle': 'Review installation plan',
   'market.import.confirmHelp':
     'The reviewed content will be installed as listed below. Extensions are not started and game preferences and saves are preserved.',
@@ -205,10 +219,10 @@ const market = {
   'market.import.done': 'Package installed',
   'market.import.preview': 'Download and preview',
   'market.import.review': 'Review plan',
-  'market.import.install': 'Install',
+  "market.import.install": "Add resources",
   'market.export.title': 'Export package',
   'market.export.help':
-    'Select one or more resources to create a package. Referenced dependencies are included. Export excludes model settings, credentials, execution history and game saves, and does not publish to the market.',
+    'Select one or more resources to create a package. Referenced dependencies are included. Export excludes model settings, credentials, execution history and game saves, and does not publish to Resource Center.',
   'market.export.name': 'Package name',
   'market.export.id': 'Stable package ID',
   'market.export.native': 'Export native Skill / extension ZIP',

@@ -135,7 +135,7 @@ func TestDomainCommitOutsideEffectiveWindowRemainsIdempotent(t *testing.T) {
 			}
 			for _, phase := range []string{"trimmed", "cleared", "reopened"} {
 				if phase == "cleared" {
-					if err := sess.AppendClearMarker(); err != nil {
+					if err := appendReleasedClearMarker(sess); err != nil {
 						t.Fatal(err)
 					}
 				}

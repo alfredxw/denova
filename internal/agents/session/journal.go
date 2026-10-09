@@ -60,6 +60,7 @@ type sessionHeader struct {
 	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
 }
 
+// clearRecord preserves the context boundary in released journals; new sessions do not write it.
 type clearRecord struct {
 	Type            string    `json:"type"`
 	CreatedAt       time.Time `json:"created_at"`

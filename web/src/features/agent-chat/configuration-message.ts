@@ -8,7 +8,7 @@ export interface ConfigurationPageContext {
   context?: Record<string, string>
 }
 
-const BUILTIN_AGENT_COMMAND = /^\/(?:clear|compact|status|help|goal|plan)(?:\s|$)/i
+const BUILTIN_AGENT_COMMAND = /^\/(?:new|compact|status|help|goal|plan)(?:\s|$)/i
 const CONFIGURATION_CONTEXT_FIELD_LIMIT = 24
 const CONFIGURATION_CONTEXT_VALUE_LIMIT = 2048
 

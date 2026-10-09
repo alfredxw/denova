@@ -31,6 +31,8 @@ interface SectionedNavigationProps<TID extends string> {
   groups: SectionedNavigationGroup<TID>[]
   activeId: TID
   onSelect: (id: TID) => void
+  header?: ReactNode
+  emptyState?: ReactNode
   className?: string
 }
 
@@ -39,10 +41,13 @@ export function SectionedNavigation<TID extends string>({
   groups,
   activeId,
   onSelect,
+  header,
+  emptyState,
   className,
 }: SectionedNavigationProps<TID>) {
   return (
     <EmbeddedSidebar className={className}>
+        {header}
         <SidebarContent>
           <nav>
             {groups.map((group) => (
@@ -78,6 +83,7 @@ export function SectionedNavigation<TID extends string>({
                 </SidebarGroupContent>
               </SidebarGroup>
             ))}
+            {groups.length === 0 ? emptyState : null}
           </nav>
         </SidebarContent>
     </EmbeddedSidebar>

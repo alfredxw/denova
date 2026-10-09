@@ -126,6 +126,7 @@ export function NumberSettingInput({
   value,
   min,
   max,
+  step = 1,
   label,
   disabled,
   onCommit,
@@ -133,19 +134,20 @@ export function NumberSettingInput({
   value: number
   min: number
   max?: number
+  step?: number
   label: string
   disabled?: boolean
   onCommit: (value: number) => void
 }) {
   const [draft, setDraft] = useState(String(value))
   const parsed = Number(draft)
-  const valid = Number.isInteger(parsed) && parsed >= min && (max === undefined || parsed <= max)
+  const valid = Number.isFinite(parsed) && (step < 1 || Number.isInteger(parsed)) && parsed >= min && (max === undefined || parsed <= max)
 
   useEffect(() => setDraft(String(value)), [value])
 
   const commit = () => {
     if (!valid) return
-    const next = Math.trunc(parsed)
+    const next = parsed
     setDraft(String(next))
     if (next !== value) onCommit(next)
   }
@@ -154,9 +156,10 @@ export function NumberSettingInput({
     <div className="flex min-w-0 flex-col items-end gap-1">
       <Input
         type="number"
-        inputMode="numeric"
+        inputMode={step < 1 ? 'decimal' : 'numeric'}
         min={min}
         max={max}
+        step={step}
         value={draft}
         disabled={disabled}
         aria-label={label}

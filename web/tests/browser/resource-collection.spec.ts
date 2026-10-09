@@ -21,7 +21,7 @@ for (const kind of ['lore.collection', 'game.openings']) for (const locale of ['
     await page.goto('/')
     await page.getByRole('button', { name, exact: true }).click()
     await page.getByTestId('market-entry-detail').getByRole('button', { name: chinese ? '获取资源包' : 'Get this package', exact: true }).click()
-    const detail = page.getByRole('dialog', { name: chinese ? '导入资源包' : 'Import package', exact: true })
+    const detail = page.getByRole('dialog', { name: chinese ? '添加资源' : 'Add resources', exact: true })
     await detail.getByRole('button', { name: kind === 'lore.collection' ? (chinese ? '资料' : 'Lore') : (chinese ? '开场白' : 'Openings'), exact: true }).click()
     await expect(detail.getByText(chinese ? '300 项内容 · 一个集合文件' : '300 items · one collection file')).toBeVisible()
     await expect(detail.getByRole('checkbox')).toHaveCount(2)

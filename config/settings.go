@@ -20,6 +20,7 @@ import (
 // Settings 是用户设置的持久化模型。工作区文件只会从中取出 Agent 定制字段。
 // 指针类型用于区分 "未设置"（继承上层）与 "显式置零"。
 type Settings struct {
+	Market               MarketSettings        `toml:"market,omitempty" json:"market,omitempty"`
 	Extensions           *ExtensionSettings    `toml:"extensions,omitempty" json:"extensions,omitempty"`
 	GameCreationDefaults *GameCreationDefaults `toml:"game_creation_defaults,omitempty" json:"game_creation_defaults,omitempty"`
 
@@ -132,8 +133,7 @@ type Settings struct {
 	TerminalMaxSessions        *int `toml:"terminal_max_sessions,omitempty" json:"terminal_max_sessions,omitempty"`
 	TerminalScrollbackKB       *int `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
-	// 游戏模式
-	InteractiveStoryTellerID     string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
+	// Game display preferences.
 	InteractiveStageFontSize     *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageScrimOpacity *float64 `toml:"interactive_stage_scrim_opacity,omitempty" json:"interactive_stage_scrim_opacity,omitempty"`
 	InteractiveStageLineHeight   *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
@@ -178,6 +178,7 @@ const (
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
 	return Settings{
+		Market:                      MarketSettings{RegistryURL: DefaultMarketRegistryURL},
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
 		DefaultImageAgentID:         stringPtr(""),
 		ImageAPIEndpoints:           []ImageAPIEndpointSettings{DefaultImageAPIEndpoint()},
@@ -240,7 +241,6 @@ func DefaultSettings() Settings {
 		IDEStoryTellerID:                style.DefaultID,
 		IDEImagePresetID:                "game-cg",
 		WritingSkillDefault:             DefaultWritingSkillName,
-		InteractiveStoryTellerID:        style.DefaultID,
 		InteractiveStageFontSize:        intPtr(16),
 		InteractiveStageLineHeight:      floatPtr(1.78),
 		InteractiveStageScrimOpacity:    floatPtr(0.75),
@@ -256,6 +256,9 @@ func Merge(parent, child Settings) Settings {
 	parent = preserveTerminalCommandRegistryPresence(parent)
 	child = preserveTerminalCommandRegistryPresence(child)
 	out := parent
+	if child.Market.RegistryURL != "" {
+		out.Market = child.Market
+	}
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
 	}
@@ -447,9 +450,6 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
-	}
-	if child.InteractiveStoryTellerID != "" {
-		out.InteractiveStoryTellerID = child.InteractiveStoryTellerID
 	}
 	if child.IDEImagePresetID != "" {
 		out.IDEImagePresetID = child.IDEImagePresetID
@@ -914,6 +914,7 @@ func workspaceAgentSettings(settings Settings) Settings {
 }
 
 func sanitizeEditableSettings(s Settings) Settings {
+	s.Market.RegistryURL = strings.TrimSpace(s.Market.RegistryURL)
 	s = preserveTerminalCommandRegistryPresence(s)
 	s, _ = migrateModelEndpointSettings(s)
 	s, _ = migrateImageAPIEndpointSettings(s)
@@ -929,7 +930,6 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.IDEStoryTellerID = strings.TrimSpace(s.IDEStoryTellerID)
-	s.InteractiveStoryTellerID = strings.TrimSpace(s.InteractiveStoryTellerID)
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.AgentQuickPrompts = normalizeAgentQuickPrompts(s.AgentQuickPrompts)

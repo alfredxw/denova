@@ -74,7 +74,6 @@ export type AgentPanelChrome = 'panel' | 'workbench'
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 export const WRITING_COMPOSER_SETTING_DEFAULTS = {
   ide_story_teller_id: DEFAULT_NARRATIVE_STYLE_ID,
-  interactive_story_teller_id: DEFAULT_NARRATIVE_STYLE_ID,
   ide_image_preset_id: 'game-cg',
   writing_skill_default: DEFAULT_WRITING_SKILL,
 } as const
@@ -475,6 +474,12 @@ function AgentPanelComponent({
   )
 
   const sendWithWritingSkill = async (message: string, inputOptions?: InputAreaSendOptions) => {
+    // Session navigation belongs to the host, before feedback or model context is prepared.
+    if (message.trim() === '/new') {
+      if (sessionControlsDisabled) return false
+      await onCreateSession()
+      return true
+    }
     if (persistedSettings.loading) return false
     const feedbackSelection = reviewFeedback?.filter((selection) => selection.comments.length) ?? []
     const feedback = feedbackSelection.length
@@ -529,6 +534,7 @@ function AgentPanelComponent({
   }
 
   const submitGoal = async (objective: string, inputOptions?: InputAreaSendOptions) => {
+    if (objective.trim() === '/new') return sendWithWritingSkill(objective, inputOptions)
     if (planMode) onPlanModeChange(false)
     const next = await conversationGoal.set(objective)
     if (!next) {

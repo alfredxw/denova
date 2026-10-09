@@ -64,12 +64,3 @@ func PersistAgentCall(store *Store, agentKind, instruction, response string) err
 	}
 	return nil
 }
-
-// ClearAgentSession appends a clear marker to a background Agent journal.
-func ClearAgentSession(store *Store, agentKind string) error {
-	sess, err := AgentSession(store, agentKind)
-	if err != nil {
-		return err
-	}
-	return sess.Clear()
-}

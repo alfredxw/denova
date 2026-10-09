@@ -111,13 +111,17 @@ func TestSessionResourceContinuesLargeUTF8RowsAndExcludesReasoning(t *testing.T)
 	if err := target.AppendDisplayEvent(session.DisplayEvent{Role: "assistant", Content: longText}); err != nil {
 		t.Fatal(err)
 	}
-	if err := target.Clear(); err != nil {
+	journalPath := filepath.Join(sessionDir(source.StateRoot), target.ID+".jsonl")
+	released, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journalPath, append(released, []byte("{\"type\":\"clear\",\"created_at\":\"2026-01-02T03:04:05Z\"}\n")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := target.Append(agentschema.UserMessage("after-clear")); err != nil {
 		t.Fatal(err)
 	}
-	journalPath := filepath.Join(sessionDir(source.StateRoot), target.ID+".jsonl")
 	before, err := os.ReadFile(journalPath)
 	if err != nil {
 		t.Fatal(err)

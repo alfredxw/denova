@@ -110,14 +110,14 @@ for (const theme of ['dark', 'light']) {
     await page.goto('/')
     const market = page.getByTestId('resource-market')
     await expect(
-      market.getByRole('heading', { name: 'Marketplace', exact: true }),
+      market.getByRole('heading', { name: 'Resource Center', exact: true }),
     ).toBeVisible()
     await expect(
       market.getByRole('button', { name: /^Creative resource/ }),
     ).toHaveCount(50)
     await page.setViewportSize({ width: 1440, height: 900 })
     const navigation = page.getByRole('navigation', {
-      name: 'Market navigation',
+      name: 'Resource Center navigation',
     })
     // Mixed packages are discoverable under each type of content they include.
     for (const category of ['Creative Setups', 'Style references']) {
@@ -139,7 +139,7 @@ for (const theme of ['dark', 'light']) {
       .click()
     await expect(market.getByTestId('market-resource-card')).toHaveCount(1)
     await navigation
-      .getByRole('button', { name: 'Discover', exact: true })
+      .getByRole('button', { name: 'Discover resources', exact: true })
       .click()
     await market
       .getByRole('button', { name: 'Collapse sidebar', exact: true })
@@ -157,7 +157,7 @@ for (const theme of ['dark', 'light']) {
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 })
       await expect(
-        market.getByRole('button', { name: 'Import package', exact: true }),
+        market.getByRole('button', { name: 'Add resources', exact: true }),
       ).toBeVisible()
       expect(
         await market.evaluate(
@@ -171,7 +171,7 @@ for (const theme of ['dark', 'light']) {
     }
     await page
       .getByRole('button', {
-        name: 'Market navigation directory',
+        name: 'Resource Center navigation directory',
         exact: true,
       })
       .click()
@@ -180,12 +180,12 @@ for (const theme of ['dark', 'light']) {
     await expect(market.getByTestId('market-resource-card')).toHaveCount(1)
     await page
       .getByRole('button', {
-        name: 'Market navigation directory',
+        name: 'Resource Center navigation directory',
         exact: true,
       })
       .click()
     await navigation
-      .getByRole('button', { name: 'Discover', exact: true })
+      .getByRole('button', { name: 'Discover resources', exact: true })
       .click()
     await market
       .getByRole('textbox', { name: 'Search name, description or author' })
@@ -248,10 +248,10 @@ for (const theme of ['dark', 'light']) {
     )
     expect(archiveResponse.ok(), await archiveResponse.text()).toBe(true)
     await market
-      .getByRole('button', { name: 'Import package', exact: true })
+      .getByRole('button', { name: 'Add resources', exact: true })
       .click()
     const dialog = page.getByRole('dialog', {
-      name: 'Import package',
+      name: 'Add resources',
       exact: true,
     })
     await dialog.getByRole('combobox').click()
@@ -282,15 +282,13 @@ for (const theme of ['dark', 'light']) {
       confirmation.getByText(`Market fixture ${theme}`, { exact: true }),
     ).toBeVisible()
     await confirmation
-      .getByRole('button', { name: 'Install', exact: true })
+      .getByRole('button', { name: 'Add resources', exact: true })
       .click()
     await expect(confirmation).toBeHidden()
     await expect(
-      market.getByRole('heading', { name: 'Acquired', exact: true }),
+      market.getByRole('heading', { name: 'Packages', exact: true }),
     ).toBeVisible()
-    await market
-      .getByRole('button', { name: new RegExp(`Market fixture ${theme}`) })
-      .click()
+    await expect(market.getByRole('button', { name: new RegExp(`Market fixture ${theme}`) })).toHaveAttribute('aria-expanded', 'true')
     await expect(
       market.getByRole('button', { name: 'Stop tracking source', exact: true }),
     ).toBeVisible()

@@ -31,7 +31,7 @@ for (const theme of ['dark', 'light']) {
     await page.locator('header').filter({ has: page.getByRole('heading', { name: '互动图像', exact: true }) }).getByRole('button', { name: '配置模型', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: test.info().outputPath(`configured-media-${theme}-wide.png`) })
     await page.locator('header').filter({ has: page.getByRole('heading', { name: '互动图像', exact: true }) }).getByRole('button', { name: '配置模型', exact: true }).click()
-    await expect(page.getByRole('button', { name: '公共配置图像模型', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '图像生成', exact: true })).toBeVisible()
     await page.setViewportSize({ width: 390, height: 844 })
     await page.getByRole('button', { name: '导航菜单', exact: true }).click()
     await page.getByRole('dialog', { name: '导航菜单', exact: true }).getByRole('button', { name: '游戏', exact: true }).click()
@@ -42,7 +42,7 @@ for (const theme of ['dark', 'light']) {
     await page.screenshot({ path: test.info().outputPath(`configured-media-${theme}-390.png`) })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await panel.locator('header').filter({ has: page.getByRole('heading', { name: '互动图像', exact: true }) }).getByRole('button', { name: '配置模型', exact: true }).click()
-    await expect(page.getByRole('button', { name: '公共配置图像模型', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '图像生成', exact: true })).toBeVisible()
   })
 
   test(`unconfigured media cards stay compact on mobile in ${theme}`, async ({ page, request }) => {

@@ -1,3 +1,4 @@
+import { selectExtension } from '../support/resource-center'
 import { cp, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test, expect, type APIRequestContext } from '../support/fixtures'
@@ -63,7 +64,7 @@ test('enabled plugin tools work in writing, workbench and game without conversat
   await page.locator('[data-action="send"]').filter({ visible: true }).click()
   await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns.at(-1)?.narrative).toContain('Plugin result adopted: 3.')
 
-  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '扩展', exact: true }).click()
+  await selectExtension(page, '写作与游戏共用的长名称插件'.repeat(6))
   await expect(page.getByText('启用后，工具按插件声明的写作、游戏或通用场景供 Agent 使用，并遵循项目停用设置。')).toBeVisible()
   const article = page.getByRole('article').filter({ visible: true })
   await expect(article.getByText('下次任务开始时生效', { exact: true })).toBeVisible()
@@ -75,6 +76,7 @@ test('enabled plugin tools work in writing, workbench and game without conversat
   await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'en-US', theme: 'light' } } })
   await page.evaluate(() => { localStorage.setItem('theme', 'light'); localStorage.setItem('nova.locale.configured', 'en-US') })
   await page.reload()
+  await selectExtension(page, 'Shared writing and game plugin with a long name '.repeat(6).trim(), false)
   await expect(page.getByText('Enabled tools are available to Agents in their declared Writing, Game or general contexts, subject to Project settings.')).toBeVisible()
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 })
@@ -91,7 +93,7 @@ test('existing sessions use shared settings and stop receiving disabled tools', 
   const composer = await openAgentChatSession(page, project.id, session.title)
   await submitAgentChatMessage(page, composer, 'Use the plugin result. E2E_PLUGIN_CHAIN')
   await expect(page.getByText('Plugin result adopted: 3.', { exact: true }).filter({ visible: true })).toBeVisible()
-  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '扩展', exact: true }).click()
+  await selectExtension(page, '写作与游戏共用的长名称插件'.repeat(6))
   const setting = page.getByRole('switch', { name: '启用测试行为', exact: true })
   await expect(setting).toBeVisible()
   await setting.check()

@@ -33,7 +33,7 @@ func TestMarketUsesConfiguredProxy(t *testing.T) {
 	market := NewMarket(t.TempDir())
 	market.client.Timeout = time.Second
 	t.Cleanup(market.client.CloseIdleConnections)
-	_, err := market.Catalog(context.Background(), true)
+	_, err := market.Catalog(context.Background(), CatalogURL, true)
 	if err == nil || connects.Load() != 1 {
 		t.Fatalf("market bypassed the proxy: connects=%d error=%v", connects.Load(), err)
 	}
@@ -66,22 +66,22 @@ func TestMarketExplicitFetchCacheAndOfflineRecovery(t *testing.T) {
 	if calls != 0 {
 		t.Fatal("construction fetched catalog")
 	}
-	first, err := m.Catalog(ctx, false)
+	first, err := m.Catalog(ctx, CatalogURL, false)
 	if err != nil || len(first.Entries) != 1 || calls != 1 {
 		t.Fatalf("first fetch: %+v %v calls=%d", first, err, calls)
 	}
-	if _, err := m.Catalog(ctx, false); err != nil || calls != 1 {
+	if _, err := m.Catalog(ctx, CatalogURL, false); err != nil || calls != 1 {
 		t.Fatal("fresh cache fetched again")
 	}
 	fail = true
-	stale, err := m.Catalog(ctx, true)
+	stale, err := m.Catalog(ctx, CatalogURL, true)
 	if err != nil || !stale.Stale || len(stale.Entries) != 1 || stale.FetchedAt != first.FetchedAt {
 		t.Fatalf("cache was lost: %+v %v", stale, err)
 	}
 	if err := os.Remove(m.path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Catalog(ctx, false); err == nil {
+	if _, err := m.Catalog(ctx, CatalogURL, false); err == nil {
 		t.Fatal("first offline request appeared empty")
 	}
 }
@@ -95,12 +95,12 @@ func TestMarketRejectsInvalidRefreshWithoutReplacingCache(t *testing.T) {
 			m.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})
-			if _, err := m.Catalog(context.Background(), false); err != nil {
+			if _, err := m.Catalog(context.Background(), CatalogURL, false); err != nil {
 				t.Fatal(err)
 			}
 			before, _ := os.ReadFile(m.path)
 			body = invalid
-			result, err := m.Catalog(context.Background(), true)
+			result, err := m.Catalog(context.Background(), CatalogURL, true)
 			after, _ := os.ReadFile(m.path)
 			if err != nil || !result.Stale || string(before) != string(after) {
 				t.Fatalf("bad refresh replaced cache: %+v %v", result, err)

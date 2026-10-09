@@ -98,9 +98,6 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}
-	if cfg.InteractiveStoryTellerID == "" && effective.InteractiveStoryTellerID != "" {
-		cfg.InteractiveStoryTellerID = effective.InteractiveStoryTellerID
-	}
 	if effective.IDEImagePresetID != "" {
 		cfg.IDEImagePresetID = effective.IDEImagePresetID
 	}
@@ -234,9 +231,6 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
-	}
-	if settings.InteractiveStoryTellerID != "" {
-		cfg.InteractiveStoryTellerID = settings.InteractiveStoryTellerID
 	}
 	if settings.IDEImagePresetID != "" {
 		cfg.IDEImagePresetID = settings.IDEImagePresetID

@@ -15,9 +15,9 @@ import (
 
 var ErrGameCreationDefaults = errors.New("book game defaults are unavailable")
 
-// Book defaults are resolved once, before creating the Story journal. Resume,
-// updates and extension preview Stories never consult this configuration.
-func (s *InteractiveAppService) withBookGameDefaults(req interactive.CreateStoryRequest) (interactive.CreateStoryRequest, error) {
+// Creation choices outrank book defaults, then the book's last selected Story.
+// Resume, updates and extension preview Stories never consult these defaults.
+func (s *InteractiveAppService) withGameCreationDefaults(req interactive.CreateStoryRequest) (interactive.CreateStoryRequest, error) {
 	cfg := s.cfg()
 	if req.Preview || cfg == nil || cfg.ProjectStoreDir == "" {
 		return req, nil
@@ -27,14 +27,35 @@ func (s *InteractiveAppService) withBookGameDefaults(req interactive.CreateStory
 		return req, err
 	}
 	d := settings.GameCreationDefaults
-	if d == nil {
-		return req, nil
-	}
 	if err := d.Validate(); err != nil {
 		return req, errors.Join(ErrGameCreationDefaults, err)
 	}
-	if d.NarrativeStyleID == nil && req.StoryTellerID == "" && (req.ModuleRefs == nil || req.ModuleRefs.NarrativeStyleID == "" && !req.ModuleRefs.NarrativeStyleDisabled) {
-		req.StoryTellerID = cfg.InteractiveStoryTellerID
+	if (d == nil || d.NarrativeStyleID == nil) && req.StoryTellerID == "" && (req.ModuleRefs == nil || req.ModuleRefs.NarrativeStyleID == "" && !req.ModuleRefs.NarrativeStyleDisabled) {
+		index, err := s.store().Index()
+		if err != nil {
+			return req, err
+		}
+		for _, story := range index.Stories {
+			if story.ID != index.CurrentStoryID || story.Preview {
+				continue
+			}
+			refs := interactive.StoryDirectorModuleRefs{}
+			if req.ModuleRefs != nil {
+				refs = *req.ModuleRefs
+			}
+			refs.NarrativeStyleID = story.StoryTellerID
+			if story.ModuleRefs != nil {
+				refs.NarrativeStyleDisabled = story.ModuleRefs.NarrativeStyleDisabled
+				if story.ModuleRefs.NarrativeStyleID != "" {
+					refs.NarrativeStyleID = story.ModuleRefs.NarrativeStyleID
+				}
+			}
+			req.ModuleRefs = &refs
+			break
+		}
+	}
+	if d == nil {
+		return req, nil
 	}
 	return applyBookGameDefaults(cfg.DataDir(), req, d)
 }

@@ -45,6 +45,8 @@ export interface AgentChatConversationTabProps {
   onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
   onRunningChange?: (projectID: string, sessionId: string, running: boolean | null) => void
+  /** The host opens another conversation without changing this tab's durable binding. */
+  onCreateSession: AgentPanelProps['onCreateSession']
   onDraftCommitted?: (message: string) => void
   pendingAction?: AgentChatPendingAction | null
   onPendingActionConsumed?: (id: string) => void
@@ -74,7 +76,6 @@ export interface AgentChatConversationHost {
   sessionActionsDisabled: boolean
   sessionRailVisible: boolean
   onSessionRailVisibleChange: (visible: boolean) => void
-  onCreateSession: AgentPanelProps['onCreateSession']
   onSwitchSession: AgentPanelProps['onSwitchSession']
   onRenameSession: AgentPanelProps['onRenameSession']
   onDeleteSession: AgentPanelProps['onDeleteSession']
@@ -126,6 +127,7 @@ function AgentChatConversationTabComponent({
   onOpenChangeReview,
   onWorkspaceChanged,
   onRunningChange,
+  onCreateSession,
   onDraftCommitted,
   pendingAction,
   onPendingActionConsumed,
@@ -209,11 +211,11 @@ function AgentChatConversationTabComponent({
       return chat.send(transformed, {
         ...options,
         displayMessage: options?.displayMessage ?? (transformed === message ? undefined : message),
-        onSubmissionStart: () => {
-          options?.onSubmissionStart?.()
+        onSubmissionAccepted: () => {
+          options?.onSubmissionAccepted?.()
           if (!draft || draftCommittedRef.current) return
           draftCommittedRef.current = true
-          // The first request now owns the local session ID. Do not reload history when the parent
+          // The accepted request now owns the local session ID. Do not reload history when the parent
           // flips the tab out of draft state; the live useChat instance already owns that stream.
           initializedRef.current = true
           onDraftCommitted?.(message)
@@ -340,7 +342,7 @@ function AgentChatConversationTabComponent({
       chrome={host?.chrome ?? 'workbench'}
       view={host?.view}
       onViewChange={host?.onViewChange}
-      sessionActionsDisabled={host?.sessionActionsDisabled}
+      sessionActionsDisabled={host?.sessionActionsDisabled ?? false}
       sessionRailVisible={host?.sessionRailVisible}
       onSessionRailVisibleChange={host?.onSessionRailVisibleChange}
       initializing={!initialContentReady}
@@ -379,7 +381,7 @@ function AgentChatConversationTabComponent({
       hasEarlierMessages={chat.hasEarlierMessages}
       isLoadingEarlierHistory={chat.isLoadingEarlierHistory}
       fileSuggestions={host?.fileSuggestions ?? []}
-      onCreateSession={host?.onCreateSession ?? chat.createChatSession}
+      onCreateSession={onCreateSession}
       onSwitchSession={host?.onSwitchSession ?? chat.switchChatSession}
       onRenameSession={host?.onRenameSession ?? chat.renameChatSession}
       onDeleteSession={host?.onDeleteSession ?? chat.deleteChatSession}

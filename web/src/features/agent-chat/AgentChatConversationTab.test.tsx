@@ -24,6 +24,7 @@ it('waits for the startup recovery probe before sending an initial instruction e
     composerSettings: {} as AgentChatConversationTabProps['composerSettings'], tellers: [], imagePresets: [],
     pendingAction: { id: 'initial', message: 'Develop this extension', displayMessage: 'Develop this extension' },
     onPendingActionConsumed: consumed,
+    onCreateSession: vi.fn(),
   }
   const { rerender } = render(<AgentChatConversationTab {...props} />)
   await waitFor(() => expect(chat.resumeActiveChat).toHaveBeenCalledWith('session'))

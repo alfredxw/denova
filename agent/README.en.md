@@ -185,7 +185,7 @@ Suspension closes the old Session handle; reacquire it with `assistant.Session(c
 | Restore the page | `conversation.Snapshot(ctx)` returns current state and pending questions; subscribe with `Observe(ctx, snapshot.Cursor)` and consume both Events and Errors |
 | Retrieve a Run handle | `conversation.AttachRun(ctx, runID)` attaches without resuming |
 | List conversations | `assistant.ListSessions(ctx, session.Selector{All: true})` |
-| Clear the conversation | `conversation.Clear(ctx)` keeps identity, clears Todo, and retains Goal |
+| Start another conversation | `assistant.Session(ctx, session.Named("another-conversation-id"))` uses an independent identity and preserves the original conversation |
 | Close the conversation | `conversation.Close(ctx)` retains data but terminates the current task; suspend first if it needs continuation |
 | Delete the conversation | `conversation.Delete(ctx)` permanently deletes it; call only for an explicit delete action |
 

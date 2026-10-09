@@ -1,4 +1,22 @@
 const market = {
+  'market.update.fromFile': '从本地文件更新',
+  'market.update.sourceHelp': '检查已有资源包的变化。本地来源请选择新版资源包文件或扩展目录，保持资源包身份一致，并确认新增权限。',
+  'market.checkUpdates': '检查更新',
+  "market.checkFailedCount": "有 {{count}} 个来源检查失败，其余来源已检查。",
+  "market.manageExtension": "管理扩展",
+  "market.bundleUpdateHelp": "此扩展随资源包更新。检查更新后可查看包内变更，不会单独替换扩展。",
+  "market.providedBy": "来自资源包",
+  "market.reviewSettings": "查看未保存设置",
+  "market.unsavedExtensions": "有未保存的扩展设置，请先保存或取消，再添加、更新或恢复资源。",
+  "market.import.advanced": "分支、目录与源码开发",
+  "market.import.directoryHelp": "检查此电脑上的插件或游戏目录。只读取并预览，不运行构建或代码。",
+  "market.import.directory": "本地扩展目录（开发）",
+  "market.import.installExtensions": "安装扩展",
+  "market.development": "开发扩展",
+  "market.extensions": "插件与游戏",
+  "market.added": "已添加",
+  'market.registrySettings': '配置资源注册点',
+  'market.errors.invalidRegistryURL': '请输入完整 HTTPS 注册点地址，不包含账号密码或 URL 片段。',
   "market.update.review": "更新内容",
   "market.update.help": "未修改的内容直接更新，本地单独修改的内容保留。冲突可批量处理，也可逐项调整，选好后统一更新计划以检查依赖影响。暂不处理的内容及依赖它的更新会保留待处理，其他内容可继续应用。替换前会备份。",
   "market.update.resolveAll": "批量处理冲突",
@@ -47,13 +65,13 @@ const market = {
   'market.contents.source': "查看源文件",
   'market.contents.compatibility': "使用条件",
   'market.contents.usage': "如何使用",
-  'market.contents.acquired': "管理已获取 · {{count}} 处",
+  "market.contents.acquired": "管理已添加 · {{count}} 处",
   'market.contents.noMatches': "没有匹配的内容，已有选择保持不变。",
 
-  'market.navigation': '市场导航',
+  "market.navigation": "资源中心导航",
   'market.updates': '可用更新',
   'market.updatesEmpty': '暂无可用更新',
-  'market.updatesHelp': '在已获取中检查资源包更新，或开启每日自动检查。',
+  "market.updatesHelp": "点击检查更新，查看已添加资源的可用更新。",
   'market.category.presets': '创作方案',
   'market.category.styles': '风格参考',
   'market.category.skills': 'Skills 技能',
@@ -108,8 +126,7 @@ const market = {
   'market.errors.skillExists': '已存在同名技能，请使用其他本地名称。',
   'market.errors.sourceChanged':
     '来源与当前安装不同。请先停止原来源跟踪，再采用新的来源。',
-  'market.errors.bundleOwned':
-    '此扩展属于一个资源包，请到市场的「已获取」中更新整个资源包。',
+  "market.errors.bundleOwned": "此扩展由资源包管理，请在资源中心的资源包列表中更新所属包。",
   'market.errors.busy': '资源正在使用中，请在任务或扩展停止后重试。',
   'market.errors.referenceChanged':
     '引用的扩展已变化或被停用，请先恢复所需发行再重试。',
@@ -119,10 +136,10 @@ const market = {
   'market.policy.notify': '每日检查并提示',
   'market.policy.auto_apply': '自动更新未修改的资源',
 
-  'market.title': '市场',
+  "market.title": "资源中心",
   'market.description': '发现和获取资源包，包含创作方案、资料、Skills、插件或游戏。',
-  'market.discover': '发现',
-  'market.acquired': '已获取',
+  "market.discover": "发现资源",
+  "market.acquired": "资源包",
   'market.submit': '提交资源包',
   'market.refresh': '刷新索引',
   'market.search': '搜索名称、描述或作者',
@@ -150,9 +167,8 @@ const market = {
   'market.updateAvailable': '有更新',
   'market.detach': '停止跟踪来源',
   'market.detached': '已停止跟踪，资源保留在原资源库。',
-  'market.acquiredEmpty': '还没有获取资源包',
-  'market.acquiredHelp':
-    '获取资源包后，在这里管理来源和更新；包内内容在创作方案、资料库、Skills 等对应模块中编辑和使用。',
+  "market.acquiredEmpty": "还没有添加资源包",
+  "market.acquiredHelp": "从发现资源中获取，或通过文件、链接添加。插件与游戏也可以在对应列表中管理。",
   'market.errors.catalogUnavailable':
     '资源索引暂时无法访问，请稍后刷新；仍可从文件或链接导入。',
   'market.errors.operationFailed':
@@ -160,9 +176,8 @@ const market = {
   'market.errors.invalidFile':
     '请选择有效的 ZIP、角色卡 PNG 或 JSON 文件（最大 256 MiB）。',
   'market.errors.projectsUnavailable': '无法加载作品列表，请关闭后重试。',
-  'market.import.title': '导入资源包',
-  'market.import.help':
-    '从文件、GitHub 仓库或 ZIP 链接导入。预览不会修改现有资源。',
+  "market.import.title": "添加资源",
+  "market.import.help": "从文件或链接添加资源包、插件或游戏。预览内容和权限后，再确认添加。",
   'market.import.confirmTitle': '确认安装计划',
   'market.import.confirmHelp':
     '将按以下计划安装已预览的内容。安装不会启动插件、切换默认游戏或修改游戏存档。',
@@ -195,10 +210,10 @@ const market = {
   'market.import.done': '资源包已安装',
   'market.import.preview': '下载并预览',
   'market.import.review': '生成安装计划',
-  'market.import.install': '确认安装',
+  "market.import.install": "确认添加",
   'market.export.title': '导出资源包',
   'market.export.help':
-    '选择一种或多种内容组成资源包，关联依赖会一起导出。导出不包含模型配置、密钥、运行记录或游戏存档，也不会发布到市场。',
+    '选择一种或多种内容组成资源包，关联依赖会一起导出。导出不包含模型配置、密钥、运行记录或游戏存档，也不会发布到资源中心。',
   'market.export.name': '资源包名称',
   'market.export.id': '稳定资源包 ID',
   'market.export.native': '导出原生 Skill／扩展 ZIP',

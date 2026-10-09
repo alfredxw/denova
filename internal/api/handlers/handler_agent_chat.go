@@ -526,12 +526,6 @@ func (h *Handlers) HandleAgentChatSlashCommand(ctx context.Context, c *app.Reque
 		return
 	}
 	switch strings.TrimSpace(request.Command) {
-	case "clear":
-		if err := h.app.AgentChat().ClearSession(ctx, binding); err != nil {
-			writeError(c, consts.StatusConflict, err.Error())
-			return
-		}
-		writeJSON(c, consts.StatusOK, map[string]string{"result": "会话上下文已清空 / Conversation context cleared"})
 	case "status":
 		view := h.app.AgentChat().ActiveView(ctx, binding)
 		status := "空闲 / Idle"
@@ -540,7 +534,7 @@ func (h *Handlers) HandleAgentChatSlashCommand(ctx context.Context, c *app.Reque
 		}
 		writeJSON(c, consts.StatusOK, map[string]string{"result": status})
 	case "help":
-		writeJSON(c, consts.StatusOK, map[string]string{"result": "/compact · /clear · /status · /help"})
+		writeJSON(c, consts.StatusOK, map[string]string{"result": requestLocalizer(c).T("api.command.help")})
 	case "compact":
 		compacted, err := h.app.AgentChat().CompactContext(ctx, binding, "")
 		if err != nil {

@@ -204,12 +204,13 @@ func TestElisionAvoidsSummariesAndSurvivesRestartAndSuspend(t *testing.T) {
 			} else if !containsElisionTestText(after.ModelRequest.Messages, "[Earlier tool output elided;") || !summarySawElision {
 				t.Fatal("summary failure reverted committed Elision")
 			}
-			if err := conversation.Clear(ctx); err != nil {
+			fresh, err := owner.Session(ctx, agentsession.Named("elision-new-conversation"))
+			if err != nil {
 				t.Fatal(err)
 			}
-			cleared, err := conversation.Inspect(ctx, agent.Text("New task"))
-			if err != nil || cleared.ElisionMetrics.ResultsElided != 0 || containsElisionTestText(cleared.ModelRequest.Messages, "Earlier tool") {
-				t.Fatalf("Clear retained Elision: %+v %v", cleared.ElisionMetrics, err)
+			inspection, err := fresh.Inspect(ctx, agent.Text("New task"))
+			if err != nil || inspection.ElisionMetrics.ResultsElided != 0 || containsElisionTestText(inspection.ModelRequest.Messages, "Earlier tool") {
+				t.Fatalf("new conversation inherited Elision: %+v %v", inspection.ElisionMetrics, err)
 			}
 		})
 	}

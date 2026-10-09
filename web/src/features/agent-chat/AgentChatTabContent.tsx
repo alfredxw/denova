@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, type ReactNode } from 'react'
-import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
+import type { AgentPanelProps, WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { AgentChatProjectType } from './api'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
@@ -67,6 +67,7 @@ interface AgentChatTabContentProps {
   onConversationStateChange: (projectID: string, tabId: string, state: AgentChatConversationState) => void
   onOpenSubAgentSession: (parentTab: AgentChatAgentTab, target: AgentSubAgentSessionTarget) => void
   onDraftCommitted: (message: string) => void
+  onCreateSession: AgentPanelProps['onCreateSession']
   onTerminalSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
   onTerminalTitleChange: (tabId: string, title: string) => void
   onTerminalStatusChange: (tabId: string, status: AgentChatTerminalStatus | null) => void
@@ -106,6 +107,7 @@ export function AgentChatTabContent({
   onRunningChange,
   onConversationStateChange,
   onOpenSubAgentSession,
+  onCreateSession,
   onDraftCommitted,
   onTerminalSessionEstablished,
   onTerminalTitleChange,
@@ -187,6 +189,7 @@ export function AgentChatTabContent({
       return (
         <ToolNavigationProvider value={toolNavigation}>
         <AgentChatConversationTab
+          onCreateSession={onCreateSession}
           projectId={tab.projectId}
           projectType={projectType}
           workspace={tab.workspace}

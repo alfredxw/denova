@@ -53,7 +53,6 @@ interface StorySetupAdvancedProps {
   runtimeConfigLoading?: boolean
   runtimeConfigError?: string | null
   onRuntimeConfigReload?: () => void
-  onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   onOpenPresets?: () => void
 }
 
@@ -72,7 +71,6 @@ export function StorySetupAdvanced({
   runtimeConfigLoading = false,
   runtimeConfigError,
   onRuntimeConfigReload,
-  onNarrativeStyleChange,
   onOpenPresets,
 }: StorySetupAdvancedProps) {
   const { t } = useTranslation()
@@ -159,7 +157,6 @@ export function StorySetupAdvanced({
     } else {
       patchRefs(next)
     }
-    if (idKey === 'narrative_style_id' && nextID) void onNarrativeStyleChange?.(nextID)
   }
   const setRuleChecksEnabled = (enabled: boolean) => {
     const next = cloneRefs(refs)

@@ -9,11 +9,12 @@ import type { ImportDialogProps } from './ImportDialog'
 
 // An update always addresses an explicit installation, including its Project.
 // Choosing a catalog entry alone never transfers resource ownership.
-export function MarketInstallationUpdates({ installations, projectID, onImport, onChanged }: {
+export function MarketInstallationUpdates({ installations, projectID, onImport, onChanged, blockedReason }: {
   projectID?: string
   installations: Installation[]
   onImport: (props: Omit<ImportDialogProps, 'onClose' | 'onInstalled'>) => void
   onChanged: () => Promise<void>
+  blockedReason?: string
 }) {
   const { t } = useTranslation()
   const [selected, setSelected] = useState(installations.find(item => item.project_id === projectID)?.installation_id || installations[0]?.installation_id || '')
@@ -38,7 +39,7 @@ export function MarketInstallationUpdates({ installations, projectID, onImport, 
         </SelectItem>)}</SelectGroup></SelectContent>
       </Select>
     </Field>
-    <Button disabled={busy || !installation} onClick={() => {
+    <Button disabled={busy || !installation || !!blockedReason} onClick={() => {
       if (!installation) return
       setBusy(true); setError('')
       void exchange<Preview>(`/installations/${installation.installation_id}/check`, {}).then(async preview => {

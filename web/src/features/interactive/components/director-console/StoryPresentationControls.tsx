@@ -26,7 +26,7 @@ interface StoryPresentationControlsProps {
 
 export function StoryPresentationControls({ projectId, value, disabled, onChange, currentTurn, onBackgroundChange, backgroundDisabled = false }: StoryPresentationControlsProps) {
   const { t } = useTranslation()
-  const { scrimOpacity, textMaxWidth, characterLayout, characterSize } = useStagePreferences(projectId || '')
+  const { scrimOpacity, textMaxWidth, lineHeight, characterLayout, characterSize } = useStagePreferences(projectId || '')
   const [savingLayout, setSavingLayout] = useState(false)
   const saveLayout = async (layout: StageCharacterLayout) => {
     setSavingLayout(true)
@@ -42,8 +42,6 @@ export function StoryPresentationControls({ projectId, value, disabled, onChange
       setSavingLayout(false)
     }
   }
-  const [widthDraft, setWidthDraft] = useState<number>()
-  const [savingWidth, setSavingWidth] = useState(false)
   const [savingBackground, setSavingBackground] = useState(false)
   const changeCurrentBackground = async (background?: PresentationMaterial) => {
     if (!currentTurn || !onBackgroundChange) return
@@ -58,23 +56,6 @@ export function StoryPresentationControls({ projectId, value, disabled, onChange
     }
   }
   const settings = { background: true, characters: true, ...value }
-  const saveTextMaxWidth = async (value: number) => {
-    setWidthDraft(value)
-    setSavingWidth(true)
-    try {
-      const changes = { interactive_stage_text_max_width: value }
-      const saved = projectId
-        ? await patchProjectSettings(projectId, 'user', changes)
-        : await patchSettings('user', changes)
-      setWidthDraft(projectId ? undefined : saved.effective.interactive_stage_text_max_width ?? value)
-    } catch (error) {
-      console.warn('[story-presentation] failed to save text maximum width', error)
-      toast.error(t('storyStage.presentation.saveFailed'))
-      setWidthDraft(undefined)
-    } finally {
-      setSavingWidth(false)
-    }
-  }
   return (
     <ControlSection icon={<Images className="size-4" />} title={t('storyStage.presentation.title')}>
       <StoryBackgroundSelect
@@ -104,15 +85,51 @@ export function StoryPresentationControls({ projectId, value, disabled, onChange
         </ToggleGroup>
       </Field>
       <StageDisplaySlider projectId={projectId} setting="interactive_stage_character_size" label={t('storyStage.presentation.characterSize')} value={characterSize} min={0.4} />
-      <TuningRow title={t('storyStage.presentation.textMaxWidth')}>
-        <NumberSettingInput label={t('storyStage.presentation.textMaxWidth')} value={widthDraft ?? textMaxWidth} min={480} max={1600} disabled={savingWidth} onCommit={value => void saveTextMaxWidth(value)} />
-      </TuningRow>
+      <StageDisplayNumber projectId={projectId} setting="interactive_stage_text_max_width" label={t('storyStage.presentation.textMaxWidth')} value={textMaxWidth} min={480} max={1600} />
+      <StageDisplayNumber projectId={projectId} setting="interactive_stage_line_height" label={t('storyStage.presentation.lineHeight')} value={lineHeight} min={1.35} max={2.4} step={0.01} />
       <StageDisplaySlider projectId={projectId} setting="interactive_stage_scrim_opacity" label={t('storyStage.presentation.scrim')} value={scrimOpacity} min={0} />
     </ControlSection>
   )
 }
 
-// Both controls save user display preferences; they never change story state.
+// Display controls save user preferences; they never change story state.
+function StageDisplayNumber({ projectId, setting, label, value, min, max, step }: {
+  projectId?: string
+  setting: 'interactive_stage_text_max_width' | 'interactive_stage_line_height'
+  label: string
+  value: number
+  min: number
+  max: number
+  step?: number
+}) {
+  const { t } = useTranslation()
+  const [draft, setDraft] = useState<number>()
+  const [saving, setSaving] = useState(false)
+  const save = async (next: number) => {
+    setDraft(next)
+    setSaving(true)
+    try {
+      const changes = { [setting]: next }
+      const saved = projectId
+        ? await patchProjectSettings(projectId, 'user', changes)
+        : await patchSettings('user', changes)
+      setDraft(projectId ? undefined : saved.effective[setting] ?? next)
+      console.info('[story-presentation] user display preference saved', { setting, value: next })
+    } catch (error) {
+      console.warn('[story-presentation] failed to save user display preference', { setting, error })
+      toast.error(t('storyStage.presentation.saveFailed'))
+      setDraft(undefined)
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <TuningRow title={label}>
+      <NumberSettingInput label={label} value={draft ?? value} min={min} max={max} step={step} disabled={saving} onCommit={next => void save(next)} />
+    </TuningRow>
+  )
+}
+
 function StageDisplaySlider({ projectId, setting, label, value, min }: {
   projectId?: string
   setting: 'interactive_stage_character_size' | 'interactive_stage_scrim_opacity'

@@ -229,7 +229,6 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/messages/read-all", apiHandlers.HandleMessagesReadAll)
 		api.POST("/messages/:id/read", apiHandlers.HandleMessageRead)
 		api.GET("/agents/:agent/session/messages", apiHandlers.HandleAgentSessionMessages)
-		api.POST("/agents/:agent/session/clear", apiHandlers.HandleAgentSessionClear)
 		api.GET("/skills", apiHandlers.HandleSkills)
 		api.PATCH("/skills/preferences", apiHandlers.HandleSkillPreference)
 		api.GET("/skills/document", apiHandlers.HandleSkillDocument)

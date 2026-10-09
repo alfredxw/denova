@@ -41,6 +41,11 @@ Denova records only major user-visible features, important compatibility or data
 - 插件支持按场景供 Agent 使用的工具、无需模型的用户命令和独立面板，可组合资料库、文本与图像生成、项目内容保存及导入导出；项目可独立停用插件并配置模型，关闭与撤权按使用范围停止任务。
 - Plugins support context-specific Agent tools, direct user commands and independent panels, combining Lore, text and image generation, and Project content persistence and transfer. Projects can disable plugins and bind models; closing or revoking access stops the owned work.
 
+### Changed / 变更
+
+- 写作和通用对话用 `/new` 新建独立会话，替代 `/clear`；原会话的历史、目标和待办完整保留。
+- Writing and General conversations use `/new` to start an independent session instead of `/clear`, preserving the original history, Goal and Todo.
+
 ### Fixed / 修复
 
 - 修复手动压缩 AgentChat 上下文时阻塞其他会话发送、配置和恢复请求的问题，并避免应用关闭等待压缩模型响应。

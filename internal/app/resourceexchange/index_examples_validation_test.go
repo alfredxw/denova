@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"denova/config"
 	"denova/internal/platform"
 	"denova/internal/project"
+	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
 func TestIndexExamplesValidation(t *testing.T) {
@@ -83,6 +85,20 @@ func TestIndexExamplesValidation(t *testing.T) {
 			for _, resource := range candidate.Resources {
 				if resource.Extension == nil || resource.Extension.Manifest.ID != "index.text-statistics" {
 					continue
+				}
+				for _, kind := range []string{config.AgentKindIDE, config.AgentKindGeneral, config.AgentKindInteractiveStory} {
+					cfg := &config.Config{ProjectID: book.ID, AgentPluginScope: config.AgentPluginScope{SessionID: "index-validation"}}
+					if kind == config.AgentKindInteractiveStory {
+						cfg.AgentPluginScope = config.AgentPluginScope{StoryID: "index-validation", BranchID: "main"}
+					}
+					tools, err := s.platform.HostAgentTools(cfg, kind)
+					if err != nil || tools == nil {
+						t.Fatalf("Statistics tool unavailable to %s: %v", kind, err)
+					}
+					definitions, err := tools.PrepareTools(ctx, agenttool.ToolRequest{})
+					if err != nil || len(definitions) != 1 {
+						t.Fatalf("Statistics tool schema unavailable to %s: %v", kind, err)
+					}
 				}
 				runtime, err := s.platform.ActivatePlugin(ctx, platform.ActivatePlugin{PluginID: "index.text-statistics", ReleaseID: resource.Extension.Digest, Scope: platform.Scope{Kind: "project", ProjectID: book.ID}, OpenOptions: platform.OpenOptions{ParentOrigin: "http://127.0.0.1:15173"}})
 				if err != nil {

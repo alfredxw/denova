@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	agentcontext "denova/internal/agents/context"
 
@@ -63,7 +64,26 @@ func TestAgentMessageWireRoundTripsAllStableFields(t *testing.T) {
 	}
 }
 
-func TestClearMarkerKeepsHistoryAndLimitsEffectiveContext(t *testing.T) {
+// Released journals may contain clear records even though new conversations no longer write them.
+func appendReleasedClearMarker(sess *Session) error {
+	legacy, err := loadSession(sess.filePath)
+	if err != nil {
+		return err
+	}
+	defer legacy.Close()
+	if err := legacy.withCanonicalMutation(context.Background(), "append released clear fixture", func() error {
+		return legacy.appendJournalRecordLocked(clearRecord{
+			Type: historyTypeClear, CreatedAt: time.Now().UTC(), ContextRevision: legacy.contextRevision + 1,
+		})
+	}); err != nil {
+		return err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	return sess.refreshCanonicalTailLocked()
+}
+
+func TestReleasedClearMarkerKeepsHistoryAndLimitsEffectiveContext(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -78,12 +98,23 @@ func TestClearMarkerKeepsHistoryAndLimitsEffectiveContext(t *testing.T) {
 	if err := sess.Append(agentschema.AssistantMessage("清理前助手", nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Clear(); err != nil {
+	if err := appendReleasedClearMarker(sess); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agentschema.UserMessage("清理后用户")); err != nil {
 		t.Fatal(err)
 	}
+	if err := sess.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(sess.filePath[:len(sess.filePath)-len(".jsonl")] + ".idx.json"); err != nil {
+		t.Fatal(err)
+	}
+	sess, err = loadSession(sess.filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
 
 	all := sess.GetMessages()
 	if len(all) != 3 {

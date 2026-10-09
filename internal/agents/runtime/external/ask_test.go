@@ -137,7 +137,7 @@ func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 	}
 }
 
-func TestExternalAskCancellationAndClearRejectLateAnswers(t *testing.T) {
+func TestExternalAskCancellationAndNewConversationRejectLateAnswers(t *testing.T) {
 	_, store, sess := pendingAskFixture(t, `{"questions":[{"id":"tone","prompt":"Which tone?"}]}`)
 	defer store.Close()
 	ctx := context.Background()
@@ -150,11 +150,12 @@ func TestExternalAskCancellationAndClearRejectLateAnswers(t *testing.T) {
 	if _, err := interactions.Resolve(ctx, "project-1", sess, "ask-execution-1", []conversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Too late"}}, nil); !errors.Is(err, ErrAskConflict) {
 		t.Fatalf("answer replaced cancellation: %v", err)
 	}
-	if err := sess.Clear(); err != nil {
+	fresh, err := store.GetOrCreate("another-external-conversation")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := interactions.Resolve(ctx, "project-1", sess, "ask-execution-1", nil, &reason); !errors.Is(err, ErrAskNotFound) {
-		t.Fatalf("clear left a live question: %v", err)
+	if _, err := interactions.Resolve(ctx, "project-1", fresh, "ask-execution-1", nil, &reason); !errors.Is(err, ErrAskNotFound) {
+		t.Fatalf("new conversation inherited a live question: %v", err)
 	}
 }
 

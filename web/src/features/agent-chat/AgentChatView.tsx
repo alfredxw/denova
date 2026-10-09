@@ -337,13 +337,13 @@ export function AgentChatView({
   }, [])
 
   const openSessionTab = useCallback(
-    (project: AgentChatProject, session: AgentChatSession) => {
+    (project: AgentChatProject, session: AgentChatSession, group: AgentChatGroupId = 'primary') => {
       openTab({
         kind: 'agent',
         id: createTabId('agent'),
         projectId: project.id,
         workspace: project.path,
-        group: 'primary',
+        group,
         sessionId: session.id,
       })
     },
@@ -366,11 +366,11 @@ export function AgentChatView({
     [openTab],
   )
 
-  const openConfiguredSessionInProject = useCallback(async (project: AgentChatProject, customAgentId: string) => {
+  const openConfiguredSessionInProject = useCallback(async (project: AgentChatProject, customAgentId: string, group: AgentChatGroupId = 'primary') => {
     try {
       const session = await createAgentChatSession(project.id, '', customAgentId)
       await refreshProjects()
-      openSessionTab(project, session)
+      openSessionTab(project, session, group)
     } catch (error) {
       console.error('[features/agent-chat/AgentChatView.tsx] creating configured conversation failed', {
         projectID: project.id,
@@ -879,6 +879,9 @@ export function AgentChatView({
                 else mobileControls.closePane()
               }}
               onDraftCommitted={(message) => commitDraftSession(project.id, tab.id, message)}
+              onCreateSession={(_title, customAgentId) => customAgentId === undefined
+                ? openDraftSessionInProject(project, group)
+                : openConfiguredSessionInProject(project, customAgentId, group)}
               onTerminalSessionEstablished={(tabID, session) => bindTerminalSession(project.id, tabID, session)}
               onTerminalTitleChange={(tabID, title) => updateTerminalTitle(project.id, tabID, title)}
               onTerminalStatusChange={handleTerminalStatusChange}

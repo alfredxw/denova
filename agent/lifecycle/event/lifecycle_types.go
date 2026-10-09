@@ -375,6 +375,7 @@ type CleanupCommitted struct {
 
 func (CleanupCommitted) eventPayload() {}
 
+// SessionCleared remains decodable for observations stored before clear was retired.
 type SessionCleared struct{ Revision uint64 }
 
 func (SessionCleared) eventPayload() {}

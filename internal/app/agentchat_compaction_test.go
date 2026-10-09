@@ -195,7 +195,6 @@ func testAgentChatCompactionAdmission(t *testing.T, projectType projectdomain.Ty
 			_, err := service.StartTask(t.Context(), a, agentchat.ChatRequest{CommandID: "conflicting-turn", Message: "Conflict."})
 			return err
 		},
-		"clear":  func() error { return service.ClearSession(t.Context(), a) },
 		"delete": func() error { return service.DeleteSession(project.ID, first.ID) },
 		"compact": func() error {
 			_, err := service.CompactContext(t.Context(), a, "conflicting-compaction")

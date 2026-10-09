@@ -39,7 +39,7 @@ describe('buildConfigurationAgentMessage', () => {
   })
 
   it('leaves built-in conversation commands untouched', () => {
-    expect(buildConfigurationAgentMessage('/clear', { origin: 'lore' })).toBe('/clear')
+    expect(buildConfigurationAgentMessage('/new', { origin: 'lore' })).toBe('/new')
   })
 
   it('routes extension work to development guidance and retains the latest bounded feedback', () => {

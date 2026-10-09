@@ -64,7 +64,7 @@ func TestReadCanonicalMessagesStartsAfterLatestClear(t *testing.T) {
 	if err := sess.Append(agentschema.UserMessage("before clear")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Clear(); err != nil {
+	if err := appendReleasedClearMarker(sess); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agentschema.UserMessage("after clear")); err != nil {

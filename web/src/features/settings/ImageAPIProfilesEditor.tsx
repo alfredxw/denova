@@ -26,6 +26,7 @@ import {
 } from './image-profiles'
 import { nextProfileIDAfterRemoval } from './profile-list'
 import { SettingsDisclosureCard } from './SettingsDisclosureCard'
+import { IMAGE_ENDPOINT_FIELD_KEYS, type SettingsFieldRequest } from './settings-sections'
 import type { ImageAPIEndpointSettings, ImageAPIProfileSettings } from './types'
 
 const INHERIT_VALUE = '__inherit__'
@@ -48,6 +49,8 @@ interface ImageAPIProfilesEditorProps {
   effectiveProfiles: ImageAPIProfileSettings[]
   defaultProfileID: string
   effectiveDefaultProfileID: string
+  /** Reveal the first matching field without resetting the editor. */
+  fieldRequest?: SettingsFieldRequest
   onDefaultProfileChange: (profileID: string) => void
   onEndpointsChange: (endpoints: ImageAPIEndpointSettings[]) => void
   onProfilesChange: (profiles: ImageAPIProfileSettings[]) => void
@@ -60,6 +63,7 @@ export function ImageAPIProfilesEditor({
   effectiveProfiles,
   defaultProfileID,
   effectiveDefaultProfileID,
+  fieldRequest,
   onDefaultProfileChange,
   onEndpointsChange,
   onProfilesChange,
@@ -72,6 +76,19 @@ export function ImageAPIProfilesEditor({
     || effectiveDefaultProfileID
     || DEFAULT_IMAGE_API_PROFILE_ID
   const selectedDefaultProfileID = defaultProfileID || effectiveDefaultProfileID || DEFAULT_IMAGE_API_PROFILE_ID
+
+  const fieldKey = fieldRequest?.fieldKey || ''
+  const endpointSearch = IMAGE_ENDPOINT_FIELD_KEYS.includes(fieldKey)
+  const searchEndpointIndex = endpoints.findIndex((endpoint) => {
+    const provider = imageAPIProvider(endpoint.provider)
+    if (endpointSearch) {
+      if (fieldKey === 'settings.imageApi.protocol') return provider === 'custom'
+      if (fieldKey === 'settings.imageApi.profileKeyLabel') return provider !== 'comfyui'
+      return true
+    }
+    const protocol = endpoint.protocol || imageAPIEndpointDefaults(provider).protocol || 'openai-images'
+    return imageProfileFieldKeys(protocol).includes(fieldKey) && profiles.some((profile) => profile.endpoint_id?.trim() === imageAPIEndpointID(endpoint))
+  })
 
   const updateEndpoint = (index: number, patch: Partial<ImageAPIEndpointSettings>) => {
     onEndpointsChange(endpoints.map((endpoint, current) => current === index ? { ...endpoint, ...patch } : endpoint))
@@ -146,6 +163,7 @@ export function ImageAPIProfilesEditor({
                 count: endpointProfiles.length,
               })}
               defaultOpen={!endpoint.base_url?.trim() || endpointProfiles.length === 0}
+              revealRequest={endpointIndex === searchEndpointIndex ? fieldRequest : undefined}
               actions={<Button type="button" variant="ghost" size="icon-sm" disabled={endpointProfiles.length > 0} title={endpointProfiles.length > 0 ? t('settings.imageApi.endpointDeleteBlocked') : t('settings.imageApi.deleteEndpoint')} aria-label={t('settings.imageApi.deleteEndpoint')} onClick={() => onEndpointsChange(endpoints.filter((_, current) => current !== endpointIndex))}><Trash2 /></Button>}
             >
               <div className="px-3 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
@@ -215,6 +233,7 @@ export function ImageAPIProfilesEditor({
                         title={profileTitle}
                         subtitle={imageProfileSummary(profileIdentity, endpoint, profileTitle, t('settings.imageApi.profileModelMissing'))}
                         defaultOpen={!configured}
+                        revealRequest={!endpointSearch && endpointIndex === searchEndpointIndex && childIndex === 0 ? fieldRequest : undefined}
                         actions={<Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.imageApi.deleteProfile')}><Trash2 /></Button>}
                       >
                         <div className="px-2.5 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
@@ -259,12 +278,26 @@ export function ImageAPIProfilesEditor({
   )
 }
 
+function imageProfileFieldKeys(protocol: string): string[] {
+  const { aspectRatioOptions, resolutionOptions, qualityOptions } = protocolOptionLists(protocol)
+  return [
+    'settings.imageApi.profileAliasLabel', 'settings.imageApi.promptGuide',
+    ...(protocol !== 'comfyui-workflow' ? ['settings.imageApi.profileModelLabel'] : []),
+    ...(protocol === 'openai-images' || protocol === 'comfyui-workflow' ? ['settings.imageApi.defaultSize'] : []),
+    ...(aspectRatioOptions ? ['settings.imageApi.defaultAspectRatio'] : []),
+    ...(resolutionOptions ? ['settings.imageApi.defaultResolution'] : []),
+    ...(qualityOptions ? ['settings.imageApi.defaultQuality'] : []),
+    ...(protocol === 'openai-images' || protocol === 'ark-images' ? ['settings.imageApi.defaultOutputFormat'] : []),
+  ]
+}
+
 function ProtocolOptions({ protocol, profile, defaults, onUpdate }: { protocol: string; profile: ImageAPIProfileSettings; defaults: ImageAPIProfileSettings; onUpdate: (patch: Partial<ImageAPIProfileSettings>) => void }) {
   const { t } = useTranslation()
   const { aspectRatioOptions, resolutionOptions, qualityOptions } = protocolOptionLists(protocol)
+  const fields = imageProfileFieldKeys(protocol)
   return (
     <>
-      {(protocol === 'openai-images' || protocol === 'comfyui-workflow') && (
+      {fields.includes('settings.imageApi.defaultSize') && (
         <ProfileField label={t('settings.imageApi.defaultSize')} className="md:col-span-3">
           <Input value={profile.default_size ?? ''} placeholder={defaults.default_size || t('settings.imageApi.providerDefault')} onChange={(event) => onUpdate({ default_size: event.target.value })} />
         </ProfileField>
@@ -272,7 +305,7 @@ function ProtocolOptions({ protocol, profile, defaults, onUpdate }: { protocol: 
       {aspectRatioOptions && <OptionSelect label={t('settings.imageApi.defaultAspectRatio')} value={profile.default_aspect_ratio ?? ''} options={aspectRatioOptions} onChange={(value) => onUpdate({ default_aspect_ratio: value })} />}
       {resolutionOptions && <OptionSelect label={t('settings.imageApi.defaultResolution')} value={profile.default_resolution ?? ''} options={resolutionOptions} onChange={(value) => onUpdate({ default_resolution: value })} />}
       {qualityOptions && <OptionSelect label={t('settings.imageApi.defaultQuality')} value={profile.default_quality ?? ''} options={qualityOptions} onChange={(value) => onUpdate({ default_quality: value })} />}
-      {(protocol === 'openai-images' || protocol === 'ark-images') && <OptionSelect label={t('settings.imageApi.defaultOutputFormat')} value={profile.default_output_format ?? ''} options={FORMAT_OPTIONS} onChange={(value) => onUpdate({ default_output_format: value })} />}
+      {fields.includes('settings.imageApi.defaultOutputFormat') && <OptionSelect label={t('settings.imageApi.defaultOutputFormat')} value={profile.default_output_format ?? ''} options={FORMAT_OPTIONS} onChange={(value) => onUpdate({ default_output_format: value })} />}
     </>
   )
 }

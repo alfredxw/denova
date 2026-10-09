@@ -746,8 +746,6 @@ export function ModeRouter(props: ModeRouterProps) {
             projectId={projectId}
             workspace={workspace}
             active={presentedMainRoute === 'interactive'}
-            recentNarrativeStyleID={composerSettings.values.interactive_story_teller_id}
-            narrativeStyleLoading={composerSettings.loading}
             imagePresets={imagePresets}
             loreEmpty={loreEmpty}
             loreItems={loreItems}

@@ -92,7 +92,7 @@ export function appendDataMessage(
 export function agentBypassCommand(input: string): string | null {
   if (!input.startsWith('/')) return null
   const cmd = input.slice(1).split(' ')[0]
-  return ['clear', 'compact', 'status', 'help'].includes(cmd) ? cmd : null
+  return ['compact', 'status', 'help'].includes(cmd) ? cmd : null
 }
 
 export function parseInlineReferences(input: string): string[] {

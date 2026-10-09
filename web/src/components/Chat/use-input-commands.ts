@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, BadgeHelp, ClipboardList, Eraser, Sparkles, Target } from 'lucide-react'
+import { Archive, BadgeHelp, ClipboardList, Plus, Sparkles, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AgentQuickPromptSettings } from '@/features/settings/types'
 import type { InputCommandOption } from './InputCommandMenu'
@@ -7,7 +7,7 @@ import type { InputCommandOption } from './InputCommandMenu'
 const COMMANDS = [
   { cmd: '/goal', descKey: 'chat.command.goal.desc', hintKey: 'chat.command.goal.hint', icon: Target },
   { cmd: '/plan', descKey: 'chat.command.plan.desc', hintKey: 'chat.command.plan.hint', icon: ClipboardList },
-  { cmd: '/clear', descKey: 'chat.command.clear.desc', hintKey: 'chat.command.clear.hint', icon: Eraser },
+  { cmd: '/new', descKey: 'chat.command.new.desc', hintKey: 'chat.command.new.hint', icon: Plus },
   { cmd: '/compact', descKey: 'chat.command.compact.desc', hintKey: 'chat.command.compact.hint', icon: Archive },
   { cmd: '/status', descKey: 'chat.command.status.desc', hintKey: 'chat.command.status.hint', icon: Sparkles },
   { cmd: '/help', descKey: 'chat.command.help.desc', hintKey: 'chat.command.help.hint', icon: BadgeHelp },

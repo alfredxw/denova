@@ -8,7 +8,7 @@ test('generates usable LAN credentials in one save and preserves existing creden
   await page.goto('/')
   const sidebar = page.getByLabel('工作台侧边栏')
   await sidebar.getByRole('button', { name: '设置', exact: true }).click()
-  await page.getByRole('button', { name: '局域网访问', exact: true }).click()
+  await page.getByRole('button', { name: '远程访问', exact: true }).click()
 
   const username = page.getByLabel('远程访问用户名', { exact: true })
   const password = page.getByLabel('远程访问密码', { exact: true })
@@ -41,7 +41,7 @@ test('generates usable LAN credentials in one save and preserves existing creden
       await expect(page.getByRole('heading', { name: '开始这条故事线', exact: true })).toBeVisible()
     }
   }
-  await page.getByRole('button', { name: '局域网访问', exact: true }).click()
+  await page.getByRole('button', { name: '远程访问', exact: true }).click()
   await expect(username).toHaveValue(generatedUsername)
   await expect(password).toHaveValue('')
   await expect(page.getByRole('button', { name: '复制密码', exact: true })).toBeDisabled()
@@ -53,8 +53,8 @@ test('generates usable LAN credentials in one save and preserves existing creden
     { width: 390, height: 844, theme: 'light', language: 'zh-CN' },
   ]) {
     const labels = scenario.language === 'en-US'
-      ? { settings: 'Settings', categories: 'Categories', access: 'LAN Access', password: 'Remote Access Password' }
-      : { settings: '设置', categories: '设置分类', access: '局域网访问', password: '远程访问密码' }
+      ? { settings: 'Settings', categories: 'Categories', access: 'Remote access', password: 'Remote Access Password' }
+      : { settings: '设置', categories: '设置分类', access: '远程访问', password: '远程访问密码' }
     await page.setViewportSize(scenario)
     const update = await request.patch('/api/settings', { data: { layer: 'user', changes: {
       theme: scenario.theme, language: scenario.language, remote_access_username: `${generatedUsername}-${'long-username-'.repeat(10)}`,

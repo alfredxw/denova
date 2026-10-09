@@ -40,7 +40,7 @@ test('manual update stays tucked away and stages an upload before explicit resta
     await sidebar.getByRole('button', { name: destination, exact: true }).click()
     await expect(sidebar.getByRole('button', { name: destination, exact: true })).toHaveAttribute('aria-current', 'page')
     await sidebar.getByRole('button', { name: '设置', exact: true }).click()
-    await page.getByRole('button', { name: '应用更新', exact: true }).click()
+    await page.getByRole('button', { name: '软件更新', exact: true }).click()
     await expect(page.getByRole('button', { name: '手动更新', exact: true })).toHaveAttribute('aria-expanded', 'false')
     await expect(page.getByRole('button', { name: '选择安装包', exact: true })).toBeHidden()
   }
@@ -63,12 +63,11 @@ test('manual update stays tucked away and stages an upload before explicit resta
   await expect(page.getByText(/版本 0.5.0 已就绪/)).toBeVisible()
   expect(applies).toBe(0)
   await expect(page.getByRole('button', { name: '检查更新', exact: true })).toBeDisabled()
-  const heading = page.locator('section > button').filter({ hasText: '应用更新' })
-  await heading.click()
-  await heading.click()
+  await page.getByRole('button', { name: '通用', exact: true }).click()
+  await page.getByRole('button', { name: '软件更新', exact: true }).click()
   await expect(page.getByText(/版本 0.5.0 已就绪/)).toBeVisible()
   await page.reload()
-  await page.getByRole('button', { name: '应用更新', exact: true }).click()
+  await page.getByRole('button', { name: '软件更新', exact: true }).click()
   await expect(page.getByText(/版本 0.5.0 已就绪/)).toBeVisible()
   await page.getByRole('button', { name: '重启并安装', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('无法启动更新程序，请重试。')
@@ -90,8 +89,8 @@ test('manual update stays tucked away and stages an upload before explicit resta
   ]) {
     const english = scenario.language === 'en-US'
     const labels = english
-      ? { settings: 'Settings', categories: 'Categories', updates: 'App Updates', manual: 'Manual update', select: 'Select release archive' }
-      : { settings: '设置', categories: '设置分类', updates: '应用更新', manual: '手动更新', select: '选择安装包' }
+      ? { settings: 'Settings', categories: 'Categories', updates: 'Software updates', manual: 'Manual update', select: 'Select release archive' }
+      : { settings: '设置', categories: '设置分类', updates: '软件更新', manual: '手动更新', select: '选择安装包' }
     await page.setViewportSize(scenario)
     expect((await request.patch('/api/settings', { data: { layer: 'user', changes: { theme: scenario.theme, language: scenario.language } } })).ok()).toBe(true)
     await page.reload()
@@ -127,7 +126,7 @@ test('automatic download still stages its streamed result after a failed attempt
   await page.goto('/')
   await expect(page.getByRole('button', { name: `切换书籍，当前：${book.title}`, exact: true })).toBeVisible()
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '设置', exact: true }).click()
-  await page.getByRole('button', { name: '应用更新', exact: true }).click()
+  await page.getByRole('button', { name: '软件更新', exact: true }).click()
   await page.getByRole('button', { name: '检查更新', exact: true }).click()
   await expect(page.getByText('最新版本：0.5.0', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '安装更新', exact: true }).click()

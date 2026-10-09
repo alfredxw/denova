@@ -1,3 +1,4 @@
+import { openExtensions, selectExtension } from '../support/resource-center'
 import { cp, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test, type APIRequestContext, type Page } from '../support/fixtures'
@@ -23,7 +24,7 @@ async function installStarter(request: APIRequestContext) {
 }
 
 async function launcher(page: Page, name: string, project: string, chinese: boolean) {
-  await page.locator('[data-slot="sidebar-menu-button"]').filter({ hasText: name, visible: true }).click()
+  await selectExtension(page, name, chinese)
   await page.getByRole('button', { name: chinese ? '打开插件' : 'Open plugin', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: chinese ? '项目插件' : 'Project plugins', exact: true })
   await dialog.getByRole('combobox').first().click()
@@ -117,7 +118,7 @@ test('project entry points preserve panel ownership and transfer content through
   await request.patch('/api/settings', { data: { layer: 'user', changes: { language: 'en-US', theme: 'light' } } })
   await page.goto('/')
   await page.getByLabel('Workbench sidebar').getByRole('button', { name: 'Writing', exact: true }).click()
-  await page.getByLabel('Workbench sidebar').getByRole('button', { name: 'Extensions', exact: true }).click()
+  await openExtensions(page, false)
   let dialog = await launcher(page, 'Plugin project', book.title, false)
   await expect(dialog).toContainText(book.title)
   await dialog.getByRole('button', { name: 'Draft workbench', exact: true }).click()
@@ -134,7 +135,7 @@ test('project entry points preserve panel ownership and transfer content through
   await expect(view.getByLabel('Text', { exact: true })).toHaveValue('Project-bound draft')
   await expect(page.locator('iframe')).toHaveCount(1)
   await closePanel(page, false)
-  await page.getByLabel('Workbench sidebar').getByRole('button', { name: 'Extensions', exact: true }).click()
+  await openExtensions(page, false)
   dialog = await launcher(page, 'Plugin project', book.title, false)
   const content = dialog.locator('section').filter({ has: page.getByRole('heading', { name: 'Plugin project', exact: true }) })
   await content.getByText('Plugin project content', { exact: true }).click()

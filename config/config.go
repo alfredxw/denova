@@ -41,6 +41,7 @@ type Config struct {
 	CustomAgents             []CustomAgentConfig          `toml:"custom_agents"`
 	DefaultImageAgentID      string                       `toml:"default_image_agent_id"`
 	WebAccess                WebAccessConfig              `toml:"web_access"`
+	Market                   MarketSettings               `toml:"market"`
 	Labs                     ResolvedLabs                 `toml:"labs"`
 	SkillsDir                string                       `toml:"skills_dir"`
 	BackendPort              int                          `toml:"backend_port"`
@@ -71,7 +72,6 @@ type Config struct {
 	TraceExporter               string                    `toml:"trace_exporter"`
 	TraceRetentionRuns          int                       `toml:"trace_retention_runs"`
 	IDEStoryTellerID            string                    `toml:"-"`
-	InteractiveStoryTellerID    string                    `toml:"-"`
 	IDEImagePresetID            string                    `toml:"-"`
 	ImagePresetToolPrompt       string                    `toml:"-"`
 	WritingSkillDefault         string                    `toml:"writing_skill_default"`
@@ -145,6 +145,7 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		CustomAgents:                s.CustomAgents,
 		DefaultImageAgentID:         settingsOptionalString(s.DefaultImageAgentID),
 		WebAccess:                   ResolveWebAccessSettings(s.WebAccess),
+		Market:                      s.Market,
 		Labs:                        ResolveLabs(s.Labs),
 		SkillsDir:                   s.SkillsDir,
 		BackendPort:                 settingsInt(s.BackendPort, 8080),
@@ -157,7 +158,6 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
-		InteractiveStoryTellerID:    s.InteractiveStoryTellerID,
 		IDEImagePresetID:            s.IDEImagePresetID,
 		WritingSkillDefault:         s.WritingSkillDefault,
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
@@ -290,6 +290,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		CustomAgents:             cfg.CustomAgents,
 		DefaultImageAgentID:      stringPtr(cfg.DefaultImageAgentID),
 		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
+		Market:                   cfg.Market,
 		Labs: LabSettings{
 			DeveloperMode: boolPtr(cfg.Labs.DeveloperMode),
 		},
@@ -302,7 +303,6 @@ func settingsFromConfig(cfg *Config) Settings {
 		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
 		VolumeDirFormat:          cfg.VolumeDirFormat,
 		IDEStoryTellerID:         cfg.IDEStoryTellerID,
-		InteractiveStoryTellerID: cfg.InteractiveStoryTellerID,
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
 		TerminalCommands:         cloneTerminalCommands(cfg.TerminalCommands),
@@ -410,6 +410,7 @@ func Load() *Config {
 			CustomAgents:                d.CustomAgents,
 			DefaultImageAgentID:         settingsOptionalString(d.DefaultImageAgentID),
 			WebAccess:                   ResolveWebAccessSettings(d.WebAccess),
+			Market:                      d.Market,
 			Labs:                        ResolveLabs(d.Labs),
 			SkillsDir:                   d.SkillsDir,
 			BackendPort:                 settingsInt(d.BackendPort, 8080),
@@ -421,7 +422,6 @@ func Load() *Config {
 			DenovaDir:                   normalizePath(d.DenovaDir),
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
-			InteractiveStoryTellerID:    d.InteractiveStoryTellerID,
 			IDEImagePresetID:            d.IDEImagePresetID,
 			WritingSkillDefault:         d.WritingSkillDefault,
 			MaxIteration:                settingsInt(d.MaxIteration, 0),

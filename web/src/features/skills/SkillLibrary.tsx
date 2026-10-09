@@ -16,7 +16,7 @@ import type { SkillCatalogTarget, SkillPreferenceChange, SkillSnapshot } from '@
 import { cn } from '@/lib/utils'
 import { exchange, type Installation, type LocalRef } from '@/features/market/api'
 import { ExportDialog } from '@/features/market/ExportDialog'
-import { useWorkspaceStore } from '@/stores/workspace-store'
+import { openResourceDestination } from '@/features/market/resource-navigation'
 import { keyOf, scopeLabel, skillCategory, skillCategoryLabel } from './skill-utils'
 
 interface SkillLibraryProps {
@@ -109,7 +109,7 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
               {['all', 'enabled', 'disabled'].map((item) => <ToggleGroupItem key={item} value={item}>{t(`skills.library.${item}`)}</ToggleGroupItem>)}
             </ToggleGroup>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => useWorkspaceStore.getState().openMarketInstallation()}>
+              <Button variant="outline" size="sm" onClick={() => openResourceDestination({ section: 'discover' })}>
                 <Store data-icon="inline-start" />{t('market.title')}
               </Button>
               <ToggleGroup type="single" value={view} onValueChange={(value) => value && setView(value)} variant="outline" size="sm" spacing={0} aria-label={t('skills.library.layout')}>
@@ -198,7 +198,7 @@ export function SkillLibrary({ target, snapshot, loading, onSelect, onChanged }:
                             {remote ? <Globe className="size-3.5 shrink-0" /> : <Folder className="size-3.5 shrink-0" />}
                             {scopeLabel(skill.scope, t)}{remote && <> · {t('skills.library.remote')}</>}
                           </span>
-                          {remote && <Button size="sm" variant="ghost" onClick={() => useWorkspaceStore.getState().openMarketInstallation(remote.installation_id)}>{t('market.acquired.sourceActions')}</Button>}
+                          {remote && <Button size="sm" variant="ghost" onClick={() => openResourceDestination({ section: 'acquired', installationID: remote.installation_id })}>{t('market.acquired.sourceActions')}</Button>}
                         </CardFooter>
                       </Card>
                     )

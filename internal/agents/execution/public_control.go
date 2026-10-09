@@ -78,14 +78,6 @@ func (backend *publicBackend) updateGoal(ctx context.Context, options agentrun.O
 	return session.UpdateGoal(ctx, mutation)
 }
 
-func (backend *publicBackend) clearSession(ctx context.Context, options agentrun.Options) error {
-	session, _, err := backend.openSession(ctx, options)
-	if err != nil {
-		return err
-	}
-	return session.Clear(ctx)
-}
-
 func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agentevent.SessionSnapshot) agentrun.RuntimeStatus {
 	status := agentrun.RuntimeStatus{
 		Binding: binding, Cursor: agentrun.Cursor(snapshot.Cursor), Phase: agentrun.RunPhaseIdle,

@@ -326,7 +326,7 @@ func (s *Session) SnapshotContext() (ContextSnapshot, error) {
 
 // SnapshotContextForDomainCommit atomically returns model-visible context and
 // the effective message index of one exact canonical commit. A commit before
-// /clear or the resident message window remains durable but returns found=false
+// a historical clear boundary or the resident message window remains durable but returns found=false
 // so the current turn can still project its accepted input once.
 func (s *Session) SnapshotContextForDomainCommit(
 	identity DomainCommitIdentity,
@@ -386,18 +386,6 @@ func (s *Session) AppendContextMessagesAt(expected ContextCursor, messages ...*a
 
 func (s *Session) contextCursorLocked() ContextCursor {
 	return ContextCursor{Revision: s.contextRevision, MessageCount: s.messageCount, ClearAfterIndex: s.clearAfterIndex}
-}
-
-// AppendClearMarkerAt atomically rejects a clear based on stale model-visible
-// state. Callers that intentionally target the latest state use AppendClearMarker.
-func (s *Session) AppendClearMarkerAt(expected ContextCursor) error {
-	return s.withCanonicalMutation(context.Background(), "append clear marker with revision", func() error {
-		current := s.contextCursorLocked()
-		if current.Revision != expected.Revision {
-			return fmt.Errorf("%w: expected=%d current=%d", ErrContextRevisionConflict, expected.Revision, current.Revision)
-		}
-		return s.appendClearMarkerLocked()
-	})
 }
 
 func normalizeDomainCommitIdentity(identity DomainCommitIdentity) DomainCommitIdentity {

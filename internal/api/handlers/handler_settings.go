@@ -105,6 +105,8 @@ func settingsTarget(c *app.RequestContext) appsettings.Target {
 
 func settingsErrorKey(err error) string {
 	switch {
+	case errors.Is(err, config.ErrInvalidMarketRegistryURL):
+		return "market.errors.invalidRegistryURL"
 	case errors.Is(err, config.ErrRemoteAccessUsernameRequired):
 		return "api.settings.lanUsernameRequired"
 	case errors.Is(err, config.ErrRemoteAccessPasswordRequired):

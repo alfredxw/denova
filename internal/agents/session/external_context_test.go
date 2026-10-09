@@ -80,7 +80,7 @@ func TestExternalContextReadsFullCanonicalHistoryAndExcludesPrivateState(t *test
 	if len(content) != total+2 || content[len(content)-1].Content != "Canonical batch observation." || content[len(content)-2].ReasoningContent != "" || len(content[len(content)-2].ToolCalls) != 0 {
 		t.Fatal("Native protocol batch lost public observations or leaked private state")
 	}
-	if err := sess.Clear(); err != nil {
+	if err := appendReleasedClearMarker(sess); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agentschema.UserMessage("After clear.")); err != nil {

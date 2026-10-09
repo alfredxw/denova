@@ -40,7 +40,7 @@ func exchangeError(ctx context.Context, c *app.RequestContext, err error) {
 	case errors.Is(err, resourceexchange.ErrReferenceChanged):
 		key, status = "market.errors.referenceChanged", 409
 	}
-	writeErrorKey(c, status, key)
+	writeErrorKey(c, status, key, "detail", err.Error())
 }
 func (h *Handlers) HandleResourcePreview(ctx context.Context, c *app.RequestContext) {
 	source := resourceexchange.Source{}
@@ -64,10 +64,32 @@ func (h *Handlers) HandleResourcePreview(ctx context.Context, c *app.RequestCont
 		}
 		source = resourceexchange.Source{Kind: "file", Filename: header.Filename}
 	} else {
-		if err := c.BindJSON(&source); err != nil {
+		var input struct {
+			resourceexchange.Source
+			Directory string `json:"directory"`
+		}
+		if err := c.BindJSON(&input); err != nil {
 			exchangeError(ctx, c, err)
 			return
 		}
+		if input.Kind == "directory" {
+			// A host path is only an input. The frozen preview records a portable
+			// file source, never the development directory's absolute location.
+			candidate, err := h.app.Platform().PreviewExtensionDirectory(input.Directory)
+			if err != nil {
+				platformManagementError(c, err)
+				return
+			}
+			defer h.app.Platform().DiscardCandidate(candidate.ID)
+			result, err := h.app.ResourceExchange().PreviewExtension(ctx, candidate.ID)
+			if err != nil {
+				exchangeError(ctx, c, err)
+				return
+			}
+			writeJSON(c, 200, result)
+			return
+		}
+		source = input.Source
 		source.Commit = ""
 		source.Filename = ""
 	}

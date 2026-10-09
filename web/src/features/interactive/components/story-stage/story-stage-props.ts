@@ -15,8 +15,6 @@ export interface StoryStageProps {
   tellers?: Teller[]
 	planningTemplates?: GamePlanningTemplate[]
   imagePresets?: ImagePreset[]
-  recentNarrativeStyleID?: string
-  narrativeStyleLoading?: boolean
   storyId: string
   branchId: string
   snapshot: Snapshot | null

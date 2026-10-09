@@ -61,7 +61,11 @@ export type WritingAgentWorkspaceProps = RequiredWorkspaceProps & Partial<AgentP
   onConversationStateChange?: (state: AgentChatConversationState) => void
 }
 
-type WorkspaceSession = AgentChatSession & { draft?: boolean }
+type WorkspaceSession = AgentChatSession & {
+  draft?: boolean
+  /** Accepted first-turn title awaiting an authoritative project summary. */
+  pendingTitle?: string
+}
 
 export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   const { t } = useTranslation()
@@ -113,8 +117,8 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     const project = projects.find((candidate) => candidate.id === props.projectId)
     if (!project) throw new Error(`Writing Agent Project is unavailable: ${props.projectId}`)
     const persistedIDs = new Set(project.sessions.map((session) => session.id))
-    const drafts = sessionsRef.current.filter((session) => session.draft && !persistedIDs.has(session.id))
-    const nextSessions = sortSessions([...drafts, ...project.sessions])
+    const pending = sessionsRef.current.filter((session) => (session.draft || session.pendingTitle !== undefined) && !persistedIDs.has(session.id))
+    const nextSessions = sortSessions([...pending, ...project.sessions])
     sessionsRef.current = nextSessions
     setSessions(nextSessions)
     setActiveSessionId((current) => {
@@ -273,11 +277,13 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
 
   const commitDraftSession = useCallback((sessionId: string, message: string) => {
     const now = new Date().toISOString()
+    const title = draftSessionTitle(message)
     const next = sessionsRef.current.map((session) => session.id === sessionId
       ? {
           ...session,
           draft: undefined,
-          title: draftSessionTitle(message) || session.title,
+          title: title || session.title,
+          pendingTitle: title,
           updated_at: now,
           message_count: Math.max(session.message_count, 1),
         }
@@ -341,7 +347,6 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     sessionActionsDisabled: sessionPending,
     sessionRailVisible: railVisible,
     onSessionRailVisibleChange: setSessionRailVisible,
-    onCreateSession: createSession,
     onSwitchSession: selectSession,
     onRenameSession: renameSession,
     onDeleteSession: deleteSession,
@@ -440,6 +445,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
               className="absolute inset-0 min-h-0 min-w-0"
             >
               <AgentChatConversationTab
+                onCreateSession={createSession}
                 projectId={props.projectId}
                 projectType={props.projectType ?? 'book'}
                 workspace={props.workspace}

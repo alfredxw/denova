@@ -8,9 +8,14 @@ import (
 	"fmt"
 )
 
-func (a *App) ResourceMarket() *resourceexchange.Market {
+// ResourceMarketCatalog captures the current user-wide registry for one fetch.
+// Settings changes affect discovery without changing installed package sources.
+func (a *App) ResourceMarketCatalog(ctx context.Context, refresh bool) (resourceexchange.MarketSnapshot, error) {
 	a.ensureServices()
-	return a.resourceMarket
+	a.mu.RLock()
+	market, registryURL := a.resourceMarket, a.cfg.Market.RegistryURL
+	a.mu.RUnlock()
+	return market.Catalog(ctx, registryURL, refresh)
 }
 
 func (a *App) ResourceExchange() *resourceexchange.Service {

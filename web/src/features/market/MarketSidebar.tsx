@@ -7,6 +7,7 @@ import {
   Library,
   Package,
   Palette,
+  Puzzle,
   Plug,
   RefreshCw,
   SlidersHorizontal,
@@ -34,7 +35,7 @@ import {
 } from '@/components/ui/sidebar'
 import { submissionURL, type MarketEntry } from './api'
 
-export type MarketSection = 'discover' | 'acquired' | 'updates'
+export type MarketSection = 'discover' | 'acquired' | 'extensions' | 'updates'
 export type MarketCategory =
   | 'all'
   | 'presets'
@@ -81,15 +82,19 @@ export function MarketSidebar({
   category,
   entries,
   acquiredCount,
+  extensionCount,
   updateCount,
   onSelect,
+  officialRegistry = true,
 }: {
   section: MarketSection
   category: MarketCategory
   entries: MarketEntry[]
   acquiredCount: number
+  extensionCount: number
   updateCount: number
   onSelect: (section: MarketSection, category: MarketCategory) => void
+  officialRegistry?: boolean
 }) {
   const { t } = useTranslation()
   const select = (next: MarketSection, selected: MarketCategory = 'all') => {
@@ -107,31 +112,25 @@ export function MarketSidebar({
             <SidebarGroupLabel>{t('market.title')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {(
-                  [
-                    { id: 'discover', icon: Compass, count: entries.length },
-                    { id: 'acquired', icon: Library, count: acquiredCount },
-                    { id: 'updates', icon: RefreshCw, count: updateCount },
-                  ] as const
-                ).map(({ id, icon: Icon, count }) => (
-                  <SidebarMenuItem key={id}>
-                    <SidebarMenuButton
-                      isActive={section === id && category === 'all'}
-                      aria-current={
-                        section === id && category === 'all'
-                          ? 'page'
-                          : undefined
-                      }
-                      onClick={() => select(id)}
-                    >
-                      <Icon />
-                      <span>{t(`market.${id}`)}</span>
-                    </SidebarMenuButton>
-                    <SidebarMenuBadge>{count}</SidebarMenuBadge>
-                  </SidebarMenuItem>
-                ))}
+                <SidebarMenuItem>
+                  <SidebarMenuButton isActive={section === 'discover' && category === 'all'} aria-current={section === 'discover' && category === 'all' ? 'page' : undefined} onClick={() => select('discover')}>
+                    <Compass /><span>{t('market.discover')}</span>
+                  </SidebarMenuButton>
+                  <SidebarMenuBadge>{entries.length}</SidebarMenuBadge>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>{t('market.added')}</SidebarGroupLabel>
+            <SidebarGroupContent><SidebarMenu>
+              {([{ id: 'acquired', icon: Library, count: acquiredCount }, { id: 'extensions', icon: Puzzle, count: extensionCount }, { id: 'updates', icon: RefreshCw, count: updateCount }] as const).map(({ id, icon: Icon, count }) => <SidebarMenuItem key={id}>
+                <SidebarMenuButton isActive={section === id} aria-current={section === id ? 'page' : undefined} onClick={() => select(id)}>
+                  <Icon /><span>{t(`market.${id}`)}</span>
+                </SidebarMenuButton>
+                <SidebarMenuBadge>{count}</SidebarMenuBadge>
+              </SidebarMenuItem>)}
+            </SidebarMenu></SidebarGroupContent>
           </SidebarGroup>
           <SidebarSeparator />
           <Collapsible defaultOpen className="group/types">
@@ -174,20 +173,24 @@ export function MarketSidebar({
             </SidebarGroup>
           </Collapsible>
         </SidebarContent>
-        <SidebarSeparator />
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                <a href={submissionURL} target="_blank" rel="noreferrer">
-                  <Package />
-                  <span>{t('market.submit')}</span>
-                  <ArrowUpRight className="ml-auto" />
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
+        {officialRegistry && (
+          <>
+            <SidebarSeparator />
+            <SidebarFooter>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <a href={submissionURL} target="_blank" rel="noreferrer">
+                      <Package />
+                      <span>{t('market.submit')}</span>
+                      <ArrowUpRight className="ml-auto" />
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarFooter>
+          </>
+        )}
       </nav>
     </EmbeddedSidebar>
   )

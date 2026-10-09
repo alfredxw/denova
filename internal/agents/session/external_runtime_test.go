@@ -171,7 +171,7 @@ func TestExternalJournalAcceptanceToolsRestartAndAtomicCompletion(t *testing.T) 
 	if err := commit(ExternalTransaction{Records: []externaljournal.Record{answer}}); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
 		t.Fatalf("stale result crossed configuration boundary: %v", err)
 	}
-	if err := sess.Clear(); err != nil {
+	if err := appendReleasedClearMarker(sess); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.ReadExternal(ctx, func(state ExternalState) error {

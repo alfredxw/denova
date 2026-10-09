@@ -111,7 +111,7 @@ for (const language of ['en-US', 'zh-CN']) {
       await expect(fileCard.getByRole('button', { name: labels['market.checkUpdate'], exact: true })).toHaveCount(0)
 
       installations = []
-      await market.getByRole('button', { name: labels['market.refresh'], exact: true }).click()
+      await market.getByRole('button', { name: labels['market.checkUpdates'], exact: true }).click()
       await expect(market.getByText(labels['market.acquiredEmpty'], { exact: true })).toBeVisible()
       expect(await market.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
       await market.getByRole('button', { name: labels['market.discover'], exact: true }).click()

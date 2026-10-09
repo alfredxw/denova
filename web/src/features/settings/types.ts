@@ -11,6 +11,7 @@ export interface SpeechSettings {
 }
 
 export interface Settings {
+  market?: { registry_url?: string }
   game_creation_defaults?: import('@/features/interactive/game-creation-defaults').GameCreationDefaults
   speech?: SpeechSettings
   agent_runtimes?: Partial<Record<'ide' | 'general' | 'interactive_story', import('@/features/agent-runtime/types').RuntimePreferences>>
@@ -83,7 +84,6 @@ export interface Settings {
   trace_retention_runs?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
-  interactive_story_teller_id?: string
   ide_image_preset_id?: string
   writing_skill_default?: string
   agent_quick_prompts?: AgentQuickPromptRegistry

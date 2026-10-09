@@ -156,35 +156,6 @@ func (service *Service) resolveAsk(
 	return project.executionRuntime.ResolveAsk(ctx, runtimeOptions(binding, ""), askID, status, answers, cancelReason)
 }
 
-// ClearSession drains exactly one binding and appends the durable clear marker.
-func (service *Service) ClearSession(ctx context.Context, binding Binding) error {
-	service.admission.Lock()
-	defer service.admission.Unlock()
-	binding, err := service.ResolveBinding(binding)
-	if err != nil {
-		return err
-	}
-	if active := service.activeRun(binding); active != nil && active.task != nil && !active.task.Finished() {
-		return agentruntime.ErrOperationActive
-	}
-	project, err := service.projectRuntime(ctx, binding.ProjectID)
-	if err != nil {
-		return err
-	}
-	if err := project.executionRuntime.ClearSession(ctx, runtimeOptions(binding, "")); err != nil {
-		return err
-	}
-	sess, err := project.store.Get(binding.SessionID)
-	if err != nil {
-		return err
-	}
-	if err := sess.Clear(); err != nil {
-		return err
-	}
-	service.starts.ReleaseScope(binding.ProjectID, binding.SessionID)
-	return nil
-}
-
 func (service *Service) SessionBusy(binding Binding) bool {
 	if resolved, err := service.ResolveBinding(binding); err == nil {
 		binding = resolved

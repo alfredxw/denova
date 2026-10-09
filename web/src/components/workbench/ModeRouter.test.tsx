@@ -40,7 +40,6 @@ vi.mock('@/hooks/usePersistedUserSettings', () => ({
 vi.mock('@/components/Chat/AgentPanel', () => ({
   WRITING_COMPOSER_SETTING_DEFAULTS: {
     ide_story_teller_id: 'rhythm',
-    interactive_story_teller_id: 'rhythm',
     ide_image_preset_id: 'game-cg',
     writing_skill_default: 'novel-lite',
   },
@@ -269,7 +268,6 @@ describe('ModeRouter autosave navigation policy', () => {
     vi.mocked(usePersistedUserSettings).mockReturnValue({
       values: {
         ide_story_teller_id: 'classic',
-        interactive_story_teller_id: 'rhythm',
         ide_image_preset_id: 'game-cg',
         writing_skill_default: 'novel-lite',
       },
@@ -311,7 +309,6 @@ describe('ModeRouter autosave navigation policy', () => {
     vi.mocked(usePersistedUserSettings).mockReturnValue({
       values: {
         ide_story_teller_id: 'classic',
-        interactive_story_teller_id: 'rhythm',
         ide_image_preset_id: 'game-cg',
         writing_skill_default: 'novel-lite',
       },

@@ -15,7 +15,7 @@ import { normalizeThinkingLevel } from '@/features/settings/thinking-levels'
 import { normalizeStoryCheckSettings } from '../check-settings'
 import { gamePlanningTemplateName } from '../game-planning'
 import { normalizeStoryImageSettings } from '../image-settings'
-import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
+import { DEFAULT_NARRATIVE_STYLE_ID } from '../narrative-style'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import type { GamePlanningTemplate, ImagePreset, StoryOpeningConfig, StoryPresentationSettings, StoryProtagonist, StorySummary, Teller } from '../types'
 import { StoryPresentationControls } from './director-console/StoryPresentationControls'
@@ -34,8 +34,7 @@ interface NewStorySetupPanelProps {
   imagePresets: ImagePreset[]
   loreItems?: LoreItem[]
   bookOpeningPresets?: BookOpeningPreset[]
-  recentNarrativeStyleID?: string
-  narrativeStyleLoading?: boolean
+  recentStory?: StorySummary
   conversationConfig: ConversationConfigController
   story?: StorySummary
   onRequestLoreInit?: () => void
@@ -51,8 +50,7 @@ export function NewStorySetupPanel({
   imagePresets,
   loreItems = [],
   bookOpeningPresets = [],
-  recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID,
-  narrativeStyleLoading = false,
+  recentStory,
   conversationConfig,
   story,
   onRequestLoreInit,
@@ -63,12 +61,11 @@ export function NewStorySetupPanel({
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const initialTemplate = planningTemplates.find((item) => item.id === story?.planning_template_id) || planningTemplates[0]
-  const recentTeller = resolveNarrativeStyle(tellers, recentNarrativeStyleID)
   const initialProtagonist = story?.protagonist || defaultStoryProtagonist(loreItems)
   const [planningTemplateId, setPlanningTemplateId] = useState(initialTemplate?.id || 'default')
   const [protagonist, setProtagonist] = useState<StoryProtagonist>(initialProtagonist)
   const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'custom' })
-  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, recentTeller?.id, conversationConfig.snapshot))
+  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, recentStory, conversationConfig.snapshot))
   const [advancedOpen, setAdvancedOpen] = useState(!isMobile)
   const [presentationSettings, setPresentationSettings] = useState<StoryPresentationSettings>(() => ({ background: true, characters: true, ...story?.presentation_settings }))
   const [creating, setCreating] = useState(false)
@@ -80,7 +77,6 @@ export function NewStorySetupPanel({
   const [saveDefaultsOpen, setSaveDefaultsOpen] = useState(false)
   const initialProtagonistRef = useRef<StoryProtagonist>(initialProtagonist)
   const protagonistSelectionTouchedRef = useRef(false)
-  const narrativeStyleSelectionLockedRef = useRef(Boolean(story))
   const defaultsLoading = !story && defaultsLoaded !== projectId
   const planningTemplate = planningTemplates.find((item) => item.id === planningTemplateId) || planningTemplates[0]
   const planningTemplateName = planningTemplate ? gamePlanningTemplateName(planningTemplate, t) : planningTemplateId
@@ -91,9 +87,9 @@ export function NewStorySetupPanel({
   }), [settings.imageSettings.mode, settings.moduleRefs.rule_system_disabled, settings.planningEnabled, t])
   const runtimeConfigLoading = conversationConfig.loading || (!conversationConfig.error && !settings.modelProfileId)
   const runtimeConfigReady = conversationConfig.initialized && Boolean(settings.modelProfileId)
-  const startButtonLoading = creating || narrativeStyleLoading || runtimeConfigLoading || defaultsLoading
+  const startButtonLoading = creating || runtimeConfigLoading || defaultsLoading
   let startButtonLabel = t('storyPicker.setup.start')
-  if (narrativeStyleLoading || runtimeConfigLoading || defaultsLoading) startButtonLabel = t('common.loading')
+  if (runtimeConfigLoading || defaultsLoading) startButtonLabel = t('common.loading')
   if (creating) startButtonLabel = t('storyPicker.setup.starting')
 
   useEffect(() => {
@@ -109,7 +105,6 @@ export function NewStorySetupPanel({
       const defaults = snapshot.workspace?.game_creation_defaults
       if (defaults) {
         setHasBookDefaults(Object.keys(defaults).length > 0)
-        if (defaults.narrative_style_id !== undefined) narrativeStyleSelectionLockedRef.current = true
         setSettings(current => ({ ...current,
           moduleRefs: withGameDefaultModules(current.moduleRefs, defaults),
           imageSettings: { ...current.imageSettings, preset_id: defaults.image_preset_id || current.imageSettings.preset_id },
@@ -149,14 +144,6 @@ export function NewStorySetupPanel({
       ? { mode: 'image', item_id: presentationSettings.default_background.item_id, asset_id: presentationSettings.default_background.asset_id }
       : { mode: 'none' },
   }), [settings.moduleRefs, settings.stateSchemaMode, planningTemplateId, presentationSettings.default_background])
-
-  useEffect(() => {
-    if (story || narrativeStyleSelectionLockedRef.current || !recentTeller) return
-    setSettings((current) => ({
-      ...current,
-      moduleRefs: { ...current.moduleRefs, narrative_style_id: recentTeller.id },
-    }))
-  }, [recentTeller, story])
 
   useEffect(() => {
     const snapshot = conversationConfig.snapshot
@@ -212,7 +199,7 @@ export function NewStorySetupPanel({
     try {
       // Preserve the selected ID. A missing resource must be repaired explicitly,
       // rather than silently substituting the user's recent narrative style.
-      const tellerID = settings.moduleRefs.narrative_style_id || recentNarrativeStyleID || DEFAULT_NARRATIVE_STYLE_ID
+      const tellerID = settings.moduleRefs.narrative_style_disabled ? '' : settings.moduleRefs.narrative_style_id || DEFAULT_NARRATIVE_STYLE_ID
       const moduleRefs = {
         ...settings.moduleRefs,
         actor_state_id: settings.moduleRefs.actor_state_id || 'default',
@@ -310,9 +297,6 @@ export function NewStorySetupPanel({
                   runtimeConfigLoading={runtimeConfigLoading || conversationConfig.saving}
                   runtimeConfigError={conversationConfig.error}
                   onRuntimeConfigReload={() => void conversationConfig.reload()}
-                  onNarrativeStyleChange={() => {
-                    narrativeStyleSelectionLockedRef.current = true
-                  }}
                   onOpenPresets={onOpenPresets}
                 />
               </CollapsibleContent>
@@ -327,7 +311,7 @@ export function NewStorySetupPanel({
           {!story ? <Button type="button" variant="ghost" disabled={creating} onClick={onCancel}>{t('common.cancel')}</Button> : null}
           <Button
             type="button"
-            disabled={creating || defaultsLoading || defaultsError || narrativeStyleLoading || runtimeConfigLoading || conversationConfig.saving || !runtimeConfigReady}
+            disabled={creating || defaultsLoading || defaultsError || runtimeConfigLoading || conversationConfig.saving || !runtimeConfigReady}
             onClick={() => void submit()}
           >
             {startButtonLoading ? <Spinner /> : <Play data-icon="inline-start" />}
@@ -342,18 +326,19 @@ export function NewStorySetupPanel({
 
 function initialSettings(
   story: StorySummary | undefined,
-  recentTellerID: string | undefined,
+  recentStory: StorySummary | undefined,
   runtimeConfig: ConversationConfigSnapshot | null,
 ): StorySetupSettings {
+  const source = story || recentStory
   const moduleRefs = {
-    narrative_style_id: 'rhythm',
+    narrative_style_id: source?.module_refs?.narrative_style_id || source?.story_teller_id || DEFAULT_NARRATIVE_STYLE_ID,
+    narrative_style_disabled: source?.module_refs?.narrative_style_disabled,
     event_package_ids: ['default'],
     rule_system_id: 'default',
     actor_state_id: 'default',
     image_preset_id: 'game-cg',
     ...(story?.module_refs || {}),
   }
-  if (!story && recentTellerID) moduleRefs.narrative_style_id = recentTellerID
   const imageSettings = normalizeStoryImageSettings(story?.image_settings || { mode: 'manual', interval_turns: 3, preset_id: moduleRefs.image_preset_id || 'game-cg' })
   return {
     customAgentId: '',

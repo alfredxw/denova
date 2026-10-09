@@ -25,15 +25,13 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { StoryWorkspace } from './StoryWorkspace'
 import type { ImagePreset, InteractiveStoryUpdateInput, InteractiveTurnPersistedEvent, Snapshot, StorySummary } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
+import { resolveNarrativeStyle } from '../narrative-style'
 import { LoadingState } from '@/components/common/LoadingState'
 
 interface InteractiveLayoutProps {
   projectId?: string
   workspace?: string
   active?: boolean
-  recentNarrativeStyleID?: string
-  narrativeStyleLoading?: boolean
   imagePresets?: ImagePreset[]
   loreEmpty?: boolean
   loreItems?: LoreItem[]
@@ -45,7 +43,7 @@ interface InteractiveLayoutProps {
 
 const SNAPSHOT_POLL_INTERVAL_MS = 1000
 
-export function InteractiveLayout({ projectId = '', workspace, active = true, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, imagePresets = [], loreEmpty = false, loreItems = [], onRequestLoreInit, onOpenPresets, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+export function InteractiveLayout({ projectId = '', workspace, active = true, imagePresets = [], loreEmpty = false, loreItems = [], onRequestLoreInit, onOpenPresets, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const {
@@ -474,8 +472,6 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       tellers={tellers}
       planningTemplates={planningTemplates}
       imagePresets={imagePresets}
-      recentNarrativeStyleID={recentNarrativeStyleID}
-      narrativeStyleLoading={narrativeStyleLoading}
       storyId={currentStoryId}
       branchId={currentBranchId}
       snapshot={displaySnapshot}

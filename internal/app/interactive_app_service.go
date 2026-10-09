@@ -97,7 +97,7 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 		return interactive.StorySummary{}, ErrNoWorkspace
 	}
 	var err error
-	req, err = s.withBookGameDefaults(req)
+	req, err = s.withGameCreationDefaults(req)
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
@@ -201,6 +201,9 @@ func (s *InteractiveAppService) withStoryCreationDefaults(req interactive.Create
 	refs := interactive.DefaultStoryDirectorModuleRefs()
 	if req.ModuleRefs != nil {
 		refs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
+	}
+	if req.StoryTellerID != "" && (req.ModuleRefs == nil || req.ModuleRefs.NarrativeStyleID == "" && !req.ModuleRefs.NarrativeStyleDisabled) {
+		refs.NarrativeStyleID = strings.TrimSpace(req.StoryTellerID)
 	}
 	runtime := interactive.DefaultStoryDirector()
 	runtime.ModuleRefs = refs

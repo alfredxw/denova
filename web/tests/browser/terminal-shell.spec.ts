@@ -28,6 +28,7 @@ test('Windows terminal shell choices persist across Writing and Game', async ({ 
     expect((await shellSaved).ok()).toBe(true)
     await expect.poll(async () => (await (await request.get('/api/settings')).json()).user.terminal_shell).toBe(shell)
     await page.reload()
+    await page.getByRole('button', { name: '终端', exact: true }).click()
     await expect(selector).toHaveText(label)
   }
   for (const scenario of [
@@ -38,6 +39,13 @@ test('Windows terminal shell choices persist across Writing and Game', async ({ 
     await page.setViewportSize(scenario)
     expect((await request.patch('/api/settings', { data: { layer: 'user', changes: { language: scenario.language } } })).ok()).toBe(true)
     await page.reload()
+    const general = english ? 'General' : '通用'
+    if (scenario.width < 768) {
+      await page.locator('.nova-mobile-topbar').getByRole('button', { name: 'Categories', exact: true }).click()
+      await page.getByRole('dialog', { name: 'Categories', exact: true }).getByRole('button', { name: general, exact: true }).click()
+    } else {
+      await page.getByRole('button', { name: general, exact: true }).click()
+    }
     const theme = page.locator('[data-slot="field"]').filter({ has: page.getByText(english ? 'Theme' : '主题', { exact: true }) }).getByRole('combobox')
     await theme.scrollIntoViewIfNeeded()
     await theme.click()

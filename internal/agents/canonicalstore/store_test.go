@@ -370,8 +370,16 @@ func TestStoreMigratesReleasedProductCompactionIntoEmbeddedCapability(t *testing
 	if err := productSession.Append(agentschema.UserMessage("discarded before clear")); err != nil {
 		t.Fatal(err)
 	}
-	if err := productSession.Clear(); err != nil {
-		t.Fatal(err)
+	// Released files can contain a plain clear record between canonical transactions.
+	{
+		path := filepath.Join(layout.SessionsDir(), productSession.ID+".jsonl")
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, append(contents, []byte("{\"type\":\"clear\",\"created_at\":\"2026-01-02T03:04:05Z\"}\n")...), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := productSession.Append(agentschema.UserMessage("first retained input")); err != nil {
 		t.Fatal(err)

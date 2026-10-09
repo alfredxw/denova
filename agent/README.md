@@ -185,7 +185,7 @@ fmt.Println(resumed.ID())
 | 恢复页面 | `conversation.Snapshot(ctx)` 获取当前状态和未决问题，再用 `Observe(ctx, snapshot.Cursor)` 订阅后续变化；同时消费 Events 和 Errors |
 | 找回运行句柄 | `conversation.AttachRun(ctx, runID)`；只连接，不自动继续 |
 | 列出会话 | `assistant.ListSessions(ctx, session.Selector{All: true})` |
-| 清空对话 | `conversation.Clear(ctx)`；保留会话身份，清除 Todo，保留 Goal |
+| 新建对话 | `assistant.Session(ctx, session.Named("another-conversation-id"))`；使用独立会话身份，保留原会话 |
 | 关闭会话 | `conversation.Close(ctx)`；保留数据，但终结当前任务。要稍后继续，应先暂停 |
 | 删除会话 | `conversation.Delete(ctx)`；永久删除，只在用户明确删除时调用 |
 

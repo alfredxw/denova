@@ -93,7 +93,7 @@ for (const [locale, theme] of [['zh-CN', 'dark'], ['en-US', 'light']]) {
     await page.goto('/')
     await page.getByRole('button', { name, exact: true }).click()
     await page.getByTestId('market-entry-detail').getByRole('button', { name: zh ? '获取资源包' : 'Get this package', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: zh ? '导入资源包' : 'Import package', exact: true })
+    const dialog = page.getByRole('dialog', { name: zh ? '添加资源' : 'Add resources', exact: true })
     await dialog.getByRole('combobox', { name: zh ? '目标作品' : 'Target project' }).click()
     await page.getByRole('option', { name: book.title, exact: true }).click()
     const master = dialog.getByRole('checkbox', { name: zh ? '用作本书的新故事默认配置' : 'Use as new-story defaults for this book', exact: true })

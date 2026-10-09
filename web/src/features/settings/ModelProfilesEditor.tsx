@@ -26,6 +26,7 @@ import {
 } from './model-profiles'
 import { nextProfileIDAfterRemoval } from './profile-list'
 import { SettingsDisclosureCard } from './SettingsDisclosureCard'
+import { MODEL_ENDPOINT_FIELD_KEYS, MODEL_PROFILE_FIELD_KEYS, type SettingsFieldRequest } from './settings-sections'
 import type { ModelCatalog, ModelEndpointSettings, ModelInfo, ModelProfileSettings, ModelProviderPreset } from './types'
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
@@ -44,6 +45,8 @@ interface ModelProfilesEditorProps {
   effectiveProfiles: ModelProfileSettings[]
   defaultProfileID: string
   effectiveDefaultProfileID: string
+  /** Reveal the first matching field without resetting the editor. */
+  fieldRequest?: SettingsFieldRequest
   onDefaultProfileChange: (profileID: string) => void
   onEndpointsChange: (endpoints: ModelEndpointSettings[]) => void
   onProfilesChange: (profiles: ModelProfileSettings[]) => void
@@ -56,6 +59,7 @@ export function ModelProfilesEditor({
   effectiveProfiles,
   defaultProfileID,
   effectiveDefaultProfileID,
+  fieldRequest,
   onDefaultProfileChange,
   onEndpointsChange,
   onProfilesChange,
@@ -80,6 +84,19 @@ export function ModelProfilesEditor({
     )
     return () => request.abort()
   }, [])
+
+  const fieldKey = fieldRequest?.fieldKey || ''
+  const profileSearch = MODEL_PROFILE_FIELD_KEYS.includes(fieldKey)
+  const searchProfile = profileSearch ? profiles.find((profile) => endpoints.some((endpoint) => modelEndpointID(endpoint) === profile.endpoint_id?.trim())) : undefined
+  const searchEndpointIndex = endpoints.findIndex((endpoint) => {
+    if (profileSearch) return modelEndpointID(endpoint) === searchProfile?.endpoint_id?.trim()
+    if (!MODEL_ENDPOINT_FIELD_KEYS.includes(fieldKey)) return false
+    if (fieldKey === 'settings.model.sessionKeyMappingLabel' || fieldKey === 'settings.model.sessionKeyFieldLabel') {
+      if (endpoint.provider !== MODEL_PROVIDER_OPENAI_COMPATIBLE) return false
+      if (fieldKey === 'settings.model.sessionKeyFieldLabel') return endpoint.session_key_mapping?.location === 'header' || endpoint.session_key_mapping?.location === 'body'
+    }
+    return true
+  })
 
   const updateEndpoint = (index: number, patch: Partial<ModelEndpointSettings>) => {
     onEndpointsChange(endpoints.map((endpoint, current) => current === index ? { ...endpoint, ...patch } : endpoint))
@@ -182,6 +199,7 @@ export function ModelProfilesEditor({
               title={modelEndpointLabel(endpoint) || t('settings.model.endpointUntitled')}
               subtitle={endpointSummary(endpoint, endpointProfiles.length, t)}
               defaultOpen={!isEndpointComplete(endpoint, endpointProfiles.length)}
+              revealRequest={endpointIndex === searchEndpointIndex ? fieldRequest : undefined}
               actions={(
                 <Button
                   type="button"
@@ -253,6 +271,7 @@ export function ModelProfilesEditor({
                         title={profileTitle}
                         subtitle={modelProfileSummary(profile, endpoint, profileTitle, t('settings.model.profileModelMissing'))}
                         defaultOpen={!profile.model?.trim()}
+                        revealRequest={profile === searchProfile ? fieldRequest : undefined}
                         actions={<Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.model.deleteProfile')}><Trash2 /></Button>}
                       >
                         <div className="px-2.5 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">

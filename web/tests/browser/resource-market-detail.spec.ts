@@ -29,8 +29,8 @@ for (const theme of ['dark', 'light']) {
     await expect(detail.getByRole('button', { name: 'Get this package', exact: true })).toBeEnabled()
     await expect(detail.getByRole('checkbox')).toHaveCount(0)
     await expect(detail.getByRole('link', { name: 'github.com/author/resources' })).toBeVisible()
-    await expect(page.getByRole('navigation', { name: 'Market navigation' })).toBeHidden()
-    await expect(page.getByTestId('resource-market').getByRole('button', { name: 'Export package', exact: true })).toBeHidden()
+    await expect(page.getByRole('navigation', { name: 'Resource Center navigation' })).toBeVisible()
+    await expect(page.getByTestId('resource-market').getByRole('button', { name: 'Export package', exact: true })).toBeVisible()
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 })
       expect(await detail.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
@@ -38,7 +38,7 @@ for (const theme of ['dark', 'light']) {
     }
     expect(previews).toBe(0)
     await detail.getByRole('button', { name: 'Get this package', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: 'Import package', exact: true })
+    const dialog = page.getByRole('dialog', { name: 'Add resources', exact: true })
     await expect(dialog.getByRole('checkbox', { name: 'Select all Openings', exact: true })).toBeChecked()
     expect(previews).toBe(1)
     await expect(dialog.getByLabel('Source URL')).toHaveCount(0)

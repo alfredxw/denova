@@ -157,28 +157,3 @@ func TestCanonicalOutputAtomicallyResolvesInterruption(t *testing.T) {
 		t.Fatalf("canonical output not recoverable found=%t err=%v", found, err)
 	}
 }
-
-func TestContextCursorRejectsStaleStructuralMutation(t *testing.T) {
-	store, err := NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("context-cursor")
-	if err != nil {
-		t.Fatal(err)
-	}
-	stale := sess.ContextCursor()
-	if err := sess.Append(agentschema.UserMessage("new turn")); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendClearMarkerAt(stale); !errors.Is(err, ErrContextRevisionConflict) {
-		t.Fatalf("stale clear error = %v, want %v", err, ErrContextRevisionConflict)
-	}
-	current := sess.ContextCursor()
-	if err := sess.AppendClearMarkerAt(current); err != nil {
-		t.Fatal(err)
-	}
-	if after := sess.ContextCursor(); after.Revision != current.Revision+1 {
-		t.Fatalf("revision after clear = %d, want %d", after.Revision, current.Revision+1)
-	}
-}

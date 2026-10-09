@@ -47,7 +47,7 @@ for (const theme of ['dark', 'light']) {
       await page.locator('header').filter({ has: page.getByRole('heading', { name: '互动图像', exact: true }) }).getByRole('button', { name: '配置模型', exact: true }).scrollIntoViewIfNeeded()
       await page.screenshot({ path: test.info().outputPath(`unconfigured-media-${theme}.png`) })
       await page.locator('header').filter({ has: page.getByRole('heading', { name: '互动图像', exact: true }) }).getByRole('button', { name: '配置模型', exact: true }).click()
-      await expect(page.getByRole('button', { name: '公共配置图像模型', exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: '图像生成', exact: true })).toBeVisible()
       await sidebar.getByRole('button', { name: '游戏', exact: true }).click()
       const beforeImage = await (await request.get('/api/settings')).json()
       const configuredImage = await request.patch('/api/settings', { data: {
@@ -132,6 +132,7 @@ for (const theme of ['dark', 'light']) {
         const localized = await (await request.get('/api/settings', { maxRetries: 2 })).json()
         await request.patch('/api/settings', { data: { layer: 'user', base_revision: localized.revisions.user, changes: { language: 'en-US' } } })
         await page.reload()
+        await page.locator('.nova-settings-view nav').getByRole('button', { name: 'Read aloud', exact: true }).click()
         await page.getByLabel('Speech endpoint URL', { exact: true }).scrollIntoViewIfNeeded()
         await expect(page.getByRole('button', { name: 'Preview voice', exact: true })).toBeVisible()
         await page.setViewportSize({ width: 390, height: 844 })

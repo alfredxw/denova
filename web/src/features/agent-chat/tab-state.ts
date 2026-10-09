@@ -191,15 +191,16 @@ export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, proje
       if (tab.kind === 'page') return allowedPages.includes(tab.pageId)
       return project.type === 'book' || tab.kind === 'agent' || tab.kind === 'subagent' || tab.kind === 'terminal' || tab.kind === 'files'
     })
-    // Durable sessions are authoritative only when the project response is complete. If the
-    // backend truncated a large history, keep unknown tabs rather than discarding valid data.
+    // A confirmed first turn can outpace an in-flight project snapshot. Keep its pending title
+    // until the server summary observes the session. Incomplete lists cannot prove deletion.
     const sessionEligibleTabs = projectTabs.filter((tab) =>
-      tab.kind !== 'agent' || tab.draft || !sessionListComplete || visibleSessionIDs.has(tab.sessionId),
+      tab.kind !== 'agent' || tab.draft || tab.pendingTitle !== undefined || !sessionListComplete || visibleSessionIDs.has(tab.sessionId),
     )
     const eligibleAgentTabIDs = new Set(sessionEligibleTabs.flatMap((tab) => tab.kind === 'agent' ? [tab.id] : []))
     const eligibleTabs = sessionEligibleTabs.filter((tab) => tab.kind !== 'subagent' || eligibleAgentTabIDs.has(tab.parentTabId))
     const tabs = eligibleTabs.map((tab) => ({
       ...tab,
+      ...(tab.kind === 'agent' && visibleSessionIDs.has(tab.sessionId) ? { pendingTitle: undefined } : {}),
       projectId: project.id,
       workspace: project.path,
     }))

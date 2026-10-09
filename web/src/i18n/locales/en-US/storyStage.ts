@@ -1,4 +1,5 @@
 const storyStage = {
+  'storyStage.presentation.lineHeight': 'Line height',
   'storyStage.presentation.characterLayout': 'Character layout',
   'storyStage.presentation.characterSize': 'Character size',
   'storyStage.presentation.layout.center': 'Center',

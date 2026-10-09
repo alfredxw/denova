@@ -76,7 +76,7 @@ func TestExternalContextSourceSurvivesAppendAndReopenButNotClear(t *testing.T) {
 	if _, err := read(t.Context(), foreign); !errors.Is(err, ErrContextRevisionConflict) {
 		t.Fatalf("foreign source accepted: %v", err)
 	}
-	if err := sess.Clear(); err != nil {
+	if err := appendReleasedClearMarker(sess); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := read(t.Context(), source); !errors.Is(err, ErrContextRevisionConflict) || len(got) != 0 {
@@ -109,7 +109,7 @@ func TestExternalContextSourceRejectsClearDuringPagedRead(t *testing.T) {
 					if record.Message != nil {
 						visited++
 						if visited == clearAt {
-							return other.Clear()
+							return appendReleasedClearMarker(other)
 						}
 					}
 					return nil

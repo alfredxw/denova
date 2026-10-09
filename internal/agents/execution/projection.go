@@ -42,15 +42,6 @@ func (s *Runtime) UpdateGoal(ctx context.Context, options agentrun.Options, muta
 	return s.public.updateGoal(ctx, options, mutation)
 }
 
-// ClearSession resets the public transcript and clear-scoped capabilities for
-// one exact product binding while preserving the Session identity and Goal.
-func (s *Runtime) ClearSession(ctx context.Context, options agentrun.Options) error {
-	if s == nil || s.public == nil {
-		return ErrRuntimeProjectionUnavailable
-	}
-	return s.public.clearSession(ctx, options)
-}
-
 func (s *Runtime) ResolveInteraction(
 	ctx context.Context,
 	options agentrun.Options,

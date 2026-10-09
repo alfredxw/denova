@@ -162,24 +162,6 @@ func (s *Session) AppendContextMessages(messages ...*agentschema.Message) error 
 	})
 }
 
-// AppendClearMarker 追加上下文清理标记，不删除历史消息。
-func (s *Session) AppendClearMarker() error {
-	return s.withCanonicalMutation(context.Background(), "append clear marker", s.appendClearMarkerLocked)
-}
-
-func (s *Session) appendClearMarkerLocked() error {
-	now := time.Now().UTC()
-	nextRevision := s.contextRevision + 1
-	if err := s.appendJournalRecordLocked(clearRecord{Type: historyTypeClear, CreatedAt: now, ContextRevision: nextRevision}); err != nil {
-		return err
-	}
-	s.contextRevision = nextRevision
-	s.clearAfterIndex = s.messageCount
-	s.records = append(s.records, historyRecord{kind: historyTypeClear, createdAt: now})
-	advanceUpdatedAt(s, now)
-	return nil
-}
-
 // GetMessages 返回所有消息的快照。
 func (s *Session) GetMessages() []*agentschema.Message {
 	s.mu.Lock()
@@ -427,11 +409,6 @@ func cloneChapterIllustration(value *ChapterIllustration) *ChapterIllustration {
 	}
 	clone := *value
 	return &clone
-}
-
-// Clear 兼容旧调用语义：追加 clear 标记，不物理删除消息。
-func (s *Session) Clear() error {
-	return s.AppendClearMarker()
 }
 
 // Rename 更新会话标题并持久化。

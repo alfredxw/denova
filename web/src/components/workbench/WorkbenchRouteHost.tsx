@@ -7,7 +7,6 @@ import type { WorkbenchPresentedLayout } from './WorkbenchShell'
 
 export type WorkbenchRouteId =
   | 'market'
-  | 'extensions'
   | 'settings'
   | 'skills'
   | 'agents'
@@ -23,7 +22,6 @@ export type WorkbenchRouteId =
 
 const PRESENTED_LAYOUT_BY_ROUTE = {
   market: 'full',
-  extensions: 'full',
   settings: 'full',
   skills: 'full',
   agents: 'full',
@@ -102,7 +100,6 @@ export function selectWorkbenchRoute({
   if (settingsOpen) return 'settings'
   switch (mode) {
     case 'market':
-    case 'extensions':
     case 'skills':
     case 'agents':
     case 'automations':

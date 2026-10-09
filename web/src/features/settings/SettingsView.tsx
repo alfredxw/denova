@@ -1,44 +1,29 @@
 import { EMPTY_SPEECH_SETTINGS, SpeechSettingsEditor } from './SpeechSettingsEditor'
-import { cloneElement, isValidElement, useEffect, useId, useRef, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
-import { useReducedMotionConfig } from 'motion/react'
-import type { AnimationPlaybackControls } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
 import { withErrorLogID } from '@/lib/api-client'
-import type { AgentApprovalMode, ImageAPIEndpointSettings, ImageAPIProfileSettings, LabSettings, ModelEndpointSettings, ModelProfileSettings, Settings, ShellEnvironmentMode, WebAccessSettings } from './types'
+import type { ImageAPIEndpointSettings, ImageAPIProfileSettings, LabSettings, ModelEndpointSettings, ModelProfileSettings, Settings, WebAccessSettings } from './types'
 import { GLOBAL_SETTINGS_TARGET, revokeAgentApprovalRule } from './api'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { FontPicker } from './FontPicker'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
-import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName } from '@/features/interactive/narrative-style'
 import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { SettingsPageFrame } from './SettingsPageFrame'
-import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { LOCALE_OPTIONS } from '@/i18n'
-import {
-  DEFAULT_MODEL_PROFILE_ID,
-  modelEndpointID,
-  modelEndpointsWithDefault,
-  modelProfileID,
-  modelProfilesWithDefault,
-} from './model-profiles'
+import { DEFAULT_MODEL_PROFILE_ID, modelEndpointsWithDefault, modelProfilesWithDefault } from './model-profiles'
 import { ModelProfilesEditor } from './ModelProfilesEditor'
-import { DEFAULT_IMAGE_API_PROFILE_ID, imageAPIEndpointID, imageAPIEndpointsWithDefault, imageAPIProfileID, imageAPIProfilesWithDefault } from './image-profiles'
+import { DEFAULT_IMAGE_API_PROFILE_ID, imageAPIEndpointsWithDefault, imageAPIProfilesWithDefault } from './image-profiles'
 import { ImageAPIProfilesEditor } from './ImageAPIProfilesEditor'
-import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, takeSettingsSection, type SettingsSectionRequest } from '@/features/onboarding/events'
+import { ONBOARDING_OPEN_EVENT } from '@/features/onboarding/events'
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
 import { TerminalShellField } from './TerminalShellField'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
-import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
-import { scrollSettingsSectionIntoView } from './settings-section-scroll'
 import { applyReadingTypographySettings, applyUIFontSize } from './font-variables'
 import {
   DEFAULT_READING_FONT_SIZE,
@@ -49,63 +34,26 @@ import {
 import { TextSizeControl } from './TextSizeControl'
 import { LANAccessSettings } from './LANAccessSettings'
 import { UpdatePanel, useUpdateSettings } from './UpdateSettings'
+import { MarketSettings } from './MarketSettings'
+import { SettingsNavigation } from './SettingsNavigation'
+import { SETTINGS_SECTIONS, type SettingsSectionId } from './settings-sections'
+import { useSettingsNavigation } from './use-settings-navigation'
+import { modelProfilesForEditor, modelEndpointsForEditor, imageAPIProfilesForEditor, imageAPIEndpointsForEditor } from './settings-editor-draft'
+import { FieldRow, TextSizeRow, ReadOnly, Text, Num, BoolTri, AgentApprovalModeSelect, ShellEnvironmentSelect, TraceCaptureSelect, TraceExporterSelect, LanguageSelect, ThemeSelect, MotionIntensitySelect, TellerSelect } from './SettingsFields'
 
-type SettingsSectionId = 'model' | 'speech' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
-
-const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'speech', 'image', 'paths', 'access', 'appearance', 'updates', 'labs', 'agent', 'terminal', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
-
-type SettingsSection = {
-  id: SettingsSectionId
-  group: string
-  title: string
-  children: ReactNode
-}
-
-const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
-const FIELD_INHERIT_VALUE = '__inherit__'
-const TRACE_CAPTURE_OPTIONS = [
-  { value: 'summary', labelKey: 'settings.debug.traceCaptureSummary' },
-  { value: 'debug', labelKey: 'settings.debug.traceCaptureDebug' },
-  { value: 'off', labelKey: 'settings.debug.traceCaptureOff' },
-] as const
-const TRACE_EXPORTER_OPTIONS = [
-  { value: 'local', labelKey: 'settings.debug.traceExporterLocal' },
-] as const
 export function SettingsView({ visible = true }: { visible?: boolean }) {
   const { t } = useTranslation()
-  const reducedMotion = useReducedMotionConfig()
   const approval = useAgentApprovalMode()
+  // Every section shares one draft and autosave lane.
   const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow, reload } = useLayeredSettingsDraft({
     target: GLOBAL_SETTINGS_TARGET,
     layer: 'user',
     sourcePrefix: 'settings-view',
   })
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>('appearance')
+  const { contentRef, activeSection, fieldRequest, selectSection } = useSettingsNavigation({ visible, ready: Boolean(layered) })
   const [revokingApprovalRuleID, setRevokingApprovalRuleID] = useState('')
-  const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
-    model: true,
-    speech: true,
-    image: true,
-    paths: true,
-    access: true,
-    appearance: true,
-    updates: true,
-    labs: true,
-    agent: true,
-    terminal: true,
-    'web-access': true,
-    debug: true,
-    'ide-editor': true,
-    'ide-output': true,
-    versions: true,
-    interactive: true,
-  })
-  const contentRef = useRef<HTMLDivElement | null>(null)
-  const sectionRefs = useRef<Partial<Record<SettingsSectionId, HTMLElement | null>>>({})
-  const sectionScrollFrameRef = useRef<number | null>(null)
-  const sectionScrollAnimationRef = useRef<AnimationPlaybackControls | null>(null)
-  const sectionScrollTargetRef = useRef<SettingsSectionId | null>(null)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     getInteractiveTellers()
@@ -204,195 +152,288 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
     return t('common.defaultValue', { value: String(value) })
   }
 
-  const sections: SettingsSection[] = [
-    {
-      id: 'appearance',
-      group: t('settings.group.common'),
-      title: t('settings.section.appearance'),
-      children: (
-        <>
-          <LanguageSelect label={t('settings.appearance.language')} value={draft.language}
-                          inherited={inherited.language}
-                          onChange={(v) => setField('language', v)} />
-          <ThemeSelect label={t('settings.appearance.theme')} value={draft.theme}
-                       inherited={inherited.theme}
-                       onChange={(v) => setField('theme', v)} />
-          <MotionIntensitySelect label={t('settings.appearance.motionIntensity')} value={draft.motion_intensity}
-                                 inherited={inherited.motion_intensity}
-                                 onChange={(v) => setField('motion_intensity', v)} />
-          <FieldRow label={t('settings.appearance.uiFont')}>
-            <FontPicker value={draft.ui_font_family}
-                        inherited={inherited.ui_font_family}
-                        allowInherit
-                        onValueChange={(v) => setField('ui_font_family', v)} />
-          </FieldRow>
-          <TextSizeRow
-            label={t('settings.appearance.uiFontSize')}
-            description={t('settings.appearance.uiFontSizeDescription')}
-          >
-            <TextSizeControl
-              value={draft.ui_font_size ?? effective.ui_font_size ?? DEFAULT_UI_FONT_SIZE}
-              steps={UI_FONT_SIZE_STEPS}
-              defaultValue={DEFAULT_UI_FONT_SIZE}
-              ariaLabel={t('settings.appearance.uiFontSize')}
-              disabled={!layered}
-              onValueChange={(value) => {
-                applyUIFontSize(value)
-                setField('ui_font_size', value)
-              }}
-            />
-          </TextSizeRow>
-          <FieldRow label={t('settings.appearance.readingFont')}>
-            <FontPicker value={draft.reading_font_family}
-                        inherited={inherited.reading_font_family}
-                        allowInherit
-                        onValueChange={(v) => setField('reading_font_family', v)} />
-          </FieldRow>
-          <TextSizeRow
-            label={t('settings.appearance.readingFontSize')}
-            description={t('settings.appearance.readingFontSizeDescription')}
-          >
-            <TextSizeControl
-              value={draft.reading_font_size ?? effective.reading_font_size ?? DEFAULT_READING_FONT_SIZE}
-              steps={READING_FONT_SIZE_STEPS}
-              defaultValue={DEFAULT_READING_FONT_SIZE}
-              ariaLabel={t('settings.appearance.readingFontSize')}
-              disabled={!layered}
-              onValueChange={(value) => {
-                applyReadingTypographySettings({
-                  readingFont: draft.reading_font_family || effective.reading_font_family,
-                  readingFontSize: value,
-                })
-                setField('reading_font_size', value)
-              }}
-            />
-          </TextSizeRow>
-          <FieldRow label={t('settings.appearance.sourceEditorFont')}>
-            <FontPicker value={draft.source_editor_font_family}
-                        inherited={inherited.source_editor_font_family}
-                        allowInherit
-                        fallback="mono"
-                        onValueChange={(v) => setField('source_editor_font_family', v)} />
-          </FieldRow>
-          <div data-onboarding-anchor="settings-onboarding" className="flex items-center justify-between gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2">
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--nova-text)]">{t('settings.onboarding.title')}</div>
-              <div className="mt-0.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('settings.onboarding.description')}</div>
-            </div>
+  const sections: Record<SettingsSectionId, ReactNode> = {
+    'general': (
+      <>
+        <LanguageSelect label={t('settings.appearance.language')} value={draft.language}
+                        inherited={inherited.language}
+                        onChange={(v) => setField('language', v)} />
+        <ThemeSelect label={t('settings.appearance.theme')} value={draft.theme}
+                     inherited={inherited.theme}
+                     onChange={(v) => setField('theme', v)} />
+        <MotionIntensitySelect label={t('settings.appearance.motionIntensity')} value={draft.motion_intensity}
+                               inherited={inherited.motion_intensity}
+                               onChange={(v) => setField('motion_intensity', v)} />
+        <FieldRow label={t('settings.appearance.uiFont')}>
+          <FontPicker value={draft.ui_font_family}
+                      inherited={inherited.ui_font_family}
+                      allowInherit
+                      onValueChange={(v) => setField('ui_font_family', v)} />
+        </FieldRow>
+        <TextSizeRow
+          label={t('settings.appearance.uiFontSize')}
+          description={t('settings.appearance.uiFontSizeDescription')}
+        >
+          <TextSizeControl
+            value={draft.ui_font_size ?? effective.ui_font_size ?? DEFAULT_UI_FONT_SIZE}
+            steps={UI_FONT_SIZE_STEPS}
+            defaultValue={DEFAULT_UI_FONT_SIZE}
+            ariaLabel={t('settings.appearance.uiFontSize')}
+            disabled={!layered}
+            onValueChange={(value) => {
+              applyUIFontSize(value)
+              setField('ui_font_size', value)
+            }}
+          />
+        </TextSizeRow>
+        <FieldRow label={t('settings.appearance.readingFont')}>
+          <FontPicker value={draft.reading_font_family}
+                      inherited={inherited.reading_font_family}
+                      allowInherit
+                      onValueChange={(v) => setField('reading_font_family', v)} />
+        </FieldRow>
+        <TextSizeRow
+          label={t('settings.appearance.readingFontSize')}
+          description={t('settings.appearance.readingFontSizeDescription')}
+        >
+          <TextSizeControl
+            value={draft.reading_font_size ?? effective.reading_font_size ?? DEFAULT_READING_FONT_SIZE}
+            steps={READING_FONT_SIZE_STEPS}
+            defaultValue={DEFAULT_READING_FONT_SIZE}
+            ariaLabel={t('settings.appearance.readingFontSize')}
+            disabled={!layered}
+            onValueChange={(value) => {
+              applyReadingTypographySettings({
+                readingFont: draft.reading_font_family || effective.reading_font_family,
+                readingFontSize: value,
+              })
+              setField('reading_font_size', value)
+            }}
+          />
+        </TextSizeRow>
+        <FieldRow label={t('settings.appearance.sourceEditorFont')}>
+          <FontPicker value={draft.source_editor_font_family}
+                      inherited={inherited.source_editor_font_family}
+                      allowInherit
+                      fallback="mono"
+                      onValueChange={(v) => setField('source_editor_font_family', v)} />
+        </FieldRow>
+        <div data-onboarding-anchor="settings-onboarding">
+          <SettingsFieldRow title={t('settings.onboarding.title')} description={t('settings.onboarding.description')} controlClassName="shrink-0">
             <Button
               type="button"
               size="xs"
               variant="ghost"
               className="shrink-0 text-[var(--nova-text-muted)]"
-              onClick={() => window.dispatchEvent(new CustomEvent(ONBOARDING_OPEN_EVENT))}
+              onClick={() => {
+                selectSection('model')
+                window.dispatchEvent(new CustomEvent(ONBOARDING_OPEN_EVENT))
+              }}
             >
               {t('settings.onboarding.reopen')}
             </Button>
-          </div>
-        </>
-      ),
-    },
-    {
-      id: 'updates',
-      group: t('settings.group.common'),
-      title: t('settings.section.updates'),
-      children: (
-        <>
-          <BoolTri label={t('settings.updates.autoCheck')} value={draft.update_check_enabled ?? null}
-                   inherited={inherited.update_check_enabled}
-                   onChange={(v) => setField('update_check_enabled', v)} />
-          <UpdatePanel {...updatePanel} />
-        </>
-      ),
-    },
-    {
-      id: 'model',
-      group: t('settings.group.common'),
-      title: t('settings.section.model'),
-      children: (
-        <>
-          <ModelProfilesEditor
-            endpoints={modelEndpointsForEditor(draft, effective)}
-            effectiveEndpoints={modelEndpointsWithDefault(effective)}
-            profiles={modelProfilesForEditor(draft, effective)}
-            effectiveProfiles={modelProfilesWithDefault(effective)}
-            defaultProfileID={draft.agent_models?.default?.profile_id ?? ''}
-            effectiveDefaultProfileID={inherited.agent_models?.default?.profile_id || DEFAULT_MODEL_PROFILE_ID}
-            onDefaultProfileChange={setDefaultModelProfile}
-            onEndpointsChange={setModelEndpoints}
-            onProfilesChange={setModelProfiles}
-          />
-        </>
-      ),
-    },
-    {
-      id: 'speech',
-      group: t('settings.group.common'),
-      title: t('speech.title'),
-      children: <SpeechSettingsEditor value={draft.speech ?? effective.speech ?? EMPTY_SPEECH_SETTINGS} onChange={value => setField('speech', value)} visible={visible} />,
-    },
-    {
-      id: 'image',
-      group: t('settings.group.common'),
-      title: t('settings.section.imageApi'),
-      children: (
-        <>
-          <ImageAPIProfilesEditor
-            endpoints={imageAPIEndpointsForEditor(draft, effective)}
-            effectiveEndpoints={imageAPIEndpointsWithDefault(effective)}
-            profiles={imageAPIProfilesForEditor(draft, effective)}
-            effectiveProfiles={imageAPIProfilesWithDefault(effective)}
-            defaultProfileID={draft.default_image_api_profile_id ?? ''}
-            effectiveDefaultProfileID={inherited.default_image_api_profile_id || DEFAULT_IMAGE_API_PROFILE_ID}
-            onDefaultProfileChange={(v) => setField('default_image_api_profile_id', v)}
-            onEndpointsChange={setImageAPIEndpoints}
-            onProfilesChange={setImageAPIProfiles}
-          />
-        </>
-      ),
-    },
-    {
-      id: 'paths',
-      group: t('settings.group.common'),
-      title: t('settings.section.paths'),
-      children: (
-        <>
-          <Text label={t('settings.paths.skillsDir')} value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
-                onChange={(v) => setField('skills_dir', v)} />
-          <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.denova_dir || layered?.paths?.nova_dir} />
-          <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
-        </>
-      ),
-    },
-    {
-      id: 'access',
-      group: t('settings.group.common'),
-      title: t('settings.section.access'),
-      children: (
-        visible && <LANAccessSettings draft={draft} inherited={inherited}
-          onChange={patch => setDraft(current => ({ ...current, ...patch }))} />
-      ),
-    },
-    {
-      id: 'agent',
-      group: t('settings.group.common'),
-      title: t('settings.section.agent'),
-      children: (
-        <>
-          <AgentApprovalModeSelect
-            value={approval.mode}
-            disabled={!approval.initialized || approval.saving}
-            onChange={(value) => {
-              void approval.setMode(value).then((saved) => {
-                if (!saved) toast.error(t('agentApproval.input.changeFailed'))
-              })
-            }}
-          />
-          <ApprovalRulesEditor
-            rules={draft.agent_approval_rules}
-            revokingRuleID={revokingApprovalRuleID}
-            onRevoke={(id) => void revokeApprovalRule(id)}
-          />
+          </SettingsFieldRow>
+        </div>
+      </>
+    ),
+    'writing': (
+      <>
+        <BoolTri label={t('settings.ide.autoSave')} value={draft.auto_save_enabled ?? null}
+                 inherited={inherited.auto_save_enabled}
+                 onChange={(v) => setField('auto_save_enabled', v)} />
+        <Num label={t('settings.ide.autoSaveInterval')} value={draft.auto_save_interval_ms ?? null}
+             placeholder={placeholderFor('auto_save_interval_ms')}
+             onChange={(v) => setField('auto_save_interval_ms', v)} />
+        <Text label={t('settings.ide.chapterFilenameFormat')} value={draft.chapter_filename_format}
+              placeholder={placeholderFor('chapter_filename_format')}
+              onChange={(v) => setField('chapter_filename_format', v)} />
+        <Text label={t('settings.ide.volumeDirFormat')} value={draft.volume_dir_format}
+              placeholder={placeholderFor('volume_dir_format')}
+              onChange={(v) => setField('volume_dir_format', v)} />
+        <Num label={t('settings.ide.maxOpenTabs')} value={draft.max_open_tabs ?? null}
+             placeholder={placeholderFor('max_open_tabs')}
+             onChange={(v) => setField('max_open_tabs', v)} />
+        <Num label={t('settings.ide.chapterGroupMin')} value={draft.chapter_group_min ?? null}
+             placeholder={placeholderFor('chapter_group_min')}
+             onChange={(v) => setField('chapter_group_min', v)} />
+        <Num label={t('settings.ide.chapterGroupMax')} value={draft.chapter_group_max ?? null}
+             placeholder={placeholderFor('chapter_group_max')}
+             onChange={(v) => setField('chapter_group_max', v)} />
+        <TellerSelect
+          label={t('settings.ide.defaultTeller')}
+          value={draft.ide_story_teller_id}
+          inherited={inherited.ide_story_teller_id}
+          tellers={availableTellers}
+          onChange={(v) => setField('ide_story_teller_id', v)}
+        />
+        <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
+              placeholder={placeholderFor('writing_skill_default')}
+              onChange={(v) => setField('writing_skill_default', v)} />
+      </>
+    ),
+    'model': (
+      <>
+        <ModelProfilesEditor fieldRequest={fieldRequest?.id === 'model' ? fieldRequest : undefined}
+          endpoints={modelEndpointsForEditor(draft, effective)}
+          effectiveEndpoints={modelEndpointsWithDefault(effective)}
+          profiles={modelProfilesForEditor(draft, effective)}
+          effectiveProfiles={modelProfilesWithDefault(effective)}
+          defaultProfileID={draft.agent_models?.default?.profile_id ?? ''}
+          effectiveDefaultProfileID={inherited.agent_models?.default?.profile_id || DEFAULT_MODEL_PROFILE_ID}
+          onDefaultProfileChange={setDefaultModelProfile}
+          onEndpointsChange={setModelEndpoints}
+          onProfilesChange={setModelProfiles}
+        />
+      </>
+    ),
+    'image': (
+      <>
+        <ImageAPIProfilesEditor fieldRequest={fieldRequest?.id === 'image' ? fieldRequest : undefined}
+          endpoints={imageAPIEndpointsForEditor(draft, effective)}
+          effectiveEndpoints={imageAPIEndpointsWithDefault(effective)}
+          profiles={imageAPIProfilesForEditor(draft, effective)}
+          effectiveProfiles={imageAPIProfilesWithDefault(effective)}
+          defaultProfileID={draft.default_image_api_profile_id ?? ''}
+          effectiveDefaultProfileID={inherited.default_image_api_profile_id || DEFAULT_IMAGE_API_PROFILE_ID}
+          onDefaultProfileChange={(v) => setField('default_image_api_profile_id', v)}
+          onEndpointsChange={setImageAPIEndpoints}
+          onProfilesChange={setImageAPIProfiles}
+        />
+      </>
+    ),
+    'speech': (
+      <SpeechSettingsEditor value={draft.speech ?? effective.speech ?? EMPTY_SPEECH_SETTINGS} onChange={value => setField('speech', value)} visible={visible} />
+    ),
+    'approvals': (
+      <>
+        <AgentApprovalModeSelect
+          value={approval.mode}
+          disabled={!approval.initialized || approval.saving}
+          onChange={(value) => {
+            void approval.setMode(value).then((saved) => {
+              if (!saved) toast.error(t('agentApproval.input.changeFailed'))
+            })
+          }}
+        />
+        <ApprovalRulesEditor
+          rules={draft.agent_approval_rules}
+          revokingRuleID={revokingApprovalRuleID}
+          onRevoke={(id) => void revokeApprovalRule(id)}
+        />
+      </>
+    ),
+    'terminal': (
+      <>
+        <BoolTri label={t('settings.terminal.enabled')} value={draft.terminal_enabled ?? null}
+                 inherited={inherited.terminal_enabled}
+                 onChange={(v) => setField('terminal_enabled', v)} />
+        <TerminalShellField value={draft.terminal_shell} inherited={inherited.terminal_shell}
+                            windows={layered?.runtime?.goos === 'windows'}
+                            onChange={(v) => setField('terminal_shell', v)} />
+        <TerminalCommandsEditor
+          commands={terminalCommandsForEditor(draft, effective)}
+          onChange={(commands) => setField('terminal_commands', commands)}
+        />
+        <Num label={t('settings.terminal.maxSessions')} value={draft.terminal_max_sessions ?? null}
+             placeholder={placeholderFor('terminal_max_sessions')}
+             min={1}
+             max={64}
+             onChange={(v) => setField('terminal_max_sessions', v)} />
+        <Num label={t('settings.terminal.scrollbackKB')} value={draft.terminal_scrollback_kb ?? null}
+             placeholder={placeholderFor('terminal_scrollback_kb')}
+             min={1}
+             max={4096}
+             onChange={(v) => setField('terminal_scrollback_kb', v)} />
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+          {t('settings.terminal.hint')}
+        </div>
+        {layered?.runtime?.goos !== 'windows' ? (
+          <>
+            <ShellEnvironmentSelect
+              value={draft.shell_environment_mode}
+              inherited={inherited.shell_environment_mode}
+              onChange={(v) => setField('shell_environment_mode', v)}
+            />
+            <Text label={t('settings.agent.shellEnvironmentShell')} value={draft.shell_environment_shell}
+                  placeholder={placeholderFor('shell_environment_shell')}
+                  onChange={(v) => setField('shell_environment_shell', v)} />
+            <Text label={t('settings.agent.bashPath')} value={draft.agent_bash_path}
+                  placeholder={placeholderFor('agent_bash_path')}
+                  onChange={(v) => setField('agent_bash_path', v)} />
+            <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+              {t('settings.agent.shellEnvironmentHint')}
+            </div>
+          </>
+        ) : null}
+      </>
+    ),
+    'web-access': (
+      <>
+        <Text label={t('settings.webAccess.searxngBaseUrl')} value={draft.web_access?.searxng_base_url}
+              placeholder={webAccessPlaceholderFor('searxng_base_url')}
+              onChange={(value) => setWebAccessField('searxng_base_url', value)} />
+        <Num label={t('settings.webAccess.searchMaxResults')} value={draft.web_access?.search_max_results ?? null}
+             placeholder={webAccessPlaceholderFor('search_max_results')}
+             min={1}
+             max={20}
+             onChange={(value) => setWebAccessField('search_max_results', value)} />
+        <Num label={t('settings.webAccess.searchProviderTimeoutSeconds')} value={draft.web_access?.search_provider_timeout_seconds ?? null}
+             placeholder={webAccessPlaceholderFor('search_provider_timeout_seconds')}
+             min={0}
+             onChange={(value) => setWebAccessField('search_provider_timeout_seconds', value)} />
+        <Num label={t('settings.webAccess.fetchMaxResponseKB')} value={draft.web_access?.fetch_max_response_kb ?? null}
+             placeholder={webAccessPlaceholderFor('fetch_max_response_kb')}
+             min={1}
+             max={65536}
+             onChange={(value) => setWebAccessField('fetch_max_response_kb', value)} />
+        <Num label={t('settings.webAccess.fetchMaxContentChars')} value={draft.web_access?.fetch_max_content_chars ?? null}
+             placeholder={webAccessPlaceholderFor('fetch_max_content_chars')}
+             min={1}
+             max={262144}
+             onChange={(value) => setWebAccessField('fetch_max_content_chars', value)} />
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+          {t('settings.webAccess.hint')}
+        </div>
+      </>
+    ),
+    'market': (
+      <MarketSettings value={draft.market} defaultURL={layered?.default.market?.registry_url || ''}
+        inheritedURL={inherited.market?.registry_url || ''} onChange={(value) => setField('market', value)} />
+    ),
+    'paths': (
+      <>
+        <Text label={t('settings.paths.skillsDir')} value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
+              onChange={(v) => setField('skills_dir', v)} />
+        <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.denova_dir || layered?.paths?.nova_dir} />
+        <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
+      </>
+    ),
+    'versions': (
+      <>
+        <BoolTri label={t('settings.versions.timedAuto')} value={draft.version_timed_enabled ?? null}
+                 inherited={inherited.version_timed_enabled}
+                 onChange={(v) => setField('version_timed_enabled', v)} />
+        <Num label={t('settings.versions.timedInterval')} value={draft.version_timed_interval_minutes ?? null}
+             placeholder={placeholderFor('version_timed_interval_minutes')}
+             min={1}
+             onChange={(v) => setField('version_timed_interval_minutes', v)} />
+      </>
+    ),
+    'access': (
+      visible && <LANAccessSettings draft={draft} inherited={inherited}
+        onChange={patch => setDraft(current => ({ ...current, ...patch }))} />
+    ),
+    'updates': (
+      <>
+        <BoolTri label={t('settings.updates.autoCheck')} value={draft.update_check_enabled ?? null}
+                 inherited={inherited.update_check_enabled}
+                 onChange={(v) => setField('update_check_enabled', v)} />
+        <UpdatePanel {...updatePanel} />
+      </>
+    ),
+    'advanced': (
+      <>
+        <SettingsBlock title={t('settings.advanced.execution')}>
           <Num label={t('settings.agent.maxIteration')} value={draft.max_iteration ?? null}
                placeholder={placeholderFor('max_iteration')}
                onChange={(v) => setField('max_iteration', v)} />
@@ -427,203 +468,8 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    inherited={inherited.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
-          <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
-                placeholder={placeholderFor('writing_skill_default')}
-                onChange={(v) => setField('writing_skill_default', v)} />
-          {layered?.runtime?.goos !== 'windows' ? (
-            <>
-              <ShellEnvironmentSelect
-                value={draft.shell_environment_mode}
-                inherited={inherited.shell_environment_mode}
-                onChange={(v) => setField('shell_environment_mode', v)}
-              />
-              <Text label={t('settings.agent.shellEnvironmentShell')} value={draft.shell_environment_shell}
-                    placeholder={placeholderFor('shell_environment_shell')}
-                    onChange={(v) => setField('shell_environment_shell', v)} />
-              <Text label={t('settings.agent.bashPath')} value={draft.agent_bash_path}
-                    placeholder={placeholderFor('agent_bash_path')}
-                    onChange={(v) => setField('agent_bash_path', v)} />
-              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-                {t('settings.agent.shellEnvironmentHint')}
-              </div>
-            </>
-          ) : null}
-        </>
-      ),
-    },
-    {
-      id: 'terminal',
-      group: t('settings.group.common'),
-      title: t('settings.section.terminal'),
-      children: (
-        <>
-          <BoolTri label={t('settings.terminal.enabled')} value={draft.terminal_enabled ?? null}
-                   inherited={inherited.terminal_enabled}
-                   onChange={(v) => setField('terminal_enabled', v)} />
-          <TerminalShellField value={draft.terminal_shell} inherited={inherited.terminal_shell}
-                              windows={layered?.runtime?.goos === 'windows'}
-                              onChange={(v) => setField('terminal_shell', v)} />
-          <TerminalCommandsEditor
-            commands={terminalCommandsForEditor(draft, effective)}
-            onChange={(commands) => setField('terminal_commands', commands)}
-          />
-          <Num label={t('settings.terminal.maxSessions')} value={draft.terminal_max_sessions ?? null}
-               placeholder={placeholderFor('terminal_max_sessions')}
-               min={1}
-               max={64}
-               onChange={(v) => setField('terminal_max_sessions', v)} />
-          <Num label={t('settings.terminal.scrollbackKB')} value={draft.terminal_scrollback_kb ?? null}
-               placeholder={placeholderFor('terminal_scrollback_kb')}
-               min={1}
-               max={4096}
-               onChange={(v) => setField('terminal_scrollback_kb', v)} />
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-            {t('settings.terminal.hint')}
-          </div>
-        </>
-      ),
-    },
-    {
-      id: 'web-access',
-      group: t('settings.group.common'),
-      title: t('settings.section.webAccess'),
-      children: (
-        <>
-          <Text label={t('settings.webAccess.searxngBaseUrl')} value={draft.web_access?.searxng_base_url}
-                placeholder={webAccessPlaceholderFor('searxng_base_url')}
-                onChange={(value) => setWebAccessField('searxng_base_url', value)} />
-          <Num label={t('settings.webAccess.searchMaxResults')} value={draft.web_access?.search_max_results ?? null}
-               placeholder={webAccessPlaceholderFor('search_max_results')}
-               min={1}
-               max={20}
-               onChange={(value) => setWebAccessField('search_max_results', value)} />
-          <Num label={t('settings.webAccess.searchProviderTimeoutSeconds')} value={draft.web_access?.search_provider_timeout_seconds ?? null}
-               placeholder={webAccessPlaceholderFor('search_provider_timeout_seconds')}
-               min={0}
-               onChange={(value) => setWebAccessField('search_provider_timeout_seconds', value)} />
-          <Num label={t('settings.webAccess.fetchMaxResponseKB')} value={draft.web_access?.fetch_max_response_kb ?? null}
-               placeholder={webAccessPlaceholderFor('fetch_max_response_kb')}
-               min={1}
-               max={65536}
-               onChange={(value) => setWebAccessField('fetch_max_response_kb', value)} />
-          <Num label={t('settings.webAccess.fetchMaxContentChars')} value={draft.web_access?.fetch_max_content_chars ?? null}
-               placeholder={webAccessPlaceholderFor('fetch_max_content_chars')}
-               min={1}
-               max={262144}
-               onChange={(value) => setWebAccessField('fetch_max_content_chars', value)} />
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-            {t('settings.webAccess.hint')}
-          </div>
-        </>
-      ),
-    },
-    ...(showDebugSettings ? [{
-      id: 'debug' as const,
-      group: t('settings.group.common'),
-      title: t('settings.section.debug'),
-      children: (
-        <>
-          <BoolTri label={t('settings.debug.llmInputLog')} value={draft.llm_input_log_enabled ?? null}
-                   inherited={inherited.llm_input_log_enabled}
-                   onChange={(v) => setField('llm_input_log_enabled', v)} />
-          <TraceCaptureSelect label={t('settings.debug.traceCaptureLevel')} value={draft.trace_capture_level}
-                              inherited={inherited.trace_capture_level}
-                              onChange={(v) => setField('trace_capture_level', v)} />
-          <TraceExporterSelect label={t('settings.debug.traceExporter')} value={draft.trace_exporter}
-                               inherited={inherited.trace_exporter}
-                               onChange={(v) => setField('trace_exporter', v)} />
-          <Num label={t('settings.debug.traceRetentionRuns')} value={draft.trace_retention_runs ?? null}
-               placeholder={placeholderFor('trace_retention_runs')}
-               min={0}
-               onChange={(v) => setField('trace_retention_runs', v)} />
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-            {t('settings.debug.llmInputLogHelp')}
-          </div>
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-            {t('settings.debug.traceHelp')}
-          </div>
-        </>
-      ),
-    }] : []),
-    {
-      id: 'ide-editor',
-      group: t('settings.group.ide'),
-      title: t('settings.section.editor'),
-      children: (
-        <>
-          <BoolTri label={t('settings.ide.autoSave')} value={draft.auto_save_enabled ?? null}
-                   inherited={inherited.auto_save_enabled}
-                   onChange={(v) => setField('auto_save_enabled', v)} />
-          <Num label={t('settings.ide.autoSaveInterval')} value={draft.auto_save_interval_ms ?? null}
-               placeholder={placeholderFor('auto_save_interval_ms')}
-               onChange={(v) => setField('auto_save_interval_ms', v)} />
-          <Text label={t('settings.ide.chapterFilenameFormat')} value={draft.chapter_filename_format}
-                placeholder={placeholderFor('chapter_filename_format')}
-                onChange={(v) => setField('chapter_filename_format', v)} />
-          <Text label={t('settings.ide.volumeDirFormat')} value={draft.volume_dir_format}
-                placeholder={placeholderFor('volume_dir_format')}
-                onChange={(v) => setField('volume_dir_format', v)} />
-          <Num label={t('settings.ide.maxOpenTabs')} value={draft.max_open_tabs ?? null}
-               placeholder={placeholderFor('max_open_tabs')}
-               onChange={(v) => setField('max_open_tabs', v)} />
-          <Num label={t('settings.ide.chapterGroupMin')} value={draft.chapter_group_min ?? null}
-               placeholder={placeholderFor('chapter_group_min')}
-               onChange={(v) => setField('chapter_group_min', v)} />
-          <Num label={t('settings.ide.chapterGroupMax')} value={draft.chapter_group_max ?? null}
-               placeholder={placeholderFor('chapter_group_max')}
-               onChange={(v) => setField('chapter_group_max', v)} />
-          <TellerSelect
-            label={t('settings.ide.defaultTeller')}
-            value={draft.ide_story_teller_id}
-            inherited={inherited.ide_story_teller_id}
-            tellers={availableTellers}
-            onChange={(v) => setField('ide_story_teller_id', v)}
-          />
-        </>
-      ),
-    },
-    {
-      id: 'versions',
-      group: t('settings.group.ide'),
-      title: t('settings.section.versions'),
-      children: (
-        <>
-          <BoolTri label={t('settings.versions.timedAuto')} value={draft.version_timed_enabled ?? null}
-                   inherited={inherited.version_timed_enabled}
-                   onChange={(v) => setField('version_timed_enabled', v)} />
-          <Num label={t('settings.versions.timedInterval')} value={draft.version_timed_interval_minutes ?? null}
-               placeholder={placeholderFor('version_timed_interval_minutes')}
-               min={1}
-               onChange={(v) => setField('version_timed_interval_minutes', v)} />
-        </>
-      ),
-    },
-    {
-      id: 'interactive',
-      group: t('settings.group.interactive'),
-      title: t('settings.section.interactive'),
-      children: (
-        <>
-          <TellerSelect
-            label={t('settings.interactive.defaultTeller')}
-            value={draft.interactive_story_teller_id}
-            inherited={inherited.interactive_story_teller_id}
-            tellers={availableTellers}
-            onChange={(v) => setField('interactive_story_teller_id', v)}
-          />
-          <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
-               placeholder={placeholderFor('interactive_stage_line_height')}
-               step={0.05}
-               onChange={(v) => setField('interactive_stage_line_height', v)} />
-        </>
-      ),
-    },
-    {
-      id: 'labs',
-      group: t('settings.section.labs'),
-      title: t('settings.labs.sectionTitle'),
-      children: (
-        <>
+        </SettingsBlock>
+        <SettingsBlock title={t('settings.section.labs')}>
           <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
             {t('settings.labs.developerModeHint')}
           </div>
@@ -633,111 +479,33 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
             inherited={inherited.labs?.developer_mode}
             onChange={(value) => setLabField('developer_mode', value)}
           />
-        </>
-      ),
-    },
-  ]
-
-  const cancelSectionScroll = useCallback(() => {
-    sectionScrollTargetRef.current = null
-    if (sectionScrollFrameRef.current !== null) {
-      window.cancelAnimationFrame(sectionScrollFrameRef.current)
-      sectionScrollFrameRef.current = null
-    }
-    sectionScrollAnimationRef.current?.stop()
-    sectionScrollAnimationRef.current = null
-  }, [])
-
-  useEffect(() => cancelSectionScroll, [cancelSectionScroll])
-
-  const syncActiveSection = useCallback(() => {
-    if (sectionScrollTargetRef.current) return
-    const current = settingsSectionAtScrollPosition(contentRef.current, sectionRefs.current)
-    if (current) setActiveSection(current)
-  }, [])
-
-  useEffect(() => {
-    if (!visible) {
-      cancelSectionScroll()
-      return
-    }
-    if (!layered) return
-    const frame = window.requestAnimationFrame(syncActiveSection)
-    return () => window.cancelAnimationFrame(frame)
-  }, [cancelSectionScroll, layered, syncActiveSection, visible])
-
-  const jumpToSection = useCallback((id: SettingsSectionId) => {
-    cancelSectionScroll()
-    setActiveSection(id)
-    setExpandedSections((prev) => ({ ...prev, [id]: true }))
-    sectionScrollTargetRef.current = id
-    sectionScrollFrameRef.current = window.requestAnimationFrame(() => {
-      sectionScrollFrameRef.current = null
-      const container = contentRef.current
-      const section = sectionRefs.current[id]
-      if (!container || !section) {
-        sectionScrollTargetRef.current = null
-        return
-      }
-      sectionScrollAnimationRef.current = scrollSettingsSectionIntoView(container, section, {
-        reducedMotion: Boolean(reducedMotion),
-        onComplete: () => {
-          sectionScrollAnimationRef.current = null
-          if (sectionScrollTargetRef.current === id) sectionScrollTargetRef.current = null
-        },
-      })
-    })
-  }, [cancelSectionScroll, reducedMotion])
-
-  const toggleSection = (id: SettingsSectionId) => {
-    setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }))
+        </SettingsBlock>
+        {showDebugSettings && (
+          <SettingsBlock title={t('settings.section.debug')}>
+            <BoolTri label={t('settings.debug.llmInputLog')} value={draft.llm_input_log_enabled ?? null}
+                     inherited={inherited.llm_input_log_enabled}
+                     onChange={(v) => setField('llm_input_log_enabled', v)} />
+            <TraceCaptureSelect label={t('settings.debug.traceCaptureLevel')} value={draft.trace_capture_level}
+                                inherited={inherited.trace_capture_level}
+                                onChange={(v) => setField('trace_capture_level', v)} />
+            <TraceExporterSelect label={t('settings.debug.traceExporter')} value={draft.trace_exporter}
+                                 inherited={inherited.trace_exporter}
+                                 onChange={(v) => setField('trace_exporter', v)} />
+            <Num label={t('settings.debug.traceRetentionRuns')} value={draft.trace_retention_runs ?? null}
+                 placeholder={placeholderFor('trace_retention_runs')}
+                 min={0}
+                 onChange={(v) => setField('trace_retention_runs', v)} />
+            <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+              {t('settings.debug.llmInputLogHelp')}
+            </div>
+            <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+              {t('settings.debug.traceHelp')}
+            </div>
+          </SettingsBlock>
+        )}
+      </>
+    ),
   }
-
-  useEffect(() => {
-    if (!visible || !layered) return
-    const section = takeSettingsSection()
-    if (isSettingsSectionId(section)) requestAnimationFrame(() => jumpToSection(section))
-  }, [visible, layered, jumpToSection])
-
-  useEffect(() => {
-    const openSection = (event: Event) => {
-      const detail = (event as CustomEvent<SettingsSectionRequest>).detail
-      const section = detail?.section
-      if (!isSettingsSectionId(section)) return
-      if (!visible || !layered) return
-      takeSettingsSection()
-      requestAnimationFrame(() => {
-        jumpToSection(section)
-      })
-    }
-    window.addEventListener(SETTINGS_SECTION_EVENT, openSection)
-    return () => window.removeEventListener(SETTINGS_SECTION_EVENT, openSection)
-  }, [jumpToSection, visible, layered])
-
-  const onContentScroll = () => {
-    syncActiveSection()
-  }
-
-  const navGroups = sections.reduce<Array<{ group: SettingsSection['group']; items: SettingsSection[] }>>((groups, section) => {
-    const last = groups[groups.length - 1]
-    if (last?.group === section.group) {
-      last.items.push(section)
-    } else {
-      groups.push({ group: section.group, items: [section] })
-    }
-    return groups
-  }, [])
-  const navPanel = (
-    <SectionedNavigation
-      groups={navGroups.map((group) => ({
-        id: group.group,
-        title: group.group,
-        items: group.items.map((section) => ({ id: section.id, title: section.title })),
-      }))}
-      activeId={activeSection}
-      onSelect={jumpToSection}
-    />
-  )
 
   return (
     <SettingsPageFrame
@@ -746,7 +514,10 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
       className="nova-settings-view"
       error={error}
       errorTitle={t('settings.error.save')}
-      navigation={layered ? navPanel : undefined}
+      navigation={layered ? (
+        <SettingsNavigation activeId={activeSection} search={search} onSearchChange={setSearch} onSelect={(id, fieldKey) => { selectSection(id, fieldKey); setSearch('') }}
+          showDebug={showDebugSettings} goos={layered.runtime?.goos} />
+      ) : undefined}
       onSaveShortcut={() => saveNow().catch(() => undefined)}
       actions={(
         <AutosaveStatusIndicator
@@ -759,31 +530,16 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
       {!layered ? (
         <LoadingState label={t('common.loading')} className="min-h-0 flex-1" />
       ) : (
-        <div
-          ref={contentRef}
-          data-nova-settings-content="true"
-          onScroll={onContentScroll}
-          onWheelCapture={cancelSectionScroll}
-          onPointerDownCapture={cancelSectionScroll}
-          onKeyDownCapture={cancelSectionScroll}
-          onTouchStartCapture={cancelSectionScroll}
-          className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6"
-        >
-          <div className="mx-auto w-full min-w-0 max-w-5xl">
-            {sections.map((section) => (
-              <Section
-                key={section.id}
-                id={section.id}
-                ref={(node) => {
-                  sectionRefs.current[section.id] = node
-                }}
-                group={section.group}
-                title={section.title}
-                expanded={expandedSections[section.id]}
-                onToggle={() => toggleSection(section.id)}
-              >
-                {section.children}
-              </Section>
+        <div ref={contentRef} data-nova-settings-content="true" className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 [container-type:size]">
+          <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-8">
+            {/* Keep the final anchor able to align with the top of the viewport. */}
+            {SETTINGS_SECTIONS.map((section) => (
+              <section key={section.id} data-settings-section={section.id} data-onboarding-anchor={section.id === 'model' ? 'settings-model' : undefined} className="flex min-w-0 flex-col gap-3 last:min-h-[calc(100cqh-2.5rem)]">
+                <h2 className="text-lg font-semibold">{t(section.titleKey)}</h2>
+                <div className="nova-settings-section-card flex flex-col gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 sm:p-4">
+                  {sections[section.id]}
+                </div>
+              </section>
             ))}
           </div>
         </div>
@@ -792,497 +548,11 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
   )
 }
 
-function settingsSectionAtScrollPosition(
-  container: HTMLElement | null,
-  refs: Partial<Record<SettingsSectionId, HTMLElement | null>>,
-): SettingsSectionId | null {
-  if (!container) return null
-  const threshold = container.getBoundingClientRect().top + 72
-  let nearestBefore: { id: SettingsSectionId; top: number } | null = null
-  let nearestAfter: { id: SettingsSectionId; top: number } | null = null
-  for (const [id, node] of Object.entries(refs) as Array<[SettingsSectionId, HTMLElement | null]>) {
-    if (!node) continue
-    const top = node.getBoundingClientRect().top
-    if (top <= threshold && (!nearestBefore || top > nearestBefore.top)) nearestBefore = { id, top }
-    if (top > threshold && (!nearestAfter || top < nearestAfter.top)) nearestAfter = { id, top }
-  }
-  return nearestBefore?.id ?? nearestAfter?.id ?? null
-}
-
-export function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {
-  const localProfiles = draft.model_profiles ?? []
-  const hasLocalDefault = localProfiles.some((profile) => modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID)
-  const hasLocalDefaultSelection = Boolean(draft.agent_models?.default?.profile_id?.trim())
-  const hasLegacyDefault = Boolean(draft.openai_api_key || draft.openai_base_url || draft.openai_model || draft.openai_context_window_tokens)
-  if (hasLocalDefault || hasLocalDefaultSelection || hasLegacyDefault) {
-    return preserveDraftOnlyModelProfiles(modelProfilesWithDefault(draft), localProfiles)
-  }
-  const inherited = modelProfilesWithDefault(effective)
-  const localIDs = new Set(localProfiles.map(modelProfileID).filter(Boolean))
-  return [
-    ...inherited.filter((profile) => !localIDs.has(modelProfileID(profile))),
-    ...localProfiles,
-  ]
-}
-
-export function modelEndpointsForEditor(draft: Settings, effective: Settings): ModelEndpointSettings[] {
-  const localEndpoints = draft.model_endpoints ?? []
-  const hasLocalDefault = localEndpoints.some((endpoint) => modelEndpointID(endpoint) === 'default')
-  const hasLocalDefaultSelection = Boolean(draft.agent_models?.default?.profile_id?.trim())
-  const hasLegacyDefault = Boolean(draft.openai_api_key || draft.openai_base_url)
-  if (hasLocalDefault || hasLocalDefaultSelection || hasLegacyDefault) return modelEndpointsWithDefault(draft)
-  const inherited = modelEndpointsWithDefault(effective)
-  const localIDs = new Set(localEndpoints.map(modelEndpointID).filter(Boolean))
-  return [
-    ...inherited.filter((endpoint) => !localIDs.has(modelEndpointID(endpoint))).map(stripInheritedModelEndpointSecret),
-    ...localEndpoints,
-  ]
-}
-
-function isSettingsSectionId(value: unknown): value is SettingsSectionId {
-  return typeof value === 'string' && SETTINGS_SECTION_IDS.includes(value as SettingsSectionId)
-}
-
-function preserveDraftOnlyModelProfiles(profiles: ModelProfileSettings[], draftProfiles: ModelProfileSettings[]): ModelProfileSettings[] {
-  const draftOnlyProfiles = draftProfiles.filter((profile) => !modelProfileID(profile))
-  if (draftOnlyProfiles.length === 0) return profiles
-  return [...profiles, ...draftOnlyProfiles]
-}
-
-function stripInheritedModelEndpointSecret(endpoint: ModelEndpointSettings): ModelEndpointSettings {
-  return { ...endpoint, api_key: '' }
-}
-
-export function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
-  const localProfiles = draft.image_api_profiles ?? []
-  const hasLocalDefault = localProfiles.some((profile) => imageAPIProfileID(profile) === DEFAULT_IMAGE_API_PROFILE_ID)
-  const hasLocalDefaultSelection = Boolean(draft.default_image_api_profile_id?.trim())
-  if (hasLocalDefault || hasLocalDefaultSelection) {
-    return imageAPIProfilesWithDefault(draft)
-  }
-  const inherited = imageAPIProfilesWithDefault(effective)
-  const localIDs = new Set(localProfiles.map(imageAPIProfileID).filter(Boolean))
-  return [
-    ...inherited.filter((profile) => !localIDs.has(imageAPIProfileID(profile))),
-    ...localProfiles,
-  ]
-}
-
-export function imageAPIEndpointsForEditor(draft: Settings, effective: Settings): ImageAPIEndpointSettings[] {
-  const localEndpoints = draft.image_api_endpoints ?? []
-  const hasLocalDefault = localEndpoints.some((endpoint) => imageAPIEndpointID(endpoint) === 'default')
-  const hasLocalDefaultSelection = Boolean(draft.default_image_api_profile_id?.trim())
-  if (hasLocalDefault || hasLocalDefaultSelection) return imageAPIEndpointsWithDefault(draft)
-  const inherited = imageAPIEndpointsWithDefault(effective)
-  const localIDs = new Set(localEndpoints.map(imageAPIEndpointID).filter(Boolean))
-  return [
-    ...inherited.filter((endpoint) => !localIDs.has(imageAPIEndpointID(endpoint))).map(stripInheritedImageAPIEndpointSecret),
-    ...localEndpoints,
-  ]
-}
-
-function stripInheritedImageAPIEndpointSecret(endpoint: ImageAPIEndpointSettings): ImageAPIEndpointSettings {
-  return { ...endpoint, api_key: '' }
-}
-
-function Section({
-  ref,
-  id,
-  group,
-  title,
-  expanded,
-  onToggle,
-  children,
-}: {
-  ref?: (node: HTMLElement | null) => void
-  id: SettingsSectionId
-  group: string
-  title: string
-  expanded: boolean
-  onToggle: () => void
-  children: ReactNode
-}) {
+function SettingsBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section ref={ref} data-onboarding-anchor={id === 'model' ? 'settings-model' : undefined} className="scroll-mt-4 border-b border-[var(--nova-border)] py-4 first:pt-0 last:border-b-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="nova-nav-item mb-2 flex w-full items-center justify-between rounded-[var(--nova-radius)] px-1.5 py-1 text-left"
-        aria-expanded={expanded}
-      >
-        <span className="min-w-0">
-          <span className="mr-2 text-[11px] text-[var(--nova-text-faint)]">{group}</span>
-          <span className="font-medium text-[var(--nova-text)]">{title}</span>
-        </span>
-        {expanded ? (
-          <ChevronUp className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-        ) : (
-          <ChevronDown className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-        )}
-      </button>
-      {expanded && (
-        <div className="nova-settings-section-card flex flex-col gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">{children}</div>
-      )}
-    </section>
-  )
-}
-
-function FieldRow({ label, children }: { label: string; children: ReactNode }) {
-  const generatedID = useId()
-  const childID = isValidElement<{ id?: string }>(children) ? children.props.id : undefined
-  const controlID = childID || generatedID
-  const control = isValidElement<{ id?: string }>(children)
-    ? cloneElement(children, { id: controlID })
-    : children
-  return (
-    <SettingsFieldRow
-      title={label}
-      htmlFor={controlID}
-      className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
-      contentClassName="sm:w-44 sm:flex-none"
-      controlClassName="flex-1"
-    >
-      {control}
-    </SettingsFieldRow>
-  )
-}
-
-function ValueRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <SettingsFieldRow
-      title={label}
-      className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
-      contentClassName="sm:w-44 sm:flex-none"
-      controlClassName="flex-1"
-    >
+    <div className="flex flex-col gap-2 border-b border-[var(--nova-border)] pb-4 last:border-b-0 last:pb-0">
+      <h3 className="px-2 text-sm font-medium">{title}</h3>
       {children}
-    </SettingsFieldRow>
-  )
-}
-
-function TextSizeRow({ label, description, children }: { label: string; description: string; children: ReactNode }) {
-  return (
-    <SettingsFieldRow
-      title={label}
-      description={description}
-      className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-2"
-      contentClassName="sm:w-44 sm:flex-none"
-      controlClassName="flex-1 sm:max-w-md"
-    >
-      {children}
-    </SettingsFieldRow>
-  )
-}
-
-function ReadOnly({ label, value }: { label: string; value?: string }) {
-  const { t } = useTranslation()
-  return (
-    <ValueRow label={label}>
-      <code className="min-h-7 flex-1 truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
-        {value || t('common.notSet')}
-      </code>
-    </ValueRow>
-  )
-}
-
-function Text({ label, value, placeholder, type = 'text', disabled, onChange }: {
-  label: string; value?: string; placeholder?: string; type?: string; disabled?: boolean
-  onChange: (v: string) => void
-}) {
-  return (
-    <FieldRow label={label}>
-      <input
-        type={type}
-        value={value ?? ''}
-        placeholder={placeholder}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${fieldCls} disabled:opacity-50`}
-      />
-    </FieldRow>
-  )
-}
-
-function Num({ label, value, placeholder, step = 1, min, max, onChange }: {
-  label: string; value: number | null; placeholder?: string
-  step?: number
-  min?: number
-  max?: number
-  onChange: (v: number | null) => void
-}) {
-  return (
-    <FieldRow label={label}>
-      <input
-        type="number"
-        step={step}
-        min={min}
-        max={max}
-        value={value ?? ''}
-        placeholder={placeholder}
-        onChange={(e) => {
-          const raw = e.target.value
-          onChange(raw === '' ? null : Number(raw))
-        }}
-        className={fieldCls}
-      />
-    </FieldRow>
-  )
-}
-
-function BoolTri({ label, value, inherited, onChange }: {
-  label: string; value: boolean | null; inherited?: boolean | null
-  onChange: (v: boolean | null) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedLabel = inherited === null || inherited === undefined ? t('common.notSet') : t(inherited ? 'settings.bool.true' : 'settings.bool.false')
-  const selectValue = value === null ? FIELD_INHERIT_VALUE : String(value)
-  return (
-    <FieldRow label={label}>
-      <Select value={selectValue} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? null : v === 'true')}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
-            <SelectItem value="true">{t('settings.bool.true')}</SelectItem>
-            <SelectItem value="false">{t('settings.bool.false')}</SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-function AgentApprovalModeSelect({ value, disabled, onChange }: {
-  value: AgentApprovalMode
-  disabled?: boolean
-  onChange: (value: AgentApprovalMode) => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <FieldRow label={t('settings.agent.approvalMode')}>
-      <div className="grid gap-1.5">
-        <Select value={value} disabled={disabled} onValueChange={(next) => onChange(next as AgentApprovalMode)}>
-          <SelectTrigger size="sm" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="nova-panel border text-[var(--nova-text)]">
-            {AGENT_APPROVAL_MODES.map((mode) => (
-              <SelectItem key={mode} value={mode}>
-                {t(`agentApproval.mode.${mode}.label`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t(`agentApproval.mode.${value}.description`)}</span>
-      </div>
-    </FieldRow>
-  )
-}
-
-function ShellEnvironmentSelect({ value, inherited, onChange }: {
-  value?: ShellEnvironmentMode
-  inherited?: ShellEnvironmentMode
-  onChange: (value: ShellEnvironmentMode | undefined) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedValue = inherited || 'auto'
-  return (
-    <FieldRow label={t('settings.agent.shellEnvironmentMode')}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(next) => onChange(next === FIELD_INHERIT_VALUE ? undefined : next as ShellEnvironmentMode)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: t(`settings.agent.shellEnvironment.${inheritedValue}`) })}</SelectItem>
-          <SelectItem value="auto">{t('settings.agent.shellEnvironment.auto')}</SelectItem>
-          <SelectItem value="process">{t('settings.agent.shellEnvironment.process')}</SelectItem>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-function TraceCaptureSelect({ label, value, inherited, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedValue = inherited || 'summary'
-  const inheritedLabel = t(TRACE_CAPTURE_OPTIONS.find((option) => option.value === inheritedValue)?.labelKey || 'settings.debug.traceCaptureSummary')
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
-            {TRACE_CAPTURE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-function TraceExporterSelect({ label, value, inherited, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedValue = TRACE_EXPORTER_OPTIONS.some((option) => option.value === inherited) ? inherited || 'local' : 'local'
-  const isValidValue = TRACE_EXPORTER_OPTIONS.some((option) => option.value === value)
-  const selectValue = isValidValue ? value || FIELD_INHERIT_VALUE : FIELD_INHERIT_VALUE
-  const inheritedLabel = t(TRACE_EXPORTER_OPTIONS.find((option) => option.value === inheritedValue)?.labelKey || 'settings.debug.traceExporterLocal')
-  return (
-    <FieldRow label={label}>
-      <Select value={selectValue} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
-            {TRACE_EXPORTER_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-function LanguageSelect({ label, value, inherited, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedLabel = t(LOCALE_OPTIONS.find((option) => option.value === (inherited || 'auto'))?.labelKey || 'locale.auto')
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
-            {LOCALE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-const THEME_OPTIONS = [
-  { value: 'dark', labelKey: 'settings.theme.dark' },
-  { value: 'light', labelKey: 'settings.theme.light' },
-  { value: 'system', labelKey: 'settings.theme.system' },
-] as const
-
-const MOTION_INTENSITY_OPTIONS = [
-  { value: 'system', labelKey: 'settings.motion.system' },
-  { value: 'full', labelKey: 'settings.motion.full' },
-  { value: 'reduced', labelKey: 'settings.motion.reduced' },
-  { value: 'off', labelKey: 'settings.motion.off' },
-] as const
-
-function ThemeSelect({ label, value, inherited, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedValue = inherited || 'dark'
-  const inheritedLabel = t(THEME_OPTIONS.find((option) => option.value === inheritedValue)?.labelKey || 'settings.theme.dark')
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
-            {THEME_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-function MotionIntensitySelect({ label, value, inherited, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedValue = inherited || 'system'
-  const inheritedLabel = t(MOTION_INTENSITY_OPTIONS.find((option) => option.value === inheritedValue)?.labelKey || 'settings.motion.system')
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
-            {MOTION_INTENSITY_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-function TellerSelect({ label, value, inherited, tellers, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  tellers: Teller[]
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedTeller = tellers.find((teller) => teller.id === inherited)
-  const inheritedName = inheritedTeller ? narrativeStyleName(inheritedTeller, t) : inherited || DEFAULT_NARRATIVE_STYLE_ID
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedName })}</SelectItem>
-            {tellers.map((teller) => (
-              <SelectItem key={teller.id} value={teller.id}>{narrativeStyleName(teller, t)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
+    </div>
   )
 }

@@ -9,7 +9,7 @@ import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
 import { localizeAgentRuntimeError, localizeAgentRuntimeReason } from '@/lib/agent-runtime-error'
-import { AgentChatTransport, AgentUIMessageNormalizer, buildAgentChatRequestBody, type AgentUIMessage } from '@/lib/agent-ui'
+import { AgentChatTransport, AgentUIMessageNormalizer, buildAgentChatRequestBody, type AgentChatRequestMetadata, type AgentUIMessage } from '@/lib/agent-ui'
 import { agentViewContent, type AgentPartRef } from '@/lib/agent-message-view'
 import { STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
@@ -69,6 +69,8 @@ export interface ChatSendOptions {
   }
   loreReferenceLabels?: Record<string, string>
   onSubmissionStart?: () => void
+  /** The server has durably accepted the command, before the model finishes its turn. */
+  onSubmissionAccepted?: () => void
   onSubmissionError?: () => void
 }
 
@@ -407,11 +409,6 @@ export function useAgentChat(options: ChatOptions = {}) {
       const command = isStreaming || sendOptions.attachments?.length ? '' : agentBypassCommand(canonicalInput)
       if (command) {
         const result = await client.executeCommand(command)
-        if (command === 'clear') {
-          await loadHistory()
-          await loadSessions()
-          return true
-        }
         if (command === 'compact') await loadHistory()
         appendDataMessage(setUIMessages, 'data-agent-system', {
           content: result,
@@ -516,6 +513,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           setStyleScenes((current) => current.filter((item) => !prepared.composerStyleScenes.includes(item)))
           setTextSelections((current) => current.filter((item) => !prepared.composerTextSelections.includes(item)))
           sendOptions.onSubmissionStart?.()
+          sendOptions.onSubmissionAccepted?.()
           return true
         } catch (error) {
           if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)
@@ -542,7 +540,7 @@ export function useAgentChat(options: ChatOptions = {}) {
             },
             parts: [{ type: 'text', text: sendOptions.displayMessage || resumeDisplayMessage || canonicalInput }],
           },
-          { body },
+          { body, metadata: { onSubmissionAccepted: sendOptions.onSubmissionAccepted } satisfies AgentChatRequestMetadata },
         )
         setReferences((current) => current.filter((item) => !prepared.composerReferences.includes(item)))
         setLoreReferences((current) => current.filter((item) => !prepared.composerLoreReferences.includes(item)))
