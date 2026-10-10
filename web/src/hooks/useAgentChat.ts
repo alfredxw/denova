@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
 import { createAgentCommandID } from '@/lib/api'
 import type { AgentQueuedCommandAction, AgentRuntimeQueuedCommand, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
-import { withErrorLogID } from '@/lib/api-client'
+import { APIError, withErrorLogID } from '@/lib/api-client'
 import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
@@ -153,6 +153,9 @@ export function useAgentChat(options: ChatOptions = {}) {
       void onWorkspaceChange?.(event)
     },
     onError: (error) => {
+      // The task may settle before attachment; runtime recovery reloads the
+      // authoritative projection and history for this expected typed conflict.
+      if (error instanceof APIError && error.code === 'agent_runtime.rehydrate_required') return
       if (terminalDiagnosticReceived.current) { terminalDiagnosticReceived.current = false; return }
       toast.error(withErrorLogID(error.message || t('chat.activity.unknownError'), error))
     },

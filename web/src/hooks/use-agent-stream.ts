@@ -40,7 +40,7 @@ export function useAgentStream(options: StreamOptions) {
     minIntervalMs: options.throttle,
   }), [setMessages, options.throttle])
 
-  const stop = useCallback(() => {
+  const disconnect = useCallback(() => {
     const active = connection.current
     connection.current = null
     if (active) {
@@ -50,15 +50,23 @@ export function useAgentStream(options: StreamOptions) {
       batcher.flush()
       setMessages(current => applyAgentStreamUpdates(current, active.projection.takeUpdates()))
     }
-    setStatus('ready')
   }, [batcher, setMessages])
 
-  const connect = useCallback(async (request: (active: Connection) => Promise<ReadableStream<UIMessageChunk> | null>) => {
-    stop()
+  const stop = useCallback(() => {
+    disconnect()
+    setStatus('ready')
+  }, [disconnect])
+
+  const connect = useCallback(async (mode: 'submit' | 'resume', request: (active: Connection) => Promise<ReadableStream<UIMessageChunk> | null>) => {
+    disconnect()
     const active: Connection = { controller: new AbortController(), projection: new AgentStreamProjection() }
     connection.current = active
-    setError(undefined)
-    setStatus('submitted')
+    // A reconnect belongs to an accepted task. Preserve its display status
+    // until attachment resolves so recovery cannot mistake it for a new POST.
+    if (mode === 'submit') {
+      setError(undefined)
+      setStatus('submitted')
+    }
     try {
       const stream = await request(active)
       if (connection.current !== active) {
@@ -67,6 +75,10 @@ export function useAgentStream(options: StreamOptions) {
       }
       if (!stream) { setStatus('ready'); return }
       active.reader = stream.getReader()
+      if (mode === 'resume') {
+        setError(undefined)
+        setStatus('streaming')
+      }
       while (connection.current === active) {
         const { done, value } = await active.reader.read()
         if (done || connection.current !== active) break
@@ -79,7 +91,7 @@ export function useAgentStream(options: StreamOptions) {
     } catch (cause) {
       if (connection.current !== active || active.controller.signal.aborted) return
       const failure = cause instanceof Error ? cause : new Error(String(cause))
-      console.error('Agent display stream failed', failure)
+      console.warn('[use-agent-stream.ts] Agent display stream failed', failure)
       setError(failure)
       setStatus('error')
       callbacks.current.onError(failure)
@@ -89,22 +101,24 @@ export function useAgentStream(options: StreamOptions) {
         batcher.flush()
         setMessages(current => applyAgentStreamUpdates(current, active.projection.takeUpdates()))
         connection.current = null
-        callbacks.current.onFinish()
+        // Failed attachments have no response to finish. Their owner refreshes
+        // the active projection instead of firing completion side effects.
+        if (mode === 'submit' || active.reader) callbacks.current.onFinish()
       }
       void active.reader?.cancel().catch(() => {})
     }
-  }, [batcher, setMessages, stop])
+  }, [batcher, disconnect, setMessages])
 
   const sendMessage = useCallback((message: Omit<AgentUIMessage, 'id'> & { id?: string }, request: ChatRequestOptions = {}) => {
     const user = { ...message, id: message.id || crypto.randomUUID() }
     setMessages(current => [...current, user])
-    return connect(active => options.transport.sendMessages({
+    return connect('submit', active => options.transport.sendMessages({
       ...request, trigger: 'submit-message', chatId: chatID.current, messageId: user.id,
       // Denova submits just the new input; history is owned by the server.
       messages: [user], abortSignal: active.controller.signal,
     }))
   }, [connect, options.transport, setMessages])
-  const resumeStream = useCallback(() => connect(() => options.transport.reconnectToStream({ chatId: chatID.current })), [connect, options.transport])
+  const resumeStream = useCallback(() => connect('resume', () => options.transport.reconnectToStream({ chatId: chatID.current })), [connect, options.transport])
 
   useEffect(() => () => {
     const active = connection.current

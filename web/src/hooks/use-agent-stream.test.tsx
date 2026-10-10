@@ -85,4 +85,52 @@ describe('Agent display connection', () => {
     expect(options.onFinish).not.toHaveBeenCalled()
     expect(options.onError).not.toHaveBeenCalled()
   })
+
+  it('preserves the display status until a reconnect returns an accepted stream', async () => {
+    const active = connection()
+    let resolve!: (stream: ReadableStream<UIMessageChunk>) => void
+    const pending = new Promise<ReadableStream<UIMessageChunk>>(done => { resolve = done })
+    const { result, options } = setup({ sendMessages: vi.fn(), reconnectToStream: vi.fn().mockReturnValue(pending) })
+    let resumed!: Promise<void>
+    await act(async () => { resumed = result.current.resumeStream() })
+    expect(result.current.status).toBe('ready')
+    await act(async () => { resolve(active.stream) })
+    expect(result.current.status).toBe('streaming')
+    await act(async () => { active.controller.close(); await resumed })
+    expect(result.current.status).toBe('ready')
+    expect(options.onFinish).toHaveBeenCalledOnce()
+  })
+
+  it('reports a failed reconnect without finishing a response that never attached', async () => {
+    const failure = Object.assign(new Error('Refresh the active projection'), { code: 'agent_runtime.rehydrate_required', status: 409 })
+    const { result, options } = setup({ sendMessages: vi.fn(), reconnectToStream: vi.fn().mockRejectedValue(failure) })
+    await act(async () => { await result.current.resumeStream() })
+    expect(result.current.status).toBe('error')
+    expect(result.current.error).toBe(failure)
+    expect(options.onError).toHaveBeenCalledExactlyOnceWith(failure)
+    expect(options.onFinish).not.toHaveBeenCalled()
+    expect(result.current.messages).toEqual([])
+  })
+
+  it('reports a terminal stream error through its owner without logging a browser exception', async () => {
+    const active = connection()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { result, options } = setup({ sendMessages: vi.fn().mockResolvedValue(active.stream), reconnectToStream: vi.fn() })
+      let sending!: Promise<void>
+      await act(async () => { sending = result.current.sendMessage({ role: 'user', parts: [] }) })
+      await act(async () => {
+        active.controller.enqueue({ type: 'data-agent-error', transient: true, data: { terminal: true, code: 'agent_runtime.model_request_too_large' } })
+        active.controller.enqueue({ type: 'error', errorText: 'agent_runtime.model_request_too_large' })
+        await sending
+      })
+      expect(result.current.status).toBe('error')
+      expect(options.onData).toHaveBeenCalledOnce()
+      expect(options.onError).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: 'agent_runtime.model_request_too_large' }))
+      expect(options.onFinish).toHaveBeenCalledOnce()
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
 })
