@@ -36,6 +36,7 @@ docs/tests/*
 !docs/skills-library.md
 !docs/lore-index.md
 !docs/automatic-updates.md
+!docs/muapi-image-generation.md
 !docs/resource-pack-import-export-design.md
 !docs/speech.md
 !docs/agent-runtime-session-design-audit.md
