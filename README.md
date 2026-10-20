@@ -117,7 +117,7 @@ corepack enable
 
 ## 模型与配置
 
-推荐在设置页完成模型配置：先添加服务商连接，再选择或填写模型并测试连接。同一连接可以复用于多个模型。语言模型支持内置服务商和自定义兼容端点；图像模型支持 OpenAI、xAI/Grok、火山引擎 Seedream、Google Gemini Image、ComfyUI Workflow 和自定义端点。
+推荐在设置页完成模型配置：先添加服务商连接，再选择或填写模型并测试连接。同一连接可以复用于多个模型。语言模型支持内置服务商和自定义兼容端点；图像模型支持 OpenAI、xAI/Grok、火山引擎 Seedream、Google Gemini Image、ComfyUI Workflow 和自定义端点。MuAPI 配置示例见[图像生成指南](./docs/muapi-image-generation.md)。
 
 Google Gemini 文本模型可在连接的协议选项中选择「Gemini 原生协议」，使用原生工具调用、图片输入与推理续接；已有 OpenAI 兼容连接保持原协议。
 
