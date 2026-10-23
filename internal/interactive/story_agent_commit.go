@@ -136,6 +136,12 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if strings.TrimSpace(req.AgentCommandID) != "" && !hasPlayerInput {
 		return TurnEvent{}, nil, fmt.Errorf("%w: canonical player input is missing for completed turn", ErrPlayerInputIdentityConflict)
 	}
+	// A late provider response must never commit an input that the user
+	// explicitly abandoned (or another committed turn already consumed).
+	// Legitimate retries are handled by committedAgentTurnForRequest above.
+	if hasPlayerInput && !branchProjection.hasPendingPlayerInput(playerInput.ID) {
+		return TurnEvent{}, nil, fmt.Errorf("%w: player input is already settled: %s", ErrPlayerInputIdentityConflict, playerInput.ID)
+	}
 	var consumedPlayerInputIDs []string
 	var resolvedPlayerInputContexts []ResolvedPlayerInputContext
 	if hasPlayerInput {

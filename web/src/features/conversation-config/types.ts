@@ -35,9 +35,11 @@ export function supportsRuntimeOperation(snapshot: ConversationConfigSnapshot | 
 
 export interface ConversationConfigChanges {
   runtime?: import('@/features/agent-runtime/types').RuntimeSelection
-  /** Complete model selection for the current Codex engine; never switches engines. */
+  /** Complete model selection for the current engine; never switches engines. */
   codex?: import('@/features/agent-runtime/types').CodexRuntimeSettings
   claude?: import('@/features/agent-runtime/types').ClaudeRuntimeSettings
+  grok?: import('@/features/agent-runtime/types').GrokRuntimeSettings
+  antigravity?: import('@/features/agent-runtime/types').AntigravityRuntimeSettings
   custom_agent_id?: string
   profile_id?: string
   thinking_level?: ThinkingLevel

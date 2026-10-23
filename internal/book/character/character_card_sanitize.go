@@ -1,7 +1,6 @@
 package character
 
 import (
-	"denova/internal/book/lore"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -132,10 +131,6 @@ func sanitizeTavernOpening(value string) (string, bool) {
 		return cleaned, false
 	}
 	return string(runes[:4000]), true
-}
-
-func inferTavernLoreType(title, content string) string {
-	return lore.ClassifyItemHeuristic(lore.ClassificationInput{Name: title, Content: content}).Type
 }
 
 func firstCardRunes(value string, limit int) string {

@@ -29,7 +29,8 @@ func renderIndexGuide(collection Collection) (string, error) {
 	sb.WriteString("# Lore Index\n\n")
 	sb.WriteString("Entry metadata is category / importance / detail. Importance indicates narrative prominence, not authority or required use. name and brief omit the body; full includes the complete body. Read missing bodies with `query_lore_items` using names and detail=full. Search with `query_lore_items` keywords; `group_names` filters by heading. Explore existing material before inventing new entities.\n\n")
 	if strings.TrimSpace(guide.IntroMarkdown) != "" {
-		sb.WriteString(guide.IntroMarkdown + "\n\n")
+		sb.WriteString(guide.IntroMarkdown)
+		sb.WriteString("\n\n")
 	}
 	categoryNames := make(map[string]string, len(collection.Categories))
 	for _, category := range collection.Categories {
@@ -39,10 +40,12 @@ func renderIndexGuide(collection Collection) (string, error) {
 	for _, group := range groups {
 		fmt.Fprintf(&sb, "## %s\n\n", group.Name)
 		if strings.TrimSpace(group.Purpose) != "" {
-			sb.WriteString(group.Purpose + "\n\n")
+			sb.WriteString(group.Purpose)
+			sb.WriteString("\n\n")
 		}
 		if strings.TrimSpace(group.BodyMarkdown) != "" {
-			sb.WriteString(group.BodyMarkdown + "\n\n")
+			sb.WriteString(group.BodyMarkdown)
+			sb.WriteString("\n\n")
 		}
 		for _, item := range group.items {
 			if !item.Enabled {
@@ -52,7 +55,8 @@ func renderIndexGuide(collection Collection) (string, error) {
 				fmt.Fprintf(&sb, "- %s (included above)\n", item.Name)
 				continue
 			}
-			sb.WriteString(indexItemMarkdown(item, categoryNames[item.Type], guide.itemDetail(item)) + "\n\n")
+			sb.WriteString(indexItemMarkdown(item, categoryNames[item.Type], guide.itemDetail(item)))
+			sb.WriteString("\n\n")
 			emitted[item.ID] = true
 		}
 	}

@@ -234,7 +234,7 @@ func (h *Handlers) installCharacterResources(ctx context.Context, filename strin
 		}
 		selected = append(selected, resource.ID)
 	}
-	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{PreviewID: preview.ID, CandidateID: candidate.ID, ProjectID: projectID, Resources: selected})
+	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{PreviewID: preview.ID, CandidateID: candidate.ID, ProjectID: projectID, Resources: selected, OverrideByDetail: true})
 	if err != nil {
 		return character.ImportResult{}, err
 	}
@@ -244,6 +244,8 @@ func (h *Handlers) installCharacterResources(ctx context.Context, filename strin
 	}
 	result := *preview.Character
 	result.ProjectID = projectID
+	result.Overridden = plan.ImportOverrides
+	result.Skipped = plan.ImportSkipped
 	for _, binding := range installed.Bindings {
 		if binding.Local.Kind == "lore.collection" {
 			for _, sourceID := range slices.Sorted(maps.Keys(binding.Members)) {

@@ -20,6 +20,7 @@ type interactiveAgentCommandRequest struct {
 	Branch            string                   `json:"branch,omitempty"`
 	Input             novaApp.AgentChatRequest `json:"input"`
 	Reason            string                   `json:"reason,omitempty"`
+	ResumeInterruptionID string                 `json:"resume_interruption_id,omitempty"`
 }
 
 // HandleInteractiveChatCommand controls the exact active game operation.
@@ -30,6 +31,22 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 	var body interactiveAgentCommandRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令格式无效 / Invalid agent command", nil)
+		return
+	}
+	if strings.TrimSpace(body.Type) == "abandon_pending" {
+		branchID := strings.TrimSpace(body.BranchID)
+		if branchID == "" {
+			branchID = strings.TrimSpace(body.Branch)
+		}
+		if strings.TrimSpace(body.StoryID) == "" || strings.TrimSpace(body.ResumeInterruptionID) == "" {
+			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "story_id and resume_interruption_id are required", nil)
+			return
+		}
+		if err := h.app.AbandonInteractiveInterruption(ctx, body.StoryID, branchID, body.ResumeInterruptionID); err != nil {
+			h.writeAgentCommandError(ctx, c, err, body.ResumeInterruptionID)
+			return
+		}
+		c.JSON(consts.StatusAccepted, map[string]bool{"ok": true})
 		return
 	}
 	kind, err := interactiveAgentCommandKind(body.Type)

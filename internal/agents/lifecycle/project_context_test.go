@@ -146,3 +146,27 @@ func TestProjectInstructionsContextIdentityUsesProjectIDInsteadOfRuntimeRoot(t *
 		t.Fatal("context identity must distinguish different Projects")
 	}
 }
+
+func TestStandingProjectInstructions(t *testing.T) {
+	standing := func(resource string) agentschema.ContextFragment {
+		return agentschema.ContextFragment{
+			Resource: resource, Stability: agentschema.ContextStablePrefix, Placement: agentschema.ContextLeadingMessage,
+		}
+	}
+	if !StandingProjectInstructions(standing(book.AgentInstructionsFileName)) {
+		t.Fatal("AGENTS.md must be classified as standing project instructions")
+	}
+	if !StandingProjectInstructions(standing(book.CreatorFileName)) {
+		t.Fatal("CREATOR.md must be classified as standing project instructions")
+	}
+	dynamic := standing(book.CreatorFileName)
+	dynamic.Stability = agentschema.ContextSessionState
+	if StandingProjectInstructions(dynamic) {
+		t.Fatal("session-state fragment must not be standing")
+	}
+	foreign := standing("setting/progress.md")
+	if StandingProjectInstructions(foreign) {
+		t.Fatal("non-root project file must not be standing")
+	}
+}
+

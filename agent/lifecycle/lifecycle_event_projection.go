@@ -28,7 +28,3 @@ func publicEventSource(source agentengine.EventSource) agentevent.EventSource {
 		InvocationID: source.InvocationID, InvocationType: source.InvocationType,
 	}
 }
-
-func eventSourceEmpty(source agentevent.EventSource) bool {
-	return source.Name == "" && len(source.Path) == 0 && source.InvocationID == "" && source.InvocationType == ""
-}

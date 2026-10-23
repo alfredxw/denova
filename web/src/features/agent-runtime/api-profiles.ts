@@ -7,11 +7,12 @@ import type { AgentEngineID } from './types'
 
 /** Protocol filtering uses the same provider defaults as the backend catalog. */
 export function runtimeProfileOptions(engine: AgentEngineID, settings: Pick<LayeredSettings, 'effective'>, catalog: ModelCatalog) {
+  if (engine !== 'codex' && engine !== 'claude') return []
   const protocol = engine === 'codex' ? 'openai-responses' : 'anthropic-messages'
   const endpoints = modelEndpointsWithDefault(settings.effective)
   return selectableModelProfiles(settings.effective).flatMap(profile => {
     const endpoint = endpoints.find(item => item.id === profile.endpoint_id)
-    if (!endpoint || !profile.model || engine === 'native') return []
+    if (!endpoint || !profile.model) return []
     const actual = endpoint.protocol || catalog.providers.find(item => item.id === endpoint.provider)?.default_protocol
     if (actual !== protocol || Object.keys(endpoint.protocol_options ?? {}).length || (endpoint.session_key_mapping && endpoint.session_key_mapping.location !== 'none')) return []
     return [{ id: `profile:${profile.id}`, label: modelProfileLabel(profile), modelLabel: modelProfileLabel(profile) }]
@@ -23,7 +24,7 @@ export function useRuntimeProfiles(engine: AgentEngineID) {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
-    if (engine === 'native') return
+    if (engine !== 'codex' && engine !== 'claude') return
     let active = true
     setFailed(false)
     const unsubscribe = subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, setSettings)

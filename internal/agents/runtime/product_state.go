@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"denova/config"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/sessionjournal"
@@ -17,7 +18,9 @@ import (
 // capability schemas as Native, without constructing a Native Agent Session.
 // Mutation callbacks are pure and run under the product's canonical CAS fence.
 type ProductState struct {
-	Read func(context.Context, string) (json.RawMessage, bool, error)
+	// engine is an admission snapshot; changing engines requires an idle controller.
+	engine config.RuntimeID
+	Read   func(context.Context, string) (json.RawMessage, bool, error)
 	// Transact atomically replaces only the returned states, preserving a backup
 	// named by the format upgrade before the first append. Its borrowed reader
 	// observes one canonical snapshot; callbacks must tolerate CAS retries.
@@ -29,7 +32,9 @@ func SessionState(options agentrun.Options, sess *session.Session) (ProductState
 	if err != nil {
 		return ProductState{}, err
 	}
+	selection, _ := sess.RuntimeConfig()
 	return ProductState{
+		engine: selection.Engine().Kind,
 		Read: func(ctx context.Context, capability string) (json.RawMessage, bool, error) {
 			return sess.LoadCapability(ctx, key, capability)
 		},
@@ -100,6 +105,9 @@ func (store ProductState) UpdateGoal(ctx context.Context, mutation agentschema.G
 }
 
 func (store ProductState) GoalContext(ctx context.Context) (string, error) {
+	if !store.supportsGoal() {
+		return "", nil
+	}
 	state, present, err := store.Goal(ctx)
 	if err != nil {
 		return "", err
@@ -113,4 +121,8 @@ func (store ProductState) GoalContext(ctx context.Context) (string, error) {
 		text += fragment.Content + "\n\n"
 	}
 	return text, nil
+}
+
+func (store ProductState) supportsGoal() bool {
+	return store.engine != config.RuntimeGrok && store.engine != config.RuntimeAntigravity
 }

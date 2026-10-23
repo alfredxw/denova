@@ -76,6 +76,8 @@ const importCard = {
   'importCard.chooseFileFirst': 'Choose a Tavern card file first',
   'importCard.noCurrentBookImportNew': 'No book is open. Choose "Import as New Book".',
   'importCard.importSuccess': 'Imported Tavern card "{{name}}"',
+  'importCard.overriddenList': 'Replaced with more detailed settings: {{names}}',
+  'importCard.skippedList': 'Kept existing settings (import was less detailed): {{names}}',
   'importCard.importFailed': 'Failed to import Tavern card',
 } as const
 

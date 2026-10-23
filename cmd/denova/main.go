@@ -162,6 +162,10 @@ func main() {
 		}
 	})
 	slog.InfoContext(ctx, "startup_prepared", "duration_ms", float64(time.Since(startupStarted))/float64(time.Millisecond))
+	// Resolve engine readiness in the background so the first model menu already
+	// shows real state. Probes are serialized and cached per engine, and a
+	// long-lived container only pays for this once per start.
+	runBackground("agent-runtime-warmup", func() { application.WarmUpAgentRuntimes(ctx) })
 	srv.Run()
 }
 

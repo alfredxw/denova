@@ -12,19 +12,24 @@ export function planCI(files, full) {
   const workflow = files.some(file => file.startsWith('.github/'))
   const dependencies = files.some(file => manifests.test(file))
   const code = full || files.some(file => !independent.test(file))
+  // Frontend and workflow changes need every browser journey, not just smoke:
+  // most regressions reach production through the UI, and a smoke-only run
+  // leaves the remaining journeys unverified until a release tag is pushed.
+  const browserFull = full || workflow || files.some(file => file.startsWith('web/'))
   const modules = []
   if (full || workflow || dependencies || files.some(file => !independent.test(file) && !file.startsWith('web/'))) modules.push('.')
   if (full || workflow || dependencies || files.some(file => file.startsWith('agent/'))) modules.push('agent')
   return {
     code,
     full,
+    browser_full: browserFull,
     manifests: full || dependencies,
     go_modules: modules,
     unit: full || workflow || files.some(file => file.startsWith('web/')),
     updater: full || workflow || dependencies || files.some(file => updater.test(file)),
     creative_eval: full || workflow || files.some(file => /^(tools\/creative-eval\/|scripts\/eval-creative\.sh$)/.test(file)),
-    browser_shards: full ? [1, 2, 3] : [1],
-    shard_count: full ? 3 : 1,
+    browser_shards: browserFull ? [1, 2, 3] : [1],
+    shard_count: browserFull ? 3 : 1,
   }
 }
 

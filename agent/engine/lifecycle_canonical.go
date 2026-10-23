@@ -28,7 +28,7 @@ func canonicalMessageCheckpoint(state engineTranscript) (PersistedMessageCheckpo
 			break
 		}
 	}
-	hash, err := agentschema.HashCanonical(state.Messages[:committed])
+	hash, err := agentschema.HashCanonicalMessages(state.Messages[:committed])
 	if err != nil {
 		return PersistedMessageCheckpoint{}, err
 	}

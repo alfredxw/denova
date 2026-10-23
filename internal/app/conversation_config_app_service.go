@@ -54,6 +54,8 @@ type ConversationConfigPatch struct {
 	Runtime       *config.RuntimeSelection      `json:"runtime,omitempty"`
 	Codex         *config.CodexRuntimeSettings  `json:"codex,omitempty"`
 	Claude        *config.ClaudeRuntimeSettings `json:"claude,omitempty"`
+	Grok          *config.GrokRuntimeSettings        `json:"grok,omitempty"`
+	Antigravity   *config.AntigravityRuntimeSettings `json:"antigravity,omitempty"`
 }
 
 type ConversationGoalMutation struct {
@@ -188,6 +190,8 @@ func (patch *ConversationConfigPatch) UnmarshalJSON(data []byte) error {
 		Runtime:       parsed.Runtime,
 		Codex:         parsed.Codex,
 		Claude:        parsed.Claude,
+		Grok:          parsed.Grok,
+		Antigravity:   parsed.Antigravity,
 	}
 	return nil
 }
@@ -223,7 +227,7 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 }
 
 func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch ConversationConfigPatch, baseRevision uint64) (conversationconfig.Snapshot, error) {
-	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil && patch.Runtime == nil && patch.Codex == nil && patch.Claude == nil {
+	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil && patch.Runtime == nil && patch.Codex == nil && patch.Claude == nil && patch.Grok == nil && patch.Antigravity == nil {
 		return conversationconfig.Snapshot{}, errors.New("conversation config changes are empty")
 	}
 	if patch.ProfileID != nil || patch.ThinkingLevel != nil || patch.Runtime != nil {
@@ -238,6 +242,8 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 		Runtime:       patch.Runtime,
 		Codex:         patch.Codex,
 		Claude:        patch.Claude,
+		Grok:          patch.Grok,
+		Antigravity:   patch.Antigravity,
 	}
 	var snapshot conversationconfig.Snapshot
 	var err error
@@ -383,7 +389,7 @@ func (a *App) patchInteractiveConversationConfig(ctx context.Context, binding Co
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	if patch.Runtime != nil || patch.Codex != nil || patch.Claude != nil {
+	if patch.Runtime != nil || patch.Codex != nil || patch.Claude != nil || patch.Grok != nil || patch.Antigravity != nil {
 		runtime, options, err := a.interactiveSessionRuntime(binding)
 		if err != nil {
 			return conversationconfig.Snapshot{}, err
@@ -398,8 +404,26 @@ func (a *App) patchInteractiveConversationConfig(ctx context.Context, binding Co
 		if err != nil {
 			return conversationconfig.Snapshot{}, err
 		}
-		if pending != nil {
-			return conversationconfig.Snapshot{}, agentruntime.ErrOperationActive
+		if pending != nil && next.Engine().Kind == config.RuntimeNative {
+			// Native cannot consume an external Game draft's deterministic tool
+			// identity. Do not silently replay dice or state side effects.
+			return conversationconfig.Snapshot{}, fmt.Errorf("%w: finish or abandon the interrupted CLI turn before switching to Native", agentruntime.ErrOperationActive)
+		}
+		// Verify the destination before releasing the suspended source. A model or
+		// effort change inside the current engine validates against the cached
+		// catalog; only an engine switch has to pin a new connection.
+		if next.Engine().Kind != config.RuntimeNative {
+			if next.Engine().Kind == current.Engine().Kind {
+				if err := a.AgentEngines().ValidateSelection(ctx, next.Engine()); err != nil {
+					return conversationconfig.Snapshot{}, err
+				}
+			} else {
+				_, release, err := a.AgentEngines().Acquire(ctx, next.Engine(), runtimeCfg)
+				if err != nil {
+					return conversationconfig.Snapshot{}, err
+				}
+				release()
+			}
 		}
 		if err := runtime.ReleaseIdleForEngineSwitch(ctx, options); err != nil && !errors.Is(err, agentexecution.ErrRuntimeProjectionUnavailable) {
 			if errors.Is(err, agentschema.ErrSessionBusy) {
@@ -407,12 +431,38 @@ func (a *App) patchInteractiveConversationConfig(ctx context.Context, binding Co
 			}
 			return conversationconfig.Snapshot{}, err
 		}
-		if next.Engine().Kind != config.RuntimeNative {
-			_, release, err := a.AgentEngines().Acquire(ctx, next.Engine(), runtimeCfg)
+		if pending != nil {
+			controller, selected, err := a.externalController(options)
 			if err != nil {
 				return conversationconfig.Snapshot{}, err
 			}
-			release()
+			if !selected {
+				return conversationconfig.Snapshot{}, agentruntime.ErrOperationActive
+			}
+			// A cold restart may still project Running until the controller
+			// first observes that its process-local runner is gone.
+			if _, err := controller.Status(ctx); err != nil {
+				return conversationconfig.Snapshot{}, err
+			}
+			snapshot, err := store.Snapshot(binding.StoryID, options.BranchID)
+			if err != nil {
+				return conversationconfig.Snapshot{}, err
+			}
+			acceptedCommandID := ""
+			for _, input := range snapshot.PendingPlayerInputs {
+				if input.ID == pending.PlayerInputID {
+					acceptedCommandID = input.AgentCommandID
+					break
+				}
+			}
+			if acceptedCommandID == "" {
+				return conversationconfig.Snapshot{}, agentruntime.ErrOperationActive
+			}
+			// Only detach a quiescent suspended CLI operation. Canonical
+			// PlayerInput, TurnDraft, dice and tool evidence remain durable.
+			if err := controller.DetachSuspendedGameForEngineSwitch(ctx, acceptedCommandID); err != nil {
+				return conversationconfig.Snapshot{}, err
+			}
 		}
 	}
 	return store.SetBranchRuntimeConfig(binding.StoryID, binding.BranchID, next, baseRevision)

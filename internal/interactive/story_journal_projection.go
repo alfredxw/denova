@@ -216,7 +216,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		// Turn or a creator edit invalidates checkpoints even when only archived
 		// bodies changed. Both markers are derived from existing event IDs.
 		switch record.Envelope.Type {
-		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch:
+		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeTurnAbandoned:
 			branch.HistoryRevision = record.Envelope.ID
 		case StoryEventTypeTurn:
 			branch.HistoryRevision = record.Envelope.ID
@@ -298,6 +298,12 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			return err
 		}
 		branch.PendingInterruption = &event
+	case StoryEventTypeTurnAbandoned:
+		var event TurnAbandonedEvent
+		if err := mapToStruct(record.Raw, &event); err != nil { return err }
+		branch.consumePlayerInputs(event.PlayerInputID, nil)
+		delete(projection.TurnDrafts, turnDraftKey(event.BranchID, DomainCommitIdentity{CommandID: event.AgentCommandID, OperationID: event.AgentOperationID, Cycle: event.AgentCycle}))
+		if branch.PendingInterruption != nil && branch.PendingInterruption.PlayerInputID == event.PlayerInputID { branch.PendingInterruption = nil }
 	case StoryEventTypeModelContextBatch:
 		var event ModelContextBatchEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {

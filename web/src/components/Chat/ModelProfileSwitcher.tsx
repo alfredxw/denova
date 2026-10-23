@@ -30,6 +30,7 @@ interface ModelProfileSwitcherProps {
   conversationConfig?: ConversationConfigController
   disabled?: boolean
   runActive?: boolean
+  onRuntimeChanged?: () => void | Promise<void>
 }
 
 interface SavingSelection {
@@ -41,8 +42,8 @@ interface SavingSelection {
 // horizontally so ellipsis still works without cutting off glyphs vertically.
 const MODEL_LABEL_OVERFLOW_CLASS = 'min-w-0 overflow-x-clip overflow-y-visible text-ellipsis whitespace-nowrap'
 
-export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false, runActive = false }: ModelProfileSwitcherProps) {
-  const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled, runActive })
+export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false, runActive = false, onRuntimeChanged }: ModelProfileSwitcherProps) {
+  const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled, runActive, onRuntimeChanged })
   const [open, setOpen] = useState(false)
   const pendingNavigationRef = useRef<(() => void) | null>(null)
   const navigation = useToolNavigation()
@@ -83,17 +84,10 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
           navigate()
         }}
       >
-        {conversationConfig && <ConversationRuntimeMenu
-          controller={conversationConfig} runActive={runActive} disabled={disabled}
-          configurationDisabled={!navigation}
-          onConfigure={() => {
-            pendingNavigationRef.current = () => navigation?.open({ kind: 'config_resource', resource: 'agent_profile',
-              id: conversationConfig.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime' })
-            setOpen(false)
-          }}
-        />}
-        <DropdownMenuSeparator />
-        {conversationConfig?.error && <DropdownMenuGroup><DropdownMenuItem disabled={conversationConfig.loading} onSelect={() => void conversationConfig.reload()}>{selector.t('common.retry')}</DropdownMenuItem></DropdownMenuGroup>}
+        {conversationConfig?.error && <>
+          <DropdownMenuGroup><DropdownMenuItem disabled={conversationConfig.loading} onSelect={() => void conversationConfig.reload()}>{selector.t('common.retry')}</DropdownMenuItem></DropdownMenuGroup>
+          <DropdownMenuSeparator />
+        </>}
         {runActive ? (
           <>
             <div role="note" className="px-1.5 py-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
@@ -109,6 +103,22 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
             void selector.selectThinkingLevel(level)
           }}
         />
+        {/* The runtime row stays last: this menu opens upward, so only its last
+            row keeps its position when a late engine catalog grows the list
+            above it. A moving trigger row would drag the runtime submenu out
+            from under the pointer and dismiss it. */}
+        {conversationConfig && <>
+          <DropdownMenuSeparator />
+          <ConversationRuntimeMenu
+            controller={conversationConfig} runActive={runActive} disabled={disabled} onRuntimeChanged={onRuntimeChanged}
+            configurationDisabled={!navigation}
+            onConfigure={() => {
+              pendingNavigationRef.current = () => navigation?.open({ kind: 'config_resource', resource: 'agent_profile',
+                id: conversationConfig.snapshot?.custom_agent_id || agentKey, scope: 'user', section: 'runtime' })
+              setOpen(false)
+            }}
+          />
+        </>}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -135,7 +145,7 @@ interface ModelProfileSelector {
   selectThinkingLevel: (level: string) => Promise<void>
 }
 
-function useModelProfileSelector({ agentKey, conversationConfig, disabled = false, runActive = false }: ModelProfileSelectorInput): ModelProfileSelector {
+function useModelProfileSelector({ agentKey, conversationConfig, disabled = false, runActive = false, onRuntimeChanged }: ModelProfileSelectorInput): ModelProfileSelector {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<LayeredSettings | null>(null)
   const [savingSelection, setSavingSelection] = useState<SavingSelection | null>(null)
@@ -195,10 +205,10 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   const currentThinkingLevel = engineSettings ? engineSettings.profile_id ? '' : engineSettings.effort || 'default' : normalizeThinkingLevel(conversationConfig?.snapshot?.thinking_level) ?? ''
   const engineModel = engineModels?.items.find((model) => model.id === engineSettings?.model)
   const thinkingLevels: readonly string[] = engineSettings
-    ? (engineModel ? ['default', ...engineModel.efforts] : [])
+    ? (engineModel?.efforts.length ? ['default', ...engineModel.efforts] : [])
     : THINKING_LEVELS
   const thinkingOptions = thinkingLevels.map((value) => ({ value, label: t(`chat.modelProfile.thinking.${value}`, { defaultValue: value }) }))
-  const currentThinkingLevelLabel = currentThinkingLevel
+  const currentThinkingLevelLabel = thinkingLevels.includes(currentThinkingLevel)
     ? t(`chat.modelProfile.thinking.${currentThinkingLevel}`, { defaultValue: currentThinkingLevel })
     : ''
   const currentSelectionLabel = [currentModelLabel, currentThinkingLevelLabel].filter(Boolean).join(' ')
@@ -215,6 +225,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
         ? { profile_id: selection.value }
         : { thinking_level: selection.value as ThinkingLevel })
       if (!saved) toast.error(t('chat.modelProfile.saveFailed'))
+      else void Promise.resolve(onRuntimeChanged?.()).catch(cause => console.warn('[conversation-config] refresh Game runtime failed', cause))
     } finally {
       setSavingSelection(null)
     }

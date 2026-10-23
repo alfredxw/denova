@@ -38,6 +38,7 @@ jobs:
       unit: ${{ steps.paths.outputs.unit }}
       updater: ${{ steps.paths.outputs.updater }}
       creative_eval: ${{ steps.paths.outputs.creative_eval }}
+      browser_full: ${{ steps.paths.outputs.browser_full }}
       browser_shards: ${{ steps.paths.outputs.browser_shards }}
       shard_count: ${{ steps.paths.outputs.shard_count }}
     steps:
@@ -79,8 +80,21 @@ jobs:
       - name: Test and vet
         working-directory: ${{ matrix.module }}
         run: |
-          go test ./...
-          go vet ./...
+          set -o pipefail
+          # Surface failures as check annotations so a red run explains itself
+          # without requiring log access.
+          if ! go test ./... 2>&1 | tee go-test.log; then
+            grep -E '^(--- FAIL:|FAIL|panic:|# )' go-test.log | head -n 20 | while IFS= read -r line; do
+              echo "::error title=go test (${{ matrix.module }})::$line"
+            done
+            exit 1
+          fi
+          if ! go vet ./... 2>&1 | tee go-vet.log; then
+            grep -v '^#' go-vet.log | head -n 10 | while IFS= read -r line; do
+              echo "::error title=go vet (${{ matrix.module }})::$line"
+            done
+            exit 1
+          fi
       - name: Test installer and packaging
         if: matrix.module == '.'
         run: |
@@ -95,7 +109,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # Pin the supported macOS image instead of following fleet migrations.
+        os: [windows-latest, macos-15, ubuntu-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -193,12 +208,12 @@ jobs:
     timeout-minutes: 35
     strategy:
       # Keep all diagnostics in full CI; ordinary smoke cancels sibling shards.
-      fail-fast: ${{ needs.changes.outputs.full != 'true' }}
+      fail-fast: ${{ needs.changes.outputs.browser_full != 'true' }}
       matrix:
         shard: ${{ fromJSON(needs.changes.outputs.browser_shards) }}
     env:
       DENOVA_E2E_PACKAGE_DIR: ${{ github.workspace }}/output
-      DENOVA_CI_SUITE: ${{ needs.changes.outputs.full == 'true' && 'full' || 'smoke' }}
+      DENOVA_CI_SUITE: ${{ needs.changes.outputs.browser_full == 'true' && 'full' || 'smoke' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-web

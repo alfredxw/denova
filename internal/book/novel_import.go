@@ -42,7 +42,6 @@ var (
 	prefaceTitleRe   = regexp.MustCompile(`^\s*(?:(?:序章|楔子|引子|前言|序幕|序言|尾声|后记|番外)(?:\s*[0-9零〇一二三四五六七八九十百千万两]*\s*(?:[:：、\-—.．]\s*)?[^\n\r]{0,80})?|序(?:\s*[:：、\-—.．]\s*[^\n\r]{0,80})?)\s*$`)
 	enChapterRe      = regexp.MustCompile(`(?i)^\s*chapter\s+[0-9ivxlcdm]+[^\n\r]{0,80}$`)
 	enVolumeRe       = regexp.MustCompile(`(?i)^\s*(?:part|volume)\s+[0-9ivxlcdm]+[^\n\r]{0,80}$`)
-	enSpecialTitleRe = regexp.MustCompile(`(?i)^\s*(prologue|epilogue)\b`)
 	numberedTitleRe  = regexp.MustCompile(`^\s*[0-9]{1,4}[\.、]\s*[^\n\r]{1,80}$`)
 	blankLinePattern = regexp.MustCompile(`\n{3,}`)
 )

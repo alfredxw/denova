@@ -162,8 +162,10 @@ func TestUpdaterProcessHandoffAndRecovery(t *testing.T) {
 					}
 				}
 				if t.Failed() {
-					data, _ := os.ReadFile(filepath.Join(install, "process.log"))
-					t.Log(string(data))
+					for _, diagnostic := range []string{filepath.Join(install, "process.log"), m.LogPath, path, path + ".accepted"} {
+						data, err := os.ReadFile(diagnostic)
+						t.Logf("%s: %s (read error: %v)", diagnostic, data, err)
+					}
 				}
 			}()
 			client := &http.Client{Timeout: time.Second}
@@ -188,7 +190,11 @@ func TestUpdaterProcessHandoffAndRecovery(t *testing.T) {
 				t.Fatalf("legacy browser origin changed after update: %s", baseURL)
 			}
 			if !recovering && !completed && !scenario.legacy {
-				resp, err := client.Post(baseURL+"/apply", "application/json", nil)
+				// Applying waits for a real child to acknowledge handoff before HTTP
+				// returns. Its request budget must exceed the production handshake.
+				applyClient := &http.Client{Timeout: applyHandoffTimeout + 5*time.Second}
+				defer applyClient.CloseIdleConnections()
+				resp, err := applyClient.Post(baseURL+"/apply", "application/json", nil)
 				if err != nil {
 					t.Fatal(err)
 				}

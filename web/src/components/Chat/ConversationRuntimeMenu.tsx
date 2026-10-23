@@ -6,9 +6,10 @@ import { useTranslation } from 'react-i18next'
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu'
 import { checkAgentEngine, fetchAgentEngines, fetchEngineModels } from '@/features/agent-runtime/api'
 import { runtimeProfileOptions } from '@/features/agent-runtime/api-profiles'
-import type { AgentEngineID } from '@/features/agent-runtime/types'
+import { AGENT_ENGINE_IDS, type AgentEngineID } from '@/features/agent-runtime/types'
 import type { ConversationConfigChanges, ConversationConfigController } from '@/features/conversation-config/types'
 import { fetchModelCatalog, fetchProjectSettings, fetchSettings } from '@/features/settings/api'
+import { GLOBAL_SETTINGS_TARGET, projectSettingsTarget, subscribeSettingsTarget } from '@/features/settings/query'
 import { selectableModelProfiles } from '@/features/settings/model-profiles'
 import { normalizeThinkingLevel } from '@/features/settings/thinking-levels'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -17,7 +18,7 @@ type RuntimeChoice = { kind: AgentEngineID; changes?: ConversationConfigChanges;
 
 /** Resolves effective defaults without changing Agent preferences. API profiles do
  * not require CLI authentication; the server validates admission before commit. */
-async function loadChoices(controller: ConversationConfigController): Promise<RuntimeChoice[]> {
+async function loadChoices(controller: ConversationConfigController, only?: AgentEngineID): Promise<RuntimeChoice[]> {
   const projectID = controller.binding?.project_id
   const [settings, { items }] = await Promise.all([
     projectID ? fetchProjectSettings(projectID) : fetchSettings(), fetchAgentEngines(),
@@ -29,7 +30,7 @@ async function loadChoices(controller: ConversationConfigController): Promise<Ru
     ? effective.custom_agents?.find(agent => agent.id === snapshot.custom_agent_id)?.runtime
     : agentKind === 'ide' || agentKind === 'general' || agentKind === 'interactive_story'
       ? effective.agent_runtimes?.[agentKind] : undefined
-  return Promise.all((['native', 'codex', 'claude'] as const).map(async (kind): Promise<RuntimeChoice> => {
+  return Promise.all((only ? [only] : AGENT_ENGINE_IDS).map(async (kind): Promise<RuntimeChoice> => {
     try {
       if (kind === 'native') {
         const profiles = selectableModelProfiles(effective).filter(item => item.model?.trim())
@@ -51,7 +52,7 @@ async function loadChoices(controller: ConversationConfigController): Promise<Ru
       if (status !== 'ready' && !(model?.profile_id && status === 'auth_required')) {
         return { kind, reason: engine?.reason_key || `agentRuntime.status.${status}` }
       }
-      if (model?.profile_id) {
+      if ((kind === 'codex' || kind === 'claude') && model?.profile_id) {
         const profileID = model.profile_id
         const catalog = await fetchModelCatalog()
         if (runtimeProfileOptions(kind, settings, catalog).some(item => item.id === `profile:${profileID}`)) {
@@ -67,10 +68,12 @@ async function loadChoices(controller: ConversationConfigController): Promise<Ru
       const resolved = { model: found.id,
         ...(found.id === model?.model && model.effort && found.efforts.includes(model.effort) ? { effort: model.effort } : {}),
       }
-      return { kind, changes: { runtime: kind === 'codex'
-        ? { kind, codex: { ...resolved, ...(preferences?.codex?.sandbox ? { sandbox: preferences.codex.sandbox } : {}) } }
-        : { kind, claude: resolved },
-      } }
+      switch (kind) {
+        case 'codex': return { kind, changes: { runtime: { kind, codex: { ...resolved, ...(preferences?.codex?.sandbox ? { sandbox: preferences.codex.sandbox } : {}) } } } }
+        case 'claude': return { kind, changes: { runtime: { kind, claude: resolved } } }
+        case 'grok': return { kind, changes: { runtime: { kind, grok: resolved } } }
+        case 'antigravity': return { kind, changes: { runtime: { kind, antigravity: resolved } } }
+      }
     } catch (cause) {
       console.warn('[conversation-config] load runtime choice failed', { kind, cause })
       return { kind, reason: 'agentRuntime.connectionFailed' }
@@ -78,13 +81,15 @@ async function loadChoices(controller: ConversationConfigController): Promise<Ru
   }))
 }
 
-/** Model-menu selector. Opening or checking never switches the bound session. */
-export function ConversationRuntimeMenu({ controller, runActive, disabled = false, onConfigure, configurationDisabled = false }: {
+/** Model-menu selector. Opening reads cached engine state and never probes: a
+ * probe spawns a CLI process, so it belongs to an explicit user action. */
+export function ConversationRuntimeMenu({ controller, runActive, disabled = false, onConfigure, configurationDisabled = false, onRuntimeChanged }: {
   controller: ConversationConfigController
   runActive: boolean
   disabled?: boolean
   onConfigure: () => void
   configurationDisabled?: boolean
+  onRuntimeChanged?: () => void | Promise<void>
 }) {
   const { t } = useTranslation()
   const narrow = useIsMobile('(max-width: 700px)')
@@ -96,14 +101,30 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
   const [revision, setRevision] = useState(0)
   const current = controller.snapshot?.runtime?.kind ?? 'native'
   const draftStory = controller.binding?.mode === 'interactive' && !controller.binding.story_id
-  const selectionDisabled = disabled || !controller.initialized || controller.loading || runActive || controller.saving || Boolean(pending) || loading || draftStory
+  const selectionDisabled = disabled || !controller.initialized || controller.loading || runActive || controller.saving || Boolean(pending) || (loading && !choices.length) || draftStory
+
+  useEffect(() => {
+    const invalidate = () => setRevision(value => value + 1)
+    const target = controller.binding?.project_id
+      ? projectSettingsTarget(controller.binding.project_id) : GLOBAL_SETTINGS_TARGET
+    let previousSettings = ''
+    return subscribeSettingsTarget(target, snapshot => {
+      // Fetching an identical snapshot must not trigger a refresh loop.
+      const signature = JSON.stringify(snapshot.effective ?? {})
+      if (signature === previousSettings) return
+      previousSettings = signature
+      invalidate()
+    })
+  }, [controller.binding?.project_id])
 
   useEffect(() => {
     if (!open) return
     let active = true
     setLoading(true)
     setError('')
-    void loadChoices(controller).then(next => { if (active) setChoices(next) }).catch(cause => {
+    void loadChoices(controller).then(next => {
+      if (active) setChoices(next)
+    }).catch(cause => {
       console.warn('[conversation-config] load runtime choices failed', { cause })
       if (active) { setChoices([]); setError(errorMessage(cause, t('agentRuntime.connectionFailed'))) }
     }).finally(() => { if (active) setLoading(false) })
@@ -116,10 +137,13 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
     setError('')
     try {
       if (choice.unchecked) {
+        // An unknown engine is probed only when the user selects it, and a probe
+        // never switches the bound conversation.
         try { await checkAgentEngine(choice.kind) } finally { setRevision(value => value + 1) }
       } else if (choice.changes) {
-        // Re-resolve on submission so changed settings cannot apply stale defaults.
-        const fresh = (await loadChoices(controller)).find(item => item.kind === choice.kind)
+        // Re-resolve only the chosen engine so changed settings cannot apply
+        // stale defaults without probing the other engines again.
+        const fresh = (await loadChoices(controller, choice.kind))[0]
         if (!fresh?.changes) {
           setError(t(fresh?.reason || 'agentRuntime.notReady'))
           setRevision(value => value + 1)
@@ -128,6 +152,7 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
         if (await controller.patch(fresh.changes)) {
           console.info('[conversation-config] runtime switched', { from: current, to: choice.kind, binding: controller.binding })
           setOpen(false)
+          void Promise.resolve(onRuntimeChanged?.()).catch(cause => console.warn('[conversation-config] refresh Game runtime failed', cause))
         }
       }
     } catch (cause) {
@@ -141,10 +166,11 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
       <DropdownMenuSubTrigger className="min-w-0 flex-1 cursor-pointer text-xs" disabled={disabled || !controller.initialized}>
         <span className="truncate">{t('agentRuntime.currentRuntime', { runtime: t(`agentRuntime.${current}`) })}</span>
       </DropdownMenuSubTrigger>
-      {/* Narrow screens overlay the parent menu to keep all choices in view. */}
-      <DropdownMenuSubContent avoidCollisions={!narrow} className="max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto w-64 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)] max-[700px]:w-56 max-[700px]:[translate:calc(-1*var(--radix-popper-anchor-width))_0]">
+      {/* The trigger is the menu's last row, so the list grows up from that row
+          instead of running past the bottom of the window. */}
+      <DropdownMenuSubContent align="end" avoidCollisions={!narrow} className="max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto w-64 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)] max-[700px]:w-56 max-[700px]:[translate:calc(-1*var(--radix-popper-anchor-width))_0]">
         <DropdownMenuGroup>
-          {(loading ? [] : choices).map(choice => <div key={choice.kind}>
+          {choices.map(choice => <div key={choice.kind}>
             {/* A failed defaults write can leave the conversation switched. Allow reselecting it to retry. */}
             <DropdownMenuItem disabled={selectionDisabled || (choice.kind === current && !controller.error) || (!choice.changes && !choice.unchecked)}
               aria-label={t(`agentRuntime.${choice.kind}`)} aria-current={choice.kind === current ? 'true' : undefined}
@@ -154,7 +180,7 @@ export function ConversationRuntimeMenu({ controller, runActive, disabled = fals
             </DropdownMenuItem>
             {choice.reason && <p className="px-1.5 pb-1 text-xs text-muted-foreground">{t(choice.reason)}</p>}
           </div>)}
-          {loading && <p role="status" className="px-1.5 py-1 text-xs">{t('agentRuntime.checking')}</p>}
+          {loading && !choices.length && <p role="status" className="px-1.5 py-1 text-xs">{t('agentRuntime.checking')}</p>}
           <DropdownMenuItem disabled={configurationDisabled} onSelect={onConfigure}>{t('agentRuntime.configure')}</DropdownMenuItem>
         </DropdownMenuGroup>
         <p className="whitespace-normal px-1.5 py-1 text-[11px] text-muted-foreground">

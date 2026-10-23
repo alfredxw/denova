@@ -604,6 +604,8 @@ export interface CharacterCardImportResult {
   classification_mode: LoreClassificationMode
   classification_counts: Partial<Record<LoreItem['type'], number>>
   uncertain_type_count: number
+  overridden?: string[]
+  skipped?: string[]
 }
 
 export interface CharacterCardPreview {

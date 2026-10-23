@@ -7,6 +7,7 @@ import { createAgentDataMessage } from '@/lib/agent-ui-message'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import {
   compactInteractiveContext,
+  abandonInteractivePendingTurn,
   getActiveInteractiveChat,
   sendInteractiveMessage,
   streamActiveInteractiveChat,
@@ -137,16 +138,17 @@ export function useStoryStageRuntime({
       })),
   })
 
-  async function send(override?: { message?: string; rewindTurnId?: string; attachments?: File[]; startOpening?: boolean }) {
+  async function send(override?: { message?: string; rewindTurnId?: string; attachments?: File[]; startOpening?: boolean; resumeAfterSwitch?: boolean }) {
     const startOpening = override?.startOpening === true
+    const resumeAfterSwitch = override?.resumeAfterSwitch === true
     const requestedMessage = (override?.message ?? input).trim()
     const files = override?.attachments || []
     const rewindTurnId = override?.rewindTurnId ?? editingTurnId
-    const resumeInterruptionID = !startOpening && !streaming && !rewindTurnId ? readStageRuntime().pendingInterruptionId.trim() : ''
+    const resumeInterruptionID = !startOpening && (!streaming || resumeAfterSwitch) && !rewindTurnId ? readStageRuntime().pendingInterruptionId.trim() : ''
     const resumeFromEmptyComposer = Boolean(!startOpening && resumeInterruptionID && !requestedMessage && files.length === 0)
     const message = resumeFromEmptyComposer ? 'Continue.' : requestedMessage
     const displayMessage = startOpening ? '' : resumeFromEmptyComposer ? t('chat.input.resume') : requestedMessage
-    if ((!message && files.length === 0 && !startOpening) || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return false
+    if ((!message && files.length === 0 && !startOpening) || !storyId || branchTerminal || (blocked && !resumeAfterSwitch) || commandSubmittingRef.current) return false
     let attachmentUploads: ChatAttachmentUpload[] = []
     if (files.length) {
       try {
@@ -156,7 +158,7 @@ export function useStoryStageRuntime({
         return false
       }
     }
-    if (streaming || readStageRuntime().phase === 'suspended') {
+    if (!resumeAfterSwitch && (streaming || readStageRuntime().phase === 'suspended')) {
       const runtime = readStageRuntime()
       if (runtime.abortPending || !runtime.operationId || (runtime.phase !== 'suspended' && runtime.connection !== 'connected')) return false
       return submitFollowUp(message, attachmentUploads)
@@ -541,6 +543,10 @@ export function useStoryStageRuntime({
         rewindTurnId: rewindTurnId || undefined,
         retryMessage: message,
       })
+    } else if (modelOnly) {
+      // An opening has no user message to display, but a retried opening must
+      // still replace the abandoned attempt instead of appending to it.
+      liveAccumulator.resetForCheckpoint()
     }
     liveAccumulator.beginStage(stageKey)
     updateStageRun((current) => ({
@@ -605,11 +611,41 @@ export function useStoryStageRuntime({
     setCommandSubmitting(true)
     try {
       const active = await getActiveInteractiveChat(storyId, branchId)
+      if (!active.runtime_recoverable && !active.active && active.pending_interruption_id) {
+        // The old suspended CLI was detached by model selection. Resume the
+        // same canonical input through a fresh operation on the new engine.
+        interactiveAgentCommands.project(active, 'disconnected')
+        commandSubmittingRef.current = false
+        setCommandSubmitting(false)
+        await send({ message: '', resumeAfterSwitch: true })
+        return
+      }
       const recovered = await interactiveAgentCommands.recover(active, true)
       setStageRuntime(current => ({ ...current, streamEventCursor: '' }))
       const controller = new AbortController()
       registerStoryRunAbortController(stageKey, controller)
       void resumeActiveStoryRun(recovered, controller, () => controller.signal.aborted).catch(appendError)
+    } catch (error) {
+      appendError(error)
+    } finally {
+      commandSubmittingRef.current = false
+      setCommandSubmitting(false)
+    }
+  }
+
+  async function abandonPendingTurn() {
+    if (!storyId || commandSubmittingRef.current) return
+    commandSubmittingRef.current = true
+    setCommandSubmitting(true)
+    try {
+      const current = await getActiveInteractiveChat(storyId, branchId)
+      const interruptionID = current.pending_interruption_id?.trim()
+      if (!interruptionID || current.active || current.phase !== 'idle') {
+        throw new Error(t('chat.runtime.operationChanged'))
+      }
+      await abandonInteractivePendingTurn(storyId, branchId, interruptionID)
+      interactiveAgentCommands.project(await getActiveInteractiveChat(storyId, branchId), 'disconnected')
+      await onDone({ silent: true })
     } catch (error) {
       appendError(error)
     } finally {
@@ -658,7 +694,7 @@ export function useStoryStageRuntime({
     ])
   }
 
-  return { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, compactCurrentContext, send, steerQueuedCommand, stop, suspend, resumeTask }
+  return { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, compactCurrentContext, abandonPendingTurn, send, steerQueuedCommand, stop, suspend, resumeTask }
 }
 
 function systemMessage(content: string) {

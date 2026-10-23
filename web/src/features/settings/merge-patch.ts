@@ -13,13 +13,13 @@ export function createSettingsMergePatch(baseline: Settings, draft: Settings): S
   const patch = createMergePatchValue(baseline, draft)
   if (patch === unchanged || !isPlainObject(patch)) return {}
   const settingsPatch = patch as SettingsPatch
-  // The API replaces each Codex model/effort branch as one selection. A recursive
+  // The API replaces each engine model/effort branch as one selection. A recursive
   // diff would omit the unchanged model during an effort edit (or lose effort).
   for (const role of ['ide', 'general', 'interactive_story'] as const) {
     const runtimePatch = settingsPatch.agent_runtimes?.[role]
-    for (const engine of ['codex', 'claude'] as const) {
+    for (const engine of ['codex', 'claude', 'grok', 'antigravity'] as const) {
       const settings = draft.agent_runtimes?.[role]?.[engine]
-      if (runtimePatch?.[engine] && settings) runtimePatch[engine] = { ...settings }
+      if (runtimePatch?.[engine] && settings) Object.assign(runtimePatch, { [engine]: { ...settings } })
     }
   }
   return settingsPatch

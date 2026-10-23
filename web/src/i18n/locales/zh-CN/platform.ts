@@ -361,6 +361,7 @@ export default {
   'platform.errors.RUNTIME_FAILED': '操作失败，详细原因见本地日志。',
   'platform.errors.RUNTIME_UNAVAILABLE': '运行实例不可用，请停止后重新打开。',
   'platform.errors.PERMISSION_DENIED': '此操作未获得授权。',
+  'platform.errors.LOCAL_HOST_ONLY': '该操作只能在运行 Denova 的本机执行，局域网设备暂不支持。',
   'platform.errors.TOOL_NAME_CONFLICT': '插件工具名与已安装插件重复，请修改工具 ID 后重试。',
   'platform.errors.NOT_CONFIGURED': '请选择所需的项目与模型配置。',
   'platform.errors.UNSUPPORTED': '此运行实例不支持该功能。',

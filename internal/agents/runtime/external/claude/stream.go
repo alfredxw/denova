@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -192,9 +193,13 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 		}
 		if f.Subtype == "init" {
 			s.initialized = true
+			// dontAsk plus the explicit --allowedTools grant is the enforcement
+			// boundary: any tool outside it is auto-denied at call time. An extra
+			// CLI-native tool is therefore an observation, not a product failure;
+			// failing here would break every turn when the CLI adds one.
 			for _, name := range f.Tools {
-				if !s.tools[name] && name != "EndConversation" {
-					return fmt.Errorf("Claude exposed an unscoped tool %q", name)
+				if !s.tools[name] {
+					slog.Warn("Claude exposed a tool outside the product scope", "tool", name)
 				}
 			}
 			for name := range s.tools {

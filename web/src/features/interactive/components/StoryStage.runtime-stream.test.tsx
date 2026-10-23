@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildAgentMessageViews } from '@/lib/agent-message-view'
-import { useInteractiveStore } from '../stores/interactive-store'
+import { createAgentDataMessage, createAgentTextMessage } from '@/lib/agent-ui-message'
+import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import {
   PersistedTurnHarness,
   StoryStageHarness,
@@ -12,6 +13,7 @@ import {
   getStageInput,
   persistedTurnEvent,
   resetStoryStageTestHarness,
+  story,
 } from './story-stage/story-stage-test-harness'
 
 const testMocks = vi.hoisted(() => ({
@@ -55,6 +57,9 @@ vi.mock('../api', () => ({
   compactInteractiveContext: vi.fn(),
   generateInteractiveImage: testMocks.generateInteractiveImageMock,
   getActiveInteractiveChat: testMocks.getActiveInteractiveChatMock,
+  getActorStates: vi.fn().mockResolvedValue([]),
+  getEventPackages: vi.fn().mockResolvedValue([]),
+  getRuleSystems: vi.fn().mockResolvedValue([]),
   removeInteractiveContextCompaction: vi.fn(),
   recoverInteractiveAgentRuntime: testMocks.recoverInteractiveAgentRuntimeMock,
   sendInteractiveMessage: testMocks.sendInteractiveMessageMock,
@@ -565,6 +570,52 @@ describe('StoryStage runtime stream lifecycle', () => {
     } finally {
       firstStream.close()
       retryStream.close()
+    }
+  })
+
+  it('restarts a failed opening instead of replaying empty input', async () => {
+    const user = userEvent.setup()
+    const streams: ReturnType<typeof controllableInteractiveStream>[] = []
+    sendInteractiveMessageMock.mockImplementation(() => {
+      const stream = controllableInteractiveStream()
+      streams.push(stream)
+      return Promise.resolve(stream.readable)
+    })
+    // A failed opening leaves the live turn without user-authored text: the
+    // backend generated it from the story opening configuration.
+    useInteractiveStore.setState({
+      storyStageRuns: {
+        '/tmp/book:story-1:main': {
+          ...emptyStoryStageRun(),
+          liveMessages: [
+            createAgentTextMessage({ id: 'live-user', role: 'user', text: '' }),
+            createAgentDataMessage({ id: 'live-error', type: 'agent-error', data: { role: 'error', content: '模型连接中断' } }),
+          ],
+        },
+      },
+    })
+
+    try {
+      render(
+        <StoryStageHarness
+          story={{ ...story(), title_source: 'pending', turn_count: 0 }}
+          initialSnapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+          onDone={vi.fn().mockResolvedValue(undefined)}
+        />,
+      )
+
+      await user.click(await screen.findByRole('button', { name: '重新生成这一轮' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
+      const request = sendInteractiveMessageMock.mock.calls[0][0]
+      expect(request).toMatchObject({ story_id: 'story-1', branch: 'main', start_opening: true })
+      expect(request.message).toBeUndefined()
+      expect(request.regenerate_from_turn_id).toBeUndefined()
+      // The failed opening's partial output and error are replaced by the new attempt.
+      await waitFor(() => expect(screen.queryByText('模型连接中断')).not.toBeInTheDocument())
+    } finally {
+      await act(async () => {
+        for (const stream of streams) stream.close()
+      })
     }
   })
 

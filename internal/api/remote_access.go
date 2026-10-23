@@ -106,9 +106,10 @@ func sameOriginRequest(c *app.RequestContext) bool {
 	// HTTP proxy WebSocket upgrades report ws/wss, while the browser Origin
 	// remains the embedding page's http/https origin.
 	if strings.EqualFold(string(c.GetHeader("Upgrade")), "websocket") {
-		if scheme == "ws" {
+		switch scheme {
+		case "ws":
 			scheme = "http"
-		} else if scheme == "wss" {
+		case "wss":
 			scheme = "https"
 		}
 	}

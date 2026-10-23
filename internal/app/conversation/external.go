@@ -11,6 +11,7 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
+	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/runtime/external"
@@ -70,15 +71,24 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 		}
 		fragments = append(fragments, shared...)
 	}
-	var instruction strings.Builder
+	// Author-owned AGENTS.md and CREATOR.md rules belong in the engine's system
+	// instructions, where they weigh the same as in a Native turn. Everything
+	// assembled per turn — state, lore, history — stays in the user text so the
+	// system prefix remains stable for provider cache matching.
+	var standing, turnContext strings.Builder
+	standingRules := runtime.Config.ActiveAgentRuntime != nil && external.StandingInstructionsSupported(runtime.Config.ActiveAgentRuntime.Kind)
 	for _, fragment := range fragments {
 		switch fragment.Placement {
 		case agentschema.ContextLeadingMessage, agentschema.ContextStateMessage:
 			if len(fragment.Content) > fragment.HardLimit {
 				return external.StartRequest{}, fmt.Errorf("external context exceeds source limit: %s", fragment.Source)
 			}
-			instruction.WriteString("\n\n")
-			instruction.WriteString(fragment.Content)
+			target := &turnContext
+			if standingRules && agentlifecycle.StandingProjectInstructions(fragment) {
+				target = &standing
+			}
+			target.WriteString("\n\n")
+			target.WriteString(fragment.Content)
 		case agentschema.ContextAuditOnly:
 		case agentschema.ContextFinalUserPrefix, agentschema.ContextFinalUserMessage, agentschema.ContextCompactionCheckpoint:
 			return external.StartRequest{}, fmt.Errorf("unsupported external shared context placement %q", fragment.Placement)
@@ -86,6 +96,7 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 			return external.StartRequest{}, fmt.Errorf("unknown external context placement %q", fragment.Placement)
 		}
 	}
+	instructions := assembly.Composition.Instruction() + standing.String()
 	text := ""
 	for i := len(prepared.ModelContext.Messages) - 1; i >= 0; i-- {
 		message := prepared.ModelContext.Messages[i]
@@ -104,7 +115,7 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 	return external.StartRequest{
 		ProjectID: runtime.ProjectID, AttachmentRoot: runtime.ProjectStore, Session: runtime.Session, CommandID: request.CommandID,
 		Fingerprint: agentexecution.RequestSemanticFingerprint(request),
-		Input:       external.Input{Instructions: assembly.Composition.Instruction(), Text: instruction.String() + "\n\n" + text, Attachments: request.AttachedFiles},
+		Input:       external.Input{Instructions: instructions, Text: turnContext.String() + "\n\n" + text, Attachments: request.AttachedFiles},
 		Message:     agentschema.Message{Role: agentschema.User, Content: request.Message, Attachments: request.AttachedFiles},
 		Metadata: session.MessageMetadata{MessageID: request.CommandID + "-input", AgentKind: runtime.AgentKind,
 			ContextOnly:    request.InputVisibility == agentrun.InputModelOnly,

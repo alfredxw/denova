@@ -186,6 +186,8 @@ const storyStage = {
   'storyStage.contextCompaction.done': 'Context compaction complete',
   'storyStage.contextCompaction.failed': 'Context compaction failed',
   'storyStage.activity.aborting': 'Aborting...',
+  'storyStage.interrupted.abandon': 'Discard draft',
+  'storyStage.interrupted.abandonHelp': 'Discard this interrupted turn without changing committed story or character state.',
   'storyStage.activity.reconnecting': 'Connection interrupted. Reconnecting to the active run...',
   'storyStage.activity.switchNewer': 'Switching to a newer version...',
   'storyStage.activity.switchOlder': 'Switching to an earlier version...',

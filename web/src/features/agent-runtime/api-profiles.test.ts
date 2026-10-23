@@ -21,4 +21,6 @@ it('offers only profiles whose effective protocol and routing are supported by t
   expect(runtimeProfileOptions('codex', { effective }, catalog)).toEqual([{ id: 'profile:responses', label: 'responses', modelLabel: 'responses' }])
   expect(runtimeProfileOptions('claude', { effective }, catalog).map(item => item.id)).toEqual(['profile:messages', 'profile:override'])
   expect(runtimeProfileOptions('native', { effective }, catalog)).toEqual([])
+  expect(runtimeProfileOptions('grok', { effective }, catalog)).toEqual([])
+  expect(runtimeProfileOptions('antigravity', { effective }, catalog)).toEqual([])
 })

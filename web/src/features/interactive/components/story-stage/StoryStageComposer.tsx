@@ -75,11 +75,13 @@ interface StoryStageComposerProps {
     recoveryPaused: boolean
     recoveryAbortAvailable: boolean
     pendingInterruptionId: string
+    phase: string
     operationId: string
     connection: string
     commandSubmitting: boolean
     queue: AgentRuntimeQueuedCommand[]
     queueActionPendingCommandID: string
+    onRuntimeChanged?: () => void | Promise<void>
   }
   dialogs: {
     contextAnalysisOpen: boolean
@@ -100,6 +102,7 @@ interface StoryStageComposerProps {
     saveReply: (narrative: string) => Promise<void>
   }
   actions: {
+    abandonPendingTurn: () => Promise<void>
     cancelEditing: () => void
     selectHotChoice: (choice: string) => void
     selectStyleScene: (scene: string) => void
@@ -320,7 +323,12 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
               {attachments.input}
             </>}
             toolbarEnd={<>
-              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={branchTerminal} runActive={streaming || Boolean(pendingInterruptionId)} />
+              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={branchTerminal} runActive={streaming} onRuntimeChanged={runtime.onRuntimeChanged} />
+              {pendingInterruptionId && runtime.phase === 'idle' && !streaming && (
+                <Button type="button" size="sm" variant="ghost" disabled={commandSubmitting || abortPending} title={t('storyStage.interrupted.abandonHelp')} onClick={() => { void actions.abandonPendingTurn() }}>
+                  {t('storyStage.interrupted.abandon')}
+                </Button>
+              )}
               <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${showHotChoices ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-controls={choicesId} aria-expanded={showHotChoices} aria-pressed={showHotChoices} aria-label={showHotChoices ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{t('storyStage.hotChoices.button')}</Button>
             </>}
             submitControl={<AgentComposerControls generationActive={streaming} hasSendableContent={Boolean(input.trim() || attachments.files.length)} resumeAvailable={resumeAvailable} onStop={() => { void stop() }} onSend={() => { void submit() }} sendDisabled={sendBlocked || !approvalReady || !storyId || (!input.trim() && attachments.files.length === 0 && !resumeAvailable)} disabled={branchTerminal} abortPending={abortPending} actionPending={commandSubmitting} activeControlsDisabled={activeControlsDisabled} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw data-icon="inline-start" /> : undefined} />}

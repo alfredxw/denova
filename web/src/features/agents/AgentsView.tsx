@@ -562,14 +562,13 @@ export function AgentsView({ target, toolNavigationIntent }: { target: ResourceT
                   {sections.some((section) => section.id === 'native.subagents' && section.state === 'inactive') ? selectedCustomAgent
                     ? <AgentDelegationPolicySection value={customDelegation} runtimeKind={activeAgent} subAgents={effective.sub_agents ?? []} onChange={() => undefined} />
                     : subAgentParent ? <AgentSubAgentSection agent={subAgentParent} toolRows={configuredToolRows} generalSettings={draft.general_sub_agents} effectiveGeneralSettings={effective.general_sub_agents} subAgents={draft.sub_agents ?? []} effectiveSubAgents={effective.sub_agents ?? []} profiles={profileOptions} onGeneralChange={() => undefined} onChange={() => undefined} /> : null : null}
-                  {resolvedEngine.codex && sections.some((section) => section.id === 'codex.model' && section.state === 'inactive') ? <dl className="grid grid-cols-2 gap-2">
-                    <dt>{t('agentRuntime.codex')} · {t('agentRuntime.model')}</dt><dd className="break-words">{resolvedEngine.codex.profile_id ?? resolvedEngine.codex.model}</dd>
-                    <dt>{t('agentRuntime.effort')}</dt><dd>{resolvedEngine.codex.effort ?? t('agentRuntime.defaultEffort')}</dd>
-                  </dl> : null}
-                  {resolvedEngine.claude && sections.some((section) => section.id === 'claude.model' && section.state === 'inactive') ? <dl className="grid grid-cols-2 gap-2">
-                    <dt>{t('agentRuntime.claude')} · {t('agentRuntime.model')}</dt><dd className="break-words">{resolvedEngine.claude.profile_id ?? resolvedEngine.claude.model}</dd>
-                    <dt>{t('agentRuntime.effort')}</dt><dd>{resolvedEngine.claude.effort ?? t('agentRuntime.defaultEffort')}</dd>
-                  </dl> : null}
+                  {(['codex', 'claude', 'grok', 'antigravity'] as const).map((kind) => {
+                    const settings = resolvedEngine[kind]
+                    return settings && sections.some((section) => section.id === `${kind}.model` && section.state === 'inactive') ? <dl key={kind} className="grid grid-cols-2 gap-2">
+                      <dt>{t(`agentRuntime.${kind}`)} · {t('agentRuntime.model')}</dt><dd className="break-words">{settings.profile_id ?? settings.model}</dd>
+                      <dt>{t('agentRuntime.effort')}</dt><dd>{settings.effort ?? t('agentRuntime.defaultEffort')}</dd>
+                    </dl> : null
+                  })}
                 </fieldset>
               </AgentConfigurationDisclosure> : null}
             </div>

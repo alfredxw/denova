@@ -29,6 +29,11 @@ func TestEmbeddedFrontendRoutesAndAssets(t *testing.T) {
 			if tc.contentType == "text/html" && response.Header().Get("Cache-Control") != "no-cache" {
 				t.Fatal("SPA shell can remain cached across updates")
 			}
+			if strings.HasPrefix(tc.path, "/assets/") && tc.contentType != "text/html" {
+				if got := response.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+					t.Fatalf("hashed asset must be immutable, got Cache-Control %q", got)
+				}
+			}
 		})
 	}
 }

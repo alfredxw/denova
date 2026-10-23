@@ -89,7 +89,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			for _, op := range delta.ActorOps {
 				applyActorStateOp(state, op)
 			}
-		case StoryEventTypeTurnDraft, StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected, StoryEventTypeBranchPlanUpdated, StoryEventTypeBranchPlanRevised:
+		case StoryEventTypeTurnDraft, StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeTurnAbandoned, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected, StoryEventTypeBranchPlanUpdated, StoryEventTypeBranchPlanRevised:
 			// These records are projected separately or are intentionally absent
 			// from model-visible turn/state history.
 		}
@@ -194,6 +194,12 @@ func pendingModelContextBatchesForBranch(
 func pendingPlayerInputsForBranch(lines []StoryEventRecord, branchID string, activeAncestry map[string]bool) ([]PlayerInputAcceptedEvent, error) {
 	consumed := make(map[string]bool)
 	for _, record := range lines {
+		if record.Envelope.Type == StoryEventTypeTurnAbandoned && record.Envelope.BranchID == branchID {
+			var event TurnAbandonedEvent
+			if err := mapToStruct(record.Raw, &event); err != nil { return nil, err }
+			consumed[event.PlayerInputID] = true
+			continue
+		}
 		if record.Envelope.Type != StoryEventTypeTurn {
 			continue
 		}

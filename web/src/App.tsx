@@ -677,6 +677,12 @@ function App() {
         loreClassification: characterCardSemanticClassification ? 'semantic' : 'heuristic',
       })
       toast.success(result.message || t('importCard.importSuccess', { name: result.name }))
+      if (result.overridden?.length) {
+        toast.success(t('importCard.overriddenList', { names: result.overridden.join('、') }))
+      }
+      if (result.skipped?.length) {
+        toast.info(t('importCard.skippedList', { names: result.skipped.join('、') }))
+      }
       if (characterCardTargetMode === 'new_book') {
         await refreshAll()
       } else {

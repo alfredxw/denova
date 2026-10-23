@@ -509,6 +509,51 @@ func TestStreamMapsReasoningTextToolCallsAndUsage(t *testing.T) {
 	}
 }
 
+func TestStreamEventErrorBecomesRetryableProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		flusher := writer.(http.Flusher)
+		for _, frame := range []string{
+			`{"type":"response.created","sequence_number":0,"response":{"id":"resp_stream","object":"response","created_at":2,"status":"in_progress","model":"m","output":[]}}`,
+			`{"type":"response.output_text.delta","sequence_number":1,"item_id":"message_item","output_index":0,"content_index":0,"delta":"partial","logprobs":[]}`,
+			`{"error":{"code":"internal_server_error","message":"local error: tls: bad record MAC","param":null,"type":"server_error"}}`,
+		} {
+			_, _ = fmt.Fprintf(writer, "data: %s\n\n", frame)
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	model, err := NewAdapter().New(context.Background(), providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "m", BaseURL: server.URL, HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	stream, err := model.Stream(context.Background(), []*agentschema.Message{agentschema.UserMessage("hello")})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	defer stream.Close()
+	var streamErr error
+	for {
+		if _, receiveErr := stream.Recv(); receiveErr != nil {
+			if !errors.Is(receiveErr, io.EOF) {
+				streamErr = receiveErr
+			}
+			break
+		}
+	}
+	var apiError *providers.APIError
+	if !errors.As(streamErr, &apiError) {
+		t.Fatalf("stream error = %T %v", streamErr, streamErr)
+	}
+	if !apiError.Retryable() || apiError.Kind != "server_error" || !strings.Contains(apiError.Message, "bad record MAC") {
+		t.Fatalf("api error = %#v retryable=%t", apiError, apiError.Retryable())
+	}
+}
+
 func TestGenerateReturnsProviderAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")

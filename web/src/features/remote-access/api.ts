@@ -1,5 +1,6 @@
-import { queryOptions } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import { queryClient } from '@/lib/query-client'
 
 export interface RemoteAccessStatus {
   local: boolean
@@ -34,6 +35,20 @@ export const remoteAccessQuery = queryOptions({
     return requestJSON('/api/auth/pair', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ token }) })
   },
 })
+
+/**
+ * Whether this browser runs on the Denova host. Extension runtimes listen on
+ * loopback, so a LAN browser can read state but cannot open them. Unknown
+ * status counts as local to keep the first paint from disabling controls.
+ */
+export function remoteAccessIsLocal(): boolean {
+  return queryClient.getQueryData<RemoteAccessStatus>(remoteAccessQuery.queryKey)?.local !== false
+}
+
+export function useRemoteAccessLocal(): boolean {
+  const { data } = useQuery(remoteAccessQuery)
+  return data?.local !== false
+}
 
 export function loginRemoteAccess(username: string, password: string): Promise<RemoteAccessStatus> {
   return requestJSON('/api/auth/login', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ username, password }) })

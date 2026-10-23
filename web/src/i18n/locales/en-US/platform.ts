@@ -366,6 +366,8 @@ export default {
   'platform.errors.TOOL_NAME_CONFLICT': 'A tool name conflicts with an installed plugin. Change the tool ID and try again.',
   'platform.errors.PERMISSION_DENIED':
     'This operation is outside the granted permissions.',
+  'platform.errors.LOCAL_HOST_ONLY':
+    'This action is available only on the computer running Denova. LAN devices cannot use it yet.',
   'platform.errors.NOT_CONFIGURED':
     'Select the required project and model profiles.',
   'platform.errors.UNSUPPORTED':

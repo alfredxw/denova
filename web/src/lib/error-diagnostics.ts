@@ -34,7 +34,9 @@ export function diagnosticText(value: string): string {
     })
     .replace(/(authorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;"']+/gi, '$1[redacted]')
     .replace(/(["']?(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|secret|cookie)["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;}]+)/gi, '$1[redacted]')
-    .replace(/(["']?(?:prompt|messages|request_body|response_body|body)["']?\s*[:=]\s*)[\s\S]*/gi, '$1[redacted]')
+    // A payload key only starts a value at a token boundary; otherwise an
+    // operation name such as "session/prompt:" drops the whole cause.
+    .replace(/(^|[\s{,;(\[{])(["']?(?:prompt|messages|request_body|response_body|body)["']?\s*[:=]\s*)[\s\S]*/gi, '$1$2[redacted]')
     .replace(/(?:[A-Za-z]:\\|\/(?:Users|home|private|var|tmp)\/)[^\s"':;]+/g, '[local-path]')
   return sanitized.length > 4096 ? `${sanitized.slice(0, 4096)}…` : sanitized
 }

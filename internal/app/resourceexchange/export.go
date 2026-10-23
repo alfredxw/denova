@@ -220,7 +220,7 @@ var portableFields = map[string][]string{
 	"preset.events":        {"name", "description", "events"},
 	"preset.rules":         {"name", "description", "actor_state_id", "trpg_system"},
 	"preset.actor_state":   {"name", "description", "actor_state"},
-	"lore.entry":           {"id", "enabled", "type", "name", "importance", "tags", "brief_description", "keywords", "load_mode", "content", "index_memberships"},
+	"lore.entry":           {"id", "enabled", "type", "name", "importance", "tags", "brief_description", "keywords", "load_mode", "content", "index_memberships", "detail_fields"},
 }
 
 func portableJSON(kind string, value any) ([]byte, error) {

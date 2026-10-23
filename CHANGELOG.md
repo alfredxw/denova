@@ -17,10 +17,12 @@ Denova records major user-visible features, important compatibility or data chan
 #### 中文
 
 - 新增内置互动游戏创作 Skill，并支持按「游戏」分类管理 Skills。
+- 创作、通用对话与游戏 Agent 新增 Grok Build 与 Antigravity CLI 执行引擎。
 
 #### English
 
 - Adds a built-in interactive-game design Skill and a Game category for Skills.
+- Writing, General Chat, and Game Agents add Grok Build and Antigravity CLI execution engines.
 
 ### Added / 新增
 
@@ -30,6 +32,20 @@ Denova records major user-visible features, important compatibility or data chan
 - The interactive-game design Skill now covers classic web-novel progression, payoff structure, resources and social capital, world tiers, instance/rule-horror/urban-undercover patterns, and sensory immersion.
 - Skills 库新增「游戏」分类，可在创建、配置和筛选中使用。
 - The Skills library adds a Game category for creation, configuration, and filtering.
+- 创作、通用对话与游戏 Agent 新增 Grok Build 和 Antigravity CLI 执行引擎，支持本机 CLI 模型发现、独立引擎设置与切换会话模型。
+- Writing, General Chat, and Game Agents add Grok Build and Antigravity CLI execution engines with local CLI model discovery, independent engine settings, and per-conversation model selection.
+
+### Fixed / 修复
+
+- 修复 Grok Build 与 Antigravity CLI 的运行时问题：Antigravity CLI 因内置工具集整轮失败、Grok Build 偶发响应不匹配、流式中断重试失效、推理强度参数错误、模型配置保存失败。
+- Fixed Grok Build and Antigravity CLI runtime issues: Antigravity CLI turns aborting on its built-in toolset, sporadic Grok Build response mismatches, broken in-stream retries, invalid reasoning-effort parameters, and failed model-settings saves.
+- 修复运行时引擎与游戏恢复问题：引擎菜单反复探测、检查后仍报连接失败、游戏断连后回合卡死、会话冷启动校验过严、局域网管理请求 403。
+- Fixed engine availability and game recovery: repeated engine probing, "connection failed" right after a check, stuck Game turns after disconnect, over-strict cold-start checkpoints, and 403 responses for LAN management.
+
+### Compatibility / 兼容性
+
+- 放弃游戏回合会在故事日志中写入新的 `turn_abandoned` 审计事件；旧版 Denova 可能无法解析已产生此事件的故事文件。降级前请备份工作区。
+- Discarding a Game turn adds a `turn_abandoned` audit record; older Denova versions may not parse story journals containing this event. Back up the workspace before downgrading.
 
 ## [v0.6.3] - 2026-10-20
 

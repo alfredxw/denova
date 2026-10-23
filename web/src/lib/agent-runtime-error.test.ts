@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { diagnosticText } from './error-diagnostics'
 import {
   localizeAgentRuntimeError,
   localizeAgentRuntimeReason,
@@ -47,5 +48,12 @@ describe('agent runtime error localization', () => {
 
   it('preserves ordinary runtime diagnostics', () => {
     expect(localizeAgentRuntimeError({ message: 'provider failed' }, 'fallback', t)).toBe('provider failed')
+  })
+
+  it('keeps the provider cause when a runtime method name looks like a payload key', () => {
+    const detail = 'Grok session/prompt: Grok ACP error -32000: model overloaded'
+    const message = localizeAgentRuntimeError({ error_key: 'agentRuntime.operationFailed', details: { detail } }, 'fallback', t)
+    expect(message).toContain(detail)
+    expect(diagnosticText('prompt: private chapter')).toBe('prompt: [redacted]')
   })
 })

@@ -11,6 +11,7 @@ import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup 
 import { resolvePanelInitialSize, usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { useRemoteAccessLocal } from '@/features/remote-access/api'
 import { isPluginPageRoute, type PluginPageRoute, type WorkspaceMode } from '@/stores/workspace-store'
 import { GamePlayer, type GamePlayerHandle } from './GamePlayer'
 import { PluginPageAgent, type PluginPageLoreReferences } from './PluginPageAgent'
@@ -79,6 +80,8 @@ function ProjectPluginPage({ page, projectId, visible, loreReferenceLabels, lore
 } & PluginPageLoreReferences) {
   const { t, i18n } = useTranslation()
   const { resolvedTheme } = useTheme()
+  // Plugin pages run in a loopback runtime; a LAN browser cannot host the frame.
+  const hostLocal = useRemoteAccessLocal()
   const plugins = useQuery({
     queryKey: ['platform', 'project-plugins', projectId, 'general', i18n.language],
     queryFn: () =>
@@ -105,7 +108,7 @@ function ProjectPluginPage({ page, projectId, visible, loreReferenceLabels, lore
   const frame = useRef<GamePlayerHandle>(null)
   const ready = !!plugin?.enabled && !plugin.problem
   useEffect(() => {
-    if (!ready) return
+    if (!ready || !hostLocal) return
     let disposed = false
     let opened: RuntimeSnapshot | undefined
     setError('')
@@ -139,7 +142,7 @@ function ProjectPluginPage({ page, projectId, visible, loreReferenceLabels, lore
     }
     // Appearance updates use the existing frame protocol, without restarting work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, activation, page.id, page.pluginId, page.releaseId, projectId])
+  }, [ready, hostLocal, activation, page.id, page.pluginId, page.releaseId, projectId])
   const title = localized(page.title, i18n.language)
   return (
     <section className="relative flex h-full min-h-0 flex-col" aria-label={title}>
@@ -147,7 +150,7 @@ function ProjectPluginPage({ page, projectId, visible, loreReferenceLabels, lore
         <InlineErrorNotice className="absolute inset-x-3 top-12 z-40" message={error || platformError(plugins.error)} />
       )}
       {(!ready || !runtime) && <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-        <p>{plugins.isPending ? t('common.loading') : !plugin?.enabled ? t('platform.plugins.disabled') : plugin.problem ? t(plugin.problem.messageKey) : error || t('common.loading')}</p>
+        <p>{plugins.isPending ? t('common.loading') : !hostLocal ? t('platform.errors.LOCAL_HOST_ONLY') : !plugin?.enabled ? t('platform.plugins.disabled') : plugin.problem ? t(plugin.problem.messageKey) : error || t('common.loading')}</p>
         {error && <Button variant="outline" onClick={() => setActivation(value => value + 1)}>{t('common.retry')}</Button>}
         <Button variant="link" onClick={() => openInstalledExtension('plugin', page.pluginId)}>{t('platform.pages.manage')}</Button>
       </div>}

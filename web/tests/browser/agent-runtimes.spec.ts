@@ -4,7 +4,7 @@ import { openWritingAgent } from '../support/agent-chat'
 import enRuntime from '../../src/i18n/locales/en-US/agentRuntime'
 import zhRuntime from '../../src/i18n/locales/zh-CN/agentRuntime'
 
-for (const engine of ['codex', 'claude'] as const) {
+for (const engine of ['codex', 'claude', 'grok', 'antigravity'] as const) {
 for (const language of ['zh-CN', 'en-US']) {
   test(`${engine} CLI sign-in guidance and connection recheck work in ${language}`, async ({ page, request }) => {
     await createAndOpenBook(request, `${engine} CLI credentials ${language}`)
@@ -29,21 +29,24 @@ for (const language of ['zh-CN', 'en-US']) {
     })
     await page.route(`**/api/agent-runtimes/${engine}/models`, async route => {
       expect(checked).toBe(true)
-      await route.fulfill({ json: { items: [{ id: 'local-model', display_name: 'Local model', efforts: ['high'] }] } })
+      await route.fulfill({ json: { items: [{ id: 'local-model', display_name: 'Local model', efforts: engine === 'grok' || engine === 'antigravity' ? [] : ['high'] }] } })
     })
     await page.goto('/')
     await page.getByRole('button', { name: 'Agents', exact: true }).click()
     const runtime = page.locator('[data-agent-configuration-section="runtime"]')
     const messages = language === 'zh-CN' ? zhRuntime : enRuntime
     await expect(runtime.getByText(messages['agentRuntime.defaultsOnly'], { exact: true })).toBeVisible()
-    const hint = engine === 'claude'
-      ? (language === 'zh-CN' ? '请在运行 Denova 的电脑上执行 claude auth login，然后重新检查连接。' : 'Run claude auth login on the computer running Denova, then check the connection again.')
-      : language === 'zh-CN'
-      ? '请在运行 Denova 的电脑上打开终端，执行 codex login，然后重新检查连接。'
-      : 'Run codex login in a terminal on the computer running Denova, then check the connection again.'
+    const hint = messages[{
+      codex: 'agentRuntime.loginInTerminal', claude: 'agentRuntime.claudeLoginInTerminal',
+      grok: 'agentRuntime.grokLoginInTerminal', antigravity: 'agentRuntime.antigravityLoginInTerminal',
+    }[engine] as keyof typeof messages]
     const model = runtime.getByRole('combobox', { name: language === 'zh-CN' ? '引擎模型' : 'Engine model', exact: true })
     await expect(runtime.getByText(hint, { exact: true })).toBeVisible()
     await expect(model).toBeDisabled()
+    if (engine === 'grok' || engine === 'antigravity') {
+      await expect(runtime.getByRole('radio')).toHaveCount(0)
+      await expect(runtime.getByRole('combobox', { name: messages['agentRuntime.effort'], exact: true })).toHaveCount(0)
+    }
     await page.setViewportSize({ width: 390, height: 844 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: test.info().outputPath(`cli-login-${language}.png`), animations: 'disabled' })

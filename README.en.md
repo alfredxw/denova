@@ -62,7 +62,7 @@ Start a new book from an idea, import an existing novel to continue writing, or 
 ## Core Features
 
 - **Novel writing**: Markdown document and source editing, multiple tabs, find and replace, outlines and chapter plans, progress tracking, inline comments, change review, and novel import.
-- **Creative Agents**: choose Native, Codex, or Claude Code to work with selections, project files, images, and lore, with multiple conversations, SubAgent collaboration, and task pause/resume.
+- **Creative Agents**: choose Native, Codex, Claude Code, Grok Build, or Antigravity CLI to work with selections, project files, and lore, with multiple conversations and task pause/resume. Image, SubAgent, and Goal capabilities depend on the runtime; see [CLI runtimes](docs/cli-runtimes.md).
 - **Interactive games**: advance stories through player input, with branches, storyline switching, action suggestions, character and world state, rule checks, story planning, and read-aloud. Stage scenes with Lore backgrounds and character sprites, with presentation saved along story branches.
 - **Lore**: organize settings with custom categories, document-style indexes, @ references, and backlinks; find text mentions in project files and a selected story branch, provide grouped context to Writing and Game Agents, and manage multiple images, audio, and covers for each entry.
 - **Creative Setups and Skills**: reuse narrative styles, image styles, rules, and other creative configurations; extend Agent workflows with Skills, including a built-in novel-writing Skill for premises, outlines, scenes, and revision.

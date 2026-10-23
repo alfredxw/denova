@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -72,6 +73,55 @@ func (s recoveryHistory) VisitCanonicalMessages(_ context.Context, visit func(*s
 	return nil
 }
 
+func TestRestoreCanonicalCheckpointIgnoresProviderTelemetry(t *testing.T) {
+	head := canonical.CanonicalHistoryHead{Identity: "lane", Revision: "1"}
+	continuation := map[string]any{"payload": []any{map[string]any{"encrypted_content": "token"}}}
+	// In-memory transcript carries provider telemetry on the assistant message.
+	withTelemetry := []*schema.Message{
+		schema.UserMessage("current user"),
+		func() *schema.Message {
+			m := schema.AssistantMessage("narrative", nil)
+			m.Extra = map[string]any{
+				"provider":              "openai",
+				"protocol":              "openai-responses",
+				"response_id":           "resp-1",
+				"model":                 "gemini-3.8-flash-high",
+				"created":               int64(1700000000),
+				"response_status":       "completed",
+				"provider-continuation": continuation,
+			}
+			return m
+		}(),
+	}
+	// The reconstructed canonical window strips telemetry from the narrative,
+	// exactly as ModelTurnMessages does, keeping only the continuation.
+	reconstructed := []*schema.Message{
+		schema.UserMessage("current user"),
+		func() *schema.Message {
+			m := schema.AssistantMessage("narrative", nil)
+			m.Extra = map[string]any{"provider-continuation": continuation}
+			return m
+		}(),
+	}
+	state := engineTranscript{Version: 2, HistoryHead: head, Messages: withTelemetry}
+	checkpoint, err := canonicalMessageCheckpoint(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := recoveryHistory{head: head, messages: reconstructed}
+	raw, matched, err := RestoreCanonicalCheckpoint(t.Context(), checkpoint, head, source)
+	if err != nil || !matched {
+		t.Fatalf("restore rejected provider telemetry divergence: matched=%t err=%v", matched, err)
+	}
+	restored, err := decodeEngineTranscript(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(restored.Messages, reconstructed) {
+		t.Fatalf("restored messages differ: %#v", restored.Messages)
+	}
+}
+
 func TestRestoreCanonicalCheckpointAcceptsReleasedInlineMetadata(t *testing.T) {
 	source := recoveryHistory{head: canonical.CanonicalHistoryHead{Identity: "lane", Revision: "1"}, messages: []*schema.Message{
 		schema.UserMessage("archived user"), schema.AssistantMessage("archived answer", nil),
@@ -117,4 +167,48 @@ func TestRestoreCanonicalCheckpointAcceptsReleasedInlineMetadata(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A persisted fingerprint that no longer matches the canonical bodies only
+// invalidates the cached window; the journal is still complete and readable.
+func TestRestoreCanonicalCheckpointDeclinesChangedContent(t *testing.T) {
+	head := canonical.CanonicalHistoryHead{Identity: "lane", Revision: "1"}
+	state := engineTranscript{Version: 2, HistoryHead: head, Messages: []*schema.Message{
+		schema.UserMessage("original user"), schema.AssistantMessage("original answer", nil),
+	}}
+	checkpoint, err := canonicalMessageCheckpoint(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := recoveryHistory{head: head, messages: []*schema.Message{
+		schema.UserMessage("original user"), schema.AssistantMessage("repaired answer", nil),
+	}}
+	raw, matched, err := RestoreCanonicalCheckpoint(t.Context(), checkpoint, head, source)
+	if err != nil || matched || raw != nil {
+		t.Fatalf("changed content: raw=%s matched=%t err=%v", raw, matched, err)
+	}
+}
+
+// A window implementation that cannot honour the checkpoint coordinates must
+// not fail the conversation either.
+func TestRestoreCanonicalCheckpointDeclinesRefusedWindow(t *testing.T) {
+	head := canonical.CanonicalHistoryHead{Identity: "lane", Revision: "1"}
+	state := engineTranscript{Version: 2, HistoryHead: head, Messages: []*schema.Message{
+		schema.UserMessage("original user"), schema.AssistantMessage("original answer", nil),
+	}}
+	checkpoint, err := canonicalMessageCheckpoint(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := refusedWindowHistory{recoveryHistory{head: head, messages: state.Messages}}
+	raw, matched, err := RestoreCanonicalCheckpoint(t.Context(), checkpoint, head, source)
+	if err != nil || matched || raw != nil {
+		t.Fatalf("refused window: raw=%s matched=%t err=%v", raw, matched, err)
+	}
+}
+
+type refusedWindowHistory struct{ recoveryHistory }
+
+func (refusedWindowHistory) ReadCanonicalWindow(context.Context, int, *history.HistoryArchive) ([]*schema.Message, error) {
+	return nil, fmt.Errorf("%w: aligned Game message count changed (1 != 2)", canonical.ErrInvalidCanonicalMessages)
 }

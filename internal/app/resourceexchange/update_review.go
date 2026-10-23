@@ -21,8 +21,11 @@ type UpdateItem struct {
 }
 
 type updateReview struct {
-	choices map[string]map[string]string
-	items   []UpdateItem
+	choices          map[string]map[string]string
+	items            []UpdateItem
+	overrideByDetail bool
+	overrides        []string
+	skipped          []string
 }
 
 func (r *updateReview) decide(resource, member, name, sourceBase, sourceNext, localBase, localNow, localNext string) (apply, acknowledge bool) {

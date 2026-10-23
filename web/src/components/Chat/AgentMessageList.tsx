@@ -37,6 +37,8 @@ interface MessageListProps {
   /** Optional projection of the parent transcript, such as one SubAgent invocation. */
   projection?: AgentMessageListProjection
   isStreaming: boolean
+  /** 流式生成时是否自动跟随到最新行；关闭后保持当前阅读位置，不随输出滚动。 */
+  followStreaming?: boolean
   /** Runtime-confirmed Run identity, available before the first model output. */
   activeRunId?: string
   /** Whether the persistently mounted chat surface currently has measurable layout geometry. */
@@ -137,7 +139,7 @@ export function MessageList(props: MessageListProps) {
   return <VirtualizedMessageState key={props.scrollResetKey || 'default'}><MessageListContent {...props} /></VirtualizedMessageState>
 }
 
-function MessageListContent({ projectId, attachmentScope, messages, projection, isStreaming, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, onScrollerChange, beforeContent, afterContent, afterContentScroll = 'follow', afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, autoLoadEarlierMessages = false, onLoadExecutionDetails, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+function MessageListContent({ projectId, attachmentScope, messages, projection, isStreaming, followStreaming = true, activeRunId, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, onScrollerChange, beforeContent, afterContent, afterContentScroll = 'follow', afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, autoLoadEarlierMessages = false, onLoadExecutionDetails, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -192,7 +194,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
   // A confirmed trailing result ends prose following even if the transport is
   // still open. Its reveal must not drag the reader to the bottom of the panel.
   const revealAfterContent = Boolean(afterContent) && afterContentScroll === 'reveal-heading'
-  const tailFollowActive = (isStreaming || isExecutionActive) && !revealAfterContent
+  const tailFollowActive = followStreaming && (isStreaming || isExecutionActive) && !revealAfterContent
   const firstItemIndex = usePrependStableFirstItemIndex(listItems, scrollResetKey)
   const initialPositionKey = scrollResetKey || 'default'
   const hasInitialContent = views.length > 0 || isStreaming || Boolean(activityContent)
@@ -445,7 +447,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
         onPointerCancel={scrollLock.onPointerCancel}
         atBottomStateChange={scrollLock.onAtBottomStateChange}
         atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-        totalListHeightChanged={tailFollowActive ? scrollLock.syncStreamingTailLayout : scrollLock.syncIdleBottomLayout}
+        totalListHeightChanged={tailFollowActive ? scrollLock.syncStreamingTailLayout : followStreaming ? scrollLock.syncIdleBottomLayout : undefined}
         initialTopMostItemIndex={initialPosition === 'end' ? { index: 'LAST', align: 'end' } : 0}
         firstItemIndex={firstItemIndex}
         data={listItems}

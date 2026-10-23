@@ -10,6 +10,7 @@ import (
 	"denova/config"
 	"denova/internal/agents/attachment"
 	agentchat "denova/internal/agents/chat"
+	agentlifecycle "denova/internal/agents/lifecycle"
 	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
@@ -80,19 +81,33 @@ func (turn *ExternalTurn) prepareInput(ctx context.Context, mode external.Operat
 		}
 		fragments = append(fragments, shared...)
 	}
-	input := external.Input{Selection: *turn.config.Config.ActiveAgentRuntime, Instructions: turn.config.Assembly.Composition.Instruction(), Plan: turn.config.Plan}
-	var dynamic strings.Builder
+	// Author-owned AGENTS.md and CREATOR.md rules belong in the engine's system
+	// instructions, where they weigh the same as in a Native turn. Everything
+	// assembled per turn — state, lore, history — stays in the user text so the
+	// system prefix remains stable for provider cache matching.
+	var standing, turnContext strings.Builder
+	standingRules := external.StandingInstructionsSupported(turn.config.Config.ActiveAgentRuntime.Kind)
 	for _, fragment := range fragments {
 		switch fragment.Placement {
 		case agentschema.ContextLeadingMessage, agentschema.ContextStateMessage:
 			if len(fragment.Content) > fragment.HardLimit {
 				return external.Input{}, fmt.Errorf("external Game context exceeds source limit: %s", fragment.Source)
 			}
-			dynamic.WriteString("\n\n" + fragment.Content)
+			target := &turnContext
+			if standingRules && agentlifecycle.StandingProjectInstructions(fragment) {
+				target = &standing
+			}
+			target.WriteString("\n\n")
+			target.WriteString(fragment.Content)
 		case agentschema.ContextAuditOnly:
 		default:
 			return external.Input{}, fmt.Errorf("unsupported external Game context placement %q", fragment.Placement)
 		}
+	}
+	input := external.Input{
+		Selection:    *turn.config.Config.ActiveAgentRuntime,
+		Instructions: turn.config.Assembly.Composition.Instruction() + standing.String(),
+		Plan:         turn.config.Plan,
 	}
 	for i := len(prepared.ModelContext.Messages) - 1; i >= 0; i-- {
 		if message := prepared.ModelContext.Messages[i]; message != nil && message.Role == agentschema.User {
@@ -100,7 +115,7 @@ func (turn *ExternalTurn) prepareInput(ctx context.Context, mode external.Operat
 			break
 		}
 	}
-	input.Text = dynamic.String() + "\n\n" + input.Text
+	input.Text = turnContext.String() + "\n\n" + input.Text
 	for _, guidance := range turn.config.Guidance {
 		// An aligned provider resume omits History, including journaled guidance.
 		// Deliver the accepted instruction in the new turn as well.

@@ -32,6 +32,11 @@ type ImportResult struct {
 	ClassificationMode   string              `json:"classification_mode"`
 	ClassificationCounts map[string]int      `json:"classification_counts"`
 	UncertainTypeCount   int                 `json:"uncertain_type_count"`
+	// Overridden and Skipped report detail-aware duplicate resolution: names of
+	// existing entries replaced by a more detailed import and names kept over a
+	// less detailed incoming duplicate.
+	Overridden []string `json:"overridden,omitempty"`
+	Skipped    []string `json:"skipped,omitempty"`
 }
 
 // Preview 描述酒馆角色卡预览信息，解析但不写入 workspace。

@@ -39,6 +39,11 @@ func spaHandler(tree fs.FS) http.Handler {
 			w.Header().Set("Cache-Control", "no-cache")
 			r = r.Clone(r.Context())
 			r.URL.Path = "/"
+		} else if strings.HasPrefix(name, "assets/") {
+			// Rollup/Rolldown content-hash every file under assets/. Caching them
+			// forever is safe: a rebuild changes the hashes, and the revalidated
+			// shell above always points at the exact hashes present in this binary.
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		files.ServeHTTP(w, r)
 	})

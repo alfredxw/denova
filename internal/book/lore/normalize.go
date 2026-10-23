@@ -323,6 +323,13 @@ func loreNameKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
+// NameKey normalizes a lore name for case-insensitive identity comparison. It
+// exposes the same normalization used by collection validation so importers
+// resolve duplicate names with identical semantics.
+func NameKey(name string) string {
+	return loreNameKey(name)
+}
+
 // NewNameAllocator seeds a name allocator from existing items.
 func NewNameAllocator(items []Item) *NameAllocator {
 	allocator := &NameAllocator{used: make(map[string]bool, len(items))}
@@ -397,13 +404,3 @@ func TypeLabel(t string) string {
 	}
 }
 
-func loreLoadModeLabel(v string) string {
-	switch normalizeLoreLoadMode(v, "") {
-	case LoadModeResident:
-		return "常驻 system prompt"
-	case LoadModeManual:
-		return "手动引用"
-	default:
-		return "按简介自动加载"
-	}
-}

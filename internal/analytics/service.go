@@ -230,7 +230,7 @@ func (s *Service) BeginRun(feature Feature, engine Engine, trigger Trigger) Run 
 		return Run{}
 	}
 	switch engine {
-	case Native, Codex, Claude:
+	case Native, Codex, Claude, Grok, Antigravity:
 	default:
 		return Run{}
 	}

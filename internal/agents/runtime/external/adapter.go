@@ -45,6 +45,20 @@ type Input struct {
 	CumulativeUsage *agentschema.TokenUsage
 }
 
+// StandingInstructionsSupported reports whether the runtime delivers Instructions
+// outside its process argument vector. Engines that carry the system prompt in
+// argv keep authored project rules inside the turn text instead: an AGENTS.md or
+// CREATOR.md can reach the configured fragment limit, and command lines are
+// visible in the process list. Unknown runtimes default to the argv-safe layout.
+func StandingInstructionsSupported(kind config.RuntimeID) bool {
+	switch kind {
+	case config.RuntimeCodex, config.RuntimeClaude, config.RuntimeAntigravity:
+		return true
+	default:
+		return false
+	}
+}
+
 type OperationMode string
 
 const (

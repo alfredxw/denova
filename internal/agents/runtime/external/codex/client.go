@@ -4,6 +4,7 @@ package codex
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,12 +20,30 @@ const maxProtocolMessageBytes = 16 << 20
 var ErrDisconnected = errors.New("App Server connection closed")
 
 type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 func (err *rpcError) Error() string {
+	if detail := err.detail(); detail != "" {
+		return fmt.Sprintf("App Server RPC error %d: %s: %s", err.Code, err.Message, detail)
+	}
 	return fmt.Sprintf("App Server RPC error %d: %s", err.Code, err.Message)
+}
+
+// The App Server keeps the actionable cause in error data, which may be a plain
+// string or a structured object. Keeping it stops a bare message from hiding it.
+func (err *rpcError) detail() string {
+	raw := bytes.TrimSpace(err.Data)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	return string(raw)
 }
 
 type packet struct {
@@ -161,7 +180,8 @@ func (c *Client) call(ctx context.Context, method string, params, result any) er
 		return c.err
 	case reply := <-response:
 		if reply.Error != nil {
-			return reply.Error
+			// One connection carries every RPC, so name the rejected method.
+			return fmt.Errorf("App Server %s: %w", method, reply.Error)
 		}
 		if result == nil {
 			return nil

@@ -304,3 +304,55 @@ func observePlanFixture(t *testing.T, state ProductState, items []agentevent.Tod
 	t.Helper()
 	return state.ObservePlan(t.Context(), external.PlanEvent(items))
 }
+
+
+func TestSuspendedExternalControlDetachesOnlyExactQuiescentCycle(t *testing.T) {
+	_, _, state, options, _ := controlFixture(t)
+	engines := NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "original", Message: "Continue the story"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "original"); !errors.Is(err, ErrOperationActive) {
+		t.Fatalf("live cycle must not detach: %v", err)
+	}
+	// Simulate a cold process that lost its in-memory runner without
+	// completing or discarding its original durable input.
+	control.mu.Lock()
+	control.active = nil
+	control.mu.Unlock()
+	status, err := control.Status(t.Context())
+	if err != nil || status.Phase != agentrun.RunPhaseSuspended {
+		t.Fatalf("cold operation must be suspended: %+v %v", status, err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "wrong"); !errors.Is(err, ErrOperationActive) {
+		t.Fatalf("wrong command detached original input: %v", err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "original"); err != nil {
+		t.Fatalf("quiescent cycle could not detach: %v", err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "original"); err != nil {
+		t.Fatalf("repeat detach must be idempotent: %v", err)
+	}
+	status, err = control.Status(t.Context())
+	if err != nil || status.Phase != agentrun.RunPhaseIdle {
+		t.Fatalf("old runtime remains occupied: %+v %v", status, err)
+	}
+	receipt, found, err := control.Receipt(t.Context(), "original")
+	if err != nil || !found || receipt.OperationID != run.Receipt().OperationID {
+		t.Fatalf("lost old durable command identity: %+v %t %v", receipt, found, err)
+	}
+	_, err = control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "fresh-CLI", Message: "Resume the existing Game draft"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("detached runtime cannot accept new CLI: %v", err)
+	}
+}

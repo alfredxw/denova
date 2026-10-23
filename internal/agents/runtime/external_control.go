@@ -308,6 +308,39 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 	return run, nil
 }
 
+// DetachSuspendedGameForEngineSwitch relinquishes only the old provider
+// controller. The Game journal retains its accepted input, draft and dice so
+// a newly selected CLI can resume the same canonical turn. This operation is
+// only permitted for one quiescent suspended cycle with no queued work.
+func (control *ExternalController) DetachSuspendedGameForEngineSwitch(ctx context.Context, commandID string) error {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	state, err := control.read(ctx)
+	if err != nil {
+		return err
+	}
+	if control.active != nil {
+		return ErrOperationActive
+	}
+	if state.Phase == agentrun.RunPhaseIdle {
+		return nil
+	}
+	if state.Phase != agentrun.RunPhaseSuspended || state.Current == nil ||
+		state.Current.Request.CommandID != commandID || len(state.Queue) != 0 ||
+		len(state.Current.Guidance) != 0 {
+		return ErrOperationActive
+	}
+	return control.update(ctx, func(current *externalControlState) error {
+		if current.Phase != agentrun.RunPhaseSuspended || current.Current == nil ||
+			current.Current.Request.CommandID != commandID || len(current.Queue) != 0 ||
+			len(current.Current.Guidance) != 0 {
+			return ErrOperationActive
+		}
+		current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
+		return current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted)
+	})
+}
+
 // Receipt reads the logical product task receipt, independently of the shorter
 // provider attempts that materialize its inputs and outputs.
 func (control *ExternalController) Receipt(ctx context.Context, commandID string) (agentrun.CommandReceipt, bool, error) {

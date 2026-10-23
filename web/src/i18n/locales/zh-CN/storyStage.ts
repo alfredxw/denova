@@ -186,6 +186,8 @@ const storyStage = {
   'storyStage.contextCompaction.done': '上下文压缩完成',
   'storyStage.contextCompaction.failed': '上下文压缩失败',
   'storyStage.activity.aborting': '正在中断…',
+  'storyStage.interrupted.abandon': '放弃草稿',
+  'storyStage.interrupted.abandonHelp': '放弃当前未完成回合，不改变已提交的剧情及人物状态。',
   'storyStage.activity.reconnecting': '连接中断，正在恢复运行中的任务…',
   'storyStage.activity.switchNewer': '正在切换到更新版本…',
   'storyStage.activity.switchOlder': '正在切换到更早版本…',

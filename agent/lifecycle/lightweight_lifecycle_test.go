@@ -626,7 +626,7 @@ func TestCancelledControlContextDoesNotMutateRun(t *testing.T) {
 		t.Fatalf("cancelled commands changed queue: %#v", snapshot.QueuedRuns)
 	}
 
-	queued, err := session.Queue(nil, agentschema.Text("accepted"))
+	queued, err := session.Queue(context.TODO(), agentschema.Text("accepted"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -641,7 +641,7 @@ func TestCancelledControlContextDoesNotMutateRun(t *testing.T) {
 	} else if len(snapshot.QueuedRuns) != 1 || snapshot.QueuedRuns[0].Delivery != agentevent.DeliveryFollowUp {
 		t.Fatalf("cancelled queue controls changed queue: %#v", snapshot.QueuedRuns)
 	}
-	if _, err := queued.Cancel(nil, agentevent.QueueControlRequest{}); err != nil {
+	if _, err := queued.Cancel(context.TODO(), agentevent.QueueControlRequest{}); err != nil {
 		t.Fatal(err)
 	}
 
