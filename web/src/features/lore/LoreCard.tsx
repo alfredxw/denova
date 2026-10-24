@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { loreImageURL, updateProjectLoreItem, type LoreItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { MaterialImage } from './MaterialImage'
-import { LORE_PROTAGONIST_TAG } from './tags'
+import { isLoreProtagonistTag } from './tags'
 import { loreTagFilterValue } from './lore-filters'
 import { notifyLoreUpdated } from './events'
 
@@ -167,7 +167,7 @@ export function LoreCard({
     >
       {item.tags?.length > 0 && <CardContent className="flex min-w-0 flex-wrap gap-1">
         {[...new Set(item.tags.map(loreTagFilterValue))].map(tag => <Badge key={tag} variant="secondary" className="h-auto max-w-full whitespace-normal break-all">
-          {tag === LORE_PROTAGONIST_TAG ? t('lore.library.protagonist') : tag}
+          {isLoreProtagonistTag(tag) ? t('lore.library.protagonist') : tag}
         </Badge>)}
       </CardContent>}
       {(!selecting || !item.enabled || materialCount > 0) && (

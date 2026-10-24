@@ -9,7 +9,7 @@ export function splitLoreTags(value: string): string[] {
 
 export function isLoreProtagonistTag(tag: string): boolean {
   const normalized = tag.trim().toLowerCase()
-  return normalized === LORE_PROTAGONIST_TAG || normalized === 'protagonist'
+  return normalized === LORE_PROTAGONIST_TAG || normalized === 'protagonist' || normalized === 'главный герой' || normalized === 'протагонист'
 }
 
 export function hasLoreProtagonistTag(tags: readonly string[]): boolean {

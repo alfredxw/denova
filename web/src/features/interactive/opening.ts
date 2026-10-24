@@ -51,7 +51,7 @@ export function parseBookOpeningPresets(content: string): BookOpeningPreset[] {
     const sourcePresets = Array.isArray(parsed) ? parsed : parsed.presets
     if (Array.isArray(sourcePresets)) return normalizeBookOpeningPresets(sourcePresets)
   } catch {
-    return normalizeBookOpeningPresets([{ id: 'legacy', title: '默认开场白', content: trimmed }])
+    return normalizeBookOpeningPresets([{ id: 'legacy', title: 'Стандартное вступление', content: trimmed }])
   }
   return []
 }
@@ -70,14 +70,14 @@ function normalizeBookOpeningPresets(presets: Array<Partial<BookOpeningPreset>>)
       seen.add(id)
       return {
         id,
-        title: truncateStoryOpeningTitle(preset.title || `开场白 ${index + 1}`),
+        title: truncateStoryOpeningTitle(preset.title || `Вступление ${index + 1}`),
         content: truncateStoryOpeningText(preset.content || ''),
       }
     })
     .filter((preset) => preset.title || preset.content)
 }
 
-export function newBookOpeningPreset(title = '新开场白'): BookOpeningPreset {
+export function newBookOpeningPreset(title = 'Новое вступление'): BookOpeningPreset {
   return {
     id: createOpeningPresetId(),
     title,

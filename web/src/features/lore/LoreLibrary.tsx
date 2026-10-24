@@ -39,7 +39,7 @@ import { notifyLoreUpdated } from './events'
 import type { LoreBatchImageMode } from './lore-image-task'
 import { LoreFiltersButton, LoreFilterSummary } from './LoreFilters'
 import { loreTagFilterValue, type LoreFilters } from './lore-filters'
-import { LORE_PROTAGONIST_TAG } from './tags'
+import { isLoreProtagonistTag } from './tags'
 
 export const LORE_OVERVIEW_ID = '__lore_overview__'
 
@@ -133,7 +133,7 @@ export const LoreLibrary = memo(function LoreLibrary({
     }
     return [
       ...Array.from(groups).sort(([a], [b]) => a.localeCompare(b)).map(([tag, items]) => ({
-        id: `tag:${tag}`, name: tag === LORE_PROTAGONIST_TAG ? t('lore.library.protagonist') : tag, icon: Tags, items,
+        id: `tag:${tag}`, name: isLoreProtagonistTag(tag) ? t('lore.library.protagonist') : tag, icon: Tags, items,
       })),
       { id: 'untagged', name: t('lore.filters.untagged'), icon: Tags, items: untagged },
     ]
