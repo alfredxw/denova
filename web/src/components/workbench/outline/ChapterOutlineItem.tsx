@@ -17,6 +17,13 @@ interface ChapterOutlineItemProps {
   fileOperations?: OutlineFileMenuOperations
 }
 
+function chapterStatusLabel(status: string, t: (key: string) => string): string {
+  if (status === '初稿' || status === 'draft') return t('planning.status.draft')
+  if (status === '成章' || status === 'confirmed' || status === 'completed') return t('planning.status.confirmed')
+  if (status === '空章' || status === 'empty') return t('planning.status.empty')
+  return status
+}
+
 /** One windowed outline row; the data path lets navigation find an already mounted target. */
 export const ChapterOutlineItem = memo(function ChapterOutlineItem({
   chapter,
@@ -72,7 +79,7 @@ export const ChapterOutlineItem = memo(function ChapterOutlineItem({
           </div>
           <div className="mt-1 flex items-center justify-between gap-2 overflow-hidden pr-6 text-[11px] text-[var(--nova-text-faint)]">
             <span className="min-w-0 truncate">{t('common.words', { count: formatNumber(chapter.words) })}</span>
-            <span className="shrink-0 whitespace-nowrap rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
+            <span className="shrink-0 whitespace-nowrap rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapterStatusLabel(chapter.status, t)}</span>
           </div>
         </button>
         <button

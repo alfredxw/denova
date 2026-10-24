@@ -57,6 +57,9 @@ const planning = {
   'planning.markDraft': 'Пометить как черновик',
   'planning.loreDescription': '{{type}} · {{importance}} · {{loadMode}}{{tags}}{{brief}}',
   'planning.loreBrief': ' · Описание: {{brief}}',
+  'planning.status.draft': 'Черновик',
+  'planning.status.confirmed': 'Готово',
+  'planning.status.empty': 'Пусто',
 } as const
 
 export default planning
