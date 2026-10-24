@@ -167,6 +167,18 @@ func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemP
 
 const versionSummarySystemInstruction = "You are Denova's version-summary generator. Infer the core creative change in this save from the file changes. Output exactly one Chinese version summary of 10 to 30 Han characters. Do not include numbering, quotation marks, a colon, a final period, or any explanation."
 
+// VersionSummarySystemInstruction returns the localized system prompt for version summary generation.
+func VersionSummarySystemInstruction(lang string) string {
+	switch lang {
+	case "ru-RU":
+		return "You are Denova's version-summary generator. Infer the core creative change in this save from the file changes. Output exactly one Russian version summary in 4 to 12 words (maximum 60 characters). Do not include numbering, quotation marks, a colon, a final period, or any explanation."
+	case "en-US":
+		return "You are Denova's version-summary generator. Infer the core creative change in this save from the file changes. Output exactly one English version summary in 4 to 12 words (maximum 60 characters). Do not include numbering, quotation marks, a colon, a final period, or any explanation."
+	default:
+		return versionSummarySystemInstruction
+	}
+}
+
 // BuiltinAgentPrompts returns the default system prompts shown in the Agents
 // settings page. The result is read-only display data; persisted overrides
 // still live under config.Settings.AgentPrompts.
@@ -180,7 +192,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 	ide, ideErr := ComposeInstruction(promptCfg, state, ideTeller)
 	general, generalErr := ComposeGeneralInstruction(promptCfg)
 	interactiveStory, interactiveErr := ComposeInteractiveStoryInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
-	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "Version Summary Generation Rules", "define the version summary task and output constraint", versionSummarySystemInstruction)
+	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "Version Summary Generation Rules", "define the version summary task and output constraint", VersionSummarySystemInstruction(promptCfg.Language))
 	toolAgent, toolErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "Chapter Split Regex Task", "define the structured chapter-regex inference task", ChapterSplitRegexSystemInstruction())
 	image, imageErr := ComposeImageInstruction(promptCfg, state, "")
 	return config.AgentPromptSettings{
@@ -213,7 +225,7 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		General:          builtinPromptBlocks(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
 		IDE:              builtinPromptBlocks(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
 		InteractiveStory: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
-		VersionSummary:   builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
+		VersionSummary:   builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, VersionSummarySystemInstruction(promptCfg.Language)),
 		ToolAgent:        builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:            builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
 	}
@@ -234,7 +246,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 			readonlyPromptSource("teller", "Default Writing Agent Narrative Rules", ideTeller.ID, ideTeller.Prompt),
 		),
 		InteractiveStory: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
-		VersionSummary:   builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
+		VersionSummary:   builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, VersionSummarySystemInstruction(promptCfg.Language)),
 		ToolAgent:        builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:            builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
 	}
@@ -243,7 +255,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 func builtinPromptBlocks(cfg *config.Config, agentKind, flow string) config.AgentPromptBlocks {
 	return config.AgentPromptBlocks{
 		RuntimeContract:      runtimeContractForAgent(cfg, agentKind),
-		OutputProtocol:       outputProtocolForAgent(agentKind),
+		OutputProtocol:       outputProtocolForAgent(cfg, agentKind),
 		EditableSystemPrompt: editablePromptFlowForAgent(agentKind, flow),
 	}
 }
@@ -256,7 +268,7 @@ func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSo
 		Source:  "Denova runtime",
 		Content: runtimeContractForAgent(cfg, agentKind),
 	})
-	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(agentKind)); outputProtocol != "" {
+	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(cfg, agentKind)); outputProtocol != "" {
 		sources = append(sources, config.AgentPromptSource{
 			ID:      "output_protocol",
 			Title:   "Output Protocol",

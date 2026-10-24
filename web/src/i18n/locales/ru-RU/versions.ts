@@ -81,6 +81,10 @@ const versions = {
   'versions.unknownDate': 'Неизвестная дата',
   'versions.title': 'Управление версиями',
   'versions.retainedMedia': 'Сохраняет более новые медиафайлы ({{count}}), используемые историей. Они останутся изменениями вне целевой версии.',
+  'versions.saveVersionModalTitle': 'Сохранить версию',
+  'versions.saveVersionModalDesc': 'Укажите краткое описание версии или оставьте пустым для сохранения с отметкой времени:',
+  'versions.saveVersionPlaceholder': 'Например: Новые правки сюжета',
+  'versions.manualSaveTimestamp': 'Ручное сохранение ({{time}})',
 } as const
 
 export default versions
