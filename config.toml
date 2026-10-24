@@ -62,7 +62,7 @@ default_image_api_profile_id = "default"
 
 [[image_api_profiles]]
 id = "default"
-name = "OpenAI 图片"
+name = "OpenAI (Изображения)"
 provider = "openai"
 protocol = "openai-images"
 base_url = "https://api.openai.com/v1"
