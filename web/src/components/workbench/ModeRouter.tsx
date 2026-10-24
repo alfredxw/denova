@@ -437,9 +437,13 @@ export function ModeRouter(props: ModeRouterProps) {
           prompt: [
             '/chapter-illustration',
             '',
-            `目标章节 / Target chapter: ${target}`,
+            `${i18n.language.startsWith('zh') ? '目标章节' : i18n.language.startsWith('ru') ? 'Целевая глава' : 'Target chapter'}: ${target}`,
             '',
-            'Пожалуйста, сгенерируйте иллюстрацию без спойлеров для этой главы. Создайте только изображение и meta.json, не вставляя его в текст главы автоматически; после генерации я сам нажму «Вставить в текст».',
+            i18n.language.startsWith('zh')
+              ? '请为这一章构思一张不剧透的精美插图。只生成插图和 meta.json，不要直接将 Markdown 插入正文；生成后我会手动点击“插入正文”。'
+              : i18n.language.startsWith('ru')
+                ? 'Пожалуйста, сгенерируйте иллюстрацию без спойлеров для этой главы. Создайте только изображение и meta.json, не вставляя его в текст главы автоматически; после генерации я сам нажму «Вставить в текст».'
+                : 'Please generate a spoiler-free illustration for this chapter. Create only the image and meta.json without inserting it into the chapter automatically; after generation I will click "Insert into text" myself.',
           ].join('\n'),
         },
       }))
