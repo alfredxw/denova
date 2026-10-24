@@ -62,6 +62,8 @@ const common = {
   'common.words': '{{count}} слов',
   'common.chapters': '{{count}} глав',
   'common.messages': '{{count}} сообщений',
+  'common.items': '{{count}} элементов',
+  'common.logId': 'ID лога',
   'common.backendUnavailable.title': 'Не удалось подключиться к Denova',
   'common.backendUnavailable.description': 'Проверьте сетевое подключение на этом устройстве и связь с устройством, на котором запущен Denova, затем повторите попытку.',
   'common.imageViewer.zoomIn': 'Увеличить',
