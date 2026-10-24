@@ -29,9 +29,14 @@ export function resolveLocale(locale: string | undefined | null, browserLanguage
   return 'en-US'
 }
 
-export function setConfiguredLocale(locale: string | undefined | null) {
-  configuredLocale = normalizeLocaleCode(locale)
-  writeStoredConfiguredLocale(configuredLocale)
+export function setConfiguredLocale(locale: string | undefined | null, force = false) {
+  if (force || (locale && locale !== 'auto')) {
+    configuredLocale = normalizeLocaleCode(locale)
+    writeStoredConfiguredLocale(configuredLocale)
+  } else {
+    const stored = readStoredConfiguredLocale()
+    configuredLocale = (stored && stored !== 'auto') ? stored : normalizeLocaleCode(locale)
+  }
   const resolved = resolveLocale(configuredLocale)
   if (i18next.language !== resolved) {
     void i18next.changeLanguage(resolved)
