@@ -5,14 +5,14 @@ export function formatApprovedPlanExecutionMessage(planContent: string, original
   const request = originalRequest?.trim()
   return [
     '[Plan approved]',
-    request ? `原始请求与用户补充：\n${request}` : '',
-    `已批准计划：\n<approved_plan>\n${plan}\n</approved_plan>`,
-    '请严格按已批准计划执行。若执行中发现计划与真实代码冲突，请先说明冲突并请求确认，不要自行扩大范围。',
+    request ? `Исходный запрос и дополнения пользователя / Original request and clarifications:\n${request}` : '',
+    `Утверждённый план / Approved plan:\n<approved_plan>\n${plan}\n</approved_plan>`,
+    'Пожалуйста, строго следуйте утверждённому плану. Если обнаружится конфликт с реальным кодом, сначала опишите его и запросите подтверждение, не расширяя область изменений самостоятельно.',
   ].filter(Boolean).join('\n\n')
 }
 
 export function formatPlanDiscussionMessage(planContent: string) {
-  return `我想继续讨论这份计划：\n<proposed_plan>\n${truncatePlanContext(planContent)}\n</proposed_plan>\n\n调整点：`
+  return `Я хочу продолжить обсуждение этого плана / I want to discuss this plan:\n<proposed_plan>\n${truncatePlanContext(planContent)}\n</proposed_plan>\n\nПункты для изменения / Adjustments:`
 }
 
 export function planDisplayContent(content: string) {

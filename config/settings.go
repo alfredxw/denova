@@ -1117,7 +1117,7 @@ func normalizePort(port *int) *int {
 
 func normalizeLanguage(language string) string {
 	switch language {
-	case "", "auto", "zh-CN", "en-US":
+	case "", "auto", "zh-CN", "en-US", "ru-RU":
 		return language
 	default:
 		return ""

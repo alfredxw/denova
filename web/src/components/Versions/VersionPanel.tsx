@@ -16,6 +16,18 @@ import type { VersionDiffComparison, VersionEntry, VersionRestorePlan } from '@/
 import { ResourceWorkspace } from '@/components/layout/resource-workspace'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { RollbackDialog } from '@/features/versions/components/rollback-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { ShieldCheck } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { CURRENT_WORKSPACE_SELECTION, VersionSidebar } from './VersionSidebar'
 import { VersionDiffWorkspace, type VersionDiffMode } from './VersionDiffWorkspace'
 
@@ -101,8 +113,11 @@ export function VersionPanel({ embedded = false, projectId, workspace, refreshSi
     return () => window.removeEventListener('focus', handleFocus)
   }, [refresh, visible])
 
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [versionTitle, setVersionTitle] = useState('')
+
   const createMutation = useMutation({
-    mutationFn: () => createVersion(projectId),
+    mutationFn: (message?: string) => createVersion(projectId, message),
     onSuccess: async result => {
       setError('')
       setSelectionKey('')
@@ -182,7 +197,7 @@ export function VersionPanel({ embedded = false, projectId, workspace, refreshSi
         closeAdaptivePaneRef.current()
       }}
       onRefresh={() => void refresh()}
-      onCreate={() => createMutation.mutate()}
+      onCreate={() => { setVersionTitle(''); setSaveDialogOpen(true) }}
       onLoadMore={() => setHistoryLimit(limit => Math.min(limit + INITIAL_HISTORY_LIMIT, MAX_HISTORY_LIMIT))}
     />
   )
@@ -248,6 +263,44 @@ export function VersionPanel({ embedded = false, projectId, workspace, refreshSi
         onOpenChange={open => { if (!open) closeRestoreDialog() }}
         onRollback={version => restoreMutation.mutate({ id: version.id, paths: restorePaths })}
       />
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('versions.saveVersionModalTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('versions.saveVersionModalDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={e => {
+              e.preventDefault()
+              setSaveDialogOpen(false)
+              const title = versionTitle.trim()
+              const fallback = t('versions.manualSaveTimestamp', {
+                time: new Date().toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+              })
+              createMutation.mutate(title || fallback)
+            }}
+            className="space-y-4"
+          >
+            <Input
+              autoFocus
+              value={versionTitle}
+              onChange={e => setVersionTitle(e.target.value)}
+              placeholder={t('versions.saveVersionPlaceholder')}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? <Spinner /> : <ShieldCheck />}
+                {t('versions.saveCurrent')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

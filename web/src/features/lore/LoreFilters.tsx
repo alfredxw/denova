@@ -12,7 +12,7 @@ import type { LoreItem } from '@/lib/api'
 import { useLoreCategories } from './use-lore-categories'
 import { EMPTY_LORE_FILTERS, loreTagFilterValue, type LoreFilters } from './lore-filters'
 import { IMPORTANCE_OPTIONS, LOAD_MODE_OPTIONS } from './options'
-import { LORE_PROTAGONIST_TAG } from './tags'
+import { isLoreProtagonistTag } from './tags'
 
 interface LoreFilterProps {
   projectId: string
@@ -42,7 +42,7 @@ export function LoreFiltersButton({
     }
     return [...counts].sort(([a], [b]) => a.localeCompare(b))
   }, [items])
-  const tagLabel = (tag: string) => tag === LORE_PROTAGONIST_TAG ? t('lore.library.protagonist') : tag
+  const tagLabel = (tag: string) => isLoreProtagonistTag(tag) ? t('lore.library.protagonist') : tag
   const toggleTag = (tag: string) => {
     const selected = Array.isArray(filters.tags) ? filters.tags : []
     const next = selected.includes(tag) ? selected.filter((value) => value !== tag) : [...selected, tag]
@@ -163,7 +163,7 @@ export function LoreFilterSummary({ projectId, filters, onChange, query, onQuery
     const selected = filters.tags
     selected.forEach((tag) => chips.push({
       id: `tag:${tag}`,
-      label: t('lore.filters.tagChip', { tag: tag === LORE_PROTAGONIST_TAG ? t('lore.library.protagonist') : tag }),
+      label: t('lore.filters.tagChip', { tag: isLoreProtagonistTag(tag) ? t('lore.library.protagonist') : tag }),
       clear: () => {
         const next = selected.filter((value) => value !== tag)
         onChange({ ...filters, tags: next.length ? next : 'all' })

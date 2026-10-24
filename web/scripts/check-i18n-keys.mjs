@@ -3,7 +3,7 @@ import path from 'node:path'
 import process from 'node:process'
 
 const root = path.resolve('src/i18n/locales')
-const locales = ['zh-CN', 'en-US']
+const locales = ['zh-CN', 'en-US', 'ru-RU']
 
 function readLocale(locale) {
   const dir = path.join(root, locale)

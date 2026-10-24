@@ -575,7 +575,13 @@ func (engine *Engine) Run(
 			prepared, transcript, activeModelUser = candidatePrepared, candidateTranscript, candidateModelUser
 			if prepared.historyHead.Identity != "" {
 				transcript, prepared.archive = agenthistory.ArchiveHistory(transcript, prepared.archive, compaction, prepared.contextState)
-				baseTranscript = transcript[:prepared.archive.Local(activeUserIndex)+1]
+				localActiveUser := prepared.archive.Local(activeUserIndex) + 1
+				if localActiveUser < 0 {
+					localActiveUser = 0
+				} else if localActiveUser > len(transcript) {
+					localActiveUser = len(transcript)
+				}
+				baseTranscript = transcript[:localActiveUser]
 			}
 			currentCompactionStorage = compaction
 			return candidate, nil

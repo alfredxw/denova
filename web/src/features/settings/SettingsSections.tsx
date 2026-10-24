@@ -38,6 +38,7 @@ import { MarketSettings } from './MarketSettings'
 import { SETTINGS_SECTIONS, type SettingsFieldRequest, type SettingsSectionId } from './settings-sections'
 import { modelProfilesForEditor, modelEndpointsForEditor, imageAPIProfilesForEditor, imageAPIEndpointsForEditor } from './settings-editor-draft'
 import { FieldRow, TextSizeRow, ReadOnly, Text, Num, BoolTri, AgentApprovalModeSelect, ShellEnvironmentSelect, TraceCaptureSelect, TraceExporterSelect, LanguageSelect, ThemeSelect, MotionIntensitySelect, TellerSelect } from './SettingsFields'
+import { setConfiguredLocale, getConfiguredLocale } from '@/i18n'
 
 interface SettingsSectionsProps {
   layered: LayeredSettings
@@ -140,9 +141,12 @@ export const SettingsSections = memo(function SettingsSections({ layered, draft,
   const sections: Record<SettingsSectionId, ReactNode> = {
     'general': (
       <>
-        <LanguageSelect label={t('settings.appearance.language')} value={draft.language}
+        <LanguageSelect label={t('settings.appearance.language')} value={draft.language || getConfiguredLocale()}
                         inherited={inherited.language}
-                        onChange={(v) => setField('language', v)} />
+                        onChange={(v) => {
+                          setField('language', v)
+                          setConfiguredLocale(v || 'auto', true)
+                        }} />
         <ThemeSelect label={t('settings.appearance.theme')} value={draft.theme}
                      inherited={inherited.theme}
                      onChange={(v) => setField('theme', v)} />

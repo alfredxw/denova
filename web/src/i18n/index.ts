@@ -2,14 +2,16 @@ import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import zhCN from './locales/zh-CN'
 import enUS from './locales/en-US'
+import ruRU from './locales/ru-RU'
 
-export type LocaleCode = 'auto' | 'zh-CN' | 'en-US'
+export type LocaleCode = 'auto' | 'zh-CN' | 'en-US' | 'ru-RU'
 export type ResolvedLocale = Exclude<LocaleCode, 'auto'>
 
 export const LOCALE_OPTIONS: Array<{ value: LocaleCode; labelKey: string }> = [
   { value: 'auto', labelKey: 'locale.auto' },
   { value: 'zh-CN', labelKey: 'locale.zh-CN' },
   { value: 'en-US', labelKey: 'locale.en-US' },
+  { value: 'ru-RU', labelKey: 'locale.ru-RU' },
 ]
 
 const CONFIGURED_LOCALE_STORAGE_KEY = 'nova.locale.configured'
@@ -21,12 +23,20 @@ export function resolveLocale(locale: string | undefined | null, browserLanguage
   const value = (locale || 'auto').trim()
   if (value === 'zh-CN' || value.toLowerCase().startsWith('zh')) return 'zh-CN'
   if (value === 'en-US' || value.toLowerCase().startsWith('en')) return 'en-US'
-  return browserLanguage.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
+  if (value === 'ru-RU' || value.toLowerCase().startsWith('ru')) return 'ru-RU'
+  if (browserLanguage.toLowerCase().startsWith('zh')) return 'zh-CN'
+  if (browserLanguage.toLowerCase().startsWith('ru')) return 'ru-RU'
+  return 'en-US'
 }
 
-export function setConfiguredLocale(locale: string | undefined | null) {
-  configuredLocale = normalizeLocaleCode(locale)
-  writeStoredConfiguredLocale(configuredLocale)
+export function setConfiguredLocale(locale: string | undefined | null, force = false) {
+  if (force || (locale && locale !== 'auto')) {
+    configuredLocale = normalizeLocaleCode(locale)
+    writeStoredConfiguredLocale(configuredLocale)
+  } else {
+    const stored = readStoredConfiguredLocale()
+    configuredLocale = (stored && stored !== 'auto') ? stored : normalizeLocaleCode(locale)
+  }
   const resolved = resolveLocale(configuredLocale)
   if (i18next.language !== resolved) {
     void i18next.changeLanguage(resolved)
@@ -82,7 +92,7 @@ function installLocaleFetchHeaders() {
 }
 
 function normalizeLocaleCode(locale: string | undefined | null): LocaleCode {
-  if (locale === 'zh-CN' || locale === 'en-US') return locale
+  if (locale === 'zh-CN' || locale === 'en-US' || locale === 'ru-RU') return locale
   return 'auto'
 }
 
@@ -128,6 +138,7 @@ i18next
     resources: {
       'zh-CN': { translation: zhCN },
       'en-US': { translation: enUS },
+      'ru-RU': { translation: ruRU },
     },
     lng: getResolvedLocale(),
     fallbackLng: 'zh-CN',

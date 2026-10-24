@@ -81,6 +81,10 @@ const versions = {
   'versions.unknownDate': '未知日期',
   'versions.title': '版本管理',
   'versions.retainedMedia': '将保留 {{count}} 个较新的素材文件，保护历史记录的引用。这些文件仍会显示为目标版本之外的变更。',
+  'versions.saveVersionModalTitle': '保存版本',
+  'versions.saveVersionModalDesc': '输入简短的版本说明，或留空以时间戳保存：',
+  'versions.saveVersionPlaceholder': '例如：主线剧情调整',
+  'versions.manualSaveTimestamp': '手动保存（{{time}}）',
 } as const
 
 export default versions

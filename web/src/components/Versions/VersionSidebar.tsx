@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
-import { formatTime, sourceText, workspaceName } from './version-panel-utils'
+import { formatTime, localizeVersionMessage, sourceText, workspaceName } from './version-panel-utils'
 
 export const CURRENT_WORKSPACE_SELECTION = '__workspace__'
 
@@ -144,7 +144,7 @@ export function VersionSidebar({
                         >
                           <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${selected ? 'bg-foreground' : 'bg-border group-hover:bg-muted-foreground'}`} />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-medium text-foreground">{version.message || t('versions.emptyMessage')}</span>
+                            <span className="block truncate text-xs font-medium text-foreground">{localizeVersionMessage(version.message, t)}</span>
                             <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px]">
                               <span className="truncate">{formatTime(version.created_at)}</span>
                               <span aria-hidden="true">·</span>

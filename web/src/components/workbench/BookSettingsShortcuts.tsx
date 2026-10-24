@@ -232,22 +232,23 @@ export function BookSettingsShortcuts({
         </div>
       </div>
       {pinnedItems.length > 0 ? (
-        <div data-testid="book-setting-shortcuts" className="grid grid-cols-[repeat(auto-fill,minmax(4rem,1fr))] gap-1">
+        <div data-testid="book-setting-shortcuts" className="grid grid-cols-[repeat(auto-fill,minmax(4.75rem,1fr))] gap-1">
           {pinnedItems.map((item) => {
             const selected = isBookSettingSelected(item, selectedFile, loreTabActive)
             const shortcut = (
               <button
                 type="button"
                 data-book-setting-state={item.exists ? 'ready' : 'missing'}
-                aria-label={item.kind === 'file' && !item.exists ? t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path }) : undefined}
-                className={`nova-nav-item relative w-full max-w-full px-2.5 py-1 text-center text-[11px] font-medium ${selected ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
+                title={item.title}
+                aria-label={item.kind === 'file' && !item.exists ? t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path }) : item.title}
+                className={`nova-nav-item relative w-full max-w-full px-1.5 py-1 text-center text-[11px] font-medium ${selected ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
                 onClick={() => selectItem(item)}
               >
                 <span className="flex items-center justify-center gap-1 truncate">
                   {item.kind === 'lore' ? <BookMarked aria-hidden="true" className="h-3 w-3 shrink-0 text-emerald-500" /> : null}
                   <span className="truncate">{item.title}</span>
                 </span>
-                {!item.exists ? <CircleDashed aria-hidden="true" className="absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
+                {!item.exists ? <CircleDashed aria-hidden="true" className="absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
               </button>
             )
             if (item.kind === 'lore') return <div key={bookSettingPinKey(item)}>{shortcut}</div>

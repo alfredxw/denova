@@ -52,7 +52,7 @@ func protectedSystemPromptFragments(cfg *config.Config, agentKind string) []Syst
 	}, {
 		ID: "output_protocol", Source: "Denova runtime", Title: "Output protocol",
 		Purpose: "define the Agent output protocol",
-		Content: outputProtocolForAgent(agentKind), Prefix: "\n\n## Output Protocol\n\n",
+		Content: outputProtocolForAgent(cfg, agentKind), Prefix: "\n\n## Output Protocol\n\n",
 		Required: true, Overflow: SystemPromptOverflowReject,
 	}}
 }
@@ -103,7 +103,7 @@ func subAgentDelegationContract() string {
 	}, "\n")
 }
 
-func outputProtocolForAgent(agentKind string) string {
+func outputProtocolForAgent(cfg *config.Config, agentKind string) string {
 	switch agentKind {
 	case config.AgentKindGeneral:
 		return "- General Agent has no fixed JSON output protocol. Perform all file changes through enabled tools. Mutations must stay within the current Project root; explicitly requested external local sources may be read through read, glob, or grep subject to permission."
@@ -113,7 +113,18 @@ func outputProtocolForAgent(agentKind string) string {
 			"- Write only scenes, actions, dialogue, and consequences. Do not output plans, explanations, tool instructions, Markdown headings, XML wrappers, hidden state blocks, shortcut-choice blocks, or JSON.",
 		}, "\n")
 	case config.AgentKindVersionSummary:
-		return "- Output exactly one Chinese release-summary sentence containing 10 to 30 Han characters. Do not include numbering, quotation marks, colons, terminal punctuation, or explanation."
+		lang := ""
+		if cfg != nil {
+			lang = cfg.Language
+		}
+		switch lang {
+		case "ru-RU":
+			return "- Output exactly one Russian version summary in 4 to 12 words (maximum 60 characters). Do not include numbering, quotation marks, colons, terminal punctuation, or explanation."
+		case "en-US":
+			return "- Output exactly one English version summary in 4 to 12 words (maximum 60 characters). Do not include numbering, quotation marks, colons, terminal punctuation, or explanation."
+		default:
+			return "- Output exactly one Chinese release-summary sentence containing 10 to 30 Han characters. Do not include numbering, quotation marks, colons, terminal punctuation, or explanation."
+		}
 	case config.AgentKindToolAgent:
 		return "- Output only the JSON object required by the current call site. Do not output explanations, Markdown, code fences, or extra text."
 	case config.AgentKindImage:

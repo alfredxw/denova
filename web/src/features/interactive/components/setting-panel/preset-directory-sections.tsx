@@ -5,6 +5,9 @@ import type { TFunction } from 'i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import type { PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
+import { imagePresetName } from '../../image-preset-name'
+import { actorStateName } from '../../actor-state-name'
+import { ruleSystemName } from '../../rule-system-name'
 import { narrativeStyleDescription, narrativeStyleName } from '../../narrative-style'
 import { gamePlanningTemplateDescription, gamePlanningTemplateName } from '../../game-planning'
 import { presetStatusLabel } from '../preset-config/preset-status'
@@ -87,7 +90,7 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
   if (kind === 'image') {
     return imagePresets.map((preset) => ({
       id: presetDirectoryEntryId('image', preset.id),
-      title: preset.name,
+      title: imagePresetName(preset, t),
       summary: `${presetStatusLabel(preset, t)} · ${t('settingPanel.imagePreset.ruleCount', { count: enabledImagePresetSlotCount(preset), total: normalizedImagePresetSlots(preset).length })}`,
       searchText: preset.description || '',
     }))
@@ -103,7 +106,7 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
   if (kind === 'rule') {
     return ruleSystems.map((item) => ({
       id: presetDirectoryEntryId('rule', item.id),
-      title: item.name,
+      title: ruleSystemName(item, t),
       summary: t('settingPanel.trpgRule.directorySummary', {
         policy: t(`settingPanel.trpgRule.failurePolicy.${item.trpg_system?.rule_templates?.[0]?.failure_policy || 'fail_forward'}`),
         state: actorStates.find((state) => state.id === item.actor_state_id)?.name || t('settingPanel.trpgRule.noActorStateBinding'),
@@ -113,7 +116,7 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
   }
   return actorStates.map((item) => ({
     id: presetDirectoryEntryId('actor-state', item.id),
-    title: item.name,
+    title: actorStateName(item, t),
     summary: t('settingPanel.actorState.directorySummary', {
       templates: item.actor_state?.templates?.length || 0,
       checks: ruleSystems.filter((rule) => rule.actor_state_id === item.id).length,

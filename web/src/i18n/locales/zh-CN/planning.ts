@@ -57,6 +57,9 @@ const planning = {
   'planning.markDraft': '标回初稿',
   'planning.loreDescription': '{{type}} · {{importance}} · {{loadMode}}{{tags}}{{brief}}',
   'planning.loreBrief': ' · 简介：{{brief}}',
+  'planning.status.draft': '初稿',
+  'planning.status.confirmed': '成章',
+  'planning.status.empty': '空章',
 } as const
 
 export default planning
