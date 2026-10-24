@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { getImagePresets } from '@/features/interactive/api'
+import { imagePresetName } from '@/features/interactive/image-preset-name'
 import type { ImagePreset } from '@/features/interactive/types'
 import type { LoreItemImageGenerateRequest } from '@/lib/api'
 import { Spinner } from '@/components/ui/spinner'
@@ -116,7 +117,7 @@ export function LoreMaterialGenerateDialog({
                     {presets.length ? (
                       presets.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
-                          {item.name}
+                          {imagePresetName(item, t)}
                         </SelectItem>
                       ))
                     ) : (

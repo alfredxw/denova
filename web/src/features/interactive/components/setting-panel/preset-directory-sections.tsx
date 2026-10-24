@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import type { PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
+import { imagePresetName } from '../../image-preset-name'
 import { narrativeStyleDescription, narrativeStyleName } from '../../narrative-style'
 import { gamePlanningTemplateDescription, gamePlanningTemplateName } from '../../game-planning'
 import { presetStatusLabel } from '../preset-config/preset-status'
@@ -87,7 +88,7 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
   if (kind === 'image') {
     return imagePresets.map((preset) => ({
       id: presetDirectoryEntryId('image', preset.id),
-      title: preset.name,
+      title: imagePresetName(preset, t),
       summary: `${presetStatusLabel(preset, t)} · ${t('settingPanel.imagePreset.ruleCount', { count: enabledImagePresetSlotCount(preset), total: normalizedImagePresetSlots(preset).length })}`,
       searchText: preset.description || '',
     }))

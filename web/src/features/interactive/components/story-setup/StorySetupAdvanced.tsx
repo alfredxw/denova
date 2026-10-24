@@ -10,6 +10,7 @@ import { THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinkin
 import type { LayeredSettings } from '@/features/settings/types'
 import { getActorStates, getEventPackages, getRuleSystems } from '../../api'
 import { normalizeImageIntervalTurns } from '../../image-settings'
+import { imagePresetName } from '../../image-preset-name'
 import { narrativeStyleName } from '../../narrative-style'
 import { MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT } from '../../opening'
 import type {
@@ -127,7 +128,7 @@ export function StorySetupAdvanced({
     () => tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) })),
     [t, tellers],
   )
-  const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map(moduleOption), [imagePresets])
+  const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map((item) => ({ id: item.id, label: imagePresetName(item, t) })), [imagePresets, t])
   const ruleOptions = useMemo<TuningSelectOption[]>(() => ruleSystems.map(moduleOption), [ruleSystems])
   const stateOptions = useMemo<TuningSelectOption[]>(() => actorStates.map(moduleOption), [actorStates])
   const modelOptions = useMemo<TuningSelectOption[]>(() => {

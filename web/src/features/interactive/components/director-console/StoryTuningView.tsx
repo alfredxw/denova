@@ -13,6 +13,7 @@ import { getActorStates, getEventPackages, getRuleSystems } from '../../api'
 import { normalizeStoryCheckSettings } from '../../check-settings'
 import { gamePlanningTemplateName } from '../../game-planning'
 import { normalizeImageIntervalTurns, normalizeStoryImageSettings } from '../../image-settings'
+import { imagePresetName } from '../../image-preset-name'
 import { narrativeStyleName } from '../../narrative-style'
 import { MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT } from '../../opening'
 import type {
@@ -162,7 +163,7 @@ export function StoryTuningView({
     () => tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) })),
     [t, tellers],
   )
-  const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map(moduleOption), [imagePresets])
+  const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map((item) => ({ id: item.id, label: imagePresetName(item, t) })), [imagePresets, t])
   const ruleOptions = useMemo<TuningSelectOption[]>(() => ruleSystems.map(moduleOption), [ruleSystems])
   const stateOptions = useMemo<TuningSelectOption[]>(() => actorStates.map(moduleOption), [actorStates])
   const ruleEnabled = !refs.rule_system_disabled
