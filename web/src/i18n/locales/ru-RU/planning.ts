@@ -29,7 +29,7 @@ const planning = {
   'planning.creatorRulesTab': 'Правила',
   'planning.writingProgress': 'Прогресс написания',
   'planning.writingProgressTab': 'Прогресс',
-  'planning.characterStates': 'Состояние персонажей',
+  'planning.characterStates': 'Состояние',
   'planning.currentChapterPlan': 'План текущей главы',
   'planning.outlineNavigation': 'Структура книги',
   'planning.chapterPlans': 'Планы групп глав',
