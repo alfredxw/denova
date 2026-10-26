@@ -34,7 +34,7 @@ func Ask() agenttool.Toolset {
 
 func buildAsk() (agenttool.Toolset, error) {
 	tool, err := agenttool.InferTool(
-		"ask", "Ask one to three questions when required input cannot be inferred. For choice questions, prefer two or three concise options; use four only when every option is materially different. Write questions, options, and descriptions in the same language as the user's current input.",
+		"ask", "Ask one to three questions when required input cannot be inferred. For choice questions, prefer two or three concise options; use four only when every option is materially different. Set recommended=true on exactly one option per choice question. Write questions, options, and descriptions in the same language as the user's current input.",
 		func(ctx context.Context, input askInput) (agentschema.ToolResult, error) {
 			if !agentexecution.IsRootInvocation(ctx) {
 				return agentschema.ToolResult{}, errors.New("ask is available only in a root Agent invocation")

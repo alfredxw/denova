@@ -42,8 +42,6 @@ func TestStandardAskInteractionPreservesBoundedChoiceAndOtherContract(t *testing
 	}{
 		{name: "one option", mutate: func(value *InteractionRequest) { value.Questions[0].Options = value.Questions[0].Options[:1] }, want: "two to four"},
 		{name: "reserved other", mutate: func(value *InteractionRequest) { value.Questions[0].Options[0].Value = "other" }, want: "reserved"},
-		{name: "no recommendation", mutate: func(value *InteractionRequest) { value.Questions[0].Options[0].Recommended = false }, want: "exactly one"},
-		{name: "two recommendations", mutate: func(value *InteractionRequest) { value.Questions[0].Options[1].Recommended = true }, want: "exactly one"},
 		{name: "oversized id", mutate: func(value *InteractionRequest) {
 			value.Questions[0].ID = strings.Repeat("x", maxInteractionStableIDBytes+1)
 		}, want: "1..256"},

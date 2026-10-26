@@ -53,6 +53,8 @@ func TestExternalAskUsesCanonicalAnswersAcrossWaitersAndRestart(t *testing.T) {
 			}{
 				{"text", `{"questions":[{"id":"tone","prompt":"Which tone?"}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Restrained"}}},
 				{"choice", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"calm"}}}},
+				{"no recommendation", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm"},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"bold"}}}},
+				{"two recommendations", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold","recommended":true}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"bold"}}}},
 				{"multiple", `{"questions":[{"id":"tone","prompt":"Which tones?","multiple":true,"options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"calm", "bold"}}}},
 				{"other", `{"questions":[{"id":"tone","prompt":"Which tone?","options":[{"value":"calm","label":"Calm","recommended":true},{"value":"bold","label":"Bold"}]}]}`, []conversation.HostAskAnswer{{QuestionID: "tone", SelectedOptionIDs: []string{"other"}, CustomInput: "Reflective"}}},
 			} {

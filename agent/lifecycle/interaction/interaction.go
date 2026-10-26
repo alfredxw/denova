@@ -31,7 +31,7 @@ type InteractionOption struct {
 	Value       string `json:"value" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable option ID; other is reserved for the host-provided free-text choice."`
 	Label       string `json:"label" jsonschema:"minLength=1,maxLength=4096" jsonschema_description:"Concise user-visible label in the same language as the user's current input."`
 	Description string `json:"description,omitempty" jsonschema:"maxLength=4096" jsonschema_description:"Optional consequence or tradeoff in the same language as the user's current input."`
-	Recommended bool   `json:"recommended,omitempty" jsonschema_description:"True for the single recommended option."`
+	Recommended bool   `json:"recommended,omitempty" jsonschema_description:"Set true on exactly one option per choice question to recommend it."`
 }
 
 type InteractionQuestion struct {
@@ -158,7 +158,7 @@ const (
 var interactionStableIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
 
 func (standardInteractionPolicy) Identity() agentschema.CapabilityIdentity {
-	return agentschema.CapabilityIdentity{Kind: "interaction.standard", Version: 3}
+	return agentschema.CapabilityIdentity{Kind: "interaction.standard", Version: 4}
 }
 
 func (standardInteractionPolicy) ValidateRequest(_ context.Context, request InteractionRequest) error {
@@ -252,7 +252,7 @@ func validateInteractionQuestion(question InteractionQuestion) error {
 		return errors.New("choice question requires " + interactionChoiceOptionRange + " options")
 	}
 	seen := make(map[string]struct{}, len(question.Options))
-	recommended := 0
+	// Recommendations are presentation hints, not answer validity constraints.
 	for _, option := range question.Options {
 		if err := validateInteractionStableID("option value", option.Value); err != nil {
 			return err
@@ -273,12 +273,6 @@ func validateInteractionQuestion(question InteractionQuestion) error {
 		if len(option.Label)+len(option.Description) > maxInteractionOptionTextBytes {
 			return fmt.Errorf("option %q text exceeds %d bytes", option.Value, maxInteractionOptionTextBytes)
 		}
-		if option.Recommended {
-			recommended++
-		}
-	}
-	if recommended != 1 {
-		return errors.New("choice question requires exactly one recommended option")
 	}
 	return nil
 }

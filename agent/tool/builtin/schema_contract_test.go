@@ -123,13 +123,15 @@ func TestAskSchemaUsesOneQuestionShape(t *testing.T) {
 	}
 	options, _ := questions.Items.Properties.Get("options")
 	if options == nil || options.Contains != nil || options.MinContains != nil || options.MaxContains != nil {
-		t.Fatalf("recommendation cardinality belongs to interaction validation: %#v", options)
+		t.Fatalf("recommendation cardinality must not constrain the schema: %#v", options)
 	}
 	info := &agentschema.ToolInfo{Name: "ask", ParamsOneOf: agentschema.NewParamsOneOfByJSONSchema(schema)}
 	for _, arguments := range []string{
 		`{"questions":[{"id":"scope","prompt":"Which scope?"}]}`,
 		`{"questions":[{"id":"scope","prompt":"Which scope?","options":[]}]}`,
 		`{"questions":[{"id":"scope","prompt":"Which scope?","options":[{"value":"a","label":"A","recommended":true},{"value":"b","label":"B"}]}]}`,
+		`{"questions":[{"id":"scope","prompt":"Which scope?","options":[{"value":"a","label":"A"},{"value":"b","label":"B"}]}]}`,
+		`{"questions":[{"id":"scope","prompt":"Which scope?","options":[{"value":"a","label":"A","recommended":true},{"value":"b","label":"B","recommended":true}]}]}`,
 	} {
 		if _, err := agenttool.NormalizeToolArguments(info, arguments); err != nil {
 			t.Errorf("valid question shape rejected: %s: %v", arguments, err)
