@@ -4,7 +4,7 @@ export type RightPanel = 'ai' | null
 type BottomPanel = 'versions' | 'problems' | null
 export type PluginPageRoute = `plugin:${string}/${string}`
 export function isPluginPageRoute(value: unknown): value is PluginPageRoute { return typeof value === 'string' && /^plugin:[a-z][a-z0-9.-]*\/[a-z][a-z0-9.-]*$/.test(value) }
-export type WorkspaceRoute = PluginPageRoute | 'ide' | 'interactive' | 'market' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
+export type WorkspaceRoute = PluginPageRoute | 'ide' | 'interactive' | 'market' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory' | 'statistics'
 /** Historical internal name retained while the persisted key stays stable. */
 export type WorkspaceMode = WorkspaceRoute
 
@@ -12,7 +12,7 @@ export type WorkspaceMode = WorkspaceRoute
  * Shared top-level destinations, alongside Writing and Game. The historical
  * `mode` name remains in persisted state, but navigation no longer has a global mode switch.
  */
-const SHARED_WORKSPACE_MODES = ['market', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
+const SHARED_WORKSPACE_MODES = ['market', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory', 'statistics'] as const
 
 export type SharedWorkspaceMode = (typeof SHARED_WORKSPACE_MODES)[number]
 

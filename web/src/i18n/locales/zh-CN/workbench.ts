@@ -1,4 +1,5 @@
 const workbench = {
+  'workbench.activity.statistics': '统计',
   'workbench.mobile.primary': '主工作区',
   'workbench.mobile.secondary': '辅助工作区',
   'workbench.mobile.content': '内容',

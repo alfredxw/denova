@@ -45,6 +45,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/resource-exchange/installations/:id/policy", localHostEffectMiddleware, apiHandlers.HandleResourceUpdateMode)
 		api.POST("/resource-market/catalog/refresh", localHostEffectMiddleware, apiHandlers.HandleResourceMarketRefresh)
 		api.GET("/agent-runs", apiHandlers.HandleGlobalAgentRunTraces)
+		api.GET("/statistics", apiHandlers.HandleStatistics)
 		api.GET("/agent-runtimes", apiHandlers.HandleAgentEngines)
 		api.POST("/agent-runtimes/:id/check", apiHandlers.HandleAgentEngineCheck)
 		api.GET("/agent-runtimes/:id/models", apiHandlers.HandleAgentEngineModels)

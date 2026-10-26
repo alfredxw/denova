@@ -1,4 +1,5 @@
 const workbench = {
+  'workbench.activity.statistics': 'Statistics',
   'workbench.mobile.primary': 'Main',
   'workbench.mobile.secondary': 'Secondary',
   'workbench.mobile.content': 'Content',

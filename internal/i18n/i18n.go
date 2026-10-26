@@ -330,6 +330,8 @@ var catalogZH = map[string]string{
 	"api.settings.workspaceMissing":                  "当前没有打开的工作区",
 	"api.settings.lanUsernameRequired":               "开启局域网访问时必须设置用户名",
 	"api.settings.lanPasswordRequired":               "开启局域网访问时必须设置密码",
+	"api.statistics.invalidRange":                    "统计日期范围无效",
+	"api.statistics.loadFailed":                      "无法读取统计数据",
 	"api.trajectory.disabled":                        "Trajectory 当前不可用",
 	"api.trajectory.invalidLimit":                    "limit 必须是 1 到 500 的整数",
 
@@ -593,6 +595,8 @@ var catalogEN = map[string]string{
 	"api.settings.workspaceMissing":                  "No workspace is open.",
 	"api.settings.lanUsernameRequired":               "Set a username before enabling LAN access.",
 	"api.settings.lanPasswordRequired":               "Set a password before enabling LAN access.",
+	"api.statistics.invalidRange":                    "Invalid statistics date range.",
+	"api.statistics.loadFailed":                      "Unable to load statistics.",
 	"api.trajectory.disabled":                        "Trajectory is unavailable.",
 	"api.trajectory.invalidLimit":                    "limit must be an integer from 1 to 500.",
 

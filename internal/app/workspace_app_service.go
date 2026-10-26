@@ -421,6 +421,9 @@ func (a *App) observeProjectFileChange(event filewatch.Event) {
 	if projectBook != nil {
 		projectBook.InvalidateSummary(event.ProjectID, event.Paths, event.Resync)
 	}
+	if a.statisticsApp != nil {
+		a.statisticsApp.Queue(event)
+	}
 	if agentChat != nil {
 		agentChat.InvalidateBookSummary(event.ProjectID, event.Paths, event.Resync)
 	}

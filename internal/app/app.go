@@ -32,6 +32,7 @@ import (
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
 	"denova/internal/app/resourceexchange"
 	settingsapp "denova/internal/app/settings"
+	statisticsapp "denova/internal/app/statistics"
 	apptask "denova/internal/app/task"
 	"denova/internal/book"
 	"denova/internal/concurrency"
@@ -111,6 +112,7 @@ type App struct {
 	modelsApp          *modelsapp.Service
 	imageApp           *imageapp.Service
 	projectBook        *projectbookapp.Service
+	statisticsApp      *statisticsapp.Service
 	projectFiles       *projectfilesapp.Service
 	servicesOnce       sync.Once
 	platform           *platform.Manager
@@ -365,6 +367,7 @@ func (a *App) ensureServices() {
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
 		a.projectBook = projectbookapp.NewService(a.projectRegistry)
+		a.statisticsApp = statisticsapp.New(a.projectRegistry, a.projectBook)
 		if a.workspaceFiles != nil {
 			a.workspaceFiles.SetObserver(a.observeProjectFileChange)
 		}
@@ -531,6 +534,9 @@ func (a *App) Close() {
 		}
 		if workspaceFiles != nil {
 			workspaceFiles.Close()
+		}
+		if a.statisticsApp != nil {
+			a.statisticsApp.Close()
 		}
 		if a.terminals != nil {
 			a.terminals.CloseAll()

@@ -26,6 +26,10 @@ func (engines *Engines) ExternalRuntime(cfg config.Config) *external.Runtime {
 		}
 	}
 	return &external.Runtime{Selection: selection, ConnectionKey: connectionKey, Acquire: func(ctx context.Context) (external.Adapter, func(), error) {
-		return engines.Acquire(ctx, selection, cfg)
+		adapter, release, err := engines.Acquire(ctx, selection, cfg)
+		if err == nil {
+			adapter = observeAdapter(adapter, cfg, selection)
+		}
+		return adapter, release, err
 	}}
 }

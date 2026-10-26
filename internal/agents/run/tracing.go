@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"denova/config"
+	"denova/internal/statistics"
 
 	agentmodel "github.com/alfredxw/denova/agent/model"
 	"github.com/alfredxw/denova/agent/model/providers"
@@ -125,10 +126,13 @@ type TraceContentRecord struct {
 }
 
 type Span struct {
-	sink     TraceSink
-	span     TraceSpanRecord
-	observer *Observer
-	once     sync.Once
+	sink           TraceSink
+	span           TraceSpanRecord
+	observer       *Observer
+	once           sync.Once
+	statisticsRoot string
+	statisticsCall *statistics.Call
+	statisticsOnce sync.Once
 }
 
 func ContextWithRunTrace(ctx context.Context, traceID string, sink TraceSink, parentSpanID string) context.Context {
@@ -143,6 +147,9 @@ func ContextWithRunTrace(ctx context.Context, traceID string, sink TraceSink, pa
 }
 
 func WithStandaloneTrace(ctx context.Context, cfg *config.Config, agentKind, source, mode string, attrs map[string]any) (context.Context, func(error)) {
+	if cfg != nil {
+		ctx = statistics.WithProject(ctx, cfg.ProjectStoreDir)
+	}
 	if _, ok := agentmodel.SessionKeyFromContext(ctx); !ok {
 		ctx = agentmodel.ContextWithSessionKey(ctx, StandaloneSessionKey(cfg, agentKind, source))
 	}
@@ -346,6 +353,14 @@ func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 	if span == nil && observer != nil {
 		span = &Span{observer: observer}
 	}
+	// Usage collection is independent of optional diagnostic trace capture.
+	if root := statistics.ProjectRoot(ctx); root != "" {
+		if span == nil {
+			span = &Span{}
+		}
+		span.statisticsRoot = root
+		span.statisticsCall = &statistics.Call{ID: callID, At: time.Now().UTC(), Kind: statistics.ModelCall, Model: cfg.Model, Runtime: "native"}
+	}
 	spanID := ""
 	traceID := ""
 	if span != nil && span.SpanID() != "" {
@@ -371,6 +386,21 @@ func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 }
 
 func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName string, callIndex int, msg *agentschema.Message, err error, extra map[string]any) {
+	if span != nil && span.statisticsCall != nil {
+		span.statisticsOnce.Do(func() {
+			call := *span.statisticsCall
+			call.DurationMS = time.Since(call.At).Milliseconds()
+			call.Failed = err != nil
+			if value, ok := extra["ttft_ms"].(int64); ok && value > 0 {
+				call.TTFTMS = &value
+			}
+			if msg != nil && msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
+				u := msg.ResponseMeta.Usage
+				call.Usage = &statistics.Usage{Prompt: int64(u.PromptTokens), Cached: int64(u.PromptTokenDetails.CachedTokens), Output: int64(u.CompletionTokens), Total: int64(u.TotalTokens)}
+			}
+			statistics.RecordCall(span.statisticsRoot, call)
+		})
+	}
 	attrs := cloneTraceAttrs(extra)
 	runID := ""
 	if span != nil {

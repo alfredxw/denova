@@ -16,16 +16,20 @@ Denova records major user-visible features, important compatibility or data chan
 
 #### 中文
 
+- 新增图表统计，可按项目和日期查看稿量变化、章节进度、游戏活动与模型用量。
 - 新增内置互动游戏创作 Skill，并支持按「游戏」分类管理 Skills。
 - 更新前后可查看本次升级跨越的全部版本变化。
 
 #### English
 
+- Adds chart-based statistics for manuscript changes, chapter progress, Game activity, and model usage by project and date.
 - Adds a built-in interactive-game design Skill and a Game category for Skills.
 - Shows changes across every version included in an upgrade, before and after installation.
 
 ### Added / 新增
 
+- 共通一级菜单新增「统计」，提供写作趋势、稿量分布、章节进度、游戏每日回合与故事线活动、模型调用与 Token 图表；稿量变化和模型用量从升级后开始记录，游戏活动从现存故事日志读取。
+- A shared Statistics destination adds writing trends, manuscript and chapter charts, daily Game turns and story activity, model calls, and token breakdowns. Manuscript changes and model usage are recorded after upgrading; Game activity comes from retained story journals.
 - 内置互动游戏创作 Skill，支持游戏构思与核心循环、世界与角色资料库、状态系统、规则判定、游戏规划、开局回合和跑团诊断。
 - A built-in interactive-game design Skill covers game premises and loops, world and character Lore, state systems, rules and checks, planning, openings and turns, and play diagnostics.
 - 互动游戏创作 Skill 补充经典网文向的成长体系、爽点结构、资源与社会资本、世界阶梯、副本/规则恐怖/都市隐杀和外观沉浸感设计。

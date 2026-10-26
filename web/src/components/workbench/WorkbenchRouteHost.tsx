@@ -24,6 +24,7 @@ export type WorkbenchRouteId =
   | 'automations'
   | 'agentchat'
   | 'trajectory'
+  | 'statistics'
   | 'books'
   | 'interactive'
   | 'versions'
@@ -40,6 +41,7 @@ const PRESENTED_LAYOUT_BY_ROUTE = {
   automations: 'full',
   agentchat: 'full',
   trajectory: 'full',
+  statistics: 'full',
   books: 'full',
   interactive: 'interactive',
   versions: 'full',
@@ -118,6 +120,7 @@ export function selectWorkbenchRoute({
     case 'automations':
     case 'agentchat':
     case 'trajectory':
+    case 'statistics':
     case 'books':
     case 'interactive':
     case 'lore':

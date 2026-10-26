@@ -14,6 +14,8 @@ const SkillsView = memo(loadable(() => import('@/features/skills/SkillsView').th
 const SettingsView = memo(loadable(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView })), workbenchLoadingOptions))
 const TrajectoryPage = memo(loadable(() => import('@/features/trajectory/TrajectoryPage').then((module) => ({ default: module.TrajectoryPage })), workbenchLoadingOptions))
 
+const StatisticsPage = memo(loadable(() => import('@/features/statistics/StatisticsPage').then((module) => ({ default: module.StatisticsPage })), workbenchLoadingOptions))
+
 interface SharedWorkbenchRoutesProps {
   route: WorkbenchRouteId
   isMounted: WorkbenchRoutePresentation['isMounted']
@@ -61,6 +63,11 @@ export function SharedWorkbenchRoutes({
       {isMounted('trajectory') && (
         <WorkbenchRouteLayer visible={route === 'trajectory'} loadingLabel={loadingLabel}>
           <TrajectoryPage />
+        </WorkbenchRouteLayer>
+      )}
+      {isMounted('statistics') && (
+        <WorkbenchRouteLayer visible={route === 'statistics'} loadingLabel={loadingLabel}>
+          <StatisticsPage visible={route === 'statistics'} />
         </WorkbenchRouteLayer>
       )}
       {isMounted('settings') && (

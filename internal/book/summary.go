@@ -18,6 +18,8 @@ const DisplayTimeFormat = "2006-01-02 15:04"
 
 // WorkspaceSummary 汇总当前作品的写作进度。
 type WorkspaceSummary struct {
+	// Incomplete prevents partial filesystem scans from becoming statistical deletions.
+	Incomplete   bool              `json:"incomplete,omitempty"`
 	Title        string            `json:"title"`
 	Author       string            `json:"author"`
 	ChapterCount int               `json:"chapter_count"`
@@ -100,6 +102,7 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 
 	err := filepath.WalkDir(chapterRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
+			summary.Incomplete = true
 			return nil
 		}
 		name := entry.Name()
@@ -115,10 +118,12 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 
 		info, statErr := entry.Info()
 		if statErr != nil {
+			summary.Incomplete = true
 			return nil
 		}
 		rel, relErr := filepath.Rel(s.workspace, path)
 		if relErr != nil {
+			summary.Incomplete = true
 			return nil
 		}
 		relPath := filepath.ToSlash(rel)
@@ -128,6 +133,7 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 		if !reusable || cached.Stamp != stamp || s.chapterSummaryInvalidated(relPath) {
 			data, readErr := os.ReadFile(path)
 			if readErr != nil {
+				summary.Incomplete = true
 				return nil
 			}
 			chapter = newChapterSummary(relPath, name, info, countWritingWords(string(data)))

@@ -10,6 +10,7 @@ import (
 
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
+	"denova/internal/statistics"
 
 	"github.com/alfredxw/denova/agent"
 	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
@@ -81,6 +82,7 @@ func (trace *publicAgentRunTrace) configure(runID string) {
 }
 
 func (trace *publicAgentRunTrace) bindContext(ctx context.Context, options agentrun.Options, runID string) context.Context {
+	ctx = statistics.WithProject(ctx, options.StateRoot)
 	if trace == nil {
 		return ctx
 	}

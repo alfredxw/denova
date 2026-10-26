@@ -46,6 +46,7 @@ import narrativeStyle from './en-US/narrativeStyle'
 import agentChat from './en-US/agentChat'
 import agentApproval from './en-US/agentApproval'
 import files from './en-US/files'
+import statistics from './en-US/statistics'
 import trajectory from './en-US/trajectory'
 
 const enUS = {
@@ -98,6 +99,7 @@ const enUS = {
   ...agentApproval,
   ...files,
   ...trajectory,
+  ...statistics,
   'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 
