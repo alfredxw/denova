@@ -19,6 +19,7 @@
 - 共通能力的设计和验证必须覆盖写作与游戏，尤其是布局、导航、会话、设置和版本管理。
 - 所有用户可见交互、文案、错误和空状态提供独立中英文资源，按当前语言单语展示；用户错误通过本地化 message / error key 呈现。
 - UI 优先使用 shadcn/ui 和已有组件、编辑器依赖。主题以暗色黑、浅色白为底，少量红黄绿点缀；检查两种主题，使用自适应布局，避免固定宽度。
+- Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
 - 列表通过点击整个父项展开或收起，不只允许点击左侧箭头。
 
 # Agent 与模型上下文
