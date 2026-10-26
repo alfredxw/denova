@@ -2,13 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
-import { getUpdateStatus, fetchProjectSettings, fetchSettings, refreshProjectSettings, refreshSettings } from '@/features/settings/api'
+import { fetchProjectSettings, fetchSettings, refreshProjectSettings, refreshSettings } from '@/features/settings/api'
 import { subscribeSettingsTarget } from '@/features/settings/query'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
-import { UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-events'
-import type { UpdateCheckResult } from '@/features/settings/types'
-import { buildFrontendReloadURL } from '@/features/settings/update-reload'
-import { APP_VERSION } from '@/app-version'
+import { SoftwareUpdateMonitor } from '@/features/updates/SoftwareUpdateMonitor'
 import { AnalyticsNotice } from '@/features/analytics/AnalyticsPreferences'
 import { useAnalyticsActivity } from '@/features/analytics/use-analytics-activity'
 import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
@@ -339,15 +336,6 @@ function App() {
   }, [projectId, setTheme, workspaceLoaded])
 
   useEffect(() => {
-    const onUpdateCheckResult = (event: Event) => {
-      const result = (event as CustomEvent<UpdateCheckResult>).detail
-      if (result) applyUpdateCheckResult(result)
-    }
-    window.addEventListener(UPDATE_CHECK_RESULT_EVENT, onUpdateCheckResult)
-    return () => window.removeEventListener(UPDATE_CHECK_RESULT_EVENT, onUpdateCheckResult)
-  }, [applyUpdateCheckResult])
-
-  useEffect(() => {
     const onConflictPreserved = (event: Event) => {
       const detail = (event as CustomEvent<AutosaveConflictPreservedDetail>).detail
       if (!detail?.id) return
@@ -358,32 +346,6 @@ function App() {
     window.addEventListener(AUTOSAVE_CONFLICT_PRESERVED_EVENT, onConflictPreserved)
     return () => window.removeEventListener(AUTOSAVE_CONFLICT_PRESERVED_EVENT, onConflictPreserved)
   }, [t])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    let timer: ReturnType<typeof setTimeout>
-    const poll = async () => {
-      try {
-        const status = await getUpdateStatus(AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]))
-        if (!controller.signal.aborted) {
-          // Another tab can schedule an idle restart. Every open workbench
-          // must load the new bundle, even if Settings was never mounted here.
-          if (status.phase === 'succeeded' && status.id && status.version
-            && status.current_version.replace(/^v/, '') === status.version.replace(/^v/, '')
-            && status.current_version.replace(/^v/, '') !== APP_VERSION.replace(/^v/, '')) {
-            window.location.replace(buildFrontendReloadURL(status.version, Date.now(), window.location.href))
-            return
-          }
-          if (status.phase === 'staged' && status.version) {
-            applyUpdateCheckResult({ current_version: status.current_version, latest_version: status.version, update_available: true, can_install: false, platform: '', release_url: '', published_at: '' }, true)
-          } else if (status.check) applyUpdateCheckResult(status.check)
-        }
-      } catch (error) { if (!controller.signal.aborted) console.warn('[App.tsx] update status unavailable', error) }
-      if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 15_000)
-    }
-    void poll()
-    return () => { controller.abort(); clearTimeout(timer) }
-  }, [applyUpdateCheckResult])
 
   useEffect(() => {
     if (activeTabKey) touchTab(activeTabKey)
@@ -1050,6 +1012,7 @@ function App() {
         onSemanticClassificationChange={setCharacterCardSemanticClassification}
         onImport={handleCharacterCardImport}
       />
+      <SoftwareUpdateMonitor onCheckResult={applyUpdateCheckResult} />
       <OnboardingGuide
         workspaceReady={workspaceLoaded && booksLoaded && analyticsReady}
         mode={mode}

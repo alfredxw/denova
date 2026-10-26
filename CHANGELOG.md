@@ -17,10 +17,12 @@ Denova records major user-visible features, important compatibility or data chan
 #### 中文
 
 - 新增内置互动游戏创作 Skill，并支持按「游戏」分类管理 Skills。
+- 更新前后可查看本次升级跨越的全部版本变化。
 
 #### English
 
 - Adds a built-in interactive-game design Skill and a Game category for Skills.
+- Shows changes across every version included in an upgrade, before and after installation.
 
 ### Added / 新增
 
@@ -30,6 +32,11 @@ Denova records major user-visible features, important compatibility or data chan
 - The interactive-game design Skill now covers classic web-novel progression, payoff structure, resources and social capital, world tiers, instance/rule-horror/urban-undercover patterns, and sensory immersion.
 - Skills 库新增「游戏」分类，可在创建、配置和筛选中使用。
 - The Skills library adds a Game category for creation, configuration, and filtering.
+
+### Changed / 变更
+
+- 软件更新展示当前版本到目标版本的变化，按版本阅读简要说明和详情；更新完成后保留本次升级范围，并提供完整历史入口。
+- Software updates show changes from the current version to the target, with per-version summaries and details. Completed upgrades retain their comparison range and link to the full history.
 
 ## [v0.6.3] - 2026-10-20
 

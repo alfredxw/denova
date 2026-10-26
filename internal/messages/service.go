@@ -96,18 +96,27 @@ func (s *Service) MarkAllRead(ids []string) error {
 }
 
 func (s *Service) changelogMessages(locale string) ([]Message, error) {
+	content, err := s.ReadChangelog()
+	if err != nil {
+		return nil, err
+	}
+	return parseChangelogMessagesForLocale(content, locale), nil
+}
+
+// ReadChangelog resolves the same installed source as the notification feed.
+func (s *Service) ReadChangelog() (string, error) {
 	path := s.resolveChangelogPath()
 	if path == "" {
-		return []Message{}, nil
+		return "", nil
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return []Message{}, nil
+		return "", nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read changelog failed: %w", err)
+		return "", fmt.Errorf("read changelog failed: %w", err)
 	}
-	return parseChangelogMessagesForLocale(string(data), locale), nil
+	return string(data), nil
 }
 
 func (s *Service) resolveChangelogPath() string {
@@ -120,7 +129,8 @@ func (s *Service) resolveChangelogPath() string {
 	} else if env := strings.TrimSpace(os.Getenv("NOVA_CHANGELOG_PATH")); env != "" {
 		candidates = append(candidates, env)
 	}
-	candidates = append(candidates, "CHANGELOG.md")
+	// Prefer the copy shipped with the running executable. The working directory
+	// may be a user's unrelated project; it is only a fallback for development.
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
 		candidates = append(candidates,
@@ -129,6 +139,7 @@ func (s *Service) resolveChangelogPath() string {
 			filepath.Join(exeDir, "..", "..", "CHANGELOG.md"),
 		)
 	}
+	candidates = append(candidates, "CHANGELOG.md")
 	for _, candidate := range candidates {
 		if strings.TrimSpace(candidate) == "" {
 			continue

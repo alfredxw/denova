@@ -166,6 +166,8 @@ var catalogZH = map[string]string{
 	"api.update.tooLarge":       "安装包不能超过 512 MiB。",
 	"api.update.busy":           "另一个更新操作正在进行，请稍后重试。",
 
+	"api.update.notesFailed":                         "更新内容加载失败，请重试或查看发布记录。",
+	"api.update.notesRangeInvalid":                   "无法确定要查看的版本范围，请重新检查更新。",
 	"api.update.checkFailed":                         "检查更新失败，请稍后重试。详细原因请查看服务端日志。",
 	"api.update.installFailed":                       "安装更新失败，请重试或从 GitHub Releases 手动下载安装包。详细原因请查看服务端日志。",
 	"api.update.applyFailed":                         "应用更新失败，请查看服务端日志，并尝试手动重启或安装。",
@@ -427,6 +429,8 @@ var catalogEN = map[string]string{
 	"api.update.tooLarge":       "The release archive must be 512 MiB or smaller.",
 	"api.update.busy":           "Another update operation is in progress. Try again later.",
 
+	"api.update.notesFailed":                         "Could not load update notes. Retry or view the release history.",
+	"api.update.notesRangeInvalid":                   "Could not determine the version range. Check for updates again.",
 	"api.update.checkFailed":                         "Could not check for updates. Try again later; see server logs for details.",
 	"api.update.installFailed":                       "Could not install the update. Retry or download the archive from GitHub Releases; see server logs for details.",
 	"api.update.applyFailed":                         "Could not apply the update. See server logs and try restarting or installing manually.",

@@ -22,6 +22,12 @@ func parseChangelogMessages(content string) []Message {
 }
 
 func parseChangelogMessagesForLocale(content, locale string) []Message {
+	return parseChangelog(content, locale, maxChangelogMessages)
+}
+
+// A zero limit reads the full release history for an upgrade comparison. The
+// notification feed retains its existing count and body limits.
+func parseChangelog(content, locale string, limit int) []Message {
 	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
 	messages := make([]Message, 0, maxChangelogMessages)
 	currentHeading := ""
@@ -57,8 +63,11 @@ func parseChangelogMessagesForLocale(content, locale string) []Message {
 			Type:        MessageTypeChangelog,
 			Title:       label,
 			Summary:     changelogSummary(bodyText),
-			Body:        truncateRunes(bodyText, maxMessageBodyRunes),
+			Body:        bodyText,
 			PublishedAt: publishedAt,
+		}
+		if limit > 0 {
+			message.Body = truncateRunes(message.Body, maxMessageBodyRunes)
 		}
 		messages = append(messages, message)
 		currentHeading = ""
@@ -69,7 +78,7 @@ func parseChangelogMessagesForLocale(content, locale string) []Message {
 		if strings.HasPrefix(line, "## ") {
 			flush()
 			currentHeading = strings.TrimSpace(strings.TrimPrefix(line, "## "))
-			if len(messages) >= maxChangelogMessages {
+			if limit > 0 && len(messages) >= limit {
 				break
 			}
 			continue
@@ -78,11 +87,11 @@ func parseChangelogMessagesForLocale(content, locale string) []Message {
 			body = append(body, line)
 		}
 	}
-	if len(messages) < maxChangelogMessages {
+	if limit == 0 || len(messages) < limit {
 		flush()
 	}
-	if len(messages) > maxChangelogMessages {
-		return messages[:maxChangelogMessages]
+	if limit > 0 && len(messages) > limit {
+		return messages[:limit]
 	}
 	return messages
 }
@@ -256,14 +265,17 @@ func localizedChangelogHeadingTitle(title, target string) (string, bool) {
 		"security":   {zh: "安全", en: "Security"},
 		"安全":         {zh: "安全", en: "Security"},
 	}
-	value, ok := headings[normalized]
-	if !ok {
-		return "", false
+	for _, part := range strings.Split(normalized, "/") {
+		value, ok := headings[strings.TrimSpace(part)]
+		if !ok {
+			continue
+		}
+		if target == "en" {
+			return value.en, true
+		}
+		return value.zh, true
 	}
-	if target == "en" {
-		return value.en, true
-	}
-	return value.zh, true
+	return "", false
 }
 
 func explicitChangelogLanguage(value string) (string, bool) {

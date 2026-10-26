@@ -13,6 +13,7 @@ import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
 import { Button } from '@/components/ui/button'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { MessageCenterButton } from '@/features/messages/MessageCenter'
+import { requestUpdateNotes } from '@/features/settings/update-events'
 import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
@@ -368,7 +369,7 @@ export function WorkbenchShell({
         <WorkbenchNoticePill
           expanded={activityBarExpanded}
           notice={notice}
-          onOpenSettings={onToggleSettings}
+          onOpenUpdate={() => { if (notice?.kind === 'update') requestUpdateNotes({ fromVersion: notice.currentVersion, toVersion: notice.latestVersion }) }}
           onDismiss={onDismissNotice}
         />
       ) : undefined}
@@ -432,7 +433,7 @@ export function WorkbenchShell({
           </Button>
           <MessageCenterButton showLabel className="!min-h-11 !w-full justify-center" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
         </div>
-        {notice && <WorkbenchNoticePill expanded notice={notice} starSecondaryText="description" onOpenSettings={() => { closeMobilePanes(); onToggleSettings() }} onDismiss={onDismissNotice} />}
+        {notice && <WorkbenchNoticePill expanded notice={notice} starSecondaryText="description" onOpenUpdate={() => { closeMobilePanes(); if (notice.kind === 'update') requestUpdateNotes({ fromVersion: notice.currentVersion, toVersion: notice.latestVersion }) }} onDismiss={onDismissNotice} />}
       </div>
     )
     const mobileActivityItems: MobileNavItem[] = allActivityItems

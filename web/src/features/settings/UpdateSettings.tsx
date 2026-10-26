@@ -7,7 +7,8 @@ import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { applyUpdate, getUpdateStatus, checkForUpdate, installUpdateStream, uploadUpdate } from './api'
-import type { UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import type { CompletedUpdate, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import { UpdateNotesDialog, UpdateNotesView } from '@/features/updates/UpdateNotes'
 import { notifyUpdateCheckResult } from './update-events'
 import { scheduleFrontendReloadAfterUpdate } from './update-reload'
 
@@ -22,6 +23,7 @@ export function UpdateSettings() {
 export function useUpdateSettings() {
   const { t } = useTranslation()
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null)
+  const [completedUpdate, setCompletedUpdate] = useState<CompletedUpdate | null>(null)
   const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
   const [updateInstallProgress, setUpdateInstallProgress] = useState<UpdateInstallProgress | null>(null)
   const [operation, setOperation] = useState<UpdateOperation>('checking')
@@ -54,6 +56,7 @@ export function useUpdateSettings() {
     const status = await getUpdateStatus(AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]))
     if (signal?.aborted || (signal && (requestActive.current || restartTarget.current?.monitoring))) return
     setActiveWork(Boolean(status.busy))
+    setCompletedUpdate(status.completed_update ?? null)
     if (status.check) setUpdateStatus(status.check)
     setOperation(status.restart_waiting ? 'waiting' : status.operation === 'downloading' ? 'installing' : status.operation || 'idle')
     if (status.progress) setUpdateInstallProgress(status.progress)
@@ -178,6 +181,7 @@ export function useUpdateSettings() {
 
   return {
     activeWork,
+    completedUpdate,
     status: updateStatus,
     installResult: updateInstallResult,
     installProgress: updateInstallProgress,
@@ -194,6 +198,7 @@ export function useUpdateSettings() {
 
 export function UpdatePanel({
   activeWork,
+  completedUpdate,
   onWait,
   onCancelWait,
   status,
@@ -208,6 +213,7 @@ export function UpdatePanel({
 }: ReturnType<typeof useUpdateSettings>) {
   const { t } = useTranslation()
   const fileInput = useRef<HTMLInputElement>(null)
+  const [notesOpen, setNotesOpen] = useState(false)
   const releaseDate = status?.published_at ? new Date(status.published_at).toLocaleString() : ''
   const applyReady = Boolean(installResult?.apply_ready)
   const checking = operation === 'checking'
@@ -220,6 +226,28 @@ export function UpdatePanel({
   const applyDisabled = (busy && !waiting) || !applyReady
   const progressPercent = clampPercent(installProgress?.percent ?? 0)
   const progressLabel = installProgress ? updatePhaseLabel(installProgress.phase, t) : ''
+  const notesTarget = applyReady && installResult
+    ? { fromVersion: installResult.previous_version || status?.current_version || APP_VERSION, toVersion: installResult.installed_version, kind: 'available' as const }
+    : status?.update_available
+      ? { fromVersion: status.current_version, toVersion: status.latest_version, kind: 'available' as const }
+      : completedUpdate
+        ? { fromVersion: completedUpdate.previous_version, toVersion: completedUpdate.version, kind: 'completed' as const }
+        : null
+  const installActions = <>
+    {!applyReady && <Button size="sm" onClick={onInstall} disabled={installDisabled}>
+      {installing ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Download data-icon="inline-start" />}
+      {installing ? t('settings.updates.installing') : t('settings.updates.install')}
+    </Button>}
+    {applyReady && <>
+      <Button variant="outline" size="sm" disabled={busy && !waiting} onClick={waiting ? onCancelWait : onWait}>
+        {t(waiting ? 'settings.updates.cancelWait' : 'settings.updates.whenIdle')}
+      </Button>
+      <Button size="sm" disabled={applyDisabled} onClick={() => { setNotesOpen(false); onApply() }}>
+        {applying ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RefreshCw data-icon="inline-start" />}
+        {applying ? t('settings.updates.applying') : t('settings.updates.apply')}
+      </Button>
+    </>}
+  </>
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
       <div className="flex flex-col gap-3">
@@ -280,6 +308,7 @@ export function UpdatePanel({
           )}
           {error && <InlineErrorNotice className="mt-2" message={error} title={t('settings.updates.error')} />}
         </div>
+        {notesTarget && <UpdateNotesView range={notesTarget} variant="preview" onOpen={() => setNotesOpen(true)} />}
         <div className="flex shrink-0 flex-wrap gap-2">
           {status?.release_url && (
             <a
@@ -301,29 +330,7 @@ export function UpdatePanel({
             <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
             {checking ? t('settings.updates.checking') : t('settings.updates.check')}
           </button>
-          <button
-            type="button"
-            onClick={onInstall}
-            disabled={installDisabled}
-            className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50"
-          >
-            {installing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {installing ? t('settings.updates.installing') : t('settings.updates.install')}
-          </button>
-          {applyReady && <Button variant="outline" size="sm" disabled={busy && !waiting} onClick={waiting ? onCancelWait : onWait}>
-            {t(waiting ? 'settings.updates.cancelWait' : 'settings.updates.whenIdle')}
-          </Button>}
-          {applyReady && (
-            <button
-              type="button"
-              onClick={onApply}
-              disabled={applyDisabled}
-              className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50"
-            >
-              {applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              {applying ? t('settings.updates.applying') : t('settings.updates.apply')}
-            </button>
-          )}
+          {installActions}
         </div>
       </div>
       <Collapsible className="mt-3">
@@ -364,6 +371,8 @@ export function UpdatePanel({
           </div>
         </CollapsibleContent>
       </Collapsible>
+      {notesTarget && <UpdateNotesDialog range={notesTarget} kind={notesTarget.kind} open={notesOpen} onOpenChange={setNotesOpen} error={error}
+        actions={notesTarget.kind === 'available' && installActions} />}
     </div>
   )
 }

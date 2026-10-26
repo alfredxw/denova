@@ -7,7 +7,7 @@ import { GLOBAL_SETTINGS_TARGET, projectSettingsTarget, settingsQueryKeys, setti
 import type { SettingsTarget } from './query'
 import { SettingsSaveError, settingsSaveFiles } from './save-error'
 import type { SettingsPatch } from './merge-patch'
-import type { WebAccessSettings, WebSearchTestResult } from './types'
+import type { UpdateNotesRange, UpdateNotesResult, WebAccessSettings, WebSearchTestResult } from './types'
 
 export function testWebSearch(settings: WebAccessSettings, query: string, signal: AbortSignal): Promise<WebSearchTestResult> {
   return requestJSON('/api/settings/web-search/test', {
@@ -128,6 +128,12 @@ function sameQueryKey(left: readonly unknown[], right: readonly unknown[]): bool
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
   return requestJSON('/api/update/check')
+}
+
+export function getUpdateNotes(range: UpdateNotesRange, signal?: AbortSignal): Promise<UpdateNotesResult> {
+  const query = new URLSearchParams({ to: range.toVersion })
+  if (range.fromVersion) query.set('from', range.fromVersion)
+  return requestJSON(`/api/update/notes?${query}`, { signal })
 }
 
 export async function installUpdateStream(signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {

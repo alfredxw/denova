@@ -721,6 +721,7 @@ export interface UpdateInstallProgress {
 }
 
 export interface UpdateStatus {
+  completed_update?: CompletedUpdate
   check?: UpdateCheckResult
   checked_at?: string
   operation?: 'checking' | 'downloading' | 'uploading'
@@ -734,6 +735,25 @@ export interface UpdateStatus {
   phase: 'idle' | 'staged' | 'waiting' | 'backing_up' | 'applying' | 'starting' | 'rolling_back' | 'succeeded' | 'failed'
   error?: string
   log_path?: string
+}
+
+export interface CompletedUpdate {
+  id: string
+  previous_version: string
+  version: string
+  completed_at: string
+}
+
+export interface UpdateNotesRange {
+  fromVersion?: string
+  toVersion: string
+}
+
+export interface UpdateNotesResult {
+  from_version?: string
+  to_version: string
+  complete: boolean
+  releases: Array<{ version: string; published_at?: string; summary?: string; brief: string; body?: string }>
 }
 
 /** Display-only arrangement; does not change the saved scene or Agent choices. */

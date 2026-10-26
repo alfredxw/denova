@@ -11,6 +11,7 @@ import (
 
 	"denova/internal/automation"
 	"denova/internal/messages"
+	"denova/internal/update"
 )
 
 const maxAutomationNotificationMessages = 200
@@ -27,10 +28,11 @@ type AutomationSource interface {
 type Service struct {
 	dataDir    string
 	automation AutomationSource
+	updates    *update.Service
 }
 
-func NewService(dataDir string, source AutomationSource) *Service {
-	return &Service{dataDir: strings.TrimSpace(dataDir), automation: source}
+func NewService(dataDir string, source AutomationSource, updates *update.Service) *Service {
+	return &Service{dataDir: strings.TrimSpace(dataDir), automation: source, updates: updates}
 }
 
 // ActivitySummary is the lightweight header projection polled by the frontend.
@@ -167,6 +169,7 @@ func (service *Service) loadMessageSources(locale string) (messageSourceSnapshot
 	if err != nil {
 		return messageSourceSnapshot{}, err
 	}
+	changelog = service.upgradeMessages(changelog)
 	tasks, err := service.automation.List()
 	if err != nil {
 		return messageSourceSnapshot{}, fmt.Errorf("list automations for messages: %w", err)

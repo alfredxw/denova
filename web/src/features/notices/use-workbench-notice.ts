@@ -7,7 +7,7 @@ const DISMISSED_UPDATE_VERSION_KEY = 'nova.update.dismissedLatestVersion'
 const DISMISSED_STAR_NOTICE_KEY = 'nova.starNotice.dismissed'
 
 export type WorkbenchNotice =
-  | { kind: 'update'; latestVersion: string; ready?: boolean }
+  | { kind: 'update'; currentVersion: string; latestVersion: string; ready?: boolean }
   | { kind: 'star' }
 
 interface UseWorkbenchNoticeOptions {
@@ -54,7 +54,7 @@ export function useWorkbenchNotice({ messages, isStreaming }: UseWorkbenchNotice
     const dismissedVersion = readDismissedUpdateVersion()
     setUpdateNotice(dismissedVersion === result.latest_version
       ? null
-      : { kind: 'update', latestVersion: result.latest_version, ready })
+      : { kind: 'update', currentVersion: result.current_version, latestVersion: result.latest_version, ready })
   }, [])
 
   const dismissNotice = useCallback(() => {

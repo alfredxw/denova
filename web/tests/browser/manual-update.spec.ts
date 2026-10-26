@@ -1,6 +1,14 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
+test.beforeEach(async ({ page }) => {
+  // This journey owns installation state, not GitHub release availability.
+  await page.route('**/api/update/notes?**', route => route.fulfill({ json: {
+    from_version: new URL(route.request().url()).searchParams.get('from'),
+    to_version: new URL(route.request().url()).searchParams.get('to'), complete: true, releases: [],
+  } }))
+})
+
 test('a completed background restart refreshes Game even if settings were never opened', async ({ page, request }) => {
   await createAndOpenBook(request, 'Background Restart Browser Book')
   let completed = false

@@ -13,6 +13,8 @@ export interface ProductMessage {
   workspace?: string
   status?: string
   action_required?: boolean
+  version?: string
+  previous_version?: string
 }
 
 export interface ProductMessageList {

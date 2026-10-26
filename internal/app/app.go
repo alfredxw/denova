@@ -355,7 +355,7 @@ func (a *App) ensureServices() {
 		if a.cfg != nil {
 			dataDir = a.cfg.DataDir()
 		}
-		a.activityApp = activityapp.NewService(dataDir, a.automationApp)
+		a.activityApp = activityapp.NewService(dataDir, a.automationApp, a.updates)
 		a.bookApp = bookapp.NewService(dataDir, a.projectRegistry, a.bookMetaStore)
 		a.resourceCatalog = resourcecatalogapp.NewService(dataDir, resourceCatalogHost{app: a})
 		a.resourceMarket = resourceexchange.NewMarket(dataDir)

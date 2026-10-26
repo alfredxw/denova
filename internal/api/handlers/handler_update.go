@@ -10,8 +10,23 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/internal/api/sse"
+	"denova/internal/app/activity"
 	"denova/internal/update"
 )
+
+func (h *Handlers) HandleUpdateNotes(ctx context.Context, c *app.RequestContext) {
+	result, err := h.app.Activity().UpdateNotes(ctx, c.Query("from"), c.Query("to"), requestLocale(c))
+	if err != nil {
+		slog.WarnContext(ctx, "update_notes_failed", "from_version", c.Query("from"), "to_version", c.Query("to"), "error", err)
+		if errors.Is(err, activity.ErrUpdateNotesRange) {
+			writeErrorKey(c, consts.StatusBadRequest, "api.update.notesRangeInvalid")
+		} else {
+			writeErrorKey(c, consts.StatusBadGateway, "api.update.notesFailed")
+		}
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
 
 func (h *Handlers) HandleUpdateCheck(ctx context.Context, c *app.RequestContext) {
 	result, err := h.app.CheckUpdate(ctx)

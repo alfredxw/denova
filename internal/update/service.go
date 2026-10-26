@@ -36,6 +36,7 @@ type Service struct {
 	httpClient      *http.Client
 	executablePath  string
 	githubAPIBase   string
+	githubRawBase   string
 }
 
 func NewService() *Service {
@@ -46,6 +47,7 @@ func NewService() *Service {
 		httpClient:     nil,
 		executablePath: exe,
 		githubAPIBase:  githubAPIBase,
+		githubRawBase:  "https://raw.githubusercontent.com",
 	}
 }
 

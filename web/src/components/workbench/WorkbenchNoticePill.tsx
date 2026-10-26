@@ -8,7 +8,7 @@ interface WorkbenchNoticePillProps {
   notice: WorkbenchNotice
   expanded: boolean
   starSecondaryText?: 'action' | 'description'
-  onOpenSettings: () => void
+  onOpenUpdate: () => void
   onDismiss?: () => void
 }
 
@@ -16,7 +16,7 @@ export function WorkbenchNoticePill({
   notice,
   expanded,
   starSecondaryText = 'action',
-  onOpenSettings,
+  onOpenUpdate,
   onDismiss,
 }: WorkbenchNoticePillProps) {
   const { t } = useTranslation()
@@ -37,7 +37,7 @@ export function WorkbenchNoticePill({
         <button
           type="button"
           className="min-w-0 flex-1 truncate px-2 py-1.5 text-left"
-          onClick={onOpenSettings}
+          onClick={onOpenUpdate}
         >
           {t(notice.ready ? 'workbench.updateNotice.ready' : 'workbench.updateNotice.available', { version: notice.latestVersion })}
         </button>

@@ -16,6 +16,7 @@ import { DENOVA_GITHUB_URL } from '@/lib/product-links'
 import { cn } from '@/lib/utils'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { AutomationMessageNavigation, ProductMessage } from './types'
+import { displayVersion, UpdateNotesView } from '@/features/updates/UpdateNotes'
 
 type MessageFilter = 'all' | 'action' | 'automation' | 'product'
 
@@ -211,6 +212,7 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
                   ) : <div className="divide-y px-3">
                     {visibleItems.map((item) => {
                       const Icon = item.action_required ? CircleAlert : item.type === 'automation' ? Clock3 : Sparkles
+                      const summary = item.type === 'update' && item.previous_version ? t('settings.updates.notes.fromVersion', { version: displayVersion(item.previous_version) }) : item.summary
                       return <button
                         key={item.id}
                         data-message-id={item.id}
@@ -222,7 +224,7 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
                         <span className={cn('mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground', item.action_required && 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]')}><Icon className="size-4" /></span>
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-2"><span className="line-clamp-2 flex-1 text-sm font-semibold leading-5">{messageTitle(item, t)}</span>{!item.read_at && <span className="size-2 shrink-0 rounded-full bg-primary"><span className="sr-only">{t('messages.unread')}</span></span>}</span>
-                          {item.summary && <span className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{item.summary}</span>}
+                          {summary && <span className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">{summary}</span>}
                           <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"><Badge variant="secondary" className="text-[11px]">{messageTypeLabel(item, t)}</Badge><span>{formatMessagePublishedAt(item.published_at)}</span></span>
                         </span>
                       </button>
@@ -245,7 +247,9 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
                     }}><ArrowUpRight />{t(activeItem.action_required ? 'messages.openAutomationAction' : 'messages.openAutomation')}</Button>
                   )}
                   {activeItem.type === 'changelog' && <SupportPrompt />}
-                  <MarkdownRenderer content={activeItem.body} />
+                  {activeItem.type === 'update' && activeItem.version && activeItem.previous_version
+                    ? <UpdateNotesView key={activeItem.id} range={{ fromVersion: activeItem.previous_version, toVersion: activeItem.version }} />
+                    : <MarkdownRenderer content={activeItem.body} />}
                 </article>
               ) : <Empty className="h-full"><EmptyHeader><EmptyMedia variant="icon"><Bell /></EmptyMedia><EmptyTitle>{t('messages.selectEmpty')}</EmptyTitle></EmptyHeader></Empty>}
             </div>
@@ -308,6 +312,7 @@ function countUnread(items: ProductMessage[]) {
 }
 
 function messageTitle(item: ProductMessage, t: (key: string, options?: Record<string, string>) => string) {
+  if (item.type === 'update') return t('settings.updates.notes.completedTitle', { version: displayVersion(item.version || item.title) })
   if (item.type === 'changelog') {
     const label = item.title.toLowerCase() === 'unreleased' ? t('messages.unreleased') : item.title
     return t('messages.changelogTitle', { version: label })
@@ -323,7 +328,7 @@ function messageMeta(item: ProductMessage, t: (key: string, options?: Record<str
 }
 
 function messageTypeLabel(item: ProductMessage, t: (key: string, options?: Record<string, string>) => string) {
-  if (item.type === 'changelog') return t('messages.type.changelog')
+  if (item.type === 'changelog' || item.type === 'update') return t('messages.type.changelog')
   if (item.type === 'automation_action') return t('messages.type.automationAction')
   if (item.type === 'automation') return t('messages.type.automation')
   return item.type
