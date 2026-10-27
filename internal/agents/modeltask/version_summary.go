@@ -35,7 +35,8 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		return "", fmt.Errorf("create version-summary model: %w", err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[version-summary-agent] generate begin instruction=%s", prompts.PartSummary(instruction)))
-	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindVersionSummary, "version_summary", cfg.Workspace, "builtin_base", "Version Summary Generation Rules", "define the version summary task and output constraint", "You are Denova's version-summary generator. Infer the core creative change in this save from the file changes. Output exactly one Chinese version summary of 10 to 30 Han characters. Do not include numbering, quotation marks, a colon, a final period, or any explanation.")
+	versionPrompt := prompts.VersionSummarySystemInstruction(cfg.Language)
+	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindVersionSummary, "version_summary", cfg.Workspace, "builtin_base", "Version Summary Generation Rules", "define the version summary task and output constraint", versionPrompt)
 	if err != nil {
 		runErr = err
 		return "", err

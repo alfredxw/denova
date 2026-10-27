@@ -101,7 +101,7 @@ export function parseInlineReferences(input: string): string[] {
   let match: RegExpExecArray | null
   while ((match = regex.exec(input)) !== null) {
     const value = match[1]
-    if (value.startsWith('资料:')) continue
+    if (value.startsWith('资料:') || value.startsWith('lore:') || value.startsWith('лор:')) continue
     result.add(value)
   }
   return Array.from(result)
@@ -166,8 +166,8 @@ export function collectPlanUserContext(messages: AgentUIMessage[], target: Agent
     .filter(Boolean)
   if (userMessages.length <= 1) return userMessages[0] || ''
   return [
-    `原始请求：\n${userMessages[0]}`,
-    `用户补充：\n${userMessages.slice(1).join('\n\n')}`,
+    `Исходный запрос / Original request:\n${userMessages[0]}`,
+    `Дополнения пользователя / Additional notes:\n${userMessages.slice(1).join('\n\n')}`,
   ].join('\n\n')
 }
 

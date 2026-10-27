@@ -13,6 +13,9 @@ import { getActorStates, getEventPackages, getRuleSystems } from '../../api'
 import { normalizeStoryCheckSettings } from '../../check-settings'
 import { gamePlanningTemplateName } from '../../game-planning'
 import { normalizeImageIntervalTurns, normalizeStoryImageSettings } from '../../image-settings'
+import { imagePresetName } from '../../image-preset-name'
+import { actorStateName } from '../../actor-state-name'
+import { ruleSystemName } from '../../rule-system-name'
 import { narrativeStyleName } from '../../narrative-style'
 import { MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT } from '../../opening'
 import type {
@@ -162,9 +165,9 @@ export function StoryTuningView({
     () => tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) })),
     [t, tellers],
   )
-  const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map(moduleOption), [imagePresets])
-  const ruleOptions = useMemo<TuningSelectOption[]>(() => ruleSystems.map(moduleOption), [ruleSystems])
-  const stateOptions = useMemo<TuningSelectOption[]>(() => actorStates.map(moduleOption), [actorStates])
+  const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map((item) => ({ id: item.id, label: imagePresetName(item, t) })), [imagePresets, t])
+  const ruleOptions = useMemo<TuningSelectOption[]>(() => ruleSystems.map((item) => ({ id: item.id, label: ruleSystemName(item, t) })), [ruleSystems, t])
+  const stateOptions = useMemo<TuningSelectOption[]>(() => actorStates.map((item) => ({ id: item.id, label: actorStateName(item, t) })), [actorStates, t])
   const ruleEnabled = !refs.rule_system_disabled
 
   return (
@@ -397,9 +400,6 @@ function cloneRefs(refs: StoryDirectorModuleRefs): StoryDirectorModuleRefs {
   return { ...refs, event_package_ids: [...(refs.event_package_ids || [])] }
 }
 
-function moduleOption(item: { id: string; name: string }): TuningSelectOption {
-  return { id: item.id, label: item.name || item.id }
-}
 
 function formatSigned(value: number): string {
   return value > 0 ? `+${value}` : String(value)

@@ -23,7 +23,7 @@ import { CodeDiffSurface, type CodeDiffSurfaceFile } from '@/features/diff/CodeD
 import { lineDiffStats } from '@/features/changes/diff-stats'
 import type { DiffFileDocument, DiffFileNavigationItem, DiffLayout } from '@/features/diff/types'
 import { useMultiFileDiffNavigation } from '@/features/diff/use-multi-file-diff-navigation'
-import { formatBytes, formatTime, sourceText } from './version-panel-utils'
+import { formatBytes, formatTime, localizeVersionMessage, sourceText } from './version-panel-utils'
 
 export type VersionDiffMode = DiffLayout
 
@@ -132,7 +132,7 @@ export function VersionDiffWorkspace({
   }, { additions: 0, deletions: 0 }), [files, statsByPath])
   const title = currentSelection
     ? t('versions.currentChanges')
-    : targetVersion?.message || t('versions.emptyMessage')
+    : targetVersion ? localizeVersionMessage(targetVersion.message, t) : t('versions.emptyMessage')
   const description = currentSelection
     ? t('versions.currentComparedWithLatest')
     : targetVersion

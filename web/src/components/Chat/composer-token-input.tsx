@@ -553,7 +553,10 @@ function tokenizeLine(line: string, options: ComposerParseOptions) {
     if (lore) {
       flush()
       content.push(tokenNode({ kind: 'lore', value: lore.id, label: lore.label }))
-      index += lore.label.length + '@资料:'.length
+      let prefixLen = '@资料:'.length
+      if (line.startsWith('@лор:', index)) prefixLen = '@лор:'.length
+      else if (line.startsWith('@lore:', index)) prefixLen = '@lore:'.length
+      index += lore.label.length + prefixLen
       continue
     }
     const style = matchKnownToken(line, index, '#', sortedStyles)
@@ -584,15 +587,17 @@ function matchKnownToken(line: string, index: number, prefix: '/' | '@' | '#', v
 }
 
 function matchKnownLore(line: string, index: number, loreItems: Array<{ id: string; label: string }>) {
-  const prefix = '@资料:'
-  if (!line.startsWith(prefix, index)) return null
-  for (const item of loreItems) {
-    if (!line.startsWith(`${prefix}${item.label}`, index)) continue
-    const before = index === 0 ? '' : line[index - 1]
-    const after = line[index + prefix.length + item.label.length] || ''
-    if (before && !/\s/.test(before)) continue
-    if (after && !isTokenBoundary(after)) continue
-    return item
+  const prefixes = ['@лор:', '@lore:', '@资料:']
+  for (const prefix of prefixes) {
+    if (!line.startsWith(prefix, index)) continue
+    for (const item of loreItems) {
+      if (!line.startsWith(`${prefix}${item.label}`, index)) continue
+      const before = index === 0 ? '' : line[index - 1]
+      const after = line[index + prefix.length + item.label.length] || ''
+      if (before && !/\s/.test(before)) continue
+      if (after && !isTokenBoundary(after)) continue
+      return item
+    }
   }
   return null
 }
@@ -636,7 +641,7 @@ function tokenPlainText(token: ComposerTokenSpec) {
   const label = token.label || token.value
   if (token.kind === 'skill') return `/${token.value}`
   if (token.kind === 'style') return `#${token.value}`
-  if (token.kind === 'lore') return `@资料:${label}`
+  if (token.kind === 'lore') return `@лор:${label}`
   return `@${token.value}`
 }
 

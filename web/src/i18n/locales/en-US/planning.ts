@@ -57,6 +57,9 @@ const planning = {
   'planning.markDraft': 'Mark as initial draft',
   'planning.loreDescription': '{{type}} · {{importance}} · {{loadMode}}{{tags}}{{brief}}',
   'planning.loreBrief': ' · Brief: {{brief}}',
+  'planning.status.draft': 'Draft',
+  'planning.status.confirmed': 'Completed',
+  'planning.status.empty': 'Empty',
 } as const
 
 export default planning

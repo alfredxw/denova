@@ -2,6 +2,7 @@ import { SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
+import { imagePresetName } from '@/features/interactive/image-preset-name'
 import { narrativeStyleName, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
 import { BUILTIN_WRITING_SKILLS, DEFAULT_WRITING_SKILL, type WritingSkillOption } from '@/hooks/useWritingSkillOptions'
 import { PersistedSettingsMenuSub } from './PersistedSettingsMenuSub'
@@ -48,9 +49,9 @@ export function WritingImagePresetMenu({
     <PersistedSettingsMenuSub
       icon={Sparkles}
       label={t('chat.imagePreset')}
-      currentLabel={selectedPreset?.name || imagePresetID}
+      currentLabel={selectedPreset ? imagePresetName(selectedPreset, t) : imagePresetID}
       value={selectedPreset?.id || imagePresetID}
-      options={normalizedPresets.map((item) => ({ id: item.id, label: item.name || item.id }))}
+      options={normalizedPresets.map((item) => ({ id: item.id, label: imagePresetName(item, t) }))}
       saving={saving}
       disabled={!enabled}
       onValueChange={onChange}

@@ -126,8 +126,8 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
   const id = `custom-${Date.now()}`
   return {
     id,
-    name: presetDraftText(t, 'settingPanel.presetDraft.teller.name', '自定义叙事风格'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.teller.description', '新的叙事风格'),
+    name: presetDraftText(t, 'settingPanel.presetDraft.teller.name', 'Пользовательский стиль повествования'),
+    description: presetDraftText(t, 'settingPanel.presetDraft.teller.description', 'Новый стиль повествования'),
     style_refs: [],
     style_rules: [],
     context_policy: {
@@ -138,17 +138,17 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
     slots: [
       {
         id: 'identity',
-        name: presetDraftText(t, 'settingPanel.presetDraft.teller.systemName', '系统提示'),
+        name: presetDraftText(t, 'settingPanel.presetDraft.teller.systemName', 'Системный промпт'),
         target: 'system',
         enabled: true,
-        content: presetDraftText(t, 'settingPanel.presetDraft.teller.systemContent', '你是一套自定义叙事风格。你要明确影响故事的文风倾向、角色反应、剧情裁定、节奏推进和长期叙事原则。'),
+        content: presetDraftText(t, 'settingPanel.presetDraft.teller.systemContent', 'Вы — пользовательский стиль повествования. Задавайте тон текста, реакции персонажей, темп и принципы повествования.'),
       },
       {
         id: 'turn_context',
-        name: presetDraftText(t, 'settingPanel.presetDraft.teller.turnName', '本轮上下文'),
+        name: presetDraftText(t, 'settingPanel.presetDraft.teller.turnName', 'Контекст хода'),
         target: 'turn_context',
         enabled: true,
-        content: presetDraftText(t, 'settingPanel.presetDraft.teller.turnContent', '每轮都要让用户行动带来具体后果，并主动制造符合叙事风格的反馈、阻碍、发现、NPC 反应、代价、暗线推进或新的行动入口。'),
+        content: presetDraftText(t, 'settingPanel.presetDraft.teller.turnContent', 'Каждое действие пользователя должно приводить к осязаемым последствиям, препятствиям или новым возможностям.'),
       },
     ],
   }
@@ -157,20 +157,20 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
 export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<GamePlanningTemplate> {
   return {
     id: `custom-planning-${Date.now()}`,
-    name: presetDraftText(t, 'settingPanel.presetDraft.director.name', '自定义规划模板'),
+    name: presetDraftText(t, 'settingPanel.presetDraft.director.name', 'Пользовательский шаблон планирования'),
     description: presetDraftText(
       t,
       'settingPanel.presetDraft.director.description',
-      '用有序章节定义当前规划需要持续维护的内容。',
+      'Используйте разделы для определения направлений сюжета.',
     ),
     sections: [
       {
         id: 'long-term-direction',
-        title: presetDraftText(t, 'settingPanel.presetDraft.director.sectionTitle', '长期方向'),
+        title: presetDraftText(t, 'settingPanel.presetDraft.director.sectionTitle', 'Долгосрочное направление'),
         description: presetDraftText(
           t,
           'settingPanel.presetDraft.director.sectionDescription',
-          '记录长期可能性、关键转变与必须留给玩家的选择空间。',
+          'Отслеживайте долгосрочные возможности и ключевые повороты сюжета.',
         ),
       },
     ],
@@ -182,8 +182,8 @@ export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<GamePl
 export function newEventPackageDraft(t?: PresetDraftTranslator): Partial<EventPackageModule> {
   return {
     id: `custom-event-package-${Date.now()}`,
-    name: presetDraftText(t, 'settingPanel.presetDraft.event.name', '自定义事件包'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.event.description', '新的事件包，配置事件卡、强度、冷却和事件描述。'),
+    name: presetDraftText(t, 'settingPanel.presetDraft.event.name', 'Пользовательский пакет событий'),
+    description: presetDraftText(t, 'settingPanel.presetDraft.event.description', 'Новый пакет событий для настройки карточек и триггеров.'),
     events: [],
     version: 1,
     custom: true,
@@ -193,8 +193,8 @@ export function newEventPackageDraft(t?: PresetDraftTranslator): Partial<EventPa
 export function newRuleSystemDraft(t?: PresetDraftTranslator): Partial<RuleSystemModule> {
   return {
     id: `custom-rule-${Date.now()}`,
-    name: presetDraftText(t, 'settingPanel.presetDraft.rule.name', '自定义 TRPG 检定'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.rule.description', '新的 TRPG 检定，代表一种 DM 检定风格，并配置固定 d20、难度修正、失败处理、难度判断、状态影响指引和可选 State Binding。'),
+    name: presetDraftText(t, 'settingPanel.presetDraft.rule.name', 'Пользовательская TRPG-проверка'),
+    description: presetDraftText(t, 'settingPanel.presetDraft.rule.description', 'Новый стиль проверок мастера с бросками d20 и модификаторами сложности.'),
     trpg_system: {
       rule_templates: defaultRuleTemplates(),
     },
@@ -206,21 +206,21 @@ export function newRuleSystemDraft(t?: PresetDraftTranslator): Partial<RuleSyste
 export function newActorStateDraft(t?: PresetDraftTranslator): Partial<ActorStateModule> {
   return {
     id: `custom-actor-state-${Date.now()}`,
-    name: presetDraftText(t, 'settingPanel.presetDraft.actor.name', '自定义状态系统'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.actor.description', '新的状态系统，配置状态表模板、字段 schema 和初始状态对象。'),
+    name: presetDraftText(t, 'settingPanel.presetDraft.actor.name', 'Пользовательская система состояний'),
+    description: presetDraftText(t, 'settingPanel.presetDraft.actor.description', 'Новая система состояний персонажей и мира.'),
     actor_state: {
       templates: [
         {
           id: 'protagonist',
-          name: presetDraftText(t, 'settingPanel.presetDraft.actor.templateName', '默认主角状态表'),
-          description: presetDraftText(t, 'settingPanel.presetDraft.actor.templateDescription', '示例主角状态表，可替换或新增世界、故事、势力、基地、特定角色等状态表。'),
+          name: presetDraftText(t, 'settingPanel.presetDraft.actor.templateName', 'Состояние протагониста'),
+          description: presetDraftText(t, 'settingPanel.presetDraft.actor.templateDescription', 'Таблица состояния главного героя.'),
           fields: [
-            { id: 'current_status', path: 'current.status', name: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldName', '当前状态'), type: 'string', default: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldDefault', '状态稳定，等待剧情确定。') },
+            { id: 'current_status', path: 'current.status', name: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldName', 'Текущий статус'), type: 'string', default: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldDefault', 'Стабилен, ожидает развития сюжета.') },
           ],
         },
       ],
       trait_pools: [],
-      initial_actors: [{ id: 'protagonist', name: presetDraftText(t, 'settingPanel.presetDraft.actor.initialName', '主角'), template_id: 'protagonist', role: 'protagonist' }],
+      initial_actors: [{ id: 'protagonist', name: presetDraftText(t, 'settingPanel.presetDraft.actor.initialName', 'Главный герой'), template_id: 'protagonist', role: 'protagonist' }],
     },
     version: 5,
     custom: true,
@@ -230,9 +230,9 @@ export function newActorStateDraft(t?: PresetDraftTranslator): Partial<ActorStat
 export function newImagePresetDraft(t?: PresetDraftTranslator): Partial<ImagePreset> {
   return {
     id: `custom-image-${Date.now()}`,
-    name: presetDraftText(t, 'settingPanel.presetDraft.image.name', '自定义图像方案'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.image.description', '新的图像风格方案'),
-    prompt: presetDraftText(t, 'settingPanel.presetDraft.image.prompt', '描述画面风格、媒介、构图、镜头语言、光影、色彩、角色与环境呈现限制，以及需要避免的内容。'),
+    name: presetDraftText(t, 'settingPanel.presetDraft.image.name', 'Пользовательский стиль изображений'),
+    description: presetDraftText(t, 'settingPanel.presetDraft.image.description', 'Новый стиль иллюстраций'),
+    prompt: presetDraftText(t, 'settingPanel.presetDraft.image.prompt', 'Опишите визуальный стиль, технику, освещение и ограничения.'),
     version: 1,
     custom: true,
   }

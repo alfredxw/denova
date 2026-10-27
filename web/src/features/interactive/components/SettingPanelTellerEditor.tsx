@@ -954,17 +954,17 @@ async function readExtractedStyleReferenceDocument(targetPath: string, request: 
 }
 
 function buildStyleExtractionInstruction(draft: StyleUploadDraft) {
-  return `请把用户提供的源文件提炼为共享小说文风参考 Markdown，并写入目标文风参考文件。
+  return `Пожалуйста, проанализируйте предоставленные исходные файлы и извлеките из них справочный файл стиля повествования Markdown «${draft.name}».
 
-要求：
-1. 使用 Markdown，标题为「${draft.name}」。
-2. 内容以从源文件中提炼出的典型参考段落为主，辅以少量风格总结、写法引导和硬性规则。
-3. 不出现现实作者名、作品名或来源说明。
-4. 不要直接保存原文，不要堆砌华丽辞藻，不要写成口号。
-5. 参考结构可以包含「总体原则」「场景/心理/对白/感情/战斗/日常/出场/转折/结尾」等小节，但只保留源文件能支持的内容。
-6. 必须调用 config_apply，参数为 operation="create"、resource="style_reference"，value 中写入 filename="${draft.filename}"、name="${draft.name}"、description="${draft.description}"，content 为最终提炼后的 Markdown。
-7. 不要修改 narrative_style 或其他配置资源；本次只处理 style_reference。
-8. 如果 config_apply 工具不可用，才输出以下 XML 标签包裹的 Markdown 作为回退，不要在标签外写解释：
+Требования:
+1. Используйте Markdown с заголовком «# ${draft.name}».
+2. Содержимое должно состоять из характерных отрывков, иллюстрирующих стиль, с краткими выводами, рекомендациями по подаче текста и правилами.
+3. Не упоминайте имена реальных авторов, названия произведений или источники.
+4. Не копируйте весь текст целиком, избегайте витиеватых лозунгов.
+5. Структура может включать разделы: «Общие принципы», «Сцены и темп», «Диалоги», «Психология и эмоции», «Боевые сцены», «Повседневность», «Кульминации и финалы».
+6. Обязательно вызовите инструмент config_apply с параметрами operation="create", resource="style_reference", а в объекте value передайте filename="${draft.filename}", name="${draft.name}", description="${draft.description}" и content с итоговым Markdown.
+7. Не изменяйте narrative_style или другие ресурсы; создавайте только style_reference.
+8. Если инструмент config_apply недоступен, выведите результат в теге XML без лишних пояснений:
 
 <${STYLE_MARKDOWN_TAG}>
 # ${draft.name}
@@ -972,7 +972,7 @@ function buildStyleExtractionInstruction(draft: StyleUploadDraft) {
 ...
 </${STYLE_MARKDOWN_TAG}>
 
-源文件内容如下：
+Содержимое исходных файлов / Source files content:
 
 \`\`\`text
 ${draft.content}

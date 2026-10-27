@@ -81,6 +81,10 @@ const versions = {
   'versions.unknownDate': 'Unknown date',
   'versions.title': 'Version Management',
   'versions.retainedMedia': 'Keeps {{count}} newer material files used by history. They remain changes outside the target version.',
+  'versions.saveVersionModalTitle': 'Save Version',
+  'versions.saveVersionModalDesc': 'Enter a short version description or leave empty to save with timestamp:',
+  'versions.saveVersionPlaceholder': 'e.g., Plot revisions',
+  'versions.manualSaveTimestamp': 'Manual save ({{time}})',
 } as const
 
 export default versions

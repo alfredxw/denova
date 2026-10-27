@@ -59,12 +59,19 @@ export function imageAPIProvider(value?: string): ImageAPIProvider {
     : 'openai'
 }
 
+function translatePresetName(name?: string): string {
+  const trimmed = name?.trim() || ''
+  if (trimmed === 'OpenAI 图片') return 'OpenAI (Изображения)'
+  if (trimmed === '本机 ComfyUI') return 'Локальный ComfyUI'
+  return trimmed
+}
+
 export function imageAPIEndpointID(endpoint?: ImageAPIEndpointSettings): string {
   return endpoint?.id?.trim() || ''
 }
 
 export function imageAPIEndpointLabel(endpoint?: ImageAPIEndpointSettings): string {
-  return endpoint?.name?.trim() || endpoint?.provider?.trim() || imageAPIEndpointID(endpoint)
+  return translatePresetName(endpoint?.name) || endpoint?.provider?.trim() || imageAPIEndpointID(endpoint)
 }
 
 export function newImageAPIEndpoint(provider: ImageAPIProvider = 'openai'): ImageAPIEndpointSettings {
@@ -93,7 +100,7 @@ export function imageAPIProfileID(profile?: ImageAPIProfileSettings): string {
 }
 
 export function imageAPIProfileLabel(profile?: ImageAPIProfileSettings): string {
-  return profile?.name?.trim()
+  return translatePresetName(profile?.name)
     || profile?.comfyui?.workflow_name?.trim()
     || profile?.model?.trim()
     || imageAPIProfileID(profile)
