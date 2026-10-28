@@ -22,6 +22,7 @@ type storyModelNode struct {
 	Parent        string
 	Cursor        conversationjournal.Cursor
 	Count         int
+	TurnAt        string // Original Turn timestamp for activity queries without reading history bodies.
 	Resolved      []storyResolvedModelSpan
 	Narratives    map[string]conversationjournal.Cursor
 	Continuations []conversationjournal.Cursor
@@ -30,7 +31,7 @@ type storyModelNode struct {
 // Compact tuples keep per-event locators small even for short legacy Turns.
 // Field names stay explicit in memory; this versioned cache is rebuildable.
 func (node storyModelNode) MarshalJSON() ([]byte, error) {
-	fields := []any{node.Parent, node.Cursor, node.Count}
+	fields := []any{node.Parent, node.Cursor, node.Count, node.TurnAt}
 	if len(node.Resolved)+len(node.Narratives)+len(node.Continuations) > 0 {
 		fields = append(fields, node.Resolved, node.Narratives, node.Continuations)
 	}
@@ -41,10 +42,10 @@ func (node *storyModelNode) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-	if len(fields) != 3 && len(fields) != 6 {
+	if len(fields) != 4 && len(fields) != 7 {
 		return fmt.Errorf("invalid Game model locator")
 	}
-	targets := []any{&node.Parent, &node.Cursor, &node.Count, &node.Resolved, &node.Narratives, &node.Continuations}
+	targets := []any{&node.Parent, &node.Cursor, &node.Count, &node.TurnAt, &node.Resolved, &node.Narratives, &node.Continuations}
 	for index, field := range fields {
 		if err := json.Unmarshal(field, targets[index]); err != nil {
 			return err
@@ -71,6 +72,7 @@ func (projection *storyJournalProjection) indexModelEvent(cursor conversationjou
 			return err
 		}
 		node.Count = len(ModelTurnMessages(modelTurnFromEvent(turn), policy))
+		node.TurnAt = turn.Ts
 		for _, context := range resolved {
 			messages := PlayerInputContextMessages(context.ModelContextBatches, agentschema.UserMessageWithAttachments(context.Input.Text, context.Input.Attachments))
 			node.Resolved = append(node.Resolved, storyResolvedModelSpan{Boundary: context.Input.AcceptedTurnCount, Count: len(toolresult.ApplyContextPolicy(messages, policy))})

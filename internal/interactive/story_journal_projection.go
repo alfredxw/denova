@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// Version 19 adds canonical branch message locators without history bodies.
-	storyProjectionVersion      = 19
+	// Version 20 adds Turn timestamps to the canonical branch locators.
+	storyProjectionVersion      = 20
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -94,12 +94,19 @@ func (projection *storyJournalProjection) Reset() error {
 func (projection *storyJournalProjection) Restore(data json.RawMessage) error {
 	expectedID := projection.expectedID
 	expectedGeneration := projection.expectedGeneration
+	// Check the version before decoding tuples whose shape can change.
+	var header struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil {
+		return err
+	}
+	if header.Version != storyProjectionVersion {
+		return fmt.Errorf("%w: unsupported story projection version %d", conversationjournal.ErrProjectionCheckpointIncompatible, header.Version)
+	}
 	var restored storyJournalProjection
 	if err := json.Unmarshal(data, &restored); err != nil {
 		return err
-	}
-	if restored.Version != storyProjectionVersion {
-		return fmt.Errorf("%w: unsupported story projection version %d", conversationjournal.ErrProjectionCheckpointIncompatible, restored.Version)
 	}
 	if restored.StoryID != expectedID || restored.Generation != expectedGeneration {
 		return fmt.Errorf("story projection identity mismatch")

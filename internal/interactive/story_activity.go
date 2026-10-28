@@ -2,11 +2,8 @@ package interactive
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
-
-	"denova/internal/agents/conversationjournal"
 )
 
 // StoryActivity describes retained Game activity, not lifetime generation
@@ -19,8 +16,8 @@ type StoryActivity struct {
 }
 
 // ReadActivity reads one stable story revision without changing its selection.
-// It walks the union of branch ancestry once and streams journal envelopes,
-// avoiding per-branch narrative replay and retaining no historical prose.
+// It walks the union of branch ancestry once, using indexed Turn timestamps
+// without reading historical narrative bodies.
 func (s *Store) ReadActivity(ctx context.Context, storyID string, from, until time.Time) (StoryActivity, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -50,7 +47,6 @@ func (s *Store) ReadActivity(ctx context.Context, storyID string, from, until ti
 		}
 	}
 	visited := make(map[string]uint8)
-	turns := make(map[string]bool)
 	for _, branch := range handle.projection.Branches {
 		var path []string
 		for id := branch.Head; id != ""; {
@@ -67,40 +63,19 @@ func (s *Store) ReadActivity(ctx context.Context, storyID string, from, until ti
 			visited[id] = 1
 			path = append(path, id)
 			if node.Count > 0 {
-				turns[id] = true
+				at, err := time.Parse(time.RFC3339Nano, node.TurnAt)
+				if err != nil {
+					return StoryActivity{}, fmt.Errorf("invalid turn activity timestamp: %w", err)
+				}
+				if !at.Before(from) && at.Before(until) {
+					result.TurnTimes = append(result.TurnTimes, at)
+				}
 			}
 			id = node.Parent
 		}
 		for _, id := range path {
 			visited[id] = 2
 		}
-	}
-	if len(turns) == 0 {
-		return result, nil
-	}
-	err = handle.journal.VisitRange(ctx, conversationjournal.Range{Through: handle.journal.Head().Cursor}, func(record conversationjournal.Record) error {
-		var event StoryEventEnvelope
-		if err := json.Unmarshal(record.Payload, &event); err != nil {
-			return err
-		}
-		if event.Type != StoryEventTypeTurn || !turns[event.ID] {
-			return nil
-		}
-		delete(turns, event.ID)
-		at, err := time.Parse(time.RFC3339Nano, event.Ts)
-		if err != nil {
-			return fmt.Errorf("invalid turn activity timestamp: %w", err)
-		}
-		if !at.Before(from) && at.Before(until) {
-			result.TurnTimes = append(result.TurnTimes, at)
-		}
-		return nil
-	})
-	if err != nil {
-		return StoryActivity{}, err
-	}
-	if len(turns) != 0 {
-		return StoryActivity{}, fmt.Errorf("Game activity is missing %d retained turns", len(turns))
 	}
 	return result, nil
 }
