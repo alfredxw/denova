@@ -111,7 +111,10 @@ ${colorConfig
   )
 }
 
-const ChartTooltip = RechartsPrimitive.Tooltip
+function ChartTooltip(props: React.ComponentProps<typeof RechartsPrimitive.Tooltip>) {
+  // Keep data hints at the hovered point instead of sliding from the previous one.
+  return <RechartsPrimitive.Tooltip {...props} isAnimationActive={false} />
+}
 
 function ChartTooltipContent({
   active,
