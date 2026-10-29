@@ -35,7 +35,7 @@ test('keeps Agents prompts, context analysis, and real model input aligned for W
   const sidebar = page.getByLabel('工作台侧边栏')
   await sidebar.getByRole('button', { name: 'Agents', exact: true }).click()
   await expect(page.getByRole('heading', { name: '写作 Agent', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '当前工作区', exact: true }).click()
+  await page.getByRole('radio', { name: '当前工作区', exact: true }).click()
 
   const writingPrompt = await configureAgentPrompt(page, '写作 Agent', writingFlowMarker, writingContextMarker)
   const gamePrompt = await configureAgentPrompt(page, '游戏 Agent', gameFlowMarker, gameContextMarker)
@@ -86,6 +86,7 @@ async function configureAgentPrompt(
   await page.getByRole('button', { name: new RegExp(`^${agentTitle}`) }).click()
   await expect(page.getByRole('heading', { name: agentTitle, exact: true })).toBeVisible()
 
+  await page.getByRole('button', { name: '内置流程与参考', exact: true }).click()
   return {
     flow_prompt: await appendPromptMarker(page, '流程规则', flowMarker),
     system_prompt: await appendPromptMarker(page, '用户自定义', contextMarker),

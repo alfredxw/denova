@@ -8,6 +8,7 @@ interface AgentConfigurationDisclosureProps {
   title: string
   summary: string
   defaultOpen?: boolean
+  headingLevel?: 2 | 3
   children: ReactNode
 }
 
@@ -17,24 +18,27 @@ export function AgentConfigurationDisclosure({
   title,
   summary,
   defaultOpen = false,
+  headingLevel = 2,
   children,
 }: AgentConfigurationDisclosureProps): ReactNode {
+  const Heading = headingLevel === 2 ? 'h2' : 'h3'
   return (
     <Collapsible
       defaultOpen={defaultOpen}
       data-agent-configuration-section={id}
-      className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]"
+      className="min-w-0 border-b border-[var(--nova-border)] pb-4 last:border-b-0"
     >
+      <Heading>
       <CollapsibleTrigger asChild>
         <button
           type="button"
           aria-label={title}
-          className="group/configuration flex w-full items-center gap-3 px-3 py-3 text-left outline-none transition-colors hover:bg-[var(--nova-hover)] focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+          className="group/configuration flex min-h-11 w-full items-center gap-3 rounded-[var(--nova-radius)] py-2 text-left outline-none transition-colors hover:bg-[var(--nova-hover)] focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
         >
           <Icon className="size-4 shrink-0 text-[var(--nova-text-muted)]" />
           <span className="min-w-0 flex-1">
-            <span className="block text-xs font-semibold text-[var(--nova-text)]">{title}</span>
-            <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{summary}</span>
+            <span className="block text-sm font-semibold text-[var(--nova-text)]">{title}</span>
+            <span className="mt-1 block text-xs font-normal leading-relaxed text-[var(--nova-text-muted)]">{summary}</span>
           </span>
           <ChevronDown
             aria-hidden="true"
@@ -42,7 +46,8 @@ export function AgentConfigurationDisclosure({
           />
         </button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-5 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 [&>section:last-child]:border-b-0 [&>section:last-child]:pb-0">
+      </Heading>
+      <CollapsibleContent className="flex min-w-0 flex-col gap-6 pt-3 [&>section:last-child]:border-b-0 [&>section:last-child]:pb-0">
         {children}
       </CollapsibleContent>
     </Collapsible>

@@ -35,7 +35,7 @@ export function CustomAgentBehaviorSection({ instructions, runtimeContract, outp
           value={instructions}
           onChange={(event) => onChange(event.target.value)}
           placeholder={t('agents.custom.instructionsPlaceholder')}
-          className="min-h-64 resize-y font-mono text-xs leading-5"
+          className="min-h-48 resize-y text-sm leading-relaxed"
         />
       </label>
       <ReadonlyPromptSourceBlock title={t('agents.prompt.source.runtime_contract')} content={runtimeContract} />
@@ -60,14 +60,14 @@ export function AgentToolGuidanceSection({ rows, value, onChange }: {
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={Wrench} title={t('agents.section.toolGuidance')} />
       <p className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agents.toolGuidance.note')}</p>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-2 @xl/agent-settings:flex-row">
         <Input value={exactName} onChange={(event) => setExactName(event.target.value)} maxLength={128} placeholder={t('agents.toolGuidance.exactPlaceholder')} />
         <Button type="button" variant="outline" disabled={!exactName.trim()} onClick={() => { setSelected(exactName.trim()); setExactName('') }}><Plus />{t('agents.toolGuidance.addExact')}</Button>
       </div>
       {active ? (
-        <div className="grid gap-3 md:grid-cols-[minmax(180px,0.35fr)_minmax(0,1fr)]">
+        <div className="grid gap-3 @xl/agent-settings:grid-cols-[minmax(180px,0.35fr)_minmax(0,1fr)]">
           <Select value={active} onValueChange={setSelected}>
-            <SelectTrigger aria-label={t('agents.toolGuidance.tool')}><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full" aria-label={t('agents.toolGuidance.tool')}><SelectValue /></SelectTrigger>
             <SelectContent>{toolNames.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent>
           </Select>
           <Textarea
@@ -112,9 +112,9 @@ export function AgentSkillPolicySection({ skills, value, onChange, allowExplicit
   return (
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={Pin} title={t('agents.section.skills')} />
-      <div className="grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="grid gap-3 @xl/agent-settings:grid-cols-[220px_minmax(0,1fr)]">
         <Select value={mode} onValueChange={(next) => onChange({ ...value, mode: next as AgentSkillPolicy['mode'] })}>
-          <SelectTrigger aria-label={t('agents.skills.policy')}><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full" aria-label={t('agents.skills.policy')}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="managed">{t('agents.skills.policyManaged')}</SelectItem>
             {allowExplicit ? <SelectItem value="explicit">{t('agents.skills.policyExplicit')}</SelectItem> : null}
@@ -128,7 +128,7 @@ export function AgentSkillPolicySection({ skills, value, onChange, allowExplicit
         {blocked.map((name) => <PolicyChip key={`b:${name}`} label={name} tone="negative" onRemove={() => setState(name, 'default')} />)}
         {!pinned.length && !blocked.length ? <span className="text-[11px] text-[var(--nova-text-faint)]">{t('agents.skills.noExceptions')}</span> : null}
       </div>
-      {results.length ? <div className="grid gap-2 lg:grid-cols-2">{results.map((skill) => (
+      {results.length ? <div className="grid gap-2 @3xl/agent-settings:grid-cols-2">{results.map((skill) => (
         <div key={`${skill.scope}:${skill.name}`} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3 py-2">
           <div className="min-w-0 flex-1"><div className="truncate font-mono text-xs">/{skill.name}</div><div className="truncate text-[10px] text-[var(--nova-text-faint)]">{skill.description}</div></div>
           <Button type="button" size="xs" variant={pinned.includes(skill.name) ? 'secondary' : 'ghost'} onClick={() => setState(skill.name, 'pinned')}>{t('agents.skills.pin')}</Button>
@@ -140,7 +140,7 @@ export function AgentSkillPolicySection({ skills, value, onChange, allowExplicit
 }
 
 function PolicyChip({ label, tone, onRemove }: { label: string; tone: 'positive' | 'negative'; onRemove: () => void }) {
-  return <button type="button" onClick={onRemove} className={`rounded border px-2 py-1 font-mono text-[10px] ${tone === 'positive' ? 'border-[var(--nova-success)]/30 text-[var(--nova-success)]' : 'border-[var(--nova-danger)]/30 text-[var(--nova-danger)]'}`}>/{label} ×</button>
+  return <button type="button" onClick={onRemove} className={`max-w-full rounded border px-2 py-1 text-left font-mono text-[10px] break-all ${tone === 'positive' ? 'border-[var(--nova-success)]/30 text-[var(--nova-success)]' : 'border-[var(--nova-danger)]/30 text-[var(--nova-danger)]'}`}>/{label} ×</button>
 }
 
 export function AgentDelegationPolicySection({ value, runtimeKind, subAgents, onChange }: {
@@ -167,7 +167,7 @@ export function AgentDelegationPolicySection({ value, runtimeKind, subAgents, on
         </SelectContent>
       </Select>
       <p className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agents.delegation.note')}</p>
-      {mode === 'selected' ? <div className="grid gap-2 lg:grid-cols-2">{candidates.map((candidate) => {
+      {mode === 'selected' ? <div className="grid gap-2 @3xl/agent-settings:grid-cols-2">{candidates.map((candidate) => {
         const checked = selected.includes(candidate.id)
         return <label key={candidate.id} className="flex items-center gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3 py-2">
           <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{candidate.name}</div><div className="truncate text-[10px] text-[var(--nova-text-faint)]">{candidate.description}</div></div>
@@ -204,11 +204,11 @@ export function AgentContextBindingsSection({ value, onChange }: {
             <span className="min-w-0 flex-1 truncate text-xs font-medium">{binding.name || binding.id}</span>
             <span className="text-[10px] uppercase text-[var(--nova-text-faint)]">{t(`agents.contextBindings.slot.${binding.slot || 'stable'}`)}</span>
           </button>
-          {open ? <div className="grid gap-3 border-t border-[var(--nova-border)] p-3 sm:grid-cols-2">
+          {open ? <div className="grid gap-3 border-t border-[var(--nova-border)] p-3 @xl/agent-settings:grid-cols-2">
             <Input value={binding.name ?? ''} aria-label={t('agents.contextBindings.name')} placeholder={t('agents.contextBindings.name')} onChange={(event) => update(binding.id, { name: event.target.value })} />
-            <Select value={binding.slot ?? 'stable'} onValueChange={(slot) => update(binding.id, { slot: slot as AgentContextBinding['slot'] })}><SelectTrigger aria-label={t('agents.contextBindings.slot')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="stable">{t('agents.contextBindings.slot.stable')}</SelectItem><SelectItem value="session">{t('agents.contextBindings.slot.session')}</SelectItem><SelectItem value="turn">{t('agents.contextBindings.slot.turn')}</SelectItem></SelectContent></Select>
-            <Input value={binding.purpose ?? ''} aria-label={t('agents.contextBindings.purpose')} placeholder={t('agents.contextBindings.purpose')} onChange={(event) => update(binding.id, { purpose: event.target.value })} className="sm:col-span-2" />
-            <Textarea autoResize value={binding.content} aria-label={t('agents.contextBindings.content')} placeholder={t('agents.contextBindings.content')} onChange={(event) => update(binding.id, { content: event.target.value })} className="min-h-36 resize-y font-mono text-xs sm:col-span-2" />
+            <Select value={binding.slot ?? 'stable'} onValueChange={(slot) => update(binding.id, { slot: slot as AgentContextBinding['slot'] })}><SelectTrigger className="w-full" aria-label={t('agents.contextBindings.slot')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="stable">{t('agents.contextBindings.slot.stable')}</SelectItem><SelectItem value="session">{t('agents.contextBindings.slot.session')}</SelectItem><SelectItem value="turn">{t('agents.contextBindings.slot.turn')}</SelectItem></SelectContent></Select>
+            <Input value={binding.purpose ?? ''} aria-label={t('agents.contextBindings.purpose')} placeholder={t('agents.contextBindings.purpose')} onChange={(event) => update(binding.id, { purpose: event.target.value })} className="col-span-full" />
+            <Textarea autoResize value={binding.content} aria-label={t('agents.contextBindings.content')} placeholder={t('agents.contextBindings.content')} onChange={(event) => update(binding.id, { content: event.target.value })} className="col-span-full min-h-36 resize-y font-mono text-xs" />
             <label className="flex items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">{t('agents.contextBindings.hardLimit')}<Input type="number" min={1024} max={16777216} value={binding.hard_limit_bytes ?? 262144} onChange={(event) => update(binding.id, { hard_limit_bytes: Number(event.target.value) || 262144 })} /></label>
             <Button type="button" variant="ghost" className="justify-self-end text-[var(--nova-danger)]" onClick={() => onChange(value.filter((item) => item.id !== binding.id))}><Trash2 />{t('common.delete')}</Button>
           </div> : null}

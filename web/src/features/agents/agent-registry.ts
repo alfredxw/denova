@@ -30,7 +30,7 @@ type AgentKey = keyof AgentModelSettings
 // config_manager is a persistence tombstone for settings written by v0.3.3.
 export type VisibleAgentKey = Exclude<AgentKey, 'default' | 'config_manager'>
 export type ToolKey = AgentToolCapability
-type AgentCapabilityMode = 'tools' | 'built_in' | 'model_only'
+type AgentCapabilityMode = 'tools' | 'model_only'
 export type SubAgentParentKey = Extract<VisibleAgentKey, 'general' | 'ide' | 'interactive_story'>
 
 export interface AgentViewDefinition {

@@ -11,6 +11,13 @@ function renderWithTooltips(ui: ReactNode) {
 }
 
 describe('AgentList', () => {
+  it('creates from the selected game agent through the primary action', async () => {
+    const onCreate = vi.fn()
+    renderWithTooltips(<AgentList active="interactive_story" customAgents={[]} onSelect={vi.fn()} onCreate={onCreate} />)
+    await userEvent.click(screen.getByRole('button', { name: '新建自定义 Agent' }))
+    expect(onCreate).toHaveBeenCalledWith('interactive_story')
+  })
+
   it('places the top-level create action before navigation and offers supported category shortcuts', async () => {
     const user = userEvent.setup()
     const onCreate = vi.fn<(runtimeKind: AgentRuntimeKind) => void>()
@@ -47,6 +54,6 @@ describe('CreateCustomAgentDialog', () => {
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '运行契约' })).toHaveTextContent('游戏 Agent')
+    expect(screen.getByRole('combobox', { name: '基于哪个 Agent' })).toHaveTextContent('游戏 Agent')
   })
 })

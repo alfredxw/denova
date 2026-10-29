@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils'
 interface FeaturePageShellProps {
   icon: LucideIcon
   title: ReactNode
+  /** Use a label when the content supplies its own primary heading. */
+  titleAs?: 'h2' | 'span'
   subtitle?: ReactNode
   /** Compact navigation control that must remain visible before a truncating title. */
   leadingContent?: ReactNode
@@ -26,6 +28,7 @@ interface FeaturePageShellProps {
 export function FeaturePageShell({
   icon: Icon,
   title,
+  titleAs: Title = 'h2',
   subtitle,
   leadingContent,
   headerContent,
@@ -56,7 +59,7 @@ export function FeaturePageShell({
         <div className={cn('contents', mobileHeader === 'toolbar' && 'max-lg:hidden')}>{leadingContent}</div>
         <Icon className={cn('size-3.5 shrink-0 text-muted-foreground', mobileHeader === 'toolbar' && 'max-lg:hidden')} aria-hidden="true" />
         <div className={cn('flex min-w-0 flex-1 items-baseline gap-2', mobileHeader === 'toolbar' && 'max-lg:hidden')}>
-          <h2 className="min-w-0 truncate text-xs font-medium text-foreground">{title}</h2>
+          <Title className="min-w-0 truncate text-xs font-medium text-foreground">{title}</Title>
           {subtitle ? <span className="hidden min-w-0 truncate text-[11px] text-muted-foreground sm:inline">{subtitle}</span> : null}
         </div>
         {headerContent ? <div className="flex shrink-0 items-center gap-2">{headerContent}</div> : null}

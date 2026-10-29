@@ -32,7 +32,7 @@ export function AgentRuntimeContextSection({ value, resolved, onChange, contextP
   return (
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={FolderOpen} title={t('agents.section.runtimeContext')} />
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 @xl/agent-settings:grid-cols-2">
         {contextPolicy && <><Field label={t('agents.field.compactionEnabled')}>
           <SwitchWithInheritance
             checked={compactionEnabled}

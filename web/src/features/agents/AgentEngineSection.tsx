@@ -67,7 +67,7 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
 
   return <AgentConfigurationDisclosure id="runtime" icon={Cpu} title={t('agentRuntime.title')}
     summary={[t(`agentRuntime.${selected}`), selected !== 'native' && (selectedProfile?.label ?? model?.display_name ?? settings?.profile_id ?? settings?.model)].filter(Boolean).join(' · ')} defaultOpen>
-    <div className="grid min-w-0 gap-3 md:grid-cols-2">
+    <div className="grid min-w-0 gap-3 @xl/agent-settings:grid-cols-2">
       <Field label={t('agentRuntime.engine')} inherited={value.selected == null}
         onReset={value.selected ? () => void act(async () => { await beforeSwitch(); const next = { ...value }; delete next.selected; onChange(next) }) : undefined}>
         <Select value={selected} disabled={busy} onValueChange={(id) => void act(async () => { await beforeSwitch(); onChange({ ...value, selected: id as AgentEngineID }) })}>
@@ -104,7 +104,7 @@ export function AgentEngineSection({ value, inherited, onChange, beforeSwitch, o
       <p className="text-xs leading-relaxed text-[var(--nova-text-muted)]">{t(settings?.profile_id ? 'agentRuntime.apiProfileHint' : selected === 'claude' ? 'agentRuntime.sharedClaudeHome' : 'agentRuntime.sharedCodexHome')}</p>
       {engine?.reason_key && <p className="text-xs leading-relaxed text-[var(--nova-text-muted)]">{t(engine.reason_key)}</p>}
       {!settings?.profile_id && engine?.status === 'auth_required' && <p role="status" className="text-xs leading-relaxed text-[var(--nova-text-muted)]">{t(selected === 'claude' ? 'agentRuntime.claudeLoginInTerminal' : 'agentRuntime.loginInTerminal')}</p>}
-      <div className="grid min-w-0 gap-3 md:grid-cols-2">
+      <div className="grid min-w-0 gap-3 @xl/agent-settings:grid-cols-2">
         <Field label={t('agentRuntime.model')} inherited={ownSettings == null}
           onReset={ownSettings ? () => { const next = { ...value }; delete next[selected]; onChange(next) } : undefined}>
           <Select value={runtimeModelKey(settings)} disabled={busy || (source === 'cli' ? !ready : !profiles.length)}

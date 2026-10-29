@@ -172,7 +172,7 @@ export function AgentSubAgentSection({ agent, toolRows, generalSettings, effecti
                 {t('agents.subAgents.dialogDescription')}
               </DialogDescription>
             </DialogHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div className="@container/agent-settings min-h-0 flex-1 overflow-y-auto px-4 py-4">
               <SubAgentEditor
                 id={editingSubAgent.id}
                 agent={agent}
@@ -224,7 +224,7 @@ function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
     <div data-subagent-id={subAgent.id} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
       <Bot className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="min-w-0 truncate font-medium">{subAgent.name || subAgent.id || t('agents.subAgents.untitled')}</span>
           <span className={`shrink-0 rounded-[var(--nova-radius)] border px-1.5 py-0.5 text-[10px] ${enabled ? 'border-[var(--nova-success)]/30 bg-[var(--nova-success-bg)] text-[var(--nova-success)]' : 'border-[var(--nova-danger)]/30 bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'}`}>
             {enabled ? t('agents.option.on') : t('agents.option.off')}
@@ -234,7 +234,7 @@ function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
           )}
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-[11px] text-[var(--nova-text-faint)]">
-          <span className="font-mono">{subAgent.id}</span>
+          <span className="max-w-full font-mono break-all">{subAgent.id}</span>
           <span>{parents.map((parent) => t(`agents.subAgents.parent.${parent}`)).join(', ')}</span>
           <span>{subAgentToolSummary(t, subAgent.tools)}</span>
         </div>
@@ -285,7 +285,7 @@ function SubAgentEditor({ id, agent, subAgent, toolRows, profiles, onChange }: {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 @xl/agent-settings:grid-cols-2">
         <Field label={t('agents.subAgents.id')}>
           <Input aria-label={t('agents.subAgents.id')} value={subAgent.id ?? ''} onChange={(e) => onChange(id, { id: normalizeSubAgentID(e.target.value) })} className="h-7 text-xs" />
         </Field>
@@ -293,7 +293,7 @@ function SubAgentEditor({ id, agent, subAgent, toolRows, profiles, onChange }: {
           <Input aria-label={t('agents.subAgents.name')} value={subAgent.name ?? ''} onChange={(e) => onChange(id, { name: e.target.value })} className="h-7 text-xs" />
         </Field>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 @xl/agent-settings:grid-cols-2">
         <Field label={t('agents.subAgents.description')}>
           <Input aria-label={t('agents.subAgents.description')} value={subAgent.description ?? ''} onChange={(e) => onChange(id, { description: e.target.value })} className="h-7 text-xs" />
         </Field>
@@ -348,7 +348,7 @@ function SubAgentEditor({ id, agent, subAgent, toolRows, profiles, onChange }: {
       </div>
       <div>
         <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('agents.subAgents.tools')}</div>
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="grid gap-2 @xl/agent-settings:grid-cols-2">
           {toolRows.map((tool) => {
             const explicit = tools[tool.key]
             const inherited = explicit === undefined || explicit === null

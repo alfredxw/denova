@@ -5,7 +5,7 @@ import { SectionedNavigation, type SectionedNavigationGroup } from '@/components
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SidebarGroupAction } from '@/components/ui/sidebar'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -31,6 +31,10 @@ export function AgentList({
 }) {
   const { t } = useTranslation()
   const groups = new Map<string, Array<{ id: AgentSelectionID; agent: AgentViewDefinition; title: string; description: string }>>()
+  const selectedCustomAgent = customAgents.find((agent) => `custom:${agent.id}` === active)
+  const createRuntimeKind = runtimeKindForContract(selectedCustomAgent?.contract)
+    ?? CUSTOM_AGENT_RUNTIME_KINDS.find((kind) => kind === active)
+    ?? 'ide'
   for (const agent of AGENTS) {
     const group = groups.get(agent.groupKey)
     const item = { id: agent.key, agent, title: t(agent.titleKey), description: t(agent.subtitleKey) }
@@ -83,7 +87,7 @@ export function AgentList({
           type="button"
           variant="ghost"
           className="h-9 w-full justify-start rounded-md px-2 text-xs text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          onClick={() => onCreate('ide')}
+          onClick={() => onCreate(createRuntimeKind)}
         >
           <Plus data-icon="inline-start" />
           {t('agents.custom.create')}
@@ -100,24 +104,26 @@ export function AgentHeader({ agent, customAgent, onArchive }: { agent: AgentVie
   const { t } = useTranslation()
   const Icon = agent.icon
   return (
-    <section className="border-b border-[var(--nova-border)] pb-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-          <Icon className="h-4 w-4 text-[var(--nova-text-muted)]" />
+    <header className="flex flex-col gap-2">
+      <div className="flex items-start gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)]">
+          <Icon className="size-5 text-[var(--nova-text-muted)]" />
         </div>
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{customAgent?.name || t(agent.titleKey)}</h1>
-          <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{customAgent?.description || t(agent.subtitleKey)}</div>
+        <div className="min-w-0 flex-1">
+          <h1 className="break-words text-lg font-semibold text-balance">{customAgent?.name || t(agent.titleKey)}</h1>
+          <p className="mt-1 break-words text-xs leading-relaxed text-muted-foreground">{customAgent?.description || t(agent.subtitleKey)}</p>
         </div>
-        {customAgent && onArchive ? (
-          <Button type="button" variant="ghost" size="sm" className="ml-auto text-[var(--nova-text-muted)]" onClick={onArchive}>
+      </div>
+      {customAgent ? <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 text-xs text-muted-foreground">{t('agents.custom.inherits', { agent: t(agent.titleKey) })}</p>
+        {onArchive ? (
+          <Button type="button" variant="ghost" size="sm" className="shrink-0 text-[var(--nova-text-muted)]" onClick={onArchive}>
             <Archive className="h-3.5 w-3.5" />
             {t('agents.custom.archive')}
           </Button>
         ) : null}
-      </div>
-      {customAgent ? <div className="mt-3 text-[10px] uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">{t('agents.custom.contractValue', { agent: t(agent.titleKey) })} · {customAgent.id}</div> : null}
-    </section>
+      </div> : null}
+    </header>
   )
 }
 
@@ -132,7 +138,7 @@ export function CustomAgentIdentitySection({
 }) {
   const { t } = useTranslation()
   return (
-    <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 sm:grid-cols-2">
+    <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 @xl/agent-settings:grid-cols-2">
       <label className="grid gap-1.5 text-xs">
         <span className="font-medium">{t('agents.custom.name')}</span>
         <Input
@@ -146,7 +152,7 @@ export function CustomAgentIdentitySection({
         <span className="font-medium">{t('agents.custom.baseKind')}</span>
         <Input value={t(AGENTS.find((item) => item.key === runtimeKindForContract(agent.contract))?.titleKey ?? 'agents.ide.title')} disabled />
       </label>
-      <label className="grid gap-1.5 text-xs sm:col-span-2">
+      <label className="col-span-full grid gap-1.5 text-xs">
         <span className="font-medium">{t('agents.custom.description')}</span>
         <Textarea
           autoResize
@@ -210,10 +216,12 @@ export function CreateCustomAgentDialog({
             <Select value={runtimeKind} onValueChange={(value) => setRuntimeKind(value as AgentRuntimeKind)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectGroup>
                 {CUSTOM_AGENT_RUNTIME_KINDS.map((kind) => {
                   const definition = AGENTS.find((agent) => agent.key === kind)
                   return definition ? <SelectItem key={kind} value={kind}>{t(definition.titleKey)}</SelectItem> : null
                 })}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </label>

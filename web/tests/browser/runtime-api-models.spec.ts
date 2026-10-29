@@ -31,6 +31,7 @@ for (const engine of ['codex', 'claude'] as const) {
       await page.route(`**/api/agent-runtimes/${engine}/models`, route => route.fulfill({ status: 409, json: { error: 'Sign-in required' } }))
       await page.goto('/')
       await page.getByRole('button', { name: 'Agents', exact: true }).click()
+      await page.getByRole('tab', { name: /^(运行时|Runtime)$/ }).click()
       const runtime = page.locator('[data-agent-configuration-section="runtime"]')
       await runtime.getByRole('radio', { name: 'Denova 模型', exact: true }).click()
       const picker = runtime.getByRole('combobox', { name: '引擎模型', exact: true })
