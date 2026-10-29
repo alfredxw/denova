@@ -311,6 +311,7 @@ func applyCycleStoryConfig(target *interactive.StoryMeta, source interactive.Sto
 	target.TitleSource = source.TitleSource
 	target.Origin = source.Origin
 	target.StoryTellerID = source.StoryTellerID
+	target.NarrativeStyleOverrides = source.NarrativeStyleOverrides
 	target.PlanningTemplateID = source.PlanningTemplateID
 	target.StoryDirectorID = source.StoryDirectorID
 	target.PlanningMode = source.PlanningMode
@@ -492,7 +493,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		parent := strings.TrimSpace(branch.Head)
 		baseParentID = &parent
 	}
-	teller := c.teller(storyCtx.Meta.StoryTellerID)
+	teller := LoadStoryTeller(c.novaDir, storyCtx.Meta)
 	storyDirector := storyDirectorForSnapshot(c.StoryRuntimeForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
 	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)

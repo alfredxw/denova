@@ -14,11 +14,13 @@ export function ControlSection({
   icon,
   title,
   action,
+  summary,
   children,
 }: {
   icon: ReactNode
   title: string
   action?: ReactNode
+  summary?: ReactNode
   children: ReactNode
 }) {
   const layout = useControlSectionLayout()
@@ -43,6 +45,7 @@ export function ControlSection({
         </>}
         {action ? <div className="director-control-section__action shrink-0">{action}</div> : null}
       </header>
+      {summary ? <FieldGroup className="gap-0 border-t border-border">{summary}</FieldGroup> : null}
       {children ? <div hidden={layout ? !layout.expanded : false}><FieldGroup className="gap-0 border-t border-border">{children}</FieldGroup></div> : null}
     </section>
   )

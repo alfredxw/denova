@@ -1,6 +1,7 @@
 package interactiveapp
 
 import (
+	"reflect"
 	"testing"
 
 	"denova/internal/interactive"
@@ -17,6 +18,11 @@ func TestConversationKeepsCycleConfigWhileReadingLatestStorySnapshot(t *testing.
 		CheckSettings:    interactive.StoryCheckSettings{RollModifier: 0},
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	enabled, content := true, "Before cycle"
+	overrides := &interactive.StoryNarrativeStyleOverrides{StyleID: "classic", Slots: map[string]interactive.NarrativeSlotOverride{"voice": {Enabled: &enabled, Content: &content}}}
+	if _, err := store.UpdateStory(story.ID, interactive.UpdateStoryRequest{NarrativeStyleOverrides: overrides}); err != nil {
 		t.Fatal(err)
 	}
 	cycleContext, err := store.StoryContext(story.ID, "main")
@@ -58,6 +64,7 @@ func TestConversationKeepsCycleConfigWhileReadingLatestStorySnapshot(t *testing.
 	}
 	if got.Meta.Title != cycleContext.Meta.Title ||
 		got.Meta.StoryTellerID != cycleContext.Meta.StoryTellerID ||
+		!reflect.DeepEqual(got.Meta.NarrativeStyleOverrides, cycleContext.Meta.NarrativeStyleOverrides) ||
 		got.Meta.PlanningMode != cycleContext.Meta.PlanningMode ||
 		got.Meta.ChoiceCount != cycleContext.Meta.ChoiceCount ||
 		got.Meta.CheckSettings.RollModifier != cycleContext.Meta.CheckSettings.RollModifier {

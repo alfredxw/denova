@@ -366,6 +366,8 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, im
   const handleStoryUpdate = async (input: InteractiveStoryUpdateInput) => {
     if (!currentStoryId) return
     const updated = await updateInteractiveStory(currentStoryId, input)
+    // A completed save belongs to its original story, even after navigation.
+    if (useInteractiveStore.getState().currentStoryId !== currentStoryId) return
     setStories(mergePreferredStory(useInteractiveStore.getState().stories, updated), updated.id)
     await reloadStories(updated)
     if (input.module_refs || input.state_schema_policy) {

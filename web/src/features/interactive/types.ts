@@ -18,6 +18,7 @@ export interface StorySummary {
   origin: string
   protagonist: StoryProtagonist
   story_teller_id: string
+  narrative_style_overrides?: StoryNarrativeStyleOverrides
   planning_template_id: string
   planning_mode?: StoryPlanningMode
   module_refs?: StoryDirectorModuleRefs
@@ -205,6 +206,7 @@ export interface InteractiveStoryUpdateInput {
   origin?: string
   protagonist?: StoryProtagonist
   story_teller_id?: string
+  narrative_style_overrides?: StoryNarrativeStyleOverrides
   planning_template_id?: string
   planning_mode?: StoryPlanningMode
   module_refs?: StoryDirectorModuleRefs
@@ -1026,3 +1028,9 @@ export interface InteractiveTurnPersistedEvent {
 }
 
 export type InteractiveSSEEvent = SSEEvent
+
+/** Story-owned rule edits, bound to the selected shared style. Empty slots restore defaults. */
+export interface StoryNarrativeStyleOverrides {
+  style_id: string
+  slots: Record<string, { enabled?: boolean; content?: string }>
+}

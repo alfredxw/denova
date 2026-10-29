@@ -315,7 +315,19 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		}
 	}
 	if tellerID := strings.TrimSpace(req.StoryTellerID); tellerID != "" {
+		if meta.StoryTellerID != tellerID {
+			meta.NarrativeStyleOverrides = nil
+		}
 		meta.StoryTellerID = tellerID
+	}
+	if req.NarrativeStyleOverrides != nil {
+		if err := validateNarrativeStyleOverrides(req.NarrativeStyleOverrides, meta.StoryTellerID); err != nil {
+			return StorySummary{}, err
+		}
+		meta.NarrativeStyleOverrides = cloneNarrativeStyleOverrides(req.NarrativeStyleOverrides)
+		if len(meta.NarrativeStyleOverrides.Slots) == 0 {
+			meta.NarrativeStyleOverrides = nil
+		}
 	}
 	if templateID := NormalizeGamePlanningTemplateID(req.PlanningTemplateID); templateID != "" {
 		meta.PlanningTemplateID = templateID
@@ -447,6 +459,9 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if err := s.appendStoryTransactionLocked(storyID, meta, appendedEvents...); err != nil {
 		return StorySummary{}, err
 	}
+	if req.NarrativeStyleOverrides != nil {
+		slog.Info("Updated story narrative rules", "story_id", storyID, "style_id", meta.StoryTellerID, "adjusted_slots", len(req.NarrativeStyleOverrides.Slots))
+	}
 	return s.publishStorySummaryLocked(storyID)
 }
 
@@ -463,6 +478,9 @@ func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
 	}
 	if strings.TrimSpace(req.StoryTellerID) != "" {
 		fields = append(fields, "story_teller_id")
+	}
+	if req.NarrativeStyleOverrides != nil || strings.TrimSpace(req.StoryTellerID) != "" {
+		fields = append(fields, "narrative_style_overrides")
 	}
 	if NormalizeGamePlanningTemplateID(req.PlanningTemplateID) != "" {
 		fields = append(fields, "planning_template_id")

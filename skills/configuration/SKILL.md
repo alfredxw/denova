@@ -42,6 +42,7 @@ Examples use `REVISION_FROM_GET` as a visible placeholder. Always replace it wit
 
 - `style_reference` → `skill://configuration/references/style-reference.md`
 - `narrative_style` → `skill://configuration/references/narrative-style.md`
+- Selected preset imports → `skill://configuration/references/narrative-import.md`
 - `game_planning` → `skill://configuration/references/game-planning.md`
 - `event_package` → `skill://configuration/references/event-package.md`
 - `rule_system` → `skill://configuration/references/rule-system.md`

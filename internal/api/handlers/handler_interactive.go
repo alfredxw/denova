@@ -75,6 +75,10 @@ func (h *Handlers) HandleInteractiveStoryUpdate(ctx context.Context, c *app.Requ
 	}
 	story, err := h.app.UpdateInteractiveStory(c.Param("id"), body)
 	if err != nil {
+		if errors.Is(err, interactive.ErrNarrativeStyleOverrides) {
+			writeErrorKey(c, consts.StatusBadRequest, "api.interactive.invalidNarrativeStyleOverrides")
+			return
+		}
 		if errors.Is(err, interactive.ErrDefaultAmbient) {
 			writeErrorKey(c, consts.StatusBadRequest, "api.interactive.invalidDefaultAmbient")
 			return

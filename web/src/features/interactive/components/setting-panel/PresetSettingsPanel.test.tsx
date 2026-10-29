@@ -50,9 +50,9 @@ describe('PresetSettingsPanel error feedback', () => {
   })
 
   it.each([
-    ['zh-CN', '新建叙事风格', '创建创作方案失败 · 日志 ID: request-123'],
-    ['en-US', 'New Narrative Style', 'Failed to create setup · Log ID: request-123'],
-  ])('keeps a raw backend error out of the %s create failure', async (locale, createLabel, expected) => {
+    ['zh-CN', '添加叙事风格', '新建叙事风格', '创建创作方案失败 · 日志 ID: request-123'],
+    ['en-US', 'Add narrative style', 'New Narrative Style', 'Failed to create setup · Log ID: request-123'],
+  ])('keeps a raw backend error out of the %s create failure', async (locale, addLabel, createLabel, expected) => {
     const user = userEvent.setup()
     setConfiguredLocale(locale)
     apiMocks.createInteractiveTeller.mockRejectedValue(new APIError('导演 ID 已存在', {
@@ -66,7 +66,8 @@ describe('PresetSettingsPanel error feedback', () => {
       </TooltipProvider>,
     )
 
-    await user.click(await screen.findByRole('button', { name: createLabel }))
+    await user.click(await screen.findByRole('button', { name: addLabel }))
+    await user.click(await screen.findByRole('menuitem', { name: createLabel }))
 
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(expected))
     expect(toastMock.error.mock.calls.flat().join(' ')).not.toContain('导演 ID 已存在')

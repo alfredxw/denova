@@ -16,6 +16,7 @@ Denova records major user-visible features, important compatibility or data chan
 
 #### 中文
 
+- 游戏控制台可就地调整本故事的叙事规则；叙事风格目录支持兼容导入 SillyTavern 预设。
 - 章节结构支持章、卷—章、卷—章—节；已有作品可在书籍管理中预览调整并备份恢复。
 - 新增图表统计，可按项目和日期查看稿量变化、章节进度、游戏活动与模型用量。
 - 新增内置互动游戏创作 Skill，并支持按「游戏」分类管理 Skills。
@@ -23,6 +24,7 @@ Denova records major user-visible features, important compatibility or data chan
 
 #### English
 
+- Tune story-specific narrative rules in the Game console, and import SillyTavern presets from the narrative style directory.
 - Choose chapters, volumes and chapters, or volumes, chapters and sections; preview and back up structure changes in Book Management.
 - Adds chart-based statistics for manuscript changes, chapter progress, Game activity, and model usage by project and date.
 - Adds a built-in interactive-game design Skill and a Game category for Skills.
@@ -30,6 +32,8 @@ Denova records major user-visible features, important compatibility or data chan
 
 ### Added / 新增
 
+- 游戏控制台支持就地开关、编辑当前故事的叙事规则，可恢复预设或另存为共享风格。叙事风格目录兼容导入 SillyTavern 聊天补全预设：直接导入保留条目、顺序与默认启停，也可由 AI 整理；不执行宏或扩展脚本。
+- The Game console can toggle and edit story-specific narrative rules, restore preset defaults, or save a reusable style. The narrative style directory imports SillyTavern Chat Completion presets with their text, order, and default activation states, or optional AI adaptation; macros and extension scripts are not executed.
 - 新建和导入作品可选择一至三层章节结构，支持空卷、空章与分节编辑；已有作品可在书籍管理中预览转换，自动保存恢复版本，目录、Agent 阅读顺序与 TXT 导出保持一致。
 - New and imported books support one to three manuscript levels, empty volumes and chapters, and section editing. Book Management previews conversions and saves recovery versions; navigation, Agent reading order and TXT exports share the hierarchy.
 - 共通一级菜单新增「统计」，提供写作趋势、稿量分布、章节进度、游戏每日回合与故事线活动、模型调用与 Token 图表；稿量变化和模型用量从升级后开始记录，游戏活动从现存故事日志读取。可在常规设置中关闭本地统计，保留已有记录与创作内容。

@@ -23,9 +23,9 @@ for (const { theme, width } of [{ theme: 'dark', width: 1440 }, { theme: 'light'
     await page.getByRole('tab', { name: '控制', exact: true }).click()
 
     const cards = page.locator('[data-control-section]')
-    const agent = page.locator('[data-control-section="agent"]')
+    const agent = page.locator('[data-control-section="narrative"]')
     const checks = page.locator('[data-control-section="checks"]')
-    const agentHeader = agent.getByRole('button', { name: 'Game Agent', exact: true })
+    const agentHeader = agent.getByRole('button', { name: '叙事风格', exact: true })
     const checksHeader = checks.getByRole('button', { name: '回合判定', exact: true })
     await agentHeader.click()
     await expect(agentHeader).toHaveAttribute('aria-expanded', 'false')

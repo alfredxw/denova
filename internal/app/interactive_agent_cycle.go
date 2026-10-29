@@ -141,7 +141,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		}
 	}
 
-	teller := interactiveapp.LoadGameTeller(cycle.novaDir, storyContext.Meta.StoryTellerID)
+	teller := interactiveapp.LoadStoryTeller(cycle.novaDir, storyContext.Meta)
 	cycle.runtimeCfg.InteractiveReplyTargetChars = storyContext.Meta.ReplyTargetChars
 	styleRules := appagentruntime.StyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
 	cycle.tellerInput = interactiveapp.StoryTellerSystemInput(teller, styleRules)

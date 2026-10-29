@@ -11,10 +11,6 @@ import (
 	"denova/internal/style"
 )
 
-func (c *Conversation) teller(tellerID string) teller.Definition {
-	return LoadGameTeller(c.novaDir, tellerID)
-}
-
 func (c *Conversation) StoryRuntimeForMeta(meta interactive.StoryMeta) interactive.StoryDirector {
 	return LoadStoryRuntimeForMeta(c.novaDir, meta)
 }
@@ -56,6 +52,28 @@ func storyDirectorForSnapshot(preset interactive.StoryDirector, snapshot *intera
 
 func LoadWritingTeller(novaDir, tellerID string) teller.Definition {
 	return loadInteractiveTeller(novaDir, tellerID)
+}
+
+// LoadStoryTeller resolves the shared style and applies only this story's changes.
+func LoadStoryTeller(novaDir string, meta interactive.StoryMeta) teller.Definition {
+	selected := LoadGameTeller(novaDir, meta.StoryTellerID)
+	overrides := meta.NarrativeStyleOverrides
+	if overrides == nil || overrides.StyleID != selected.ID {
+		return selected
+	}
+	for i := range selected.Slots {
+		patch, ok := overrides.Slots[selected.Slots[i].ID]
+		if !ok {
+			continue
+		}
+		if patch.Enabled != nil {
+			selected.Slots[i].Enabled = *patch.Enabled
+		}
+		if patch.Content != nil {
+			selected.Slots[i].Content = *patch.Content
+		}
+	}
+	return selected
 }
 
 func LoadGameTeller(novaDir, tellerID string) teller.Definition {

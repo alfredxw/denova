@@ -6,6 +6,7 @@ import { runtimeRoot } from './e2e-paths.mjs'
 import { compactionCompletion, compactionControl } from './e2e-compaction-fixture.mjs'
 import { loreCompletion, loreIndexCompletion, loreQueryCompletion } from './e2e-lore-fixture.mjs'
 import { comicEpisodeCompletion } from './e2e-comic-fixture.mjs'
+import { narrativeImportCompletion } from './e2e-narrative-import-fixture.mjs'
 import { extensionImage, extensionOpening, extensionScene } from './e2e-extension-fixture.mjs'
 import { responsesRequest, responsesControl, captureNativeRequest, runtimeCompletion, writeCompletionFrame, finishCompletion } from './e2e-responses-fixture.mjs'
 import { geminiRequest, geminiControl, writeGeminiFrame, finishGemini, writeGeminiGenerated } from './e2e-gemini-fixture.mjs'
@@ -43,7 +44,7 @@ const legacyWritingContinuationMarker = 'E2E_V033_WRITING_CONTINUE'
 const legacyWritingHistoryMarker = '第一章保留了 v0.3.3 的正文。'
 const writingPromptContextMarker = 'E2E_WRITING_PROMPT_CONTEXT_PARITY'
 const gamePromptContextMarker = 'E2E_GAME_PROMPT_CONTEXT_PARITY'
-const capturedRequestMarkers = [writingPromptContextMarker, gamePromptContextMarker]
+const capturedRequestMarkers = ['E2E_STORY_RULES_GAME', 'E2E_STORY_RULES_WRITING', 'E2E_STORY_RULES_RESET', writingPromptContextMarker, gamePromptContextMarker, 'E2E_IMPORTED_USE_WRITING', 'E2E_IMPORTED_USE_GAME', 'E2E_DIRECT_USE_WRITING', 'E2E_DIRECT_USE_GAME']
 const writingAttachmentName = 'writing-e2e.png'
 const gameAttachmentName = 'game-e2e.png'
 const gameAttachmentNarrative = '图像中的蓝色信标亮起，旧车站的侧门随之打开。'
@@ -403,7 +404,7 @@ const server = createServer(async (request, response) => {
     else writeGeneratedCompletion(response, scene)
     return
   }
-  const compaction = loreQueryCompletion(body) ?? loreIndexCompletion(body) ?? loreCompletion(body) ?? runtimeCompletion(body) ?? compactionCompletion(body)
+  const compaction = narrativeImportCompletion(body) ?? loreQueryCompletion(body) ?? loreIndexCompletion(body) ?? loreCompletion(body) ?? runtimeCompletion(body) ?? compactionCompletion(body)
   if (compaction) {
     if (body.stream !== true) writeGeneratedCompletion(response, compaction.content)
     else if (compaction.tool) writeChatCompletion(response, toolCompletionFrames(compaction.tool, compaction.arguments, compaction.id))

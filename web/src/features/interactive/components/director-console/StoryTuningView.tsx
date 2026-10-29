@@ -13,7 +13,7 @@ import { getActorStates, getEventPackages, getRuleSystems } from '../../api'
 import { normalizeStoryCheckSettings } from '../../check-settings'
 import { gamePlanningTemplateName } from '../../game-planning'
 import { normalizeImageIntervalTurns, normalizeStoryImageSettings } from '../../image-settings'
-import { narrativeStyleName } from '../../narrative-style'
+import { StoryNarrativeStyleControls } from './StoryNarrativeStyleControls'
 import { MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT } from '../../opening'
 import type {
   ActorStateModule,
@@ -158,10 +158,6 @@ export function StoryTuningView({
     () => planningTemplates.map((item) => ({ id: item.id, label: gamePlanningTemplateName(item, t) })),
     [planningTemplates, t],
   )
-  const narrativeOptions = useMemo<TuningSelectOption[]>(
-    () => tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) })),
-    [t, tellers],
-  )
   const imageOptions = useMemo<TuningSelectOption[]>(() => imagePresets.map(moduleOption), [imagePresets])
   const ruleOptions = useMemo<TuningSelectOption[]>(() => ruleSystems.map(moduleOption), [ruleSystems])
   const stateOptions = useMemo<TuningSelectOption[]>(() => actorStates.map(moduleOption), [actorStates])
@@ -170,6 +166,7 @@ export function StoryTuningView({
   return (
     <div className="director-console__scroll h-full min-h-0 overflow-y-auto px-2.5 py-2.5">
       <SortableControlSections>
+        <StoryNarrativeStyleControls key="narrative" story={story} tellers={tellers} onUpdate={onUpdate} onOpenPresets={onOpenPresets} />
         <ControlSection key="agent"
           icon={<Bot className="size-4" />}
           title={t('directorPanel.tuning.agent.title')}
@@ -197,21 +194,6 @@ export function StoryTuningView({
               onCheckedChange={(enabled) => void save('planning', { planning_mode: enabled ? 'enabled' : 'disabled' })}
             />
           </TuningRow>
-          <ModuleSelectRow
-            label={t('directorPanel.tuning.agent.narrativeStyle')}
-            value={String(refs.narrative_style_id || '')}
-            moduleDisabled={Boolean(refs.narrative_style_disabled)}
-            options={narrativeOptions}
-            busy={savingKey === 'narrative'}
-            disabled={disabled}
-            onChange={(value) => updateModule(
-              'narrative',
-              'narrative_style_id',
-              'narrative_style_disabled',
-              value,
-              (nextID) => ({ story_teller_id: nextID }),
-            )}
-          />
           <EventPackagesRow
             refs={refs}
             options={eventPackages}

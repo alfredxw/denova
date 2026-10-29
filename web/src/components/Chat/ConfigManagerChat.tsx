@@ -22,6 +22,7 @@ interface ConfigManagerChatProps {
   context?: Record<string, string>
   initialInstruction?: string
   initialInstructionKey?: string
+  initialInstructionDisplayMessage?: string
   onInitialInstructionAccepted?: () => void
   onMutated?: () => void
   className?: string
@@ -56,6 +57,7 @@ export function ConfigManagerChat({
   context,
   initialInstruction,
   initialInstructionKey,
+  initialInstructionDisplayMessage,
   onInitialInstructionAccepted,
   onMutated,
   className = '',
@@ -142,8 +144,8 @@ export function ConfigManagerChat({
     const message = initialInstruction?.trim() || ''
     const id = initialInstructionKey?.trim() || ''
     if (!message || !id || acceptedInitialInstructionKey === id) return null
-    return { id, message, displayMessage: message }
-  }, [acceptedInitialInstructionKey, initialInstruction, initialInstructionKey])
+    return { id, message, displayMessage: initialInstructionDisplayMessage || message }
+  }, [acceptedInitialInstructionKey, initialInstruction, initialInstructionKey, initialInstructionDisplayMessage])
   const consumePendingAction = useCallback((id: string) => {
     setAcceptedInitialInstructionKey(id)
     onInitialInstructionAccepted?.()
