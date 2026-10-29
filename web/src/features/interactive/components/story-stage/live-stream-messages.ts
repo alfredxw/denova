@@ -41,6 +41,14 @@ export function promoteMessageTargets(messages: AgentUIMessage[]) {
   return changed ? nextMessages : messages
 }
 
+/** A tool call ends its author's thinking; concurrent subagents keep their own stream state. */
+export function finishLiveReasoning(messages: AgentUIMessage[], metadata: AgentMessageMetadata) {
+  return messages.map(message => {
+    if (!sameLiveMessageSource(message.metadata, metadata) || !isStreamingMessageKind(message, 'reasoning')) return message
+    return { ...message, parts: message.parts.map(part => part.type === 'reasoning' ? { ...part, state: 'done' as const } : part) }
+  })
+}
+
 export function promoteMessageTarget(message: AgentUIMessage): AgentUIMessage {
   const target = message.metadata?.streaming_target_content
   if (target === undefined) return message

@@ -20,6 +20,8 @@ import type { ChapterSummary } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { setConfiguredLocale } from '@/i18n'
 import { NovaMotionProvider, normalizeMotionIntensity } from '@/features/motion/motion-preferences'
+import { AgentTraceDisplayProvider } from '@/components/Chat/agent-trace-display'
+import type { AgentTraceDisplay } from '@/features/settings/types'
 import {
   dedupeTabs,
   enforceTabLimit,
@@ -93,6 +95,7 @@ function App() {
   const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
   const [motionIntensity, setMotionIntensity] = useState('system')
+  const [agentTraceDisplay, setAgentTraceDisplay] = useState<AgentTraceDisplay>('compact')
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
   const [editorSearchIntent, setEditorSearchIntent] = useState<{ path: string; query: string; line: number; nonce: number } | null>(null)
@@ -313,6 +316,7 @@ function App() {
       setConfiguredLocale(effective?.language)
       setTheme(normalizeAppTheme(effective?.theme))
       setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
+      setAgentTraceDisplay(effective?.agent_trace_display === 'live' ? 'live' : 'compact')
       applyFontSettings(fontSettingsFromEffective(effective))
     }
     const reload = (fresh = false) => {
@@ -853,6 +857,7 @@ function App() {
 
   return (
     <NovaMotionProvider intensity={motionIntensity}>
+    <AgentTraceDisplayProvider value={agentTraceDisplay}>
       <AnalyticsNotice onReadyChange={setAnalyticsReady} />
       <ModeRouter
         mode={mode}
@@ -1025,6 +1030,7 @@ function App() {
         isStreaming={writingAgentConversation.isStreaming}
         onNavigate={handleOnboardingNavigate}
       />
+    </AgentTraceDisplayProvider>
     </NovaMotionProvider>
   )
 }

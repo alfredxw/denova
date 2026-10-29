@@ -38,7 +38,7 @@ import { UpdateSettings } from './UpdateSettings'
 import { MarketSettings } from './MarketSettings'
 import { SETTINGS_SECTIONS, type SettingsFieldRequest, type SettingsSectionId } from './settings-sections'
 import { modelProfilesForEditor, modelEndpointsForEditor, imageAPIProfilesForEditor, imageAPIEndpointsForEditor } from './settings-editor-draft'
-import { FieldRow, TextSizeRow, ReadOnly, Text, Num, BoolTri, AgentApprovalModeSelect, ShellEnvironmentSelect, TraceCaptureSelect, TraceExporterSelect, LanguageSelect, ThemeSelect, MotionIntensitySelect, TellerSelect } from './SettingsFields'
+import { FieldRow, TextSizeRow, ReadOnly, Text, Num, BoolTri, AgentApprovalModeSelect, ShellEnvironmentSelect, TraceCaptureSelect, TraceExporterSelect, LanguageSelect, ThemeSelect, MotionIntensitySelect, AgentTraceDisplaySelect, TellerSelect } from './SettingsFields'
 
 interface SettingsSectionsProps {
   layered: LayeredSettings
@@ -150,6 +150,8 @@ export const SettingsSections = memo(function SettingsSections({ layered, draft,
         <MotionIntensitySelect label={t('settings.appearance.motionIntensity')} value={draft.motion_intensity}
                                inherited={inherited.motion_intensity}
                                onChange={(v) => setField('motion_intensity', v)} />
+        <AgentTraceDisplaySelect value={draft.agent_trace_display}
+                                 onChange={(v) => setField('agent_trace_display', v)} />
         <FieldRow label={t('settings.appearance.uiFont')}>
           <FontPicker value={draft.ui_font_family}
                       inherited={inherited.ui_font_family}

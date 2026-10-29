@@ -1,7 +1,6 @@
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ToolContent } from '@/components/ai-elements/tool'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { ToolResultSeverity } from '@/lib/tool-result-envelope'
@@ -50,7 +49,7 @@ export function toolDetailSummary(name: string, rawArgs: string, result: string,
 export const ToolCallDetail = memo(function ToolCallDetail(props: ToolCallDetailProps) {
   const unified = toolDetailAdapters[props.name].layout === 'unified'
   return (
-    <ToolContent
+    <div
       data-nova-tool-detail={props.name}
       className={cn(
         'min-w-0 max-w-full border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)]',
@@ -58,7 +57,7 @@ export const ToolCallDetail = memo(function ToolCallDetail(props: ToolCallDetail
       )}
     >
       <ToolCallDetailBody {...props} />
-    </ToolContent>
+    </div>
   )
 })
 

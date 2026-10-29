@@ -1,14 +1,15 @@
-import { useLayoutEffect, type CSSProperties, type ReactNode, type RefCallback } from 'react'
-import { motion } from 'motion/react'
+import { useLayoutEffect, useState, type CSSProperties, type ReactNode, type RefCallback } from 'react'
+import { motion, useReducedMotionConfig } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration, ChatMessage } from '@/lib/api'
 import { agentViewNavigationAnchor, isAgentTraceView, type AgentExecutionTiming, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
-import { listItem, novaEase, timelineAttachment } from '@/features/motion/motion-tokens'
+import { listItem, novaEase } from '@/features/motion/motion-tokens'
+import { useMotionIntensity } from '@/features/motion/motion-preferences'
 import { cn } from '@/lib/utils'
 import { AgentActivityShimmer, MessageItem, type AssistantMessagePresentation } from './MessageItem'
 import { AgentMessageItem } from './AgentMessageItem'
 import { AgentExecutionProcess } from './AgentExecutionProcess'
-import { VirtualizedMessageRow } from './VirtualizedMessageState'
+import { VirtualizedMessageRow, useVirtualizedMessageState } from './VirtualizedMessageState'
 import { AgentRunActions } from './AgentRunActions'
 
 export type AgentChatListItem =
@@ -22,14 +23,15 @@ export type AgentChatListItem =
   | { kind: 'run-actions'; key: string; runId: string }
   | { kind: 'attachment'; key: string; runId: string; content: ReactNode }
 
-export function AgentChatListRow({ projectId, item, nextItem, executionTimings, isStreaming, tailFollowActive, onProcessExpandedChange, subAgentPresentation, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
+export function AgentChatListRow({ projectId, item, nextItem, animateAttachment = false, executionTimings, isStreaming, tailFollowActive, onProcessExpandedChange, subAgentPresentation, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onReadAloud, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
   executionTimings: ReadonlyMap<string, AgentExecutionTiming>
   nextItem?: AgentChatListItem
+  animateAttachment?: boolean
   isStreaming: boolean
   tailFollowActive: boolean
-  onProcessExpandedChange?: (key: string, running: boolean, expanded: boolean, navigationAnchor: string) => void | Promise<void>
+  onProcessExpandedChange?: (key: string, expanded: boolean, navigationAnchor: string) => void | Promise<void>
   subAgentPresentation: 'card' | 'content'
   highlightDialogue: boolean
   messageStyle?: CSSProperties
@@ -107,10 +109,10 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
       data-nova-chat-turn-anchor={turnAnchor}
       style={'depth' in item && item.depth ? { paddingInlineStart: `${24 + Math.min(item.depth, 4) * 12}px` } : undefined}
       className={cn('min-w-0 px-6', contentClassName, isLast ? 'pb-0' : continuesTrace || ('processKey' in item && item.processKey) || item.kind === 'process' ? 'pb-2' : 'pb-4')}
-      variants={item.kind === 'attachment' ? timelineAttachment : listItem}
-      initial={isLast && isStreaming ? false : 'initial'}
+      variants={listItem}
+      initial={item.kind === 'attachment' || (isLast && isStreaming) ? false : 'initial'}
       animate="animate"
-      transition={{ duration: item.kind === 'attachment' ? 0.14 : 0.18, ease: novaEase }}
+      transition={{ duration: 0.18, ease: novaEase }}
     >
       {item.kind === 'empty' ? (
         <div className="flex min-h-[240px] items-center justify-center">
@@ -130,12 +132,12 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
         <ContextClearDivider createdAt={item.createdAt} />
       ) : item.kind === 'process' ? (
         <AgentExecutionProcess views={item.views} running={item.running} expanded={item.expanded}
-          onExpandedChange={expanded => onProcessExpandedChange?.(item.key, item.running, expanded, item.navigationAnchor)}
+          onExpandedChange={expanded => onProcessExpandedChange?.(item.key, expanded, item.navigationAnchor)}
           timing={item.showTiming ? executionTimings.get(item.runId) : undefined} />
       ) : item.kind === 'run-actions' ? (
         <div className="flex flex-wrap items-center gap-2 px-1"><AgentRunActions projectId={projectId} runID={item.runId} /></div>
       ) : item.kind === 'attachment' ? (
-        item.content
+        <TimelineAttachment enter={animateAttachment}>{item.content}</TimelineAttachment>
       ) : item.kind === 'legacy-message' ? (
         <MessageItem
           projectId={projectId}
@@ -151,6 +153,27 @@ export function AgentChatListRow({ projectId, item, nextItem, executionTimings, 
       )}
     </motion.div>
     </VirtualizedMessageRow>
+  )
+}
+
+/** Animate only a newly finished live run, once across virtual row remounts. */
+function TimelineAttachment({ enter, children }: { enter: boolean; children: ReactNode }) {
+  const [revealed, setRevealed] = useVirtualizedMessageState('attachment-revealed', false)
+  const [animateEntry] = useState(() => enter && !revealed)
+  const reducedMotion = useReducedMotionConfig()
+  const motionIntensity = useMotionIntensity()
+  useLayoutEffect(() => { setRevealed(true) }, [setRevealed])
+  return (
+    <motion.div
+      className="overflow-hidden"
+      data-nova-timeline-attachment
+      // Virtuoso needs a non-zero initial measurement for a new row.
+      initial={animateEntry && motionIntensity !== 'off' ? { height: reducedMotion ? 'auto' : 1, opacity: 0 } : false}
+      animate={{ height: 'auto', opacity: 1 }}
+      transition={{ height: { duration: reducedMotion ? 0 : 0.2, ease: novaEase }, opacity: { duration: motionIntensity === 'off' ? 0 : 0.14 } }}
+    >
+      {children}
+    </motion.div>
   )
 }
 

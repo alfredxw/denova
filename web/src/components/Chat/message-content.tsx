@@ -1,5 +1,5 @@
 import { useVirtualizedMessageState } from './VirtualizedMessageState'
-import { Children, Fragment, cloneElement, isValidElement, memo, useLayoutEffect, useMemo } from 'react'
+import { Children, Fragment, cloneElement, isValidElement, memo, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { cjk } from '@streamdown/cjk'
 import { math } from '@streamdown/math'
@@ -18,6 +18,7 @@ import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
+import { useAgentTraceDisplay } from './agent-trace-display'
 import { agentContentPreview } from './agent-content-preview'
 import { AgentSourceBadge } from './message-source-badge'
 import { StreamingContentStage } from './StreamingContentStage'
@@ -225,39 +226,24 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
   return <Fragment>{nodes}</Fragment>
 }
 
-/** Reasoning follows streaming until the user takes explicit control. */
+/** Manual choices override the user's default streaming presentation. */
 export function ThinkingBlock({ projectId, message, content, streaming, showAgentSource = true }: { projectId: string; message: ThinkingChatMessage; content: string; streaming: boolean; showAgentSource?: boolean }) {
   const { t } = useTranslation()
   const motionIntensity = useMotionIntensity()
+  const traceDisplay = useAgentTraceDisplay()
   const preview = agentContentPreview(content)
-  const [expanded, setExpanded] = useVirtualizedMessageState('thinking-expanded', streaming)
-  const [userToggled, setUserToggled] = useVirtualizedMessageState('thinking-toggled', false)
-  const [wasStreaming, setWasStreaming] = useVirtualizedMessageState('thinking-streaming', streaming)
+  const [expansion, setExpanded] = useVirtualizedMessageState<'auto' | boolean>('thinking-expanded', 'auto')
+  const expanded = expansion === 'auto' ? traceDisplay === 'live' && streaming : expansion
   const contentScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: streaming && expanded,
     resetKey: `${message.id || message.created_at || 'thinking'}:thinking-stream`,
     contentKey: `${expanded ? 'expanded' : 'collapsed'}:${content.length}`,
   })
 
-  useLayoutEffect(() => {
-    setWasStreaming(streaming)
-    if (!wasStreaming && streaming) {
-      setUserToggled(false)
-      setExpanded(true)
-    } else if (wasStreaming && !streaming && !userToggled) {
-      setExpanded(false)
-    }
-  }, [streaming])
-
-  const handleOpenChange = (open: boolean) => {
-    setUserToggled(true)
-    setExpanded(open)
-  }
-
   return (
     <div className="flex justify-start">
       <div className="w-full">
-        <Reasoning isStreaming={streaming} open={expanded} onOpenChange={handleOpenChange} className="mb-0">
+        <Reasoning isStreaming={streaming} open={expanded} onOpenChange={setExpanded} className="mb-0">
           <ReasoningTrigger
             aria-label={t(expanded ? 'chat.trace.collapseThinking' : 'chat.trace.expandThinking')}
             className="flex min-w-0 items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"

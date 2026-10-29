@@ -9,6 +9,7 @@ import {
   completeToolMessage,
   findMappedLiveToolId,
   findToolMessageIndexForPayload,
+  finishLiveReasoning,
   liveToolEventKeys,
   promoteMessageTarget,
   promoteMessageTargets,
@@ -99,18 +100,19 @@ export function useLiveMessageAccumulator({ setMessages }: UseLiveMessageAccumul
     const id = payload.id || mappedId || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const name = payload.name || 'unknown_tool'
     const input = payload.args ?? ''
+    const metadata = streamMetadataFromPayload(payload)
     if (toolKeys.length > 0) {
       toolKeyToMessageIdRef.current = bindLiveToolEventKeys(toolKeys, toolKeyToMessageIdRef.current, id)
     }
     nonNarrativeStreamingRef.current = true
     setMessages((current) => [
-      ...current,
+      ...finishLiveReasoning(current, metadata),
       createAgentToolMessage({
         id,
         name,
         state: 'input-streaming',
         input,
-        metadata: streamMetadataFromPayload(payload),
+        metadata,
       }),
     ])
   }, [flush, setMessages])

@@ -149,7 +149,8 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
     previousViews.current = next
     return next
   }, [messages, projection?.views])
-  const [disclosures, setDisclosures] = useState<Record<string, { running: boolean; expanded: boolean }>>({})
+  const [disclosures, setDisclosures] = useState<Record<string, boolean>>({})
+  const liveRunIDs = useRef(new Set<string>())
   const initialPosition = projection?.initialPosition ?? 'end'
   const subAgentPresentation = projection?.subAgentPresentation ?? 'card'
   const executionTimings = useMemo(() => selectAgentExecutionTimings(views), [views])
@@ -187,6 +188,18 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
     }),
     [activeTraceDisplay, disclosures, activeRunId, collapseTraceGroups, isExecutionActive, isStreaming, onOpenSubAgentSession, timelineAttachments, views, visibleActivityContent],
   )
+  useLayoutEffect(() => {
+    if ((isStreaming || isExecutionActive) && activeRunId) liveRunIDs.current.add(activeRunId)
+    // Remember the first presentation even when the row is outside the viewport.
+    // Finishing a run must not reset the reader's disclosure choices.
+    setDisclosures(current => {
+      const missing = listItems.filter(item => item.kind === 'process' && !(item.key in current))
+      if (!missing.length) return current
+      const next = { ...current }
+      for (const item of missing) if (item.kind === 'process') next[item.key] = item.expanded
+      return next
+    })
+  }, [activeRunId, isExecutionActive, isStreaming, listItems])
   // Transport streaming may pause between tool/recovery phases while the turn
   // remains active and can still publish layout updates.
   // A confirmed trailing result ends prose following even if the transport is
@@ -296,7 +309,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
   }, [firstItemIndex, listItems, onVisibleTurnAnchorChange, resolveMessageScroller])
 
   const earlierRequest = useRef(false)
-  const historyScrollAnchor = useRef<{ key: string; firstKey: string; offset: number } | null>(null)
+  const historyScrollAnchor = useRef<{ key: string; firstKey?: string; offset: number } | null>(null)
   const captureHistoryAnchor = useCallback((scroller: HTMLElement | null) => {
     if (!scroller || (historyScrollAnchor.current && historyScrollAnchor.current.firstKey !== listItems[0]?.key)) return
     const viewport = scroller.getBoundingClientRect()
@@ -327,7 +340,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
       return () => cancelAnimationFrame(frame)
     }
     const anchor = historyScrollAnchor.current
-    if (!anchor || anchor.firstKey === listItems[0]?.key) return
+    if (!anchor || (anchor.firstKey !== undefined && anchor.firstKey === listItems[0]?.key)) return
     const index = listItems.findIndex(item => item.key === anchor.key)
     if (index < 0) {
       historyScrollAnchor.current = null
@@ -352,11 +365,16 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
     }
   }, [autoLoadEarlierMessages, captureHistoryAnchor, hasEarlierMessages, initialPositionReady, isLoadingEarlierMessages, notifyVisibleTurnAnchor, onLoadEarlierMessages, scrollLock.onScroll])
 
-  const onProcessExpandedChange = useCallback(async (key: string, running: boolean, expanded: boolean, navigationAnchor: string) => {
+  const onProcessExpandedChange = useCallback(async (key: string, expanded: boolean, navigationAnchor: string) => {
     scrollLock.releaseBottomLock()
     if (expanded) await onLoadExecutionDetails?.(navigationAnchor)
-    setDisclosures(current => ({ ...current, [key]: { running, expanded } }))
-  }, [onLoadExecutionDetails, scrollLock.releaseBottomLock])
+    const scroller = resolveMessageScroller()
+    const row = scroller?.querySelector<HTMLElement>(`[data-nova-chat-row-key="${CSS.escape(key)}"]`)
+    if (row && scroller) {
+      historyScrollAnchor.current = { key, offset: (row.parentElement || row).getBoundingClientRect().top - scroller.getBoundingClientRect().top }
+    }
+    setDisclosures(current => ({ ...current, [key]: expanded }))
+  }, [onLoadExecutionDetails, resolveMessageScroller, scrollLock.releaseBottomLock])
 
   const itemContent = useCallback((index: number, item?: AgentChatListItem) => {
     const resolvedItem = item || listItems[index - firstItemIndex]
@@ -365,6 +383,7 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
       <AgentChatListRow
         projectId={projectId}
         item={resolvedItem}
+        animateAttachment={resolvedItem.kind === 'attachment' && liveRunIDs.current.has(resolvedItem.runId)}
         executionTimings={executionTimings}
         contentClassName={contentClassName}
         nextItem={listItems[index - firstItemIndex + 1]}

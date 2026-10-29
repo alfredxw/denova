@@ -98,6 +98,7 @@ describe('MessageItem streaming Markdown', () => {
     const { container, rerender } = render(
       <MessageItem projectId="project-thinking" message={{ role: 'thinking', content, streaming: true }} />,
     )
+    fireEvent.click(screen.getByRole('button', { name: '展开思考' }))
 
     expect(container.querySelector('[data-streamdown="strong"]')).toHaveTextContent('正在分析。')
     expect(container.querySelector('.katex-display')).toBeInTheDocument()
@@ -110,8 +111,6 @@ describe('MessageItem streaming Markdown', () => {
     rerender(
       <MessageItem projectId="project-thinking" message={{ role: 'thinking', content, streaming: false }} />,
     )
-    fireEvent.click(screen.getByRole('button', { name: '展开思考' }))
-
     expect(container.querySelector('[data-streamdown="strong"]')).toHaveTextContent('正在分析。')
     expect(container.querySelector('[data-sd-animate]')).not.toBeInTheDocument()
   })
@@ -121,6 +120,7 @@ describe('MessageItem streaming Markdown', () => {
     const { container, rerender } = render(
       <NovaMotionProvider intensity="system"><MessageItem message={message} /></NovaMotionProvider>,
     )
+    fireEvent.click(screen.getByRole('button', { name: '展开思考' }))
     expect(container.querySelector('[data-sd-animate]')).not.toBeInTheDocument()
 
     rerender(<NovaMotionProvider intensity="full"><MessageItem message={message} /></NovaMotionProvider>)

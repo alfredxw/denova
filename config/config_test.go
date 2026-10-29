@@ -122,7 +122,7 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 	t.Setenv("OPENAI_MODEL", "")
 
 	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"),
-		Settings{OpenAIModel: "user-model", Language: "zh-CN", WritingSkillDefault: "novel-lite", IDEImagePresetID: "realistic"}); err != nil {
+		Settings{OpenAIModel: "user-model", Language: "zh-CN", WritingSkillDefault: "novel-lite", IDEImagePresetID: "realistic", AgentTraceDisplay: "live"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteSettingsFile(filepath.Join(ws, ".nova", "config.toml"),
@@ -131,6 +131,7 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 			Language:            "en-US",
 			WritingSkillDefault: "scene-first",
 			IDEImagePresetID:    "2d-illustration",
+			AgentTraceDisplay:   "compact",
 			AgentTools:          AgentToolSettings{IDE: AgentToolOverride{AgentToolShell: false}},
 		}); err != nil {
 		t.Fatal(err)
@@ -151,6 +152,9 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 	}
 	if cfg.IDEImagePresetID != "realistic" {
 		t.Fatalf("user image preset default expected, got %s", cfg.IDEImagePresetID)
+	}
+	if layered.Effective.AgentTraceDisplay != "live" || layered.Workspace.AgentTraceDisplay != "" {
+		t.Fatalf("process display must persist as a user preference: effective=%q workspace=%q", layered.Effective.AgentTraceDisplay, layered.Workspace.AgentTraceDisplay)
 	}
 	if len(layered.User.ModelProfiles) != 1 || layered.User.ModelProfiles[0].Model != "user-model" {
 		t.Fatalf("user layer raw value lost")

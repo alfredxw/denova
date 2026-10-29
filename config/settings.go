@@ -91,9 +91,11 @@ type Settings struct {
 	Language               string `toml:"language,omitempty" json:"language,omitempty"`
 	Theme                  string `toml:"theme,omitempty" json:"theme,omitempty"`
 	MotionIntensity        string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
-	StatisticsEnabled      *bool  `toml:"statistics_enabled,omitempty" json:"statistics_enabled,omitempty"`
-	UpdateCheckEnabled     *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
-	UpdateDownloadEnabled  *bool  `toml:"update_download_enabled,omitempty" json:"update_download_enabled,omitempty"`
+	// AgentTraceDisplay is a user-scoped presentation preference shared by all conversations.
+	AgentTraceDisplay     string `toml:"agent_trace_display,omitempty" json:"agent_trace_display,omitempty"`
+	StatisticsEnabled     *bool  `toml:"statistics_enabled,omitempty" json:"statistics_enabled,omitempty"`
+	UpdateCheckEnabled    *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
+	UpdateDownloadEnabled *bool  `toml:"update_download_enabled,omitempty" json:"update_download_enabled,omitempty"`
 
 	// Agent
 	MaxIteration              *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -219,6 +221,7 @@ func DefaultSettings() Settings {
 		Language:                    "auto",
 		Theme:                       "dark",
 		MotionIntensity:             "system",
+		AgentTraceDisplay:           "compact",
 		UpdateCheckEnabled:          boolPtr(true),
 		StatisticsEnabled:           boolPtr(true),
 		UpdateDownloadEnabled:       boolPtr(false),
@@ -398,6 +401,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.MotionIntensity != "" {
 		out.MotionIntensity = child.MotionIntensity
+	}
+	if child.AgentTraceDisplay != "" {
+		out.AgentTraceDisplay = child.AgentTraceDisplay
 	}
 	if child.UpdateCheckEnabled != nil {
 		out.UpdateCheckEnabled = child.UpdateCheckEnabled
@@ -960,6 +966,11 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
+	switch s.AgentTraceDisplay {
+	case "", "compact", "live":
+	default:
+		s.AgentTraceDisplay = ""
+	}
 	s.IDEStoryTellerID = strings.TrimSpace(s.IDEStoryTellerID)
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)

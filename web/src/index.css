@@ -1641,23 +1641,31 @@ html[data-nova-motion="off"] .shimmer {
 }
 
 .nova-resource-directory-content,
+.nova-reasoning-content,
+.nova-change-summary-files,
 .nova-tool-content {
   overflow: hidden;
 }
 
 .nova-resource-directory-content[data-state="open"],
+.nova-reasoning-content[data-state="open"],
+.nova-change-summary-files[data-state="open"],
 .nova-tool-content[data-state="open"] {
   animation: nova-collapsible-expand var(--nova-motion-fast) var(--nova-panel-motion-ease);
 }
 
 .nova-resource-directory-content[data-state="closed"],
+.nova-reasoning-content[data-state="closed"],
+.nova-change-summary-files[data-state="closed"],
 .nova-tool-content[data-state="closed"] {
   animation: nova-collapsible-collapse var(--nova-motion-fast) var(--nova-panel-motion-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nova-resource-directory-content,
-  .nova-tool-content {
+  html:not([data-nova-motion="full"]) .nova-resource-directory-content,
+  html:not([data-nova-motion="full"]) .nova-reasoning-content,
+  html:not([data-nova-motion="full"]) .nova-change-summary-files,
+  html:not([data-nova-motion="full"]) .nova-tool-content {
     animation-duration: 1ms !important;
   }
 }

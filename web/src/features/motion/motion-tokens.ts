@@ -40,10 +40,3 @@ export const sessionCanvas: Variants = {
     transition: { duration: 0.1, ease: novaEase },
   },
 }
-
-/** Fast, direct reveal for terminal artifacts appended to an existing Run. */
-export const timelineAttachment: Variants = {
-  initial: { opacity: 0, y: 3, scale: 0.995 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0 },
-}

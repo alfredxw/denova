@@ -17,15 +17,7 @@ import { toolPresentationKind } from '@/lib/tool-presentation'
 import { workspaceFileName } from '@/lib/workspace-path'
 import { taskSubAgentSessionKey } from './subagent-session'
 import { ToolInspectorButton } from './ToolInspector'
-
-// Preview creative inputs as they arrive; operational tools stay compact regardless of input length.
-const STREAMING_INPUT_PREVIEW_TOOLS = new Set([
-  'write',
-  'edit',
-  'write_lore_items',
-  'prepare_interactive_turn',
-  'submit_interactive_turn',
-])
+import { useAgentTraceDisplay } from './agent-trace-display'
 
 interface ParsedToolCall {
   name: string
@@ -62,13 +54,18 @@ function parseToolCall(message: ToolCallChatMessage): ParsedToolCall {
 
 export function ToolExecutionBlock({ message, showAgentSource = true, onResolve, onLayoutChange, onOpenSubAgentSession }: { message: ToolCallChatMessage; showAgentSource?: boolean; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void; onOpenSubAgentSession?: (sessionKey: string) => void }) {
   const { t } = useTranslation()
+  const traceDisplay = useAgentTraceDisplay()
   const approvalInteraction = message.ask?.kind === 'tool_approval' ? message.ask : undefined
   const approvalPending = approvalInteraction?.status === 'pending'
-  const [expanded, setExpanded] = useVirtualizedMessageState('tool-expanded', () => approvalPending)
+  const [expansion, setExpanded] = useVirtualizedMessageState<'auto' | boolean>('tool-expanded', 'auto')
   const [expandedApprovalId, setExpandedApprovalId] = useVirtualizedMessageState<string | undefined>('tool-approval-id', undefined)
   const { name, rawArgs, args, resultBody, resultEnvelope, detailResult } = parseToolCall(message)
   const inputStreaming = message.streaming === true
-  const showStreamingInput = !approvalInteraction && inputStreaming && rawArgs.length > 0 && STREAMING_INPUT_PREVIEW_TOOLS.has(name)
+  const automaticPreview = traceDisplay === 'live' && (name === 'write' || name === 'edit')
+  const expanded = expansion === 'auto' ? Boolean(approvalPending || (automaticPreview && inputStreaming)) : expansion
+  // Keep the preview in the same disclosure while it animates closed. Replacing
+  // it with the completed detail here would jump to a different height first.
+  const showStreamingInput = !approvalInteraction && rawArgs.length > 0 && (inputStreaming || (expansion === 'auto' && automaticPreview))
   const canInterpretInput = !inputStreaming
   const canShowDetail = Boolean(approvalInteraction) || canInterpretInput
   const status = message.status || 'running'
@@ -128,8 +125,8 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   if (status === 'error') displaySummary = (name === 'edit' ? specializedSummary : '') || buildPreview(resultBody, 160) || t('chat.tool.failed')
   if (hasResult) displaySummary = specializedSummary || commandDescription || fileResultSummary || resultPreview || t('chat.tool.done')
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
-  const hasDetail = Boolean(approvalInteraction || detailArgs || result)
-  const canToggleDetail = hasDetail && canShowDetail && !opensTaskSession
+  const hasDetail = Boolean(approvalInteraction || rawArgs || result)
+  const canToggleDetail = hasDetail && !opensTaskSession
 
   return (
     <div className="flex justify-start">
@@ -192,29 +189,29 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
               </span>
             )}
           </CollapsibleTrigger>
-          {expanded && canToggleDetail && <ToolInspectorButton className="mr-2" />}
+          {expanded && canToggleDetail && canInterpretInput && <ToolInspectorButton className="mr-2" />}
         </div>
-        {showStreamingInput && (
-          <StreamingToolInput rawInput={rawArgs} streamKey={message.id || name} />
-        )}
-        {canShowDetail && !approvalInteraction && hasSpecializedToolDetail(name) && (
-          <ToolCallDetail
-            name={name}
-            rawArgs={rawArgs}
-            result={resultBody}
-            resultSeverity={resultSeverity}
-          />
-        )}
-        {canShowDetail && (approvalInteraction || !hasSpecializedToolDetail(name)) && (
-          <ToolContent className="min-w-0 max-w-full border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
-            <div className={`grid min-w-0 max-w-full gap-2 overflow-x-hidden overflow-y-auto px-3 py-2.5 ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
-              {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}
-              {detailArgs && !approvalInteraction?.approval?.command && <pre className="m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere]">{detailArgs}</pre>}
-              {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
-              {result && <pre className={`m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere] ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
+        <ToolContent>
+          {showStreamingInput ? (
+            <StreamingToolInput rawInput={rawArgs} streamKey={message.id || name} streaming={inputStreaming} />
+          ) : canShowDetail && !approvalInteraction && hasSpecializedToolDetail(name) ? (
+            <ToolCallDetail
+              name={name}
+              rawArgs={rawArgs}
+              result={resultBody}
+              resultSeverity={resultSeverity}
+            />
+          ) : canShowDetail ? (
+            <div className="min-w-0 max-w-full border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
+              <div className={`grid min-w-0 max-w-full gap-2 overflow-x-hidden overflow-y-auto px-3 py-2.5 ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
+                {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}
+                {detailArgs && !approvalInteraction?.approval?.command && <pre className="m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere]">{detailArgs}</pre>}
+                {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
+                {result && <pre className={`m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere] ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
+              </div>
             </div>
-          </ToolContent>
-        )}
+          ) : null}
+        </ToolContent>
       </Tool>
     </div>
   )

@@ -41,7 +41,7 @@ export function AgentExecutionProcess({ views, running, expanded, onExpandedChan
     <div className="flex justify-start" data-agent-execution-process>
       <Collapsible open={expanded} onOpenChange={next => void changeExpanded(next)} className="w-full">
         <CollapsibleTrigger type="button" aria-controls={undefined} disabled={loading} aria-busy={loading}
-          className="group flex min-w-0 flex-wrap items-center gap-1 py-1 text-left text-xs text-[var(--nova-text-muted)] transition-colors hover:text-[var(--nova-text)]">
+          className="group flex w-full min-w-0 flex-wrap items-center gap-1 py-1 text-left text-xs text-[var(--nova-text-muted)] transition-colors hover:text-[var(--nova-text)]">
           {running ? <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-[var(--nova-text-muted)]" /> : null}
           <span>{label}</span>
           {loading ? <LoaderCircle aria-label={t('common.loading')} className="size-3 animate-spin" /> : null}

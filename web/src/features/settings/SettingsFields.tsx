@@ -6,7 +6,7 @@ import { LOCALE_OPTIONS } from '@/i18n'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName } from '@/features/interactive/narrative-style'
 import type { Teller } from '@/features/interactive/types'
-import type { AgentApprovalMode, ShellEnvironmentMode } from './types'
+import type { AgentApprovalMode, AgentTraceDisplay, ShellEnvironmentMode } from './types'
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const FIELD_INHERIT_VALUE = '__inherit__'
@@ -316,6 +316,24 @@ export function ThemeSelect({ label, value, inherited, onChange }: {
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
             ))}
           </SelectGroup>
+        </SelectContent>
+      </Select>
+    </FieldRow>
+  )
+}
+
+export function AgentTraceDisplaySelect({ value, onChange }: {
+  value?: AgentTraceDisplay
+  onChange: (value: AgentTraceDisplay) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <FieldRow label={t('settings.appearance.agentTraceDisplay')} description={t('settings.appearance.agentTraceDisplayDescription')}>
+      <Select value={value || 'compact'} onValueChange={value => onChange(value as AgentTraceDisplay)}>
+        <SelectTrigger size="sm" className="w-full" aria-label={t('settings.appearance.agentTraceDisplay')}><SelectValue /></SelectTrigger>
+        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+          <SelectItem value="compact">{t('settings.agentTrace.compact')}</SelectItem>
+          <SelectItem value="live">{t('settings.agentTrace.live')}</SelectItem>
         </SelectContent>
       </Select>
     </FieldRow>

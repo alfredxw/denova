@@ -5,7 +5,7 @@ import { buildToolCallTree, type AgentProcessNode } from './tool-call-tree'
 import { chatListItemRunID, type AgentChatListItem } from './AgentChatListRow'
 import type { AgentTimelineAttachment } from './AgentMessageList'
 
-export function buildAgentChatListItems({ views, isStreaming, activeRunId, isExecutionActive, visibleActivityContent, collapseTraceGroups, groupSubAgentTimeline, timelineAttachments, disclosures = {}, activeTraceDisplay = 'expanded' }: { views: AgentMessageView[]; isStreaming: boolean; activeRunId?: string; isExecutionActive: boolean; visibleActivityContent: string; collapseTraceGroups: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[]; disclosures?: Record<string, { running: boolean; expanded: boolean }>; activeTraceDisplay?: 'expanded' | 'collapsed' }): AgentChatListItem[] {
+export function buildAgentChatListItems({ views, isStreaming, activeRunId, isExecutionActive, visibleActivityContent, collapseTraceGroups, groupSubAgentTimeline, timelineAttachments, disclosures = {}, activeTraceDisplay = 'expanded' }: { views: AgentMessageView[]; isStreaming: boolean; activeRunId?: string; isExecutionActive: boolean; visibleActivityContent: string; collapseTraceGroups: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[]; disclosures?: Record<string, boolean>; activeTraceDisplay?: 'expanded' | 'collapsed' }): AgentChatListItem[] {
   const items: AgentChatListItem[] = []
   if (!isStreaming && views.every(isAgentRunMetadataView)) {
     items.push({ kind: 'empty', key: 'empty' })
@@ -19,11 +19,10 @@ export function buildAgentChatListItems({ views, isStreaming, activeRunId, isExe
     const deferred = processViews.some(view => view.metadata.execution_details_deferred)
     const running = !deferred && (active || processViews.some(view => view.streaming || view.status === 'running'))
     const disclosure = disclosures[key]
-    const expanded = !deferred && (disclosure?.running === running ? disclosure.expanded : running && activeTraceDisplay === 'expanded')
+    const expanded = !deferred && (disclosure ?? (running && activeTraceDisplay === 'expanded'))
     const runId = owner?.runId || processViews.findLast(view => view.metadata.run_id)?.metadata.run_id || ''
     const navigationAnchor = owner?.navigationAnchor || processViews.map(agentViewNavigationAnchor).findLast(Boolean) || ''
     items.push({ kind: 'process', key, views: processViews, runId, running, expanded, showTiming, navigationAnchor })
-    if (!expanded) return
     const appendNodes = (nodes: AgentProcessNode[], depth: number) => {
       const groups = groupSubAgentTimeline ? buildAgentSubAgentTimelineGroups(nodes.map(node => node.view)) : []
       const byStart = new Map(groups.map(group => [group.startIndex, group]))
@@ -47,7 +46,9 @@ export function buildAgentChatListItems({ views, isStreaming, activeRunId, isExe
         appendNodes(node.children, depth + 1)
       })
     }
-    appendNodes(buildToolCallTree(processViews), 0)
+    // Collapsing progress must not hide a decision or a failed operation.
+    const visibleViews = expanded ? processViews : processViews.filter(view => agentViewAskInteraction(view)?.status === 'pending' || view.status === 'error')
+    appendNodes(buildToolCallTree(visibleViews), 0)
   }
 
   for (let index = 0; index < views.length; index += 1) {

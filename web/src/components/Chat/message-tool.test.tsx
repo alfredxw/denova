@@ -4,7 +4,7 @@ import { ToolExecutionBlock } from './message-tool'
 
 describe('ToolExecutionBlock', () => {
   it.each(['read', 'grep', 'bash', 'pwsh', 'task', 'unknown_tool'])(
-    'keeps %s compact throughout input streaming and allows completed details',
+    'keeps %s compact until opened and retains that choice after input streaming',
     (name) => {
       const message = {
         id: `streaming-${name}`,
@@ -21,14 +21,14 @@ describe('ToolExecutionBlock', () => {
         rerender(<ToolExecutionBlock message={{ ...message, args }} />)
         expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
         expect(container.querySelector('[data-nova-tool-detail]')).not.toBeInTheDocument()
-        expect(header).toBeDisabled()
+        if (args) expect(header).toBeEnabled()
+        else expect(header).toBeDisabled()
         expect(header).toHaveAttribute('aria-expanded', 'false')
       }
 
-      rerender(<ToolExecutionBlock message={{ ...message, args: input, streaming: false }} />)
-      expect(header).toBeEnabled()
-      expect(header).toHaveAttribute('aria-expanded', 'false')
       fireEvent.click(header)
+      expect(container.querySelector('[data-nova-tool-input-stream]')).toHaveAttribute('aria-busy', 'true')
+      rerender(<ToolExecutionBlock message={{ ...message, args: input, streaming: false }} />)
       expect(header).toHaveAttribute('aria-expanded', 'true')
 
       rerender(<ToolExecutionBlock message={{ ...message, args: input, streaming: false, status: 'success', result: 'Completed operation' }} />)
@@ -40,7 +40,7 @@ describe('ToolExecutionBlock', () => {
   )
 
   it.each(['write', 'edit', 'write_lore_items', 'prepare_interactive_turn', 'submit_interactive_turn'])(
-    'previews %s input only while non-empty arguments are streaming',
+    'shows %s streaming input only when explicitly expanded',
     (name) => {
       const message = {
         id: `streaming-${name}`,
@@ -54,13 +54,15 @@ describe('ToolExecutionBlock', () => {
       expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
 
       rerender(<ToolExecutionBlock message={{ ...message, args: '{"content":"Draft' }} />)
+      expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
+      const header = container.querySelector('[data-nova-tool-header]') as HTMLElement
+      fireEvent.click(header)
       expect(container.querySelector('[data-nova-tool-input-stream]')).toHaveAttribute('aria-busy', 'true')
 
       rerender(<ToolExecutionBlock message={{ ...message, args: '{"content":"Draft"}', streaming: false }} />)
       expect(container.querySelector('[data-nova-tool-input-stream]')).not.toBeInTheDocument()
-      const header = container.querySelector('[data-nova-tool-header]') as HTMLElement
       expect(header).toBeEnabled()
-      expect(header).toHaveAttribute('aria-expanded', 'false')
+      expect(header).toHaveAttribute('aria-expanded', 'true')
     },
   )
 
@@ -97,6 +99,7 @@ describe('ToolExecutionBlock', () => {
       }}
     />)
 
+    fireEvent.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
     const input = container.querySelector('[data-nova-tool-input-stream]')
     expect(input).toHaveAttribute('aria-busy', 'true')
     await waitFor(() => {
@@ -124,6 +127,7 @@ describe('ToolExecutionBlock', () => {
       }}
     />)
 
+    fireEvent.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
     const input = container.querySelector('[data-nova-tool-input-stream]')
     await waitFor(() => {
       expect(input).toHaveTextContent(rawInput)

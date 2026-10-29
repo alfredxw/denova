@@ -98,7 +98,7 @@ function selectTerminalResultIndex(views: AgentMessageView[], active: boolean) {
 }
 
 // Active and completed runs intentionally share the same process boundary. A
-// completion event may collapse that boundary, but must not rebuild the visible
+// completion event must not reset that boundary or rebuild the visible
 // timeline from several sibling disclosures into a different structure.
 function buildProcessSections(views: AgentMessageView[], active: boolean): AgentRunPresentationSection[] {
   const sections: AgentRunPresentationSection[] = []

@@ -88,6 +88,7 @@ export interface Settings {
   language?: string
   theme?: string
   motion_intensity?: string
+  agent_trace_display?: AgentTraceDisplay
   statistics_enabled?: boolean | null
   update_check_enabled?: boolean | null
   update_download_enabled?: boolean | null
@@ -131,6 +132,7 @@ export interface LabSettings {
 }
 
 export type ShellEnvironmentMode = 'auto' | 'process'
+export type AgentTraceDisplay = 'compact' | 'live'
 
 export interface AgentApprovalRule {
   id: string

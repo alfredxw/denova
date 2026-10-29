@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ChevronDown, ChevronUp, FileDiff, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
+import { AlertTriangle, ChevronDown, FileDiff, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { getProjectChangeGroup, undoProjectChangeGroup } from '../api'
 import { invalidateProjectChangeQueries, prefetchProjectChangeReviewThread, projectChangeKeys } from '../use-change-review'
 import type { WorkspaceChangeGroup, WorkspaceChangeGroupSummary, WorkspaceChangeSet } from '../types'
@@ -44,7 +45,6 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
     (result, file) => ({ additions: result.additions + file.additions, deletions: result.deletions + file.deletions }),
     { additions: 0, deletions: 0 },
   ), [files])
-  const displayedPaths = expanded ? visiblePaths : visiblePaths.slice(0, 3)
   const reviewThreadID = summary.review_thread_id || groupQuery.data?.review_thread_id || summary.id
   const preloadReview = useCallback(async () => {
     if (disabled || !projectId || !reviewThreadID) return
@@ -92,6 +92,27 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
     await preloadReview()
     onReview(reviewThreadID, summary.id)
     setOpeningReview(false)
+  }
+
+  const renderFileRow = (path: string) => {
+    const file = filesByPath.get(path)
+    return (
+      <button
+        key={path}
+        type="button"
+        disabled={disabled || openingReview}
+        onClick={() => void openReview()}
+        className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 enabled:hover:bg-[var(--nova-hover)]"
+      >
+        <span className="min-w-0 flex-1 truncate">{path}</span>
+        {file ? (
+          <>
+            <span className="shrink-0 font-mono text-[var(--nova-success)]">+{file.additions}</span>
+            <span className="shrink-0 font-mono text-[var(--nova-danger)]">−{file.deletions}</span>
+          </>
+        ) : null}
+      </button>
+    )
   }
 
   return (
@@ -143,39 +164,24 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
         </Button>
       </header>
 
-      {displayedPaths.length > 0 && (
-        <div className="border-t border-[var(--nova-border)]">
-          {displayedPaths.map((path) => {
-            const file = filesByPath.get(path)
-            return (
-              <button
-                key={path}
-                type="button"
-                disabled={disabled || openingReview}
-                onClick={() => void openReview()}
-                className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 enabled:hover:bg-[var(--nova-hover)]"
-              >
-                <span className="min-w-0 flex-1 truncate">{path}</span>
-                {file ? (
-                  <>
-                    <span className="shrink-0 font-mono text-[var(--nova-success)]">+{file.additions}</span>
-                    <span className="shrink-0 font-mono text-[var(--nova-danger)]">−{file.deletions}</span>
-                  </>
-                ) : null}
-              </button>
-            )
-          })}
+      {visiblePaths.length > 0 && (
+        <Collapsible open={expanded} onOpenChange={setExpanded} className="border-t border-[var(--nova-border)]">
+          {visiblePaths.slice(0, 3).map(renderFileRow)}
           {visiblePaths.length > 3 && (
-            <button
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              className="flex w-full items-center gap-2 border-t border-[var(--nova-border)] px-3 py-2 text-left text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-            >
-              {expanded ? t('changes.summary.showLess') : t('changes.summary.showMore', { count: visiblePaths.length - 3 })}
-              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
+            <>
+              <CollapsibleContent className="nova-change-summary-files">
+                {visiblePaths.slice(3).map(renderFileRow)}
+              </CollapsibleContent>
+              <CollapsibleTrigger
+                type="button"
+                className="group/files flex w-full items-center gap-2 border-t border-[var(--nova-border)] px-3 py-2 text-left text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              >
+                {expanded ? t('changes.summary.showLess') : t('changes.summary.showMore', { count: visiblePaths.length - 3 })}
+                <ChevronDown aria-hidden="true" className="size-3.5 transition-transform duration-[var(--nova-motion-fast)] ease-[var(--nova-panel-motion-ease)] group-data-[state=open]/files:rotate-180" />
+              </CollapsibleTrigger>
+            </>
           )}
-        </div>
+        </Collapsible>
       )}
     </section>
   )

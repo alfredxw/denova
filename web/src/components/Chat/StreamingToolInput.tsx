@@ -6,13 +6,14 @@ import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 interface StreamingToolInputProps {
   rawInput: string
   streamKey: string
+  streaming?: boolean
 }
 
 /** Presents a readable projection without changing the execution-authoritative raw input. */
-export function StreamingToolInput({ rawInput, streamKey }: StreamingToolInputProps) {
+export function StreamingToolInput({ rawInput, streamKey, streaming = true }: StreamingToolInputProps) {
   const [displayInput, setDisplayInput] = useState(rawInput)
   const scrollLock = useBottomScrollLock<HTMLPreElement>({
-    enabled: true,
+    enabled: streaming,
     resetKey: `${streamKey}:tool-input-stream`,
     contentKey: rawInput.length,
   })
@@ -43,7 +44,7 @@ export function StreamingToolInput({ rawInput, streamKey }: StreamingToolInputPr
         onScroll={scrollLock.onScroll}
         onWheel={scrollLock.onWheel}
         onKeyDown={scrollLock.onKeyDown}
-        aria-busy="true"
+        aria-busy={streaming}
         data-nova-scroll-lock="tool-input-stream"
         data-nova-tool-input-stream
         className="m-0 min-w-0 max-w-full max-h-32 overflow-x-hidden overflow-y-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap [overflow-anchor:none] [overflow-wrap:anywhere]"

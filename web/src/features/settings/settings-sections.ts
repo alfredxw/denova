@@ -20,7 +20,7 @@ type SettingsSectionDefinition = {
 /** Navigation and search share one ordered definition; groups do not change a setting's scope. */
 export const SETTINGS_SECTIONS = [
   { id: 'general', group: 'preferences', titleKey: 'settings.section.general', icon: Languages,
-    fieldKeys: ['settings.appearance.language', 'settings.appearance.theme', 'settings.appearance.motionIntensity', 'settings.appearance.uiFont', 'settings.appearance.uiFontSize', 'settings.appearance.readingFont', 'settings.appearance.readingFontSize', 'settings.appearance.sourceEditorFont', 'settings.onboarding.title', 'settings.statistics.enabled', 'settings.analytics.enabled'] },
+    fieldKeys: ['settings.appearance.language', 'settings.appearance.theme', 'settings.appearance.motionIntensity', 'settings.appearance.agentTraceDisplay', 'settings.appearance.uiFont', 'settings.appearance.uiFontSize', 'settings.appearance.readingFont', 'settings.appearance.readingFontSize', 'settings.appearance.sourceEditorFont', 'settings.onboarding.title', 'settings.statistics.enabled', 'settings.analytics.enabled'] },
   { id: 'writing', group: 'creation', titleKey: 'settings.section.writing', icon: BookOpen,
     fieldKeys: ['settings.ide.autoSave', 'settings.ide.autoSaveInterval', 'settings.ide.chapterFilenameFormat', 'settings.ide.volumeDirFormat', 'settings.ide.maxOpenTabs', 'settings.ide.chapterGroupMin', 'settings.ide.chapterGroupMax', 'settings.ide.defaultTeller', 'settings.agent.writingSkillDefault'] },
   { id: 'model', group: 'models', titleKey: 'settings.section.model', icon: Bot,
