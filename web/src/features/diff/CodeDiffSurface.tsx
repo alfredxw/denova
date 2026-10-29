@@ -74,6 +74,7 @@ export function CodeDiffSurface<Annotation>({ files, navigatorFiles, navigation,
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const codeViewRef = useRef<CodeViewHandle<Annotation> | null>(null)
+  const pendingScrollPathRef = useRef<string | null>(null)
   const parseCacheRef = useRef(new Map<string, ParsedFileCacheEntry>())
   const versionCacheRef = useRef(new Map<string, { signature: string; version: number }>())
 
@@ -157,19 +158,25 @@ export function CodeDiffSurface<Annotation>({ files, navigatorFiles, navigation,
   }), [annotationRevisionByPath, annotationsByPath, navigation.collapsedPaths, visibleFiles])
 
   const selectFile = useCallback((path: string) => {
+    const needsCommit = navigation.activePath !== path || navigation.collapsedPaths.has(path)
+    pendingScrollPathRef.current = !singleFileMode && needsCommit ? path : null
     navigation.selectFile(path)
-    if (!singleFileMode) codeViewRef.current?.scrollTo({ type: 'item', id: path, align: 'start', behavior: 'instant' })
+    if (!singleFileMode && !needsCommit) codeViewRef.current?.scrollTo({ type: 'item', id: path, align: 'start', behavior: 'instant' })
   }, [navigation, singleFileMode])
 
   const previousSingleFileMode = useRef(singleFileMode)
   useLayoutEffect(() => {
+    // CodeView must receive expanded items before an imperative scroll. Updating
+    // them during its scroll render can re-enter it and restore the old anchor.
     // Completing a partial response must retain the file the user opened while
     // it was loading, even when the full comparison fits the continuous view.
-    if (previousSingleFileMode.current && !singleFileMode && navigation.activePath) {
-      codeViewRef.current?.scrollTo({ type: 'item', id: navigation.activePath, align: 'start', behavior: 'instant' })
+    const path = pendingScrollPathRef.current ?? (previousSingleFileMode.current ? navigation.activePath : null)
+    pendingScrollPathRef.current = null
+    if (!singleFileMode && path) {
+      codeViewRef.current?.scrollTo({ type: 'item', id: path, align: 'start', behavior: 'instant' })
     }
     previousSingleFileMode.current = singleFileMode
-  }, [navigation.activePath, singleFileMode])
+  }, [navigation.activePath, navigation.collapsedPaths, singleFileMode])
 
   const syncActiveFile = useCallback((scrollTop: number, viewer: NonNullable<ReturnType<CodeViewHandle<Annotation>['getInstance']>>) => {
     if (singleFileMode || files.length === 0) return

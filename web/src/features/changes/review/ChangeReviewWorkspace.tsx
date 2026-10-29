@@ -99,8 +99,9 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
     totals.deletions += stats.deletions
     return totals
   }, { additions: 0, deletions: 0 }), [reviewFiles])
-  const reviewComments = (selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? []))
-    .filter((comment) => !hiddenCommentIDs?.has(comment.id))
+  // Navigation changes must not rebuild annotations and reset CodeView's items.
+  const reviewComments = useMemo(() => (selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? []))
+    .filter((comment) => !hiddenCommentIDs?.has(comment.id)), [hiddenCommentIDs, historicalGroup?.comments, selectedScopeID, thread?.comments])
   const activeProjectRef = useRef(projectId)
   const feedbackCallbackRef = useRef(onFeedbackCommentsChange)
   const appliedScopeRequestRef = useRef(0)
