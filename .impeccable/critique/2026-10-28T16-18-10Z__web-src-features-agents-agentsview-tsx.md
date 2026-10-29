@@ -2,7 +2,7 @@
 target: Agents 页设计
 total_score: 24
 max_score: 40
-na_heuristics: 
+na_heuristics:
 p0_count: 0
 p1_count: 2
 target_identity: "file:D:\\Code\\denova\\web\\src\\features\\agents\\AgentsView.tsx"
