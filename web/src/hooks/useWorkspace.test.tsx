@@ -775,6 +775,23 @@ describe('useWorkspace', () => {
     expect(screen.getByTestId('workspace-state')).toHaveTextContent('Agent 新内容')
   })
 
+  it('reloads the current book snapshot after a same-project structure change', async () => {
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness autoRefreshEnabled={false} onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(workspace?.workspaceSnapshotLoaded).toBe(true))
+
+    const tree = [{ name: 'Volume', path: 'chapters/v00001-Volume', type: 'dir', children: [] }]
+    const summary = { title: 'Converted book', author: '', chapter_count: 0, total_words: 0, chapters: [], structure: 'sections' }
+    apiMock.getProjectBookTree.mockResolvedValue(tree)
+    apiMock.getProjectBookSummary.mockResolvedValue(summary)
+
+    await act(async () => { await workspace?.refreshAll() })
+
+    expect(workspace!.projectId).toBe('project-demo')
+    expect(workspace!.tree).toEqual(tree)
+    expect(workspace!.summary).toEqual(summary)
+  })
+
   it('工作区切换后目录和统计的旧响应不会落入新工作区', async () => {
     const oldTree = deferred<Array<{ name: string; type: 'file' }>>()
     const newTree = deferred<Array<{ name: string; type: 'file' }>>()

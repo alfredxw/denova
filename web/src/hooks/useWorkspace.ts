@@ -608,7 +608,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     }
   }, [projectId, saveFileDraft])
 
-  /** 切换 workspace 后刷新所有状态 */
+  /** Refresh identity, documents, and derived snapshots after workspace mutations. */
   const refreshAll = useCallback(async () => {
     treeRequestRef.current += 1
     summaryRequestRef.current += 1
@@ -619,7 +619,9 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     clearFileDocuments()
     fileReadGenerationsRef.current.clear()
     await Promise.all([fetchWorkspace(), fetchBooks()])
-  }, [clearFileDocuments, fetchWorkspace, fetchBooks, setFileDocument])
+    // Same-Project edits do not retrigger the identity-dependent snapshot effect.
+    if (projectIdRef.current === projectId) await fetchBookSnapshot()
+  }, [clearFileDocuments, fetchBookSnapshot, fetchWorkspace, fetchBooks, projectId, setFileDocument])
 
   const applyWorkspaceFileOperation = useCallback(async (
     operation: ProjectFileOperation,
