@@ -125,7 +125,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
           {error}
         </div>
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col px-1 pb-1">
+      <div className="flex min-h-0 flex-1 flex-col">
         {loading ? (
           <LoadingState label={t('files.tree.loading')} variant="panel" />
         ) : (
@@ -153,7 +153,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
           <button
             type="button"
             disabled={loadingPaths.has(incompletePaths[0])}
-            className="mt-1 flex h-7 shrink-0 items-center justify-center gap-1 rounded text-[11px] text-[var(--nova-accent)] hover:bg-[var(--nova-hover)] disabled:opacity-50"
+            className="mx-1 mb-1 mt-1 flex h-7 shrink-0 items-center justify-center gap-1 rounded text-[11px] text-[var(--nova-accent)] hover:bg-[var(--nova-hover)] disabled:opacity-50"
             onClick={() => {
               void Promise.resolve(onLoadMore(incompletePaths[0])).catch((cause) => {
                 console.error('[features/project-explorer/ProjectExplorerPane.tsx] loading a project tree page failed', { path: incompletePaths[0], cause })

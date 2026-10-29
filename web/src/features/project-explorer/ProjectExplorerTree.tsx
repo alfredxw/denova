@@ -41,6 +41,7 @@ import {
   type ProjectFileClipboard,
 } from './operations'
 import type { ProjectExplorerExtensions } from './types'
+import { ProjectExplorerRootMenu } from './ProjectExplorerRootMenu'
 
 interface ProjectExplorerTreeProps {
   nodes: readonly ProjectFileExplorerNode[]
@@ -383,65 +384,67 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
 
   return (
     <>
-      <div
-        className="relative flex h-full min-h-0 min-w-0 flex-1"
-        onPointerDownCapture={(event) => {
-          if (event.nativeEvent.composedPath().some((target) => target instanceof HTMLElement && target.hasAttribute('data-item-path'))) return
-          for (const path of treeRef.current?.getSelectedPaths() ?? []) treeRef.current?.getItem(path)?.deselect()
-        }}
-      >
-        <NovaFileTree
-          ref={treeRef}
-          paths={projection.paths}
-          presorted
-          ariaLabel={t('files.tree.title')}
-          searchLabel={t('files.tree.search')}
-          initialExpandedPaths={canonicalExpandedPaths}
-          selectedPaths={canonicalSelectedPaths}
-          gitStatus={mergedGitStatus}
-          gitStatusPresentation="color-only"
-          dragAndDrop={{
-            canDrag: (paths) => !busyRef.current && paths.every((path) => projection.nodesByPath.has(applicationFileTreePath(path))),
-            canDrop: ({ draggedPaths, target }) => {
-              if (busyRef.current) return false
-              const parent = applicationFileTreePath(target.directoryPath ?? '')
-              const parentNode = projection.nodesByPath.get(parent)
-              if (parentNode?.symlink) return false
-              const sources = draggedPaths.map(applicationFileTreePath)
-              if (sources.some((source) => parent === source || parent.startsWith(`${source}/`))) return false
-              return sources.some((source) => projectParentPath(source) !== parent)
-            },
-            onDropComplete: handleDrop,
-            onDropError: (error, drop) => {
-              console.error('[features/project-explorer/ProjectExplorerTree.tsx] Pierre rejected a project file drop', { error, drop })
-              resetToAuthoritative()
-            },
+      <ProjectExplorerRootMenu busy={busy} canPaste={Boolean(clipboard)} onCreate={(type) => beginCreate(type, '')} onPaste={() => pasteInto('')}>
+        <div
+          className="relative flex h-full min-h-0 min-w-0 flex-1 px-1 pb-1"
+          onPointerDownCapture={(event) => {
+            if (event.nativeEvent.composedPath().some((target) => target instanceof HTMLElement && target.hasAttribute('data-item-path'))) return
+            for (const path of treeRef.current?.getSelectedPaths() ?? []) treeRef.current?.getItem(path)?.deselect()
           }}
-          renaming={{
-            canRename: ({ path }) => !busyRef.current && (projection.nodesByPath.has(applicationFileTreePath(path)) || pendingDraftRef.current?.path === applicationFileTreePath(path)),
-            onRename: handleRename,
-            onError: (error) => {
-              console.error('[features/project-explorer/ProjectExplorerTree.tsx] Pierre rejected a project file rename', { error })
-            },
-          }}
-          getDisplayName={getDisplayName}
-          renderRowDecoration={({ item }) => (
-            projection.nodesByPath.get(applicationFileTreePath(item.path))?.symlink ? { text: '↗' } : null
-          )}
-          renderContextMenu={renderContextMenu}
-          contextMenuTriggerMode="right-click"
-          onSelectionChange={handleSelectionChange}
-          onDirectoryExpandedChange={(path, expanded) => onDirectoryExpandedChange(applicationFileTreePath(path), expanded)}
-          onDirectoryExpand={(path) => onDirectoryExpand(applicationFileTreePath(path))}
-          onScrollOffsetChange={onScrollOffsetChange}
-          onKeyDownCapture={handleKeyDownCapture}
-        />
-        {projection.paths.length === 0 ? (
-          <div className="pointer-events-none absolute inset-x-3 top-10 text-center text-xs text-[var(--nova-text-faint)]">
-            {t('files.tree.empty')}
-          </div>
-        ) : null}
-      </div>
+        >
+          <NovaFileTree
+            ref={treeRef}
+            paths={projection.paths}
+            presorted
+            ariaLabel={t('files.tree.title')}
+            searchLabel={t('files.tree.search')}
+            initialExpandedPaths={canonicalExpandedPaths}
+            selectedPaths={canonicalSelectedPaths}
+            gitStatus={mergedGitStatus}
+            gitStatusPresentation="color-only"
+            dragAndDrop={{
+              canDrag: (paths) => !busyRef.current && paths.every((path) => projection.nodesByPath.has(applicationFileTreePath(path))),
+              canDrop: ({ draggedPaths, target }) => {
+                if (busyRef.current) return false
+                const parent = applicationFileTreePath(target.directoryPath ?? '')
+                const parentNode = projection.nodesByPath.get(parent)
+                if (parentNode?.symlink) return false
+                const sources = draggedPaths.map(applicationFileTreePath)
+                if (sources.some((source) => parent === source || parent.startsWith(`${source}/`))) return false
+                return sources.some((source) => projectParentPath(source) !== parent)
+              },
+              onDropComplete: handleDrop,
+              onDropError: (error, drop) => {
+                console.error('[features/project-explorer/ProjectExplorerTree.tsx] Pierre rejected a project file drop', { error, drop })
+                resetToAuthoritative()
+              },
+            }}
+            renaming={{
+              canRename: ({ path }) => !busyRef.current && (projection.nodesByPath.has(applicationFileTreePath(path)) || pendingDraftRef.current?.path === applicationFileTreePath(path)),
+              onRename: handleRename,
+              onError: (error) => {
+                console.error('[features/project-explorer/ProjectExplorerTree.tsx] Pierre rejected a project file rename', { error })
+              },
+            }}
+            getDisplayName={getDisplayName}
+            renderRowDecoration={({ item }) => (
+              projection.nodesByPath.get(applicationFileTreePath(item.path))?.symlink ? { text: '↗' } : null
+            )}
+            renderContextMenu={renderContextMenu}
+            contextMenuTriggerMode="right-click"
+            onSelectionChange={handleSelectionChange}
+            onDirectoryExpandedChange={(path, expanded) => onDirectoryExpandedChange(applicationFileTreePath(path), expanded)}
+            onDirectoryExpand={(path) => onDirectoryExpand(applicationFileTreePath(path))}
+            onScrollOffsetChange={onScrollOffsetChange}
+            onKeyDownCapture={handleKeyDownCapture}
+          />
+          {projection.paths.length === 0 ? (
+            <div className="pointer-events-none absolute inset-x-3 top-10 text-center text-xs text-[var(--nova-text-faint)]">
+              {t('files.tree.empty')}
+            </div>
+          ) : null}
+        </div>
+      </ProjectExplorerRootMenu>
       <DeleteConfirmDialog
         open={deletePaths.length > 0}
         path={deletePaths}
