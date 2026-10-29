@@ -1,0 +1,20 @@
+[
+  {
+    "level": "log",
+    "message": "%c[impeccable] 10 anti-patterns found color: oklch(84% 0.19 80.46); font-weight: bold",
+    "timestamp": "2026-10-28T16:06:41.819Z",
+    "url": "http://localhost:8401/detect.js"
+  },
+  {
+    "level": "log",
+    "message": "%c[impeccable] 9 anti-patterns found color: oklch(84% 0.19 80.46); font-weight: bold",
+    "timestamp": "2026-10-28T16:09:55.081Z",
+    "url": "http://localhost:8401/detect.js"
+  },
+  {
+    "level": "log",
+    "message": "%c[impeccable] 6 anti-patterns found color: oklch(84% 0.19 80.46); font-weight: bold",
+    "timestamp": "2026-10-28T16:10:38.105Z",
+    "url": "http://localhost:8401/detect.js"
+  }
+]
