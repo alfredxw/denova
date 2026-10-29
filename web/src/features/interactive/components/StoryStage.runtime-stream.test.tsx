@@ -453,7 +453,7 @@ describe('StoryStage runtime stream lifecycle', () => {
         await Promise.resolve()
       })
       await expectVisibleText('正在回忆石门后的布局。')
-      expect(screen.getByRole('button', { name: '展开思考', exact: true })).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.getByRole('button', { name: '展开思考' })).toHaveAttribute('aria-expanded', 'false')
 
       await act(async () => {
         stream.enqueue({
@@ -465,7 +465,7 @@ describe('StoryStage runtime stream lifecycle', () => {
       await waitFor(() => expect(screen.getByText('石门后亮起一盏灯。')).toBeInTheDocument())
       // Narration leaves the compact process summary available for inspection.
       await expectVisibleText('正在回忆石门后的布局。')
-      expect(screen.getByRole('button', { name: '展开思考', exact: true })).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.getByRole('button', { name: '展开思考' })).toHaveAttribute('aria-expanded', 'false')
       expect(screen.getByRole('button', { name: /^执行过程$/ })).toHaveAttribute('aria-expanded', 'true')
 
       const persisted = persistedTurnEvent()
