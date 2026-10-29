@@ -190,10 +190,11 @@ function MessageListContent({ projectId, attachmentScope, messages, projection, 
   )
   useLayoutEffect(() => {
     if ((isStreaming || isExecutionActive) && activeRunId) liveRunIDs.current.add(activeRunId)
-    // Remember the first presentation even when the row is outside the viewport.
-    // Finishing a run must not reset the reader's disclosure choices.
+    // Remember a live process even when the row is outside the viewport, so
+    // completion preserves its presentation. History may hydrate before its
+    // active run: do not freeze the historical default before reattachment.
     setDisclosures(current => {
-      const missing = listItems.filter(item => item.kind === 'process' && !(item.key in current))
+      const missing = listItems.filter(item => item.kind === 'process' && item.running && !(item.key in current))
       if (!missing.length) return current
       const next = { ...current }
       for (const item of missing) if (item.kind === 'process') next[item.key] = item.expanded

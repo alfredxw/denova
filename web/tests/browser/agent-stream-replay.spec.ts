@@ -53,6 +53,8 @@ for (const [product, theme] of [['writing', 'dark'], ['general', 'light']] as co
     let history = [durableMessage('first', 'Known durable answer.'), durableMessage('second', 'Second durable answer.')]
     let historyReads = 0
     let settled = false
+    let releaseActiveCheck!: () => void
+    const activeCheck = new Promise<void>(resolve => { releaseActiveCheck = resolve })
     const streamRequests: URL[] = []
     const commands: string[] = []
     page.on('request', req => {
@@ -62,9 +64,12 @@ for (const [product, theme] of [['writing', 'dark'], ['general', 'light']] as co
       historyReads++
       return route.fulfill({ json: { messages: history, page: { has_more: false, total: history.length } } })
     })
-    await page.route(`**${apiPath}/chat/active?*`, route => route.fulfill({ json: settled ? { active: false, cursor: 12 } : {
-      active: true, status: 'running', phase: 'running', task_id: 'existing-task', stream_attached: true, cursor: 10,
-    } }))
+    await page.route(`**${apiPath}/chat/active?*`, async route => {
+      await activeCheck
+      return route.fulfill({ json: settled ? { active: false, cursor: 12 } : {
+        active: true, status: 'running', phase: 'running', task_id: 'existing-task', stream_attached: true, cursor: 10,
+      } })
+    })
     await page.route(`**${apiPath}/chat/stream?*`, route => {
       streamRequests.push(new URL(route.request().url()))
       const chunks: UIMessageChunk[] = [
@@ -88,6 +93,14 @@ for (const [product, theme] of [['writing', 'dark'], ['general', 'light']] as co
       await openAgentChatWorkbench(page)
       await openAgentChatSession(page, project.id, session.title)
     } else await openWritingAgent(page)
+    // Hydrate collapsed history before discovering its still-active run.
+    // The historical default must not become a manual disclosure choice.
+    try {
+      await expect(page.getByText('Second durable answer.', { exact: true })).toBeVisible()
+      await expect(page.getByText('Known durable answer.', { exact: true })).toHaveCount(0)
+    } finally {
+      releaseActiveCheck()
+    }
     await expect(page.getByText('Replay attached 1.', { exact: true })).toBeVisible()
     await expect(page.getByText('Known durable answer.', { exact: true })).toHaveCount(1)
     await expect(page.locator('p').filter({ hasText: /^Known$/ })).toHaveCount(0)
