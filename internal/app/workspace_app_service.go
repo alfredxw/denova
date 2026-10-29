@@ -290,12 +290,18 @@ type BookCreationResult struct {
 }
 
 // CreateBook creates and selects a new Book Project below parentDir.
-func (a *App) CreateBook(ctx context.Context, parentDir, title, author, description string) (BookCreationResult, error) {
-	return a.workspaceService().CreateBook(ctx, parentDir, title, author, description)
+func (a *App) CreateBook(ctx context.Context, parentDir, title, author, description string, structure book.ChapterStructure) (BookCreationResult, error) {
+	return a.workspaceService().CreateBook(ctx, parentDir, title, author, description, structure)
 }
 
-func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, author, description string) (BookCreationResult, error) {
+func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, author, description string, structure book.ChapterStructure) (BookCreationResult, error) {
 	a := s.app
+	if structure == "" {
+		structure = book.StructureChapters
+	}
+	if !structure.Valid() {
+		return BookCreationResult{}, book.ErrInvalidStructure
+	}
 	novaDir := ""
 	if a.cfg != nil {
 		novaDir = strings.TrimSpace(a.cfg.DataDir())
@@ -336,6 +342,9 @@ func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, aut
 		return BookCreationResult{}, fmt.Errorf("初始化工作目录失败: %w", err)
 	}
 
+	if err := book.InitializeChapterStructure(dir, structure); err != nil {
+		return BookCreationResult{}, err
+	}
 	meta := book.BookMeta{Title: title, Author: author, Description: description}
 	project, err := a.projectRegistry.EnsureBook(dir)
 	if err != nil {

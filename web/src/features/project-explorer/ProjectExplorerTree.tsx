@@ -489,13 +489,13 @@ function consumeKeyboardEvent(event: ReactKeyboardEvent) {
   event.stopPropagation()
 }
 
-const HIDDEN_CHAPTER_AFFIX_PATTERN = /^ch\d{5}[-_ ]+(.+)\.md$/i
-const HIDDEN_VOLUME_PREFIX_PATTERN = /^v\d{5}[-_ ]+(.+)$/i
+const HIDDEN_CHAPTER_AFFIX_PATTERN = /^(?:ch|s)\d{5}[-_ ]+(.+)\.(?:md|txt)$/i
+const HIDDEN_VOLUME_PREFIX_PATTERN = /^(?:v|ch)\d{5}[-_ ]+(.+)$/i
 
 function writingFilenameDisplayName(node: ProjectFileExplorerNode) {
   if (!node.path.startsWith('chapters/')) return null
   if (node.type === 'file') return node.name.match(HIDDEN_CHAPTER_AFFIX_PATTERN)?.[1] ?? null
-  if (node.type === 'dir' && projectParentPath(node.path) === 'chapters') {
+  if (node.type === 'dir') {
     return node.name.match(HIDDEN_VOLUME_PREFIX_PATTERN)?.[1] ?? null
   }
   return null

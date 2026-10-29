@@ -14,6 +14,7 @@ import sidebar from './zh-CN/sidebar'
 import tab from './zh-CN/tab'
 import command from './zh-CN/command'
 import home from './zh-CN/home'
+import bookStructure from './zh-CN/bookStructure'
 import importCard from './zh-CN/importCard'
 import novelImport from './zh-CN/novelImport'
 import router from './zh-CN/router'
@@ -66,6 +67,7 @@ const zhCN = {
   ...tab,
   ...command,
   ...home,
+  ...bookStructure,
   ...importCard,
   ...novelImport,
   ...router,

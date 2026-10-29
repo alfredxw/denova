@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileText } f
 import { useTranslation } from 'react-i18next'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { ChapterSummary, DocumentPreview } from '@/lib/api'
+import type { ChapterStructure, ManuscriptNode, ChapterSummary, DocumentPreview } from '@/lib/api'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
 import { flattenFileTree } from '@/components/workbench/workbench-utils'
 import {
@@ -17,6 +17,7 @@ import {
   type ManuscriptCreateRequest,
 } from './ManuscriptCreateDialog'
 import { OutlineFileActions, type OutlineFileMenuOperations } from './OutlineFileActions'
+import { ManuscriptStructureMenu } from './ManuscriptStructureMenu'
 
 export interface OutlineRevealRequest {
   path: string
@@ -28,6 +29,8 @@ interface ChapterOutlineProps {
   workspace?: string
   tree: FileNode[]
   chapters: ChapterSummary[]
+  structure?: ChapterStructure
+  manuscript?: ManuscriptNode[]
   ideas?: DocumentPreview
   outline?: DocumentPreview
   chapterPlans: DocumentPreview[]
@@ -42,6 +45,7 @@ interface ChapterOutlineProps {
   onDeleteItem?: (path: string) => Promise<void>
   onCopyItem?: (from: string, to: string) => Promise<void>
   onCreateItem?: (path: string, type: 'file' | 'dir') => Promise<void>
+  onChangeStructure?: () => void
   onRequestBookSettingCreate?: (item: { path: string; title: string }) => void
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
 }
@@ -60,6 +64,8 @@ export function ChapterOutline({
   workspace,
   tree,
   chapters,
+  structure = 'volumes',
+  manuscript,
   ideas,
   outline,
   chapterPlans,
@@ -74,6 +80,7 @@ export function ChapterOutline({
   onDeleteItem,
   onCopyItem,
   onCreateItem,
+  onChangeStructure,
   onRequestBookSettingCreate,
   onSetChapterConfirmed,
 }: ChapterOutlineProps) {
@@ -82,7 +89,13 @@ export function ChapterOutline({
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
   const [chapterPlanHistoryExpanded, setChapterPlanHistoryExpanded] = useState(false)
   const [createRequest, setCreateRequest] = useState<ManuscriptCreateRequest | null>(null)
-  const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
+  const volumes = useMemo(() => groupChaptersByVolume(chapters, t, manuscript, structure), [chapters, t, manuscript, structure])
+  const containers = useMemo(() => {
+    const all: ChapterOutlineVolume[] = []
+    const visit = (groups: ChapterOutlineVolume[]) => { for (const group of groups) { if (!group.hidden && group.key !== 'chapters') all.push(group); visit(group.children || []) } }
+    visit(volumes)
+    return all
+  }, [volumes])
   const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
   const historicalChapterPlans = useMemo(() => chapterPlans.slice(0, -1), [chapterPlans])
   const latestChapter = chapters[chapters.length - 1]
@@ -109,13 +122,13 @@ export function ChapterOutline({
       return next
     })
   }, [])
-  const allVolumesCollapsed = volumes.length > 0 && volumes.every((volume) => collapsedVolumes.has(volume.key))
+  const allVolumesCollapsed = containers.length > 0 && containers.every((volume) => collapsedVolumes.has(volume.key))
   const toggleAllVolumes = useCallback(() => {
     setCollapsedVolumes((previous) => {
-      const shouldExpand = volumes.length > 0 && volumes.every((volume) => previous.has(volume.key))
-      return shouldExpand ? new Set() : new Set(volumes.map((volume) => volume.key))
+      const shouldExpand = containers.length > 0 && containers.every((volume) => previous.has(volume.key))
+      return shouldExpand ? new Set() : new Set(containers.map((volume) => volume.key))
     })
-  }, [volumes])
+  }, [containers])
 
   // Keep row callbacks stable so selecting one chapter cannot invalidate every mounted row.
   const callbackRef = useRef({
@@ -173,8 +186,8 @@ export function ChapterOutline({
   const handleCopyItem = useCallback((from: string, to: string) => {
     return callbackRef.current.onCopyItem?.(from, to) ?? Promise.resolve()
   }, [])
-  const handleCreateFile = useCallback((path: string) => {
-    return callbackRef.current.onCreateItem?.(path, 'file') ?? Promise.resolve()
+  const handleCreateItem = useCallback((path: string, type: 'file' | 'dir') => {
+    return callbackRef.current.onCreateItem?.(path, type) ?? Promise.resolve()
   }, [])
   const handleOpenLoreTab = useCallback(() => callbackRef.current.onOpenLoreTab?.(), [])
   const handleRequestBookSettingCreate = useCallback((item: { path: string; title: string }) => {
@@ -184,7 +197,7 @@ export function ChapterOutline({
   const chapterVolumeByPath = useMemo(() => {
     const result = new Map<string, string>()
     for (const volume of volumes) {
-      for (const chapter of volume.chapters) result.set(chapter.path, volume.key)
+      for (const chapter of volume.chapters) result.set(chapter.path, chapter.path.slice(0, chapter.path.lastIndexOf('/')))
     }
     return result
   }, [volumes])
@@ -192,14 +205,15 @@ export function ChapterOutline({
     || latestChapter?.volume_path
     || 'chapters'
 
-  const handleCreatedChapter = useCallback((path: string) => {
+  const handleCreatedChapter = useCallback((path: string, type: 'file' | 'dir') => {
+    if (type === 'dir') { setCollapsedVolumes((previous) => new Set([...previous].filter((parent) => !path.startsWith(parent)))); return }
     panelSelectionRef.current = false
     lastAutoLocatedRef.current = null
     return callbackRef.current.onSelectFile(path)
   }, [])
   const handleCreateChapterInVolume = useCallback((volumePath: string) => {
-    setCreateRequest({ kind: 'chapter', volumePath })
-  }, [])
+    setCreateRequest({ kind: structure === 'sections' && volumePath.split('/').length === 3 ? 'section' : 'chapter', parentPath: volumePath })
+  }, [structure])
 
   const cancelScheduledLocate = useCallback(() => {
     if (locateFrameRef.current === null) return
@@ -211,10 +225,7 @@ export function ChapterOutline({
     const volumeKey = chapterVolumeByPath.get(path)
     if (!volumeKey) return
     setCollapsedVolumes((prev) => {
-      if (!prev.has(volumeKey)) return prev
-      const next = new Set(prev)
-      next.delete(volumeKey)
-      return next
+      return new Set([...prev].filter((key) => key !== volumeKey && !volumeKey.startsWith(`${key}/`)))
     })
     // A collapsed volume needs one render before Virtuoso can resolve the row index.
     cancelScheduledLocate()
@@ -278,7 +289,7 @@ export function ChapterOutline({
     getExistingPaths,
     onCopyItem: stableCopyItem,
   }), [getExistingPaths, projectId, stableCopyItem, workspace])
-  const chapterCountLabel = useCallback((count: number) => t('common.chapters', { count }), [t])
+  const chapterCountLabel = useCallback((count: number) => t(structure === 'sections' ? 'bookStructure.sectionCount' : 'common.chapters', { count }), [structure, t])
   const bookSettingsHeaderFrame = (
     <div
       data-testid="book-settings-header-frame"
@@ -379,9 +390,9 @@ export function ChapterOutline({
 
           <section className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
-              <span className="shrink-0">{t('planning.volumeChapters')}</span>
+              <span className="shrink-0">{t('bookStructure.manuscript')}</span>
               <div className="flex items-center gap-1">
-                {volumes.length > 0 ? (
+                {containers.length > 0 ? (
                   <TooltipIconButton
                     label={t(allVolumesCollapsed ? 'common.expandAll' : 'common.collapseAll')}
                     tooltipSide="bottom"
@@ -391,7 +402,8 @@ export function ChapterOutline({
                     {allVolumesCollapsed ? <ChevronsUpDown className="h-3.5 w-3.5" /> : <ChevronsDownUp className="h-3.5 w-3.5" />}
                   </TooltipIconButton>
                 ) : null}
-                {onCreateItem ? <ManuscriptCreateMenu onSelect={setCreateRequest} /> : null}
+                {onCreateItem ? <ManuscriptCreateMenu structure={structure} onSelect={setCreateRequest} /> : null}
+                {projectId && onChangeStructure ? <ManuscriptStructureMenu onChangeStructure={onChangeStructure} /> : null}
               </div>
             </div>
             {volumes.length === 0 ? <PlanningEmptyState text={t('planning.noChapters')} /> : null}
@@ -428,10 +440,11 @@ export function ChapterOutline({
           projectId={projectId}
           request={createRequest}
           chapters={chapters}
-          volumes={volumes}
-          defaultVolumePath={defaultVolumePath}
+          structure={structure}
+          containers={containers}
+          defaultParentPath={defaultVolumePath}
           onOpenChange={(open) => { if (!open) setCreateRequest(null) }}
-          onCreateFile={handleCreateFile}
+          onCreateItem={handleCreateItem}
           onCreated={handleCreatedChapter}
         />
       ) : null}
@@ -490,7 +503,18 @@ function PlanningEmptyState({ text }: { text: string }) {
   )
 }
 
-function groupChaptersByVolume(chapters: ChapterSummary[], t: (key: string) => string): ChapterOutlineVolume[] {
+function groupChaptersByVolume(chapters: ChapterSummary[], t: (key: string) => string, nodes?: ManuscriptNode[], structure?: ChapterStructure): ChapterOutlineVolume[] {
+  if (nodes) {
+    if (nodes.length === 0) return []
+    const byPath = new Map(chapters.map((chapter) => [chapter.path, chapter]))
+    const build = (node: ManuscriptNode, depth: number, parents: string[]): ChapterOutlineVolume => {
+      const children = (node.children || []).filter((child) => child.directory).map((child) => build(child, depth + 1, [...parents, node.title]))
+      const directChapters = (node.children || []).flatMap((child) => byPath.get(child.path) ? [byPath.get(child.path)!] : [])
+      return { key: node.path, label: node.title, index: node.index, depth, children, directChapters, order: node.children?.map((child) => child.path), chapters: [...directChapters, ...children.flatMap((child) => child.chapters)], breadcrumb: [...parents, node.title].join(' / ') }
+    }
+    if (structure === 'chapters' && nodes.every((node) => !node.directory)) return [{ key: 'chapters', label: '', chapters, hidden: true }]
+    return nodes.flatMap((node) => node.directory ? [build(node, 0, [])] : byPath.has(node.path) ? [{ key: node.path, label: '', chapters: [byPath.get(node.path)!], hidden: true }] : [])
+  }
   const map = new Map<string, ChapterOutlineVolume>()
   for (const chapter of chapters) {
     const key = chapter.volume_path || chapter.volume || 'chapters'

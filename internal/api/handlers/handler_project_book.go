@@ -54,7 +54,7 @@ func (h *Handlers) HandleProjectBookSummary(ctx context.Context, c *app.RequestC
 	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "workspace": workspace, "summary": summary})
 }
 
-func (h *Handlers) HandleProjectBookChapterStatus(_ context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleProjectBookChapterStatus(ctx context.Context, c *app.RequestContext) {
 	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
@@ -71,7 +71,7 @@ func (h *Handlers) HandleProjectBookChapterStatus(_ context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.chapterStatusPathRequired")
 		return
 	}
-	if err := h.app.ProjectBook().SetChapterConfirmed(scope.ProjectID, request.Path, request.Confirmed); err != nil {
+	if err := h.app.ProjectBook().SetChapterConfirmed(ctx, scope.ProjectID, request.Path, request.Confirmed); err != nil {
 		writeProjectBookError(c, err, "api.workspace.chapterStatusFailed")
 		return
 	}

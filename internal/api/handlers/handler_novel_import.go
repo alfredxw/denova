@@ -141,7 +141,7 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 	}
 
 	slog.InfoContext(ctx, fmt.Sprintf("[api] Importing novel filename=%q size=%d title=%q strategy=%s regex=%q chapters=%d", filename, len(data), title, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount))
-	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, author, description)
+	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, author, description, preview.Structure)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if strings.Contains(err.Error(), "已存在") {
@@ -171,6 +171,7 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 
 func (h *Handlers) novelImportOptions(ctx context.Context, c *app.RequestContext) book.NovelImportOptions {
 	opts := book.NovelImportOptions{
+		Structure:     book.ChapterStructure(strings.TrimSpace(string(c.FormValue("structure")))),
 		SplitRegex:    strings.TrimSpace(string(c.FormValue("split_regex"))),
 		SplitStrategy: strings.TrimSpace(string(c.FormValue("split_strategy"))),
 	}

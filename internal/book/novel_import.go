@@ -38,6 +38,8 @@ const (
 var (
 	mdHeadingRe      = regexp.MustCompile(`^\s{0,3}#{1,6}\s+(.+?)\s*$`)
 	cnChapterRe      = regexp.MustCompile(`^\s*第[0-9零〇一二三四五六七八九十百千万两]+[章节回集][^\n\r]{0,80}$`)
+	cnSectionRe      = regexp.MustCompile(`^\s*第[0-9零〇一二三四五六七八九十百千万两]+节[^\n\r]{0,80}$`)
+	enSectionRe      = regexp.MustCompile(`(?i)^\s*section\s+[0-9ivxlcdm]+[^\n\r]{0,80}$`)
 	cnVolumeRe       = regexp.MustCompile(`^\s*(?:第[0-9零〇一二三四五六七八九十百千万两]+[卷部]|卷[0-9零〇一二三四五六七八九十百千万两]+|[0-9零〇一二三四五六七八九十百千万两]+卷|[上下前后终][卷部])[^\n\r]{0,80}$`)
 	prefaceTitleRe   = regexp.MustCompile(`^\s*(?:(?:序章|楔子|引子|前言|序幕|序言|尾声|后记|番外)(?:\s*[0-9零〇一二三四五六七八九十百千万两]*\s*(?:[:：、\-—.．]\s*)?[^\n\r]{0,80})?|序(?:\s*[:：、\-—.．]\s*[^\n\r]{0,80})?)\s*$`)
 	enChapterRe      = regexp.MustCompile(`(?i)^\s*chapter\s+[0-9ivxlcdm]+[^\n\r]{0,80}$`)
@@ -53,7 +55,7 @@ type localChapterRegexCandidate struct {
 }
 
 var localChapterRegexCandidates = []localChapterRegexCandidate{
-	{name: "common_novel_title", pattern: `(?i)^\s*((?:第[0-9零〇一二三四五六七八九十百千万两]+[章节卷回部集]|卷[0-9零〇一二三四五六七八九十百千万两]+|[0-9零〇一二三四五六七八九十百千万两]+卷|[上下前后终][卷部]|序章|楔子|引子|前言|序幕|序言|尾声|后记|番外|chapter\s+[0-9ivxlcdm]+|part\s+[0-9ivxlcdm]+|volume\s+[0-9ivxlcdm]+)[^\n\r]{0,80})$`},
+	{name: "common_novel_title", pattern: `(?i)^\s*((?:第[0-9零〇一二三四五六七八九十百千万两]+[章节卷回部集]|卷[0-9零〇一二三四五六七八九十百千万两]+|[0-9零〇一二三四五六七八九十百千万两]+卷|[上下前后终][卷部]|序章|楔子|引子|前言|序幕|序言|尾声|后记|番外|chapter\s+[0-9ivxlcdm]+|part\s+[0-9ivxlcdm]+|volume\s+[0-9ivxlcdm]+|section\s+[0-9ivxlcdm]+)[^\n\r]{0,80})$`},
 	{name: "markdown", pattern: `^\s{0,3}#{1,6}\s+(.+?)\s*$`},
 	{name: "cn_chapter", pattern: `^\s*(第[0-9零〇一二三四五六七八九十百千万两]+[章节回集][^\n\r]{0,80})$`},
 	{name: "cn_volume", pattern: `^\s*((?:第[0-9零〇一二三四五六七八九十百千万两]+[卷部]|卷[0-9零〇一二三四五六七八九十百千万两]+|[0-9零〇一二三四五六七八九十百千万两]+卷|[上下前后终][卷部])[^\n\r]{0,80})$`},
@@ -67,6 +69,7 @@ var localChapterRegexCandidates = []localChapterRegexCandidate{
 
 // NovelImportOptions controls the confirmed chapter splitting flow.
 type NovelImportOptions struct {
+	Structure       ChapterStructure
 	SampleChars     int
 	SplitStrategy   string
 	SplitRegex      string
@@ -76,6 +79,7 @@ type NovelImportOptions struct {
 
 // NovelImportPreview describes the chapters parsed from an uploaded novel file.
 type NovelImportPreview struct {
+	Structure             ChapterStructure     `json:"structure"`
 	Title                 string               `json:"title"`
 	Language              string               `json:"language,omitempty"`
 	ChapterFilenameFormat string               `json:"chapter_filename_format,omitempty"`
@@ -100,13 +104,19 @@ type NovelImportChapter struct {
 }
 
 type parsedNovelChapter struct {
+	parent         string
+	parentOrder    int
+	volumeOrder    int
+	emptyContainer bool
+	volumeOnly     bool
 	NovelImportChapter
 	Content string
 }
 
 type parsedNovel struct {
-	Preview  NovelImportPreview
-	Chapters []parsedNovelChapter
+	containers []string
+	Preview    NovelImportPreview
+	Chapters   []parsedNovelChapter
 }
 
 type novelImportMarker struct {
@@ -118,6 +128,7 @@ type novelImportTitleKind string
 
 const (
 	novelImportTitleChapter novelImportTitleKind = "chapter"
+	novelImportTitleSection novelImportTitleKind = "section"
 	novelImportTitleVolume  novelImportTitleKind = "volume"
 )
 
@@ -156,13 +167,17 @@ func ImportNovelToWorkspace(workspace, filename string, data []byte, opts ...Nov
 	if err := os.MkdirAll(chapterDir, 0o755); err != nil {
 		return NovelImportPreview{}, nil, fmt.Errorf("创建章节目录失败: %w", err)
 	}
+	if err := InitializeChapterStructure(workspace, parsed.Preview.Structure); err != nil {
+		return NovelImportPreview{}, nil, err
+	}
+	for _, path := range parsed.containers {
+		if err := NewService(workspace).Create(path, "dir", ""); err != nil && !os.IsExist(err) {
+			return NovelImportPreview{}, nil, err
+		}
+	}
 	paths := make([]string, 0, len(parsed.Chapters))
-	volumePaths := assignVolumePaths(parsed.Chapters)
 	for _, chapter := range parsed.Chapters {
 		rel := chapter.Path
-		if rel == "" {
-			rel = chapterPath(chapter.Index, chapter.Title, chapter.Volume, volumePaths, parsed.Preview.Language)
-		}
 		dst := filepath.Join(workspace, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return NovelImportPreview{}, nil, fmt.Errorf("创建章节子目录失败: %w", err)
@@ -182,6 +197,9 @@ func ImportNovelToWorkspace(workspace, filename string, data []byte, opts ...Nov
 }
 
 func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (parsedNovel, error) {
+	if opts.Structure != "" && !opts.Structure.Valid() {
+		return parsedNovel{}, ErrInvalidStructure
+	}
 	name := strings.TrimSpace(filename)
 	ext := strings.ToLower(filepath.Ext(name))
 	if ext != ".txt" && ext != ".md" && ext != ".markdown" {
@@ -210,17 +228,15 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] parse failed filename=%q err=%v", name, err))
 		return parsedNovel{}, err
 	}
-	totalChars := 0
-	volumePaths := assignVolumePaths(chapters)
 	for i := range chapters {
 		if ext == ".txt" {
 			chapters[i].Content = formatPlainTextChapterForMarkdown(chapters[i].Content)
 		}
+	}
+	chapters, structure, containers := reshapeNovelChapters(chapters, opts.Structure, language)
+	totalChars := 0
+	for i := range chapters {
 		chapters[i].Index = i + 1
-		chapters[i].Path = chapterPath(chapters[i].Index, chapters[i].Title, chapters[i].Volume, volumePaths, language)
-		if chapters[i].Volume != "" {
-			chapters[i].VolumePath = volumePaths[chapters[i].Volume]
-		}
 		chapters[i].Chars = utf8.RuneCountInString(chapters[i].Content)
 		totalChars += chapters[i].Chars
 	}
@@ -234,7 +250,9 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 		previewChapters = append(previewChapters, chapters[i].NovelImportChapter)
 	}
 	return parsedNovel{
+		containers: containers,
 		Preview: NovelImportPreview{
+			Structure:             structure,
 			Title:                 title,
 			Language:              language,
 			ChapterFilenameFormat: chapterFilenameFormat,
@@ -578,8 +596,15 @@ func markerTitlePreview(markers []novelImportMarker, limit int) string {
 }
 
 func chaptersFromMarkers(lines []string, markers []novelImportMarker) ([]parsedNovelChapter, error) {
+	classifyMarkdownStructure(lines, markers)
+	for _, marker := range markers {
+		if marker.info.kind == novelImportTitleSection {
+			return threeLevelChaptersFromMarkers(lines, markers), nil
+		}
+	}
 	chapters := []parsedNovelChapter{}
 	currentVolume := ""
+	volumeOrder := 0
 	preface := strings.TrimSpace(strings.Join(lines[:markers[0].line], "\n"))
 	if preface != "" {
 		chapters = append(chapters, parsedNovelChapter{
@@ -594,11 +619,13 @@ func chaptersFromMarkers(lines []string, markers []novelImportMarker) ([]parsedN
 		}
 		if current.info.kind == novelImportTitleVolume {
 			currentVolume = current.info.title
+			volumeOrder++
 			intro := strings.TrimSpace(strings.Join(lines[current.line+1:end], "\n"))
 			if intro == "" {
 				continue
 			}
 			chapters = append(chapters, parsedNovelChapter{
+				volumeOrder:        volumeOrder,
 				NovelImportChapter: NovelImportChapter{Title: current.info.title, Volume: currentVolume},
 				Content:            strings.TrimSpace(strings.Join(lines[current.line:end], "\n")) + "\n",
 			})
@@ -609,6 +636,7 @@ func chaptersFromMarkers(lines []string, markers []novelImportMarker) ([]parsedN
 			continue
 		}
 		chapters = append(chapters, parsedNovelChapter{
+			volumeOrder:        volumeOrder,
 			NovelImportChapter: NovelImportChapter{Title: current.info.title, Volume: currentVolume},
 			Content:            content + "\n",
 		})
@@ -643,10 +671,10 @@ func novelImportLineTitle(line string, allowMarkdownHeading bool) (novelImportTi
 		return novelImportTitle{title: strings.Trim(trimmed, "# \t"), kind: novelImportTitleVolume}, true
 	}
 	if (cnChapterRe.MatchString(trimmed) || prefaceTitleRe.MatchString(trimmed)) && !hasSentencePunctuation(trimmed) {
-		return novelImportTitle{title: strings.Trim(trimmed, "# \t"), kind: novelImportTitleChapter}, true
+		return classifyNovelImportTitle(trimmed), true
 	}
-	if enChapterRe.MatchString(trimmed) || numberedTitleRe.MatchString(trimmed) {
-		return novelImportTitle{title: strings.Trim(trimmed, "# \t"), kind: novelImportTitleChapter}, true
+	if enChapterRe.MatchString(trimmed) || enSectionRe.MatchString(trimmed) || numberedTitleRe.MatchString(trimmed) {
+		return classifyNovelImportTitle(trimmed), true
 	}
 	return novelImportTitle{}, false
 }
@@ -657,6 +685,9 @@ func novelImportAllowMarkdownHeadings(sourceExt string) bool {
 
 func classifyNovelImportTitle(title string) novelImportTitle {
 	title = strings.Trim(title, "# \t")
+	if cnSectionRe.MatchString(title) || enSectionRe.MatchString(title) {
+		return novelImportTitle{title: title, kind: novelImportTitleSection}
+	}
 	if (cnVolumeRe.MatchString(title) || enVolumeRe.MatchString(title)) && !hasSentencePunctuation(title) {
 		return novelImportTitle{title: title, kind: novelImportTitleVolume}
 	}
@@ -675,18 +706,6 @@ func firstRunes(value string, max int) string {
 	return string(runes[:max])
 }
 
-func chapterPath(index int, title, volume string, volumePaths map[string]string, language string) string {
-	filename := chapterFilename(index, title, language)
-	if strings.TrimSpace(volume) == "" {
-		return filepath.ToSlash(filepath.Join("chapters", filename))
-	}
-	volumePath := volumePaths[volume]
-	if volumePath == "" {
-		volumePath = prefixedVolumePath(1, volume)
-	}
-	return filepath.ToSlash(filepath.Join(volumePath, filename))
-}
-
 func chapterFilename(index int, title, language string) string {
 	cleanTitle := safeFilenamePart(title)
 	if cleanTitle == "" {
@@ -703,21 +722,6 @@ func chapterFilename(index int, title, language string) string {
 		parts = append(parts, titlePart)
 	}
 	return strings.Join(parts, "-") + ".md"
-}
-
-func assignVolumePaths(chapters []parsedNovelChapter) map[string]string {
-	paths := map[string]string{}
-	for _, chapter := range chapters {
-		volume := strings.TrimSpace(chapter.Volume)
-		if volume == "" {
-			continue
-		}
-		if _, ok := paths[volume]; ok {
-			continue
-		}
-		paths[volume] = prefixedVolumePath(len(paths)+1, volume)
-	}
-	return paths
 }
 
 func prefixedVolumePath(index int, volume string) string {

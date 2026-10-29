@@ -362,7 +362,7 @@ export function WorkbenchShell({
         <BookSwitcher
           books={books}
           currentBookName={currentBookName}
-          currentChapterCount={summary?.chapter_count}
+          currentStructure={summary?.structure} currentChapterCount={summary?.chapter_count}
           currentWordCount={summary?.total_words}
           workspace={workspace}
           iconOnly={!activityBarExpanded}
@@ -426,7 +426,7 @@ export function WorkbenchShell({
           <span className="nova-mobile-section-label">{t('workbench.mobile.currentBook')}</span>
           <BookSwitcher
             books={books} currentBookName={currentBookName}
-            currentChapterCount={summary?.chapter_count} currentWordCount={summary?.total_words}
+            currentStructure={summary?.structure} currentChapterCount={summary?.chapter_count} currentWordCount={summary?.total_words}
             workspace={workspace} compact
             onSwitchBook={async (path) => { const switched = await onQuickSwitchBook(path); if (switched) closeMobilePanes(); return switched }}
             onManageBooks={() => { closeMobilePanes(); manageBooks() }}

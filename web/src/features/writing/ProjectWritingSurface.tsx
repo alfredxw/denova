@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookOpen } from 'lucide-react'
+import { BookStructureDialog } from '@/components/Home/BookStructureDialog'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
@@ -26,6 +27,7 @@ import {
   readProjectFile,
   saveProjectFile,
   setProjectChapterConfirmed,
+  type BookRecord,
   type ProjectBookFileNode,
   type WorkspaceSearchResult,
   type WorkspaceSummary,
@@ -72,6 +74,7 @@ export function ProjectWritingSurface({
   const { t } = useTranslation()
   const [tree, setTree] = useState<ProjectBookFileNode[]>([])
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
+  const [structureBook, setStructureBook] = useState<Pick<BookRecord, 'project_id' | 'name'> | null>(null)
   const [selectedPath, setSelectedPath] = useState(initialPath || '')
   const [document, setDocument] = useState<ProjectFileDocument | null>(null)
   const [sidebarView, setSidebarView] = useState<'outline' | 'search'>('outline')
@@ -87,7 +90,7 @@ export function ProjectWritingSurface({
   const editorFlushRef = useRef<EditorFlushHandler | null>(null)
 
   const chapters = useMemo(
-    () => [...(summary?.chapters || [])].sort((left, right) => left.index - right.index),
+    () => (summary?.chapters || []),
     [summary?.chapters],
   )
   const projectFileTree = useMemo(() => buildProjectFileTreeFromNodes(tree), [tree])
@@ -260,6 +263,14 @@ export function ProjectWritingSurface({
     await onWorkspaceChanged?.([path], { impact: 'structure', origin: 'project-page' })
   }, [loadSnapshot, onWorkspaceChanged, projectId, t])
 
+  const flushBeforeStructureChange = useCallback(async () => editorFlushRef.current?.() ?? true, [])
+  const refreshAfterStructureChange = useCallback(async () => {
+    documentRequestRef.current += 1
+    setDocument(null)
+    await loadSnapshot()
+    await onWorkspaceChanged?.(['chapters'], { impact: 'structure', origin: 'project-page' })
+  }, [loadSnapshot, onWorkspaceChanged])
+
   const selectSearchResult = useCallback(async (result: WorkspaceSearchResult, query: string) => {
     if (!await selectFile(result.path)) return
     setSearchIntent((current) => ({
@@ -308,6 +319,8 @@ export function ProjectWritingSurface({
             projectId={projectId}
             tree={tree}
             chapters={chapters}
+            structure={summary?.structure}
+            manuscript={summary?.manuscript}
             ideas={summary?.ideas}
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}
@@ -315,6 +328,7 @@ export function ProjectWritingSurface({
             onSelectFile={selectOutlineFile}
             onOpenLoreTab={onOpenLoreTab}
             onCreateItem={createItem}
+            onChangeStructure={() => setStructureBook({ project_id: projectId, name: summary?.title || t('bookStructure.manuscript') })}
             onSetChapterConfirmed={setChapterConfirmed}
           />
         )}
@@ -408,6 +422,8 @@ export function ProjectWritingSurface({
           </div>
         )}
       </ResourceWorkspace>
+      <BookStructureDialog book={structureBook} onClose={() => setStructureBook(null)}
+        onBeforeApply={flushBeforeStructureChange} onApplied={refreshAfterStructureChange} />
     </section>
   )
 }

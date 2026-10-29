@@ -158,6 +158,12 @@ func (s *Service) Create(relPath, itemType, content string) error {
 		if err := os.MkdirAll(absPath, 0o755); err != nil {
 			return err
 		}
+		// Track empty manuscript containers in ordinary content snapshots.
+		if strings.HasPrefix(filepath.ToSlash(relPath), "chapters/") {
+			if err := os.WriteFile(filepath.Join(absPath, ".keep"), nil, 0o644); err != nil {
+				return err
+			}
+		}
 		s.InvalidateSummary([]string{relPath}, false)
 		return nil
 	}

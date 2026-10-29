@@ -19,10 +19,12 @@ import {
   getBookInfo,
   updateBookInfo,
   uploadBookCover,
+  type ChapterStructure,
   type BookMeta,
   type BookRecord,
 } from '@/lib/api'
 import type { ImagePreset } from '@/features/interactive/types'
+import { ChapterStructureSelector } from './ChapterStructureSelector'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 
 type BookFormMode = 'create' | 'edit'
@@ -67,6 +69,7 @@ export function BookFormDialog({
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
   const [description, setDescription] = useState('')
+  const [structure, setStructure] = useState<ChapterStructure>('chapters')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -100,6 +103,7 @@ export function BookFormDialog({
     setTitle(mode === 'edit' ? book?.name || '' : '')
     setAuthor(mode === 'edit' ? book?.author || '' : '')
     setDescription('')
+    setStructure('chapters')
     setFormError('')
     setCoverPresetId(defaultImagePresetId || 'game-cg')
     setCoverInstruction('')
@@ -220,7 +224,7 @@ export function BookFormDialog({
   const createWorkspace = async () => {
     if (!title.trim()) throw new Error(t('home.titleRequired'))
     if (!novaDir.trim()) throw new Error(t('home.waitNovaDir'))
-    const data = await createBook(title.trim(), author.trim() || undefined, description.trim() || undefined)
+    const data = await createBook(title.trim(), author.trim() || undefined, description.trim() || undefined, structure)
     setCreatedPath(data.workspace)
     await Promise.resolve(onCreated?.(data))
     await Promise.resolve(onSwitch?.(data.workspace))
@@ -280,6 +284,7 @@ export function BookFormDialog({
                     <span className="truncate text-[var(--nova-text-muted)]">{novaDir || t('home.novaDirLoading')}</span>
                   </div>
                 )}
+                {mode === 'create' && <ChapterStructureSelector value={structure} onChange={setStructure} disabled={busy || Boolean(createdPath)} />}
                 <Textarea
                   autoResize
                   value={description}

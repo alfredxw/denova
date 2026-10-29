@@ -19,6 +19,8 @@ const DisplayTimeFormat = "2006-01-02 15:04"
 // WorkspaceSummary 汇总当前作品的写作进度。
 type WorkspaceSummary struct {
 	// Incomplete prevents partial filesystem scans from becoming statistical deletions.
+	Structure    ChapterStructure  `json:"structure"`
+	Manuscript   []ManuscriptNode  `json:"manuscript"`
 	Incomplete   bool              `json:"incomplete,omitempty"`
 	Title        string            `json:"title"`
 	Author       string            `json:"author"`
@@ -32,16 +34,17 @@ type WorkspaceSummary struct {
 
 // ChapterSummary 描述单个章节文件的轻量统计信息。
 type ChapterSummary struct {
-	Path         string `json:"path"`
-	FileName     string `json:"file_name"`
-	DisplayTitle string `json:"display_title"`
-	Index        int    `json:"index"`
-	Words        int    `json:"words"`
-	Status       string `json:"status"`
-	Confirmed    bool   `json:"confirmed"`
-	UpdatedAt    string `json:"updated_at"`
-	Volume       string `json:"volume"`
-	VolumePath   string `json:"volume_path"`
+	Ancestors    []ManuscriptNode `json:"ancestors,omitempty"`
+	Path         string           `json:"path"`
+	FileName     string           `json:"file_name"`
+	DisplayTitle string           `json:"display_title"`
+	Index        int              `json:"index"`
+	Words        int              `json:"words"`
+	Status       string           `json:"status"`
+	Confirmed    bool             `json:"confirmed"`
+	UpdatedAt    string           `json:"updated_at"`
+	Volume       string           `json:"volume"`
+	VolumePath   string           `json:"volume_path"`
 }
 
 // DocumentPreview 描述大纲、细纲等规划文档的轻量预览。
@@ -55,11 +58,12 @@ type DocumentPreview struct {
 
 var chapterNamePattern = regexp.MustCompile(`(?i)^ch(\d+)[-_ ]*(.*)$`)
 var numericChapterNamePattern = regexp.MustCompile(`^(\d{1,6})[-_ 、.．]+(.*)$`)
-var chineseChapterNamePattern = regexp.MustCompile(`^第([0-9零〇一二三四五六七八九十百千万两]+)[章节回集][-_ 、.．]*(.*)$`)
+var chineseChapterNamePattern = regexp.MustCompile(`^第([0-9零〇一二三四五六七八九十百千万两]+)([章节回集])[-_ 、.．]*(.*)$`)
 var chineseOrderedNamePattern = regexp.MustCompile(`^第([0-9零〇一二三四五六七八九十百千万两]+)[章节回集卷部][-_ 、.．]*(.*)$`)
-var englishChapterNamePattern = regexp.MustCompile(`(?i)^(?:chapter|ch)[-_ ]*([0-9ivxlcdm]+)[-_ .:：]*(.*)$`)
+var englishChapterNamePattern = regexp.MustCompile(`(?i)^(?:chapter|ch|section)[-_ ]*([0-9ivxlcdm]+)[-_ .:：]*(.*)$`)
 var prefaceChapterNamePattern = regexp.MustCompile(`^(序章|序幕|楔子|引子|前言|正文)[-_ 、.．]*(.*)$`)
 var hiddenChapterPrefixPattern = regexp.MustCompile(`(?i)^ch(\d{5})[-_ ]+(.*)$`)
+var hiddenSectionPrefixPattern = regexp.MustCompile(`(?i)^s(\d{5})[-_ ]+(.*)$`)
 var hiddenVolumePrefixPattern = regexp.MustCompile(`(?i)^v(\d{5})[-_ ]+(.*)$`)
 var groupNamePattern = regexp.MustCompile(`(?i)^group(\d+)[-_ ]*(.*)$`)
 
@@ -85,6 +89,15 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 		ChapterPlans: []DocumentPreview{},
 	}
 
+	var err error
+	summary.Structure, err = ReadChapterStructure(s.workspace)
+	if err != nil {
+		return summary, err
+	}
+	summary.Manuscript, err = s.ManuscriptTree()
+	if err != nil {
+		return summary, err
+	}
 	summary.Ideas = s.documentPreview(IdeasFileName, "灵感")
 	summary.Outline = s.documentPreview("setting/outline.md", "长期大纲")
 	summary.ChapterPlans = s.chapterPlanPreviews()
@@ -100,7 +113,7 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 	confirmedChapters := s.chapterConfirmedMap()
 	nextCache := make(map[string]cachedChapterSummary, len(s.chapters))
 
-	err := filepath.WalkDir(chapterRoot, func(path string, entry os.DirEntry, err error) error {
+	err = filepath.WalkDir(chapterRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			summary.Incomplete = true
 			return nil
@@ -152,11 +165,7 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 	s.invalidatedChapters = make(map[string]struct{})
 
 	sort.Slice(summary.Chapters, func(i, j int) bool {
-		left, right := summary.Chapters[i], summary.Chapters[j]
-		if cmp := compareChapterLikeNames(left.FileName, right.FileName); cmp != 0 {
-			return cmp < 0
-		}
-		return left.Path < right.Path
+		return CompareManuscriptPaths(summary.Chapters[i].Path, summary.Chapters[j].Path) < 0
 	})
 	summary.ChapterCount = len(summary.Chapters)
 	return summary, nil
@@ -195,6 +204,10 @@ func newChapterSummary(relPath, name string, info os.FileInfo, words int) Chapte
 		UpdatedAt:    info.ModTime().UTC().Format(time.RFC3339),
 	}
 	chapter.Volume, chapter.VolumePath = chapterVolume(chapter.Path)
+	parts := strings.Split(relPath, "/")
+	for i := 1; i < len(parts)-1; i++ {
+		chapter.Ancestors = append(chapter.Ancestors, ManuscriptNode{Path: strings.Join(parts[:i+1], "/"), Title: manuscriptDisplayTitle(parts[i]), Directory: true})
+	}
 	return chapter
 }
 
@@ -266,7 +279,11 @@ func isChapterTextFile(name string) bool {
 }
 
 func chapterDisplayTitle(name string) string {
-	base := visibleNameBase(strings.TrimSuffix(name, filepath.Ext(name)))
+	return manuscriptDisplayTitle(strings.TrimSuffix(name, filepath.Ext(name)))
+}
+
+func manuscriptDisplayTitle(name string) string {
+	base := visibleNameBase(name)
 	if meta, ok := parseChapterNameMeta(base); ok {
 		return meta.display
 	}
@@ -274,6 +291,9 @@ func chapterDisplayTitle(name string) string {
 }
 
 func visibleNameBase(base string) string {
+	if matches := hiddenSectionPrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
+		return matches[2]
+	}
 	if matches := hiddenChapterPrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
 		return matches[2]
 	}
@@ -300,8 +320,8 @@ func parseChapterNameMeta(base string) (chapterNameMeta, bool) {
 	}
 	if matches := chineseChapterNamePattern.FindStringSubmatch(base); len(matches) > 0 {
 		index := parseChapterOrdinal(matches[1])
-		title := strings.Trim(matches[2], "-_ 、.． ")
-		prefix := "第" + matches[1] + "章"
+		title := strings.Trim(matches[3], "-_ 、.． ")
+		prefix := "第" + matches[1] + matches[2]
 		if title == "" {
 			return chapterNameMeta{index: index, display: prefix}, true
 		}
@@ -311,6 +331,9 @@ func parseChapterNameMeta(base string) (chapterNameMeta, bool) {
 		index := parseChapterOrdinal(matches[1])
 		title := strings.Trim(matches[2], "-_ .:： ")
 		prefix := "Chapter " + matches[1]
+		if strings.HasPrefix(strings.ToLower(base), "section") {
+			prefix = "Section " + matches[1]
+		}
 		if title == "" {
 			return chapterNameMeta{index: index, display: prefix}, true
 		}
@@ -489,6 +512,9 @@ func chapterSortKeyForName(name string) chapterSortKey {
 }
 
 func hiddenSortOrder(base string) int {
+	if matches := hiddenSectionPrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
+		return parsePositiveInt(matches[1])
+	}
 	if matches := hiddenChapterPrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
 		return parsePositiveInt(matches[1])
 	}

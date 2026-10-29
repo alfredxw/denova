@@ -532,7 +532,29 @@ export interface BookCoverResult {
   size_bytes?: number
 }
 
+export type ChapterStructure = 'chapters' | 'volumes' | 'sections'
+
+export interface ManuscriptNode {
+  index?: number
+  path: string
+  title: string
+  directory: boolean
+  children?: ManuscriptNode[]
+}
+
+export interface StructurePreview {
+  from: ChapterStructure
+  to: ChapterStructure
+  revision: string
+  before: ManuscriptNode[]
+  after: ManuscriptNode[]
+  merged_chapters: number
+  files_before: number
+  files_after: number
+}
+
 export interface ChapterSummary {
+  ancestors?: ManuscriptNode[]
   path: string
   file_name: string
   display_title: string
@@ -554,6 +576,8 @@ export interface DocumentPreview {
 }
 
 export interface WorkspaceSummary {
+  structure?: ChapterStructure
+  manuscript?: ManuscriptNode[]
   title: string
   author: string
   chapter_count: number
@@ -648,6 +672,7 @@ interface NovelImportChapter {
 }
 
 export interface NovelImportPreview {
+  structure?: ChapterStructure
   title: string
   language?: string
   chapter_filename_format?: string

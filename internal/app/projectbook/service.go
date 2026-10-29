@@ -12,6 +12,7 @@ import (
 
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
+	workspacechange "denova/internal/workspace/change"
 )
 
 var ErrBookProjectRequired = errors.New("project is not a Book")
@@ -43,17 +44,17 @@ func (service *Service) Snapshot(ctx context.Context, projectID string) (Snapsho
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	tree, err := runtime.files.Tree()
-	if err != nil {
-		return Snapshot{}, err
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	summary, err := runtime.files.Summary()
+	var tree []*book.FileNode
+	var summary book.WorkspaceSummary
+	err = runtime.changes.WithConsistentWorkspaceSnapshot(ctx, func() error {
+		var err error
+		tree, err = runtime.files.Tree()
+		if err != nil {
+			return err
+		}
+		summary, err = runtime.files.Summary()
+		return err
+	})
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -70,10 +71,12 @@ func (service *Service) Tree(ctx context.Context, projectID string) (string, []*
 	if err != nil {
 		return "", nil, err
 	}
-	if err := ctx.Err(); err != nil {
-		return "", nil, err
-	}
-	tree, err := runtime.files.Tree()
+	var tree []*book.FileNode
+	err = runtime.changes.WithConsistentWorkspaceSnapshot(ctx, func() error {
+		var err error
+		tree, err = runtime.files.Tree()
+		return err
+	})
 	return runtime.layout.ContentRoot, tree, err
 }
 
@@ -82,25 +85,28 @@ func (service *Service) Summary(ctx context.Context, projectID string) (string, 
 	if err != nil {
 		return "", book.WorkspaceSummary{}, err
 	}
-	if err := ctx.Err(); err != nil {
-		return "", book.WorkspaceSummary{}, err
-	}
-	summary, err := runtime.files.Summary()
+	var summary book.WorkspaceSummary
+	err = runtime.changes.WithConsistentWorkspaceSnapshot(ctx, func() error {
+		var err error
+		summary, err = runtime.files.Summary()
+		return err
+	})
 	return runtime.layout.ContentRoot, summary, err
 }
 
-func (service *Service) SetChapterConfirmed(projectID, path string, confirmed bool) error {
+func (service *Service) SetChapterConfirmed(ctx context.Context, projectID, path string, confirmed bool) error {
 	runtime, err := service.resolve(projectID)
 	if err != nil {
 		return err
 	}
-	return runtime.files.SetChapterConfirmed(path, confirmed)
+	return runtime.changes.WithExclusiveWorkspace(ctx, func() error { return runtime.files.SetChapterConfirmed(path, confirmed) })
 }
 
 type runtime struct {
-	record projectdomain.Record
-	layout projectdomain.Layout
-	files  *book.Service
+	changes *workspacechange.Service
+	record  projectdomain.Record
+	layout  projectdomain.Layout
+	files   *book.Service
 }
 
 func (service *Service) resolve(projectID string) (runtime, error) {
@@ -118,7 +124,11 @@ func (service *Service) resolve(projectID string) (runtime, error) {
 	if record.Type != projectdomain.TypeBook {
 		return runtime{}, fmt.Errorf("%w: project_id=%s", ErrBookProjectRequired, record.ID)
 	}
-	return runtime{record: record, layout: layout, files: service.bookFiles(record.ID, layout.ContentRoot)}, nil
+	changes, err := workspacechange.ForWorkspaceAt(layout.ContentRoot, layout.StoreRoot)
+	if err != nil {
+		return runtime{}, err
+	}
+	return runtime{record: record, layout: layout, files: service.bookFiles(record.ID, layout.ContentRoot), changes: changes}, nil
 }
 
 const bookFilesCacheLimit = 8

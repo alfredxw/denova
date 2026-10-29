@@ -70,6 +70,17 @@ func (s *State) WorkspaceContext() WorkspaceContext {
 		{Title: "Recent chapter paths", Paths: contextPaths("Chapter path", s.recentChapterPaths(workspaceContextChapterLimit))},
 	})
 
+	_, structureErr := os.Stat(filepath.Join(s.workspace, structureFile))
+	if structure, err := ReadChapterStructure(s.workspace); err == nil && (dynamic != "" || structureErr == nil) {
+		layout := "chapters/ch00001-Title.md"
+		if structure == StructureVolumes {
+			layout = "chapters/v00001-Volume/ch00001-Title.md"
+		}
+		if structure == StructureSections {
+			layout = "chapters/v00001-Volume/ch00001-Chapter/s00001-Section.md"
+		}
+		dynamic += "\n\nManuscript structure: " + string(structure) + ". Write prose only at the deepest level. Example path: " + layout + ". Preserve numeric filename prefixes for reading order. Use the chapter-structure controls for structure changes; do not rewrite chapters/.structure.json to reorganize existing prose."
+	}
 	return WorkspaceContext{Stable: stable, Dynamic: dynamic}
 }
 

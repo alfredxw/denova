@@ -29,7 +29,7 @@ func TestManagedDataDirectoryRunsAfterCopyingToAnotherRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := firstApp.CreateBook(ctx, firstRoot, "Portable Book", "Writer", "Move test")
+	created, err := firstApp.CreateBook(ctx, firstRoot, "Portable Book", "Writer", "Move test", "")
 	if err != nil {
 		firstApp.Close()
 		t.Fatal(err)

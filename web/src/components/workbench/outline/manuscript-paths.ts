@@ -6,7 +6,7 @@ export const DEFAULT_VOLUME_DIR_FORMAT = 'v{order:05}-{volume}'
 export class InvalidManuscriptFormatError extends Error {}
 
 interface ChapterPathInput {
-  chapters: ChapterSummary[]
+  chapters: Pick<ChapterSummary, 'path' | 'index'>[]
   title: string
   volumePath: string
   format?: string

@@ -1,3 +1,5 @@
+import { ChapterStructureSelector } from './ChapterStructureSelector'
+import type { ChapterStructure } from '@/lib/api'
 import { FileText, RefreshCw, Sparkles, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -24,6 +26,7 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
   const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [file, setFile] = useState<File | null>(null)
+  const [structure, setStructure] = useState<ChapterStructure | undefined>()
   const [preview, setPreview] = useState<NovelImportPreview | null>(null)
   const [bookTitle, setBookTitle] = useState('')
   const [author, setAuthor] = useState('')
@@ -34,10 +37,11 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
   const [previewing, setPreviewing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
-  const confirmedPreview = Boolean(preview && preview.sample_chars === sampleChars && preview.split_regex === splitRegex)
+  const confirmedPreview = Boolean(preview && preview.sample_chars === sampleChars && preview.split_regex === splitRegex && preview.structure === structure)
 
   const reset = () => {
     setFile(null)
+    setStructure(undefined)
     setPreview(null)
     setBookTitle('')
     setAuthor('')
@@ -57,13 +61,14 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
     onOpenChange(next)
   }
 
-  const runPreview = async (targetFile: File, regex: string, chars: number, splitStrategy?: string) => {
+  const runPreview = async (targetFile: File, regex: string, chars: number, splitStrategy?: string, requestedStructure?: ChapterStructure) => {
     setPreview(null)
     setError('')
     setPreviewProgress(t('novelImport.progress.uploading'))
     setPreviewing(true)
     try {
       const stream = await previewNovelImportStream(targetFile, {
+        structure: requestedStructure,
         sampleChars: chars,
         splitRegex: regex.trim() || undefined,
         splitStrategy,
@@ -71,9 +76,10 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
       const data = await consumePreviewStream(stream, (step) => setPreviewProgress(t(`novelImport.progress.${step}`)))
       if (data) {
         setPreview(data)
+        setStructure(data.structure)
         setSampleChars(data.sample_chars)
         setSplitRegex(data.split_regex)
-        setBookTitle(data.title)
+        setBookTitle((current) => current || data.title)
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('novelImport.previewFailed'))
@@ -86,8 +92,10 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
   const handleFileSelected = async (selected: File | undefined) => {
     if (!selected) return
     setFile(selected)
+    setBookTitle('')
     setSplitRegex('')
-    await runPreview(selected, '', sampleChars)
+    setStructure(undefined)
+    await runPreview(selected, '', sampleChars, undefined, undefined)
   }
 
   const handlePreview = async () => {
@@ -95,7 +103,7 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
       setError(t('novelImport.chooseFileFirst'))
       return
     }
-    await runPreview(file, splitRegex, sampleChars)
+    await runPreview(file, splitRegex, sampleChars, undefined, structure)
   }
 
   const handleAgentPreview = async () => {
@@ -104,7 +112,7 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
       return
     }
     setSplitRegex('')
-    await runPreview(file, '', sampleChars, 'tool_agent_regex')
+    await runPreview(file, '', sampleChars, 'tool_agent_regex', structure)
   }
 
   const handleImport = async () => {
@@ -116,6 +124,7 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
     setError('')
     try {
       const result = await importNovel(file, {
+        structure: preview.structure,
         bookTitle: bookTitle.trim() || preview.title,
         author: author.trim() || undefined,
         description: description.trim() || undefined,
@@ -171,6 +180,8 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
               {previewing && <span className="shrink-0 text-[var(--nova-text-muted)]">{previewProgress || t('novelImport.parsing')}</span>}
             </div>
 
+            {file && structure && <ChapterStructureSelector value={structure} disabled={previewing || importing}
+              onChange={(value) => { setStructure(value); void runPreview(file, splitRegex, sampleChars, preview?.split_strategy, value) }} />}
             {preview && (
               <div className="space-y-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-3">
                 <div className="flex min-w-0 items-center gap-2">
@@ -178,21 +189,21 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
                   <div className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--nova-text)]">{preview.title}</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
-                  <span>{t('novelImport.chapterCount', { count: preview.chapter_count })}</span>
+                  <span>{t(preview.structure === 'sections' ? 'bookStructure.sectionCount' : 'novelImport.chapterCount', { count: preview.chapter_count })}</span>
                   <span>{t('novelImport.totalChars', { count: preview.total_chars.toLocaleString() })}</span>
                   <span>{t(`novelImport.strategy.${preview.split_strategy}`)}</span>
                 </div>
                 <div className="max-h-36 space-y-1 overflow-y-auto border-t border-[var(--nova-border)] pt-2">
                   {preview.chapters.map((chapter) => (
-                    <div key={`${chapter.index}-${chapter.title}`} className="flex items-center gap-2 text-[11px] text-[var(--nova-text-muted)]">
+                    <div key={`${chapter.index}-${chapter.title}`} className="flex items-center gap-2 text-[11px] text-[var(--nova-text-muted)]" title={chapter.path}>
                       <span className="w-8 shrink-0 text-[var(--nova-text-faint)]">{chapter.index}</span>
-                      {chapter.volume && <span className="max-w-28 shrink-0 truncate text-[var(--nova-text-faint)]">{chapter.volume}</span>}
-                      <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
+
+                      <span className="min-w-0 flex-1 truncate">{chapter.path?.split('/').slice(1, -1).map((name) => name.replace(/^(?:v|ch)\d{5}-/, '')).concat(chapter.title).join(' / ') || chapter.title}</span>
                       <span className="shrink-0 text-[var(--nova-text-faint)]">{t('novelImport.chapterChars', { count: chapter.chars.toLocaleString() })}</span>
                     </div>
                   ))}
                   {preview.chapter_count > preview.chapters.length && (
-                    <div className="text-[11px] text-[var(--nova-text-faint)]">{t('novelImport.moreChapters', { count: preview.chapter_count - preview.chapters.length })}</div>
+                    <div className="text-[11px] text-[var(--nova-text-faint)]">{t(preview.structure === 'sections' ? 'bookStructure.moreSections' : 'novelImport.moreChapters', { count: preview.chapter_count - preview.chapters.length })}</div>
                   )}
                 </div>
                 {preview.warnings?.map((warning) => (

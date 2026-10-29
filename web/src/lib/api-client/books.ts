@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { BookCoverResult, BookMeta, BookRecord, BookSortMode, BookshelfResult, NovelImportResult, SSEEvent } from './types'
+import type { ChapterStructure, BookCoverResult, BookMeta, BookRecord, BookSortMode, BookshelfResult, NovelImportResult, SSEEvent } from './types'
 
 export type BookExportFormat = 'txt'
 
@@ -46,10 +46,11 @@ export async function setBookSortMode(mode: BookSortMode): Promise<{ message: st
 
 export async function previewNovelImportStream(
   file: File,
-  options: { sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
+  options: { structure?: ChapterStructure; sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
 ): Promise<ReadableStream<SSEEvent>> {
   const form = new FormData()
   form.append('file', file)
+  if ('structure' in options && options.structure) form.append('structure', options.structure)
   if (options.sampleChars !== undefined) form.append('sample_chars', String(options.sampleChars))
   if (options.splitRegex !== undefined) form.append('split_regex', options.splitRegex)
   if (options.splitStrategy) form.append('split_strategy', options.splitStrategy)
@@ -67,10 +68,11 @@ export async function previewNovelImportStream(
 
 export async function importNovel(
   file: File,
-  options: { bookTitle?: string; author?: string; description?: string; sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
+  options: { structure?: ChapterStructure; bookTitle?: string; author?: string; description?: string; sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
 ): Promise<NovelImportResult> {
   const form = new FormData()
   form.append('file', file)
+  if ('structure' in options && options.structure) form.append('structure', options.structure)
   if (options.bookTitle) form.append('book_title', options.bookTitle)
   if (options.author) form.append('author', options.author)
   if (options.description) form.append('description', options.description)
@@ -83,11 +85,11 @@ export async function importNovel(
   })
 }
 
-export async function createBook(title: string, author?: string, description?: string): Promise<{ project_id: string; workspace: string; book_meta: BookMeta }> {
+export async function createBook(title: string, author?: string, description?: string, structure: ChapterStructure = 'chapters'): Promise<{ project_id: string; workspace: string; book_meta: BookMeta }> {
   return requestJSON('/api/books/create', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ title, author: author ?? '', description: description ?? '' }),
+    body: JSON.stringify({ title, author: author ?? '', description: description ?? '', structure }),
   })
 }
 

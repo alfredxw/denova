@@ -14,9 +14,16 @@ import { ChapterOutlineItem } from './ChapterOutlineItem'
 import { OutlineFileActions, type OutlineFileMenuOperations } from './OutlineFileActions'
 
 export interface ChapterOutlineVolume {
+  index?: number
   key: string
   label: string
   chapters: ChapterSummary[]
+  children?: ChapterOutlineVolume[]
+  directChapters?: ChapterSummary[]
+  depth?: number
+  hidden?: boolean
+  order?: string[]
+  breadcrumb?: string
 }
 
 export interface ChapterOutlineListHandle {
@@ -52,6 +59,7 @@ interface VolumeRow {
 
 interface ChapterRow {
   kind: 'chapter'
+  depth: number
   key: string
   chapter: ChapterSummary
 }
@@ -187,10 +195,14 @@ function renderChapterOutlineRow(_index: number, row: ChapterOutlineRow, context
     const { volume, expanded } = row
     const countLabel = context.chapterCountLabel(volume.chapters.length)
     return (
-      <div className="px-2 pb-1 pt-1.5">
+      <div className="pb-1 pr-2 pt-1.5" style={{ paddingLeft: 8 + (volume.depth || 0) * 16 }}>
         <OutlineFileActions
           path={volume.key}
           onCreateChapter={context.onCreateChapterInVolume}
+          createChapterLabel={volume.depth === 1 ? 'bookStructure.section' : 'planning.create.chapter'}
+          onRenameItem={context.onRenameItem}
+          onDeleteItem={context.onDeleteItem}
+          fileOperations={context.fileOperations}
         >
           <button
             type="button"
@@ -215,7 +227,7 @@ function renderChapterOutlineRow(_index: number, row: ChapterOutlineRow, context
 
   const { chapter } = row
   return (
-    <div className="pb-1 pl-6 pr-2">
+    <div className="pb-1 pr-2" style={{ paddingLeft: 8 + row.depth * 16 }}>
       <ChapterOutlineItem
         chapter={chapter}
         active={context.selectedFile === chapter.path}
@@ -233,13 +245,27 @@ function renderChapterOutlineRow(_index: number, row: ChapterOutlineRow, context
 
 function flattenVisibleRows(volumes: ChapterOutlineVolume[], collapsedVolumes: ReadonlySet<string>) {
   const rows: ChapterOutlineRow[] = []
-  for (const volume of volumes) {
-    const expanded = !collapsedVolumes.has(volume.key)
-    rows.push({ kind: 'volume', key: `volume:${volume.key}`, volume, expanded })
-    if (!expanded) continue
-    for (const chapter of volume.chapters) {
-      rows.push({ kind: 'chapter', key: `chapter:${chapter.path}`, chapter })
+  const visit = (groups: ChapterOutlineVolume[]) => {
+    for (const volume of groups) {
+      const expanded = !collapsedVolumes.has(volume.key)
+      if (!volume.hidden) rows.push({ kind: 'volume', key: `volume:${volume.key}`, volume, expanded })
+      if (!expanded && !volume.hidden) continue
+      // Children and direct prose can coexist in released books. Preserve the
+      // server's reading order within each container.
+      const entries = [
+        ...(volume.children || []).map((group) => ({ path: group.key, group })),
+        ...(volume.directChapters ?? volume.chapters).map((chapter) => ({ path: chapter.path, chapter })),
+      ]
+      if (volume.order) {
+        const positions = new Map(volume.order.map((path, index) => [path, index]))
+        entries.sort((a, b) => (positions.get(a.path) ?? 0) - (positions.get(b.path) ?? 0))
+      }
+      for (const entry of entries) {
+        if ('group' in entry) visit([entry.group])
+        else rows.push({ kind: 'chapter', key: `chapter:${entry.chapter.path}`, chapter: entry.chapter, depth: volume.hidden ? 0 : (volume.depth || 0) + 1 })
+      }
     }
   }
+  visit(volumes)
   return rows
 }

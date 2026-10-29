@@ -5,7 +5,7 @@ import { toast } from '@/lib/toast'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ArrowDownUp, BookOpen, Download, FileText, Folder, GripVertical, LibraryBig, Loader2, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowDownUp, ListTree, BookOpen, Download, FileText, Folder, GripVertical, LibraryBig, Loader2, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -27,6 +27,7 @@ import {
 import { getImagePresets } from '@/features/interactive/api'
 import type { ImagePreset } from '@/features/interactive/types'
 import { fetchSettings } from '@/features/settings/api'
+import { BookStructureDialog } from './BookStructureDialog'
 import { BookFormDialog } from './BookFormDialog'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 
@@ -60,6 +61,7 @@ type BookDialogState = { mode: 'create'; book: null } | { mode: 'edit'; book: Bo
 export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, onBeforeSwitch, onBooksChange, onOpenCharacterCardImport, onBookImported }: HomeViewProps) {
   const { t } = useTranslation()
   const [showNovelImport, setShowNovelImport] = useState(false)
+  const [structureBook, setStructureBook] = useState<BookRecord | null>(null)
   const [bookDialog, setBookDialog] = useState<BookDialogState | null>(null)
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
   const [defaultImagePresetId, setDefaultImagePresetId] = useState('game-cg')
@@ -347,7 +349,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
                           disabled={bookSortMode !== 'manual'}
                         >
                           {(dragHandleProps) => (
-                            <div
+                            <div role="group" aria-label={book.name}
                               className={`group relative overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors sm:min-h-[232px] ${
                                 isCurrent
                                   ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
@@ -381,6 +383,11 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
                                     <GripVertical className="h-3.5 w-3.5" />
                                   </TooltipIconButton>
                                 )}
+                                <TooltipIconButton
+                                  label={t('bookStructure.change')}
+                                  className={`${iconButtonCls} bg-[var(--nova-surface)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100`}
+                                  onClick={() => setStructureBook(book)}
+                                ><ListTree className="size-3.5" /></TooltipIconButton>
                                 <TooltipIconButton
                                   label={t('home.editInfo')}
                                   className={`${iconButtonCls} bg-[var(--nova-surface)] opacity-100 sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100`}
@@ -432,6 +439,12 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
           onBookImported?.()
         }}
       />
+      <BookStructureDialog book={structureBook} onClose={() => setStructureBook(null)}
+        onBeforeApply={onBeforeSwitch}
+        onApplied={async () => {
+          await onBooksChange()
+          if (structureBook?.path === workspace) await onSwitch(workspace)
+        }} />
       <BookFormDialog
         open={Boolean(bookDialog)}
         mode={bookDialog?.mode || 'create'}

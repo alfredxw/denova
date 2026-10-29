@@ -121,11 +121,11 @@ func TestGameDraftModelSelectionPersistsWithoutCreatingStory(t *testing.T) {
 func TestWritingDraftRemembersSelectionAcrossBookProjects(t *testing.T) {
 	application := newExecutionProfileTestApp(t)
 	ctx := context.Background()
-	firstBook, err := application.CreateBook(ctx, t.TempDir(), "First", "", "")
+	firstBook, err := application.CreateBook(ctx, t.TempDir(), "First", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondBook, err := application.CreateBook(ctx, t.TempDir(), "Second", "", "")
+	secondBook, err := application.CreateBook(ctx, t.TempDir(), "Second", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

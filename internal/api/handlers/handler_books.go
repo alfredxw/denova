@@ -34,9 +34,10 @@ func (h *Handlers) HandleBooks(ctx context.Context, c *app.RequestContext) {
 // handleCreateBook POST /api/books/create — 创建新书籍工作区。
 func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) {
 	var req struct {
-		Title       string `json:"title"`
-		Author      string `json:"author,omitempty"`
-		Description string `json:"description,omitempty"`
+		Structure   book.ChapterStructure `json:"structure"`
+		Title       string                `json:"title"`
+		Author      string                `json:"author,omitempty"`
+		Description string                `json:"description,omitempty"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
@@ -44,6 +45,10 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 	}
 	if req.Title == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.books.titleRequired")
+		return
+	}
+	if req.Structure != "" && !req.Structure.Valid() {
+		writeErrorKey(c, consts.StatusBadRequest, "api.bookStructure.invalid")
 		return
 	}
 	req.Author = defaultBookAuthor(req.Author)
@@ -56,7 +61,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		writeErrorKey(c, consts.StatusInternalServerError, "api.books.novaDirMissing")
 		return
 	}
-	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, req.Title, req.Author, req.Description)
+	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, req.Title, req.Author, req.Description, req.Structure)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if strings.Contains(err.Error(), "已存在") {

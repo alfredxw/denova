@@ -1,6 +1,6 @@
 import { jsonHeaders, requestJSON } from './client'
 import { assertProjectScope } from './project-scope'
-import type { LoreItem, LoreItemInput, WorkspaceSummary } from './types'
+import type { ChapterStructure, StructurePreview, LoreItem, LoreItemInput, WorkspaceSummary } from './types'
 
 export interface ProjectBookFileNode {
   name: string
@@ -127,4 +127,16 @@ export async function deleteProjectLoreItem(projectId: string, id: string): Prom
     { method: 'DELETE' },
   )
   assertProjectScope(projectId, response.project_id)
+}
+
+export async function previewBookStructure(projectId: string, structure: ChapterStructure): Promise<StructurePreview> {
+  return requestJSON(`${projectBookURL(projectId)}/structure/preview`, {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify({ structure }),
+  })
+}
+
+export async function applyBookStructure(projectId: string, preview: StructurePreview): Promise<StructurePreview> {
+  return requestJSON(`${projectBookURL(projectId)}/structure`, {
+    method: 'PUT', headers: jsonHeaders, body: JSON.stringify({ structure: preview.to, revision: preview.revision }),
+  })
 }

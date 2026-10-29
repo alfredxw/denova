@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatDateTime, formatLocaleNumber } from '@/i18n'
-import type { BookRecord } from '@/lib/api'
+import type { BookRecord, ChapterStructure } from '@/lib/api'
 import {
   WorkbenchContextSwitcherTrigger,
   WORKBENCH_CONTEXT_MENU_CLASS,
@@ -23,6 +23,7 @@ import {
 interface BookSwitcherProps {
   books: BookRecord[]
   currentBookName: string
+  currentStructure?: ChapterStructure
   currentChapterCount?: number
   currentWordCount?: number
   workspace: string
@@ -37,6 +38,7 @@ export function BookSwitcher({
   books,
   currentBookName,
   currentChapterCount,
+  currentStructure,
   currentWordCount,
   workspace,
   compact = false,
@@ -116,7 +118,7 @@ export function BookSwitcher({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium text-[var(--nova-text)]">{book.name}</span>
                   <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]">
-                    {bookDetail(book, current, currentChapterCount, currentWordCount, t)}
+                    {bookDetail(book, current, currentChapterCount, currentWordCount, t, currentStructure)}
                   </span>
                 </span>
                 {loading ? (
@@ -165,16 +167,17 @@ function bookDetail(
   currentChapterCount: number | undefined,
   currentWordCount: number | undefined,
   t: TFunction,
+  structure?: ChapterStructure,
 ) {
   if (current) {
     if (typeof currentChapterCount === 'number' && typeof currentWordCount === 'number') {
-      return t('workbench.bookSwitcher.stats', {
+      return t(structure === 'sections' ? 'bookStructure.statsSections' : 'workbench.bookSwitcher.stats', {
         chapters: formatLocaleNumber(currentChapterCount),
         words: formatLocaleNumber(currentWordCount),
       })
     }
     return typeof currentChapterCount === 'number'
-      ? t('workbench.bookSwitcher.chapterCount', { count: formatLocaleNumber(currentChapterCount) })
+      ? t(structure === 'sections' ? 'bookStructure.sectionCount' : 'workbench.bookSwitcher.chapterCount', { count: formatLocaleNumber(currentChapterCount) })
       : t('workbench.bookSwitcher.current')
   }
   const lastOpened = formatDateTime(book.last_opened_at)

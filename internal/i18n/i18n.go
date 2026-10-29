@@ -77,6 +77,14 @@ func stringify(v any) string {
 }
 
 var catalogZH = map[string]string{
+	"api.bookStructure.backup":       "调整章节结构前的备份",
+	"api.bookStructure.invalid":      "请选择章、卷—章或卷—章—节结构。",
+	"api.bookStructure.conflict":     "作品已发生变化，请重新预览章节结构。",
+	"api.bookStructure.unsupported":  "目录中存在额外文件或超过三层的结构，请先整理这些内容再转换。",
+	"api.bookStructure.failed":       "无法完成章节结构操作，请重试。",
+	"api.bookStructure.firstVolume":  "第一卷",
+	"api.bookStructure.firstSection": "第一节",
+
 	"decision.classification.reason": "决策模型根据名称和资料内容匹配已有分类。",
 	"decision.trigger.title":         "语义条件已满足",
 	"decision.trigger.matched":       "当前证据满足已配置的语义条件。",
@@ -343,6 +351,14 @@ var catalogZH = map[string]string{
 }
 
 var catalogEN = map[string]string{
+	"api.bookStructure.backup":       "Before chapter structure change",
+	"api.bookStructure.invalid":      "Choose chapters, volumes and chapters, or volumes, chapters and sections.",
+	"api.bookStructure.conflict":     "The manuscript changed. Preview the structure again.",
+	"api.bookStructure.unsupported":  "The manuscript contains extra files or more than three levels. Organize these before converting.",
+	"api.bookStructure.failed":       "Could not complete the chapter structure operation. Please try again.",
+	"api.bookStructure.firstVolume":  "Volume 1",
+	"api.bookStructure.firstSection": "Section 1",
+
 	"decision.classification.reason": "Decision model matched an existing category using the name and content.",
 	"decision.trigger.title":         "Semantic condition satisfied",
 	"decision.trigger.matched":       "Current evidence satisfies the configured semantic condition.",

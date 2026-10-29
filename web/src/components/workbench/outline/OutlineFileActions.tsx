@@ -35,6 +35,7 @@ interface OutlineFileActionsProps {
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
+  createChapterLabel?: string
   onCreateChapter?: (volumePath: string) => void
 }
 
@@ -61,6 +62,7 @@ export function OutlineFileActions({
   onRenameItem,
   onDeleteItem,
   onCreateChapter,
+  createChapterLabel,
 }: OutlineFileActionsProps) {
   const { t } = useTranslation()
   const [renameOpen, setRenameOpen] = useState(false)
@@ -104,7 +106,7 @@ export function OutlineFileActions({
     ...(fileOperations?.projectId ? [{ label: t(platformPresentation.revealKey), icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: revealInFileManager }] : []),
   ])
   const actions = compactActions([
-    ...(onCreateChapter ? [{ label: t('planning.create.inVolume'), icon: <FilePlus2 className="h-3.5 w-3.5" />, onSelect: () => onCreateChapter(path) }] : []),
+    ...(onCreateChapter ? [{ label: t(createChapterLabel || 'planning.create.inVolume'), icon: <FilePlus2 className="h-3.5 w-3.5" />, onSelect: () => onCreateChapter(path) }] : []),
     ...(onCreateChapter ? [{ separator: true }] : []),
     ...(onReferenceFile ? [{ label: t('sidebar.referenceToChat'), icon: <AtSign className="h-3.5 w-3.5" />, onSelect: () => onReferenceFile(path) }] : []),
     ...(onReferenceFile && commonActions.length > 0 ? [{ separator: true }] : []),

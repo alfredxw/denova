@@ -64,11 +64,7 @@ func scanChapterPaths(workspace string) ([]chapterPathEntry, map[string][]chapte
 	directories := make(map[string][]chapterDirectoryEntry)
 	scanChapterDirectory(workspace, root, &entries, directories)
 	sort.Slice(entries, func(i, j int) bool {
-		left, right := entries[i], entries[j]
-		if cmp := compareChapterLikeNames(filepath.Base(left.Path), filepath.Base(right.Path)); cmp != 0 {
-			return cmp < 0
-		}
-		return left.Path < right.Path
+		return CompareManuscriptPaths(entries[i].Path, entries[j].Path) < 0
 	})
 	return entries, directories
 }

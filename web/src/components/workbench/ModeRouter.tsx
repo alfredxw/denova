@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import loadable from '@loadable/component'
 import { BookCreationProvider } from './book-creation'
+import { BookStructureDialog } from '@/components/Home/BookStructureDialog'
 import { PluginWorkspaceProvider } from '@/features/platform/PluginWorkspace'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
@@ -10,7 +11,7 @@ import type { OutlineRevealRequest } from '@/components/workbench/outline/Chapte
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
-import type { ChapterIllustration, ChapterSummary, DocumentPreview, WorkspaceSearchResult } from '@/lib/api'
+import type { BookRecord, ChapterIllustration, ChapterSummary, DocumentPreview, WorkspaceSearchResult } from '@/lib/api'
 import { GLOBAL_RESOURCE_TARGET, projectResourceTarget } from '@/lib/api'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
@@ -177,6 +178,11 @@ export function ModeRouter(props: ModeRouterProps) {
     onExitChatPlanMode,
     onDismissNotice,
   } = props
+  // Keep conversion previews alive when responsive layout remounts the sidebar.
+  const [structureBook, setStructureBook] = useState<Pick<BookRecord, 'project_id' | 'name'> | null>(null)
+  const openBookStructure = useCallback(() => {
+    setStructureBook({ project_id: projectId, name: currentBookName })
+  }, [currentBookName, projectId])
   const { categories: loreCategories } = useLoreCategories(projectId)
   const resourceTarget = useMemo(
     () => projectId.trim() ? projectResourceTarget(projectId) : GLOBAL_RESOURCE_TARGET,
@@ -280,6 +286,11 @@ export function ModeRouter(props: ModeRouterProps) {
     beforeCreate: flushBeforeWorkspaceSwitch,
     onCreated: onBookCreated,
   }), [flushBeforeWorkspaceSwitch, onBookCreated])
+
+  const refreshAfterBookStructureChange = useCallback(async () => {
+    await onBooksChange()
+    await onSwitchBook(workspace)
+  }, [onBooksChange, onSwitchBook, workspace])
 
   const quickSwitchBook = useCallback(async (path: string): Promise<boolean> => {
     flushComposerSettingsBestEffort()
@@ -664,6 +675,8 @@ export function ModeRouter(props: ModeRouterProps) {
       workspace={workspace}
       tree={tree}
       chapters={chapters}
+      structure={summary?.structure}
+      manuscript={summary?.manuscript}
       summaryAvailable={Boolean(summary)}
       ideas={summary?.ideas}
       outline={summary?.outline}
@@ -683,6 +696,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onSetChapterConfirmed={onSetChapterConfirmed}
       onSelectSearchResult={selectWorkspaceSearchResult}
       onBeforeReplace={flushBeforeWorkspaceSwitch}
+      onChangeStructure={openBookStructure}
       onExternalContentChange={notifyExternalContentChange}
       onSelectFile={selectWorkspacePath}
       onCreateItem={onCreateItem}
@@ -864,6 +878,8 @@ export function ModeRouter(props: ModeRouterProps) {
           onDismissNotice={onDismissNotice}
         />
         {writingAgent.portal}
+        <BookStructureDialog book={structureBook} onClose={() => setStructureBook(null)}
+          onBeforeApply={flushBeforeWorkspaceSwitch} onApplied={refreshAfterBookStructureChange} />
         </PluginWorkspaceProvider>
       </ToolNavigationProvider>
     </TrajectoryNavigationProvider>

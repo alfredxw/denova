@@ -180,7 +180,7 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 	if layered.Paths.DenovaDir == "" {
 		return character.ImportResult{}, errors.New("Denova data directory is not configured")
 	}
-	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, fields.bookTitle, "", "")
+	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, fields.bookTitle, "", "", "")
 	if err != nil {
 		return character.ImportResult{}, err
 	}

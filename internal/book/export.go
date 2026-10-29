@@ -37,7 +37,7 @@ func (s *Service) ExportText(meta BookMeta) (TextExport, error) {
 		blocks = append(blocks, strings.Join(headerLines, "\n"))
 	}
 
-	lastVolumePath := ""
+	lastAncestors := []ManuscriptNode{}
 	chapterCount := 0
 	for _, chapter := range summary.Chapters {
 		if chapter.Words == 0 {
@@ -51,13 +51,12 @@ func (s *Service) ExportText(meta BookMeta) (TextExport, error) {
 		if strings.TrimSpace(body) == "" {
 			continue
 		}
-		if shouldWriteExportVolume(chapter, lastVolumePath) {
-			blocks = append(blocks, chapter.Volume)
-			lastVolumePath = chapter.VolumePath
+		for i, ancestor := range chapter.Ancestors {
+			if i >= len(lastAncestors) || lastAncestors[i].Path != ancestor.Path {
+				blocks = append(blocks, ancestor.Title)
+			}
 		}
-		if chapter.VolumePath != "" {
-			lastVolumePath = chapter.VolumePath
-		}
+		lastAncestors = chapter.Ancestors
 		blocks = append(blocks, chapter.DisplayTitle, body)
 		chapterCount++
 	}
@@ -68,10 +67,6 @@ func (s *Service) ExportText(meta BookMeta) (TextExport, error) {
 		Content:      strings.TrimSpace(strings.Join(blocks, "\n\n")) + "\n",
 		ChapterCount: chapterCount,
 	}, nil
-}
-
-func shouldWriteExportVolume(chapter ChapterSummary, lastVolumePath string) bool {
-	return chapter.VolumePath != "" && chapter.VolumePath != "chapters" && chapter.VolumePath != lastVolumePath && strings.TrimSpace(chapter.Volume) != ""
 }
 
 func exportChapterBody(content, displayTitle string) string {

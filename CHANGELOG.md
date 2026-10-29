@@ -16,18 +16,22 @@ Denova records major user-visible features, important compatibility or data chan
 
 #### 中文
 
+- 章节结构支持章、卷—章、卷—章—节；已有作品可在书籍管理中预览调整并备份恢复。
 - 新增图表统计，可按项目和日期查看稿量变化、章节进度、游戏活动与模型用量。
 - 新增内置互动游戏创作 Skill，并支持按「游戏」分类管理 Skills。
 - 更新前后可查看本次升级跨越的全部版本变化。
 
 #### English
 
+- Choose chapters, volumes and chapters, or volumes, chapters and sections; preview and back up structure changes in Book Management.
 - Adds chart-based statistics for manuscript changes, chapter progress, Game activity, and model usage by project and date.
 - Adds a built-in interactive-game design Skill and a Game category for Skills.
 - Shows changes across every version included in an upgrade, before and after installation.
 
 ### Added / 新增
 
+- 新建和导入作品可选择一至三层章节结构，支持空卷、空章与分节编辑；已有作品可在书籍管理中预览转换，自动保存恢复版本，目录、Agent 阅读顺序与 TXT 导出保持一致。
+- New and imported books support one to three manuscript levels, empty volumes and chapters, and section editing. Book Management previews conversions and saves recovery versions; navigation, Agent reading order and TXT exports share the hierarchy.
 - 共通一级菜单新增「统计」，提供写作趋势、稿量分布、章节进度、游戏每日回合与故事线活动、模型调用与 Token 图表；稿量变化和模型用量从升级后开始记录，游戏活动从现存故事日志读取。可在常规设置中关闭本地统计，保留已有记录与创作内容。
 - A shared Statistics destination adds writing trends, manuscript and chapter charts, daily Game turns and story activity, model calls, and token breakdowns. Manuscript changes and model usage are recorded after upgrading; Game activity comes from retained story journals. Local statistics can be disabled in General settings while keeping existing records and creative content.
 - 内置互动游戏创作 Skill，支持游戏构思与核心循环、世界与角色资料库、状态系统、规则判定、游戏规划、开局回合和跑团诊断。

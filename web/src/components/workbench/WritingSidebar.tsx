@@ -5,7 +5,7 @@ import { LoadingState } from '@/components/common/LoadingState'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { WritingProjectExplorer } from '@/features/project-explorer/WritingProjectExplorer'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { ChapterSummary, DocumentPreview, WorkspaceSearchResult } from '@/lib/api'
+import type { ChapterStructure, ManuscriptNode, ChapterSummary, DocumentPreview, WorkspaceSearchResult } from '@/lib/api'
 import { ChapterOutline, type OutlineRevealRequest } from './outline/ChapterOutline'
 
 const StableSearchPanel = memo(SearchPanel)
@@ -19,6 +19,8 @@ interface WritingSidebarProps {
   workspace: string
   tree: FileNode[]
   chapters: ChapterSummary[]
+  structure?: ChapterStructure
+  manuscript?: ManuscriptNode[]
   summaryAvailable: boolean
   ideas?: DocumentPreview
   outline?: DocumentPreview
@@ -38,6 +40,7 @@ interface WritingSidebarProps {
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
   onSelectSearchResult: (result: WorkspaceSearchResult, query: string) => void
   onBeforeReplace: () => Promise<boolean>
+  onChangeStructure: () => void
   onExternalContentChange: (paths: string[]) => void | Promise<void>
   onSelectFile: (path: string) => boolean | void | Promise<boolean | void>
   onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
@@ -53,6 +56,8 @@ export const WritingSidebar = memo(function WritingSidebar({
   workspace,
   tree,
   chapters,
+  structure,
+  manuscript,
   summaryAvailable,
   ideas,
   outline,
@@ -72,6 +77,7 @@ export const WritingSidebar = memo(function WritingSidebar({
   onSetChapterConfirmed,
   onSelectSearchResult,
   onBeforeReplace,
+  onChangeStructure,
   onExternalContentChange,
   onSelectFile,
   onCreateItem,
@@ -111,6 +117,8 @@ export const WritingSidebar = memo(function WritingSidebar({
             workspace={workspace}
             tree={tree}
             chapters={chapters}
+            structure={structure}
+            manuscript={manuscript}
             ideas={ideas}
             outline={outline}
             chapterPlans={chapterPlans}
@@ -125,6 +133,7 @@ export const WritingSidebar = memo(function WritingSidebar({
             onDeleteItem={onDeleteItem}
             onCopyItem={onCopyItem}
             onCreateItem={onCreateItem}
+            onChangeStructure={onChangeStructure}
             onRequestBookSettingCreate={onRequestBookSettingCreate}
             onSetChapterConfirmed={onSetChapterConfirmed}
           />
