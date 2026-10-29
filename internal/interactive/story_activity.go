@@ -3,6 +3,8 @@ package interactive
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 )
 
@@ -16,25 +18,49 @@ type StoryActivity struct {
 }
 
 // ReadActivity reads one stable story revision without changing its selection.
-// It walks the union of branch ancestry once, using indexed Turn timestamps
-// without reading historical narrative bodies.
+// It snapshots indexed metadata under the Story lease, then walks the union of
+// branch ancestry outside the lease without reading historical prose.
 func (s *Store) ReadActivity(ctx context.Context, storyID string, from, until time.Time) (StoryActivity, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	release, err := s.acquireStoryReadLeaseLocked(storyID)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return StoryActivity{}, err
 	}
-	defer release()
-	handle, err := s.refreshStoryJournalLocked(storyID, false)
-	if err != nil {
+	var result StoryActivity
+	var branches []BranchMeta
+	var heads []string
+	var nodes map[string]storyModelNode
+	if err := func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		release, err := s.acquireStoryReadLeaseLocked(storyID)
+		if err != nil {
+			return err
+		}
+		defer release()
+		handle, err := s.refreshStoryJournalLocked(storyID, false)
+		if err != nil {
+			return err
+		}
+		result.Story = storySummaryFromProjection(handle.projection)
+		if result.Story.Preview {
+			return nil
+		}
+		for _, branch := range handle.projection.Meta.Branches {
+			branches = append(branches, branch)
+		}
+		for _, branch := range handle.projection.Branches {
+			heads = append(heads, branch.Head)
+		}
+		// Traversal reads only scalar node fields. Copy the map so a concurrent
+		// commit through this Store cannot change the captured ancestry.
+		nodes = maps.Clone(handle.projection.ModelNodes)
+		return nil
+	}(); err != nil {
 		return StoryActivity{}, err
 	}
-	result := StoryActivity{Story: storySummaryFromProjection(handle.projection)}
 	if result.Story.Preview {
 		return result, nil
 	}
-	for _, branch := range handle.projection.Meta.Branches {
+	for _, branch := range branches {
 		if branch.From == "" {
 			continue // The initial branch is not a newly explored alternative.
 		}
@@ -47,16 +73,16 @@ func (s *Store) ReadActivity(ctx context.Context, storyID string, from, until ti
 		}
 	}
 	visited := make(map[string]uint8)
-	for _, branch := range handle.projection.Branches {
+	for _, head := range heads {
 		var path []string
-		for id := branch.Head; id != ""; {
+		for id := head; id != ""; {
 			if err := ctx.Err(); err != nil {
 				return StoryActivity{}, err
 			}
 			if visited[id] == 2 {
 				break
 			}
-			node, found := handle.projection.ModelNodes[id]
+			node, found := nodes[id]
 			if !found || visited[id] == 1 {
 				return StoryActivity{}, fmt.Errorf("Game activity ancestry is incomplete at %s", id)
 			}
@@ -77,5 +103,6 @@ func (s *Store) ReadActivity(ctx context.Context, storyID string, from, until ti
 			visited[id] = 2
 		}
 	}
+	slices.SortFunc(result.TurnTimes, time.Time.Compare)
 	return result, nil
 }
