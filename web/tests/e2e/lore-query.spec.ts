@@ -28,8 +28,9 @@ for (const mode of ['writing', 'game'] as const) {
     await submitAgentChatMessage(page, composer, 'E2E_LORE_QUERY 请核对角色资料及分页结果。')
     await expect(page.getByText('E2E lore query verified.', { exact: true })).toBeVisible()
     const execution = page.locator('[data-agent-execution-process] [data-slot="collapsible-trigger"]').filter({ visible: true }).first()
-    await expect(execution).toHaveAttribute('data-state', 'closed')
-    await execution.click()
+    await expect(execution).toHaveAttribute('aria-busy', 'false')
+    // Completion preserves the process disclosure; loaded history may start collapsed.
+    if (await execution.getAttribute('data-state') === 'closed') await execution.click()
     const query = page.locator('[data-nova-tool-header]').filter({ hasText: '查询资料库', visible: true })
     await expect(query).toHaveCount(4)
     await query.nth(1).click()

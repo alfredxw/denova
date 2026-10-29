@@ -3,6 +3,7 @@ import path from 'node:path'
 import { runtimeRoot } from '../../scripts/e2e-paths.mjs'
 import { expect, test, type Locator, type Page } from '../support/fixtures'
 import { createAndOpenBook, createProjectFile, createStartedStory, readProjectFile, registerAgentChatProject } from '../support/api'
+import { revealAgentChatProject } from '../support/agent-chat'
 
 async function openRootMenu(tree: Locator) {
   const bounds = await tree.boundingBox()
@@ -16,6 +17,7 @@ test('creates from an empty project and keeps its menu usable on a narrow screen
   expect(settings.ok()).toBe(true)
   await page.addInitScript(() => localStorage.setItem('nova:mode', 'agentchat'))
   await page.goto('/')
+  await revealAgentChatProject(page, project.name)
   await page.locator(`[data-slot="agent-chat-project-toggle"][data-project-id="${project.id}"]`).click()
   await page.getByRole('button', { name: 'New tab', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Files', exact: true }).click()
@@ -100,6 +102,7 @@ for (const [product, theme] of [['Writing', 'dark'], ['Workspace', 'light']] as 
     await menu.getByRole('menuitem', { name: 'New File', exact: true }).click()
     await nameNewItem(page, 'nested.md')
     await expect.poll(async () => (await readProjectFile(request, book.projectId, 'notes/nested.md')).content ?? '').toBe('')
+    await expect(tree.locator('[data-item-path="notes/nested.md"][data-type="item"]')).toBeVisible()
     await tree.locator('[data-item-path="notes/source.md"][data-type="item"]').click({ button: 'right' })
     await menu.getByRole('menuitem', { name: 'Copy', exact: true }).click()
     await openRootMenu(tree)
