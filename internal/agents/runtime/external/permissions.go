@@ -49,10 +49,15 @@ func (PermissionPolicy) Resolve(context.Context, agentpermission.PermissionResol
 // hostPermissionError enforces the accepted engine selection where tools
 // actually execute. Engine process sandboxes do not contain host callbacks.
 // These modes have no interactive escalation: denied calls return a tool error.
-func (operation *Operation) hostPermissionError(call ToolCall, tool preparedTool) string {
+func (operation *Operation) hostPermissionError(call ToolCall, tool preparedTool, artifactPath string) string {
 	operation.mu.Lock()
 	files := append([]agentschema.Attachment(nil), operation.request.Input.Attachments...)
 	operation.mu.Unlock()
+	if artifactPath != "" {
+		// The session artifact resolver already verified this exact file. Give
+		// its read the same access as an immutable user attachment, not its directory.
+		files = append(files, agentschema.Attachment{RuntimePath: artifactPath})
+	}
 	return HostPermissionError(operation.request.Input.Selection, operation.request.ProjectID, operation.request.ToolPolicy.Workspace, call, tool.definition.Descriptor, files)
 }
 

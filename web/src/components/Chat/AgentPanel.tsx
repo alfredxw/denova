@@ -664,7 +664,7 @@ function AgentPanelComponent({
     onExitPlanMode,
     onResolveAsk: resolveAsk,
     activeRunId: runtimeProjection?.active_operation_id,
-    afterContent: <>
+    afterContent: recoveryFailed || runtimeProjection?.phase === 'suspended' || lastRuntimeFailure ? <>
       {recoveryFailed && <div role="alert" className="rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">
         <p>{t('chat.activity.recoveryFailed')}</p>
         <Button variant="outline" size="sm" className="mt-2" onClick={onRetryRecovery}>{t('chat.activity.retryRecovery')}</Button>
@@ -677,7 +677,7 @@ function AgentPanelComponent({
       >
         {t('chat.activity.requestFailed', { error: lastRuntimeFailure })}
       </div>
-    ) : null}</>,
+    ) : null}</> : null,
     afterContentKey: `${recoveryFailed}:${runtimeProjection?.phase || 'idle'}:${commandSubmitting}:${lastRuntimeFailure || ''}`,
   }
   const inputAreaProps = {

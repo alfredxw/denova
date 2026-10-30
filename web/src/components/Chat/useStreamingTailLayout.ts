@@ -81,11 +81,14 @@ export function useStreamingTailLayout({
     rowObserverRef.current = null
   }, [])
 
-  const resolveTailRow = useCallback((scroller: HTMLElement) => {
+  const resolveContentBottom = useCallback((scroller: HTMLElement) => {
     const rows = scroller.querySelectorAll<HTMLElement>('[data-nova-chat-tail-row]')
-    const renderedTail = rows.item(rows.length - 1)
-    if (renderedTail) return renderedTail
-    return rowElementRef.current
+    const row = rows.item(rows.length - 1) || rowElementRef.current
+    if (!row) return null
+    // Include footer content and spacing so following agrees with the browser's
+    // scroll boundary. The composer spacer itself is outside the content edge.
+    const spacer = scroller.querySelector<HTMLElement>('[data-nova-chat-bottom-spacer]')
+    return spacer ? spacer.getBoundingClientRect().top : row.getBoundingClientRect().bottom
   }, [])
 
   const syncLayout = useCallback(() => {
@@ -96,13 +99,12 @@ export function useStreamingTailLayout({
     // tool row disappears without re-firing that row's callback ref. Resolve
     // the rendered tail from the stable scroll container on every size report;
     // the ref remains only the fast path for immediate row-level resize events.
-    const row = resolveTailRow(scroller)
-    if (!row) return
+    const contentBottom = resolveContentBottom(scroller)
+    if (contentBottom === null) return
 
     const bottomInset = resolveBottomInset(scroller)
-    const rowBottom = row.getBoundingClientRect().bottom
     const safeBottom = scroller.getBoundingClientRect().bottom - bottomInset
-    const viewportDelta = rowBottom - safeBottom
+    const viewportDelta = contentBottom - safeBottom
 
     if (phaseRef.current === 'growing') {
       if (viewportDelta <= LAYOUT_EPSILON_PX) return
@@ -115,7 +117,7 @@ export function useStreamingTailLayout({
 
     scroller.scrollTop += viewportDelta
     onScrollTopChange(scroller)
-  }, [canAutoFollow, onScrollTopChange, resolveBottomInset, resolveScroller, resolveTailRow, setSpacer])
+  }, [canAutoFollow, onScrollTopChange, resolveBottomInset, resolveContentBottom, resolveScroller, setSpacer])
 
   const attachRowObserver = useCallback(() => {
     clearRowObserver()
@@ -138,17 +140,17 @@ export function useStreamingTailLayout({
   const scrollLatestIntoView = useCallback(() => {
     const scroller = resolveScroller()
     if (!scroller) return false
-    const row = resolveTailRow(scroller)
-    if (!row) return false
+    const contentBottom = resolveContentBottom(scroller)
+    if (contentBottom === null) return false
     phaseRef.current = 'following'
     setSpacer(undefined)
     const bottomInset = resolveBottomInset(scroller)
-    const viewportDelta = row.getBoundingClientRect().bottom
+    const viewportDelta = contentBottom
       - (scroller.getBoundingClientRect().bottom - bottomInset)
     if (Math.abs(viewportDelta) >= LAYOUT_EPSILON_PX) scroller.scrollTop += viewportDelta
     onScrollTopChange(scroller)
     return true
-  }, [onScrollTopChange, resolveBottomInset, resolveScroller, resolveTailRow, setSpacer])
+  }, [onScrollTopChange, resolveBottomInset, resolveContentBottom, resolveScroller, setSpacer])
 
   useLayoutEffect(() => {
     const wasEnabled = previousEnabledRef.current

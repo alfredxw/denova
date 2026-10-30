@@ -4,19 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"denova/config"
 
 	agentschema "github.com/alfredxw/denova/agent/schema"
 	agenttool "github.com/alfredxw/denova/agent/tool"
+	"github.com/invopop/jsonschema"
 )
 
 const defaultToolResultMaxBytes = config.DefaultAgentToolResultLimitKB * 1024
 
 type configReadInput struct {
 	Operation string   `json:"operation" jsonschema:"enum=describe,enum=list,enum=get" jsonschema_description:"describe returns resource contracts; list returns a cursor-paginated catalog; get reads exact IDs with partial-success reporting."`
-	Resource  string   `json:"resource,omitempty" jsonschema_description:"Resource kind. Omit only when operation=describe to inspect every available resource."`
+	Resource  string   `json:"resource,omitempty" jsonschema_description:"Exact registered resource name from the enum, not a UI page name. Omit only when operation=describe to inspect every available resource."`
 	IDs       []string `json:"ids,omitempty" jsonschema_description:"Exact resource IDs for operation=get. There is no arbitrary item-count limit; large responses continue with next_cursor."`
 	Scope     string   `json:"scope,omitempty" jsonschema_description:"Optional resource scope, such as user or workspace."`
 	Query     string   `json:"query,omitempty" jsonschema_description:"Optional adapter-specific catalog filter."`
@@ -26,7 +28,7 @@ type configReadInput struct {
 
 type configApplyInput struct {
 	Operation string         `json:"operation" jsonschema:"enum=create,enum=update,enum=delete" jsonschema_description:"One independently committed mutation."`
-	Resource  string         `json:"resource" jsonschema_description:"Resource kind returned by config_read describe."`
+	Resource  string         `json:"resource" jsonschema_description:"Exact registered resource name from the enum and config_read describe, not a UI page name."`
 	ID        string         `json:"id,omitempty" jsonschema_description:"Exact resource ID; required for update and delete."`
 	Scope     string         `json:"scope,omitempty" jsonschema_description:"Required for scoped resources such as skill and agent_profile."`
 	Revision  string         `json:"revision,omitempty" jsonschema_description:"Required for update and delete, and for agent_profile SubAgent create; custom Agent create has the same exact-scope revision requirement. Copy it from config_read."`
@@ -47,9 +49,19 @@ func NewTools(cfg *config.Config, maxResultBytes int) ([]agenttool.ToolDefinitio
 	if maxResultBytes <= 0 {
 		maxResultBytes = defaultToolResultMaxBytes
 	}
+	// Derive both tool schemas from the same registry used for execution, including
+	// resources that are available only when a workspace is bound.
+	resourceSchema := agenttool.WithSchemaModifier(func(name string, _ reflect.Type, _ reflect.StructTag, schema *jsonschema.Schema) {
+		if name == "resource" {
+			schema.Enum = make([]any, len(registry.names))
+			for i, resource := range registry.names {
+				schema.Enum[i] = resource
+			}
+		}
+	})
 	readTool, err := agenttool.InferTool(
 		"config_read",
-		"Inspect, list, or read Denova configuration resources through one typed registry. List and large exact reads return stable continuation cursors. Exact reads return existing items plus missing_ids/failures; only an entirely unsuccessful completed request fails. Call operation=describe before using an unfamiliar resource and keep returned revisions for later mutations.",
+		"Inspect, list, or read Denova configuration resources through one typed registry. List and large exact reads return stable continuation cursors. A single oversized item occupies its own page; when the result includes a complete-output artifact, use read on its path to retrieve the full page and continuation cursor. Exact reads return existing items plus missing_ids/failures; only an entirely unsuccessful completed request fails. Call operation=describe before using an unfamiliar resource and keep returned revisions for later mutations.",
 		func(ctx context.Context, input configReadInput) (string, error) {
 			value, err := registry.Read(ctx, ReadRequest{
 				Operation: input.Operation, Resource: input.Resource, IDs: input.IDs, Scope: input.Scope, Query: input.Query,
@@ -60,6 +72,7 @@ func NewTools(cfg *config.Config, maxResultBytes int) ([]agenttool.ToolDefinitio
 			}
 			return marshalConfigResourceResult(value)
 		},
+		resourceSchema,
 	)
 	if err != nil {
 		return nil, err
@@ -76,6 +89,7 @@ func NewTools(cfg *config.Config, maxResultBytes int) ([]agenttool.ToolDefinitio
 			}
 			return configApplyResult(value)
 		},
+		resourceSchema,
 	)
 	if err != nil {
 		return nil, err

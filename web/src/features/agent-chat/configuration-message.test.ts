@@ -42,6 +42,40 @@ describe('buildConfigurationAgentMessage', () => {
     expect(buildConfigurationAgentMessage('/new', { origin: 'lore' })).toBe('/new')
   })
 
+  it.each([
+    ['teller', 'narrative_style'],
+    ['director', 'game_planning'],
+    ['event', 'event_package'],
+    ['rule', 'rule_system'],
+    ['actor-state', 'state_system'],
+    ['image', 'image_preset'],
+  ])('uses the configuration tool resource and selected ID for %s', (kind, resource) => {
+    const message = buildConfigurationAgentMessage('Read the selected preset.', {
+      origin: 'teller',
+      resourceId: kind,
+      context: { active_resource_kind: kind, active_resource_id: 'selected-preset', item_count: '2' },
+    })
+    const metadata = JSON.parse(message.slice(message.indexOf('{')))
+    expect(metadata).toMatchObject({
+      origin: 'presets',
+      resource,
+      resource_id: 'selected-preset',
+      page_context: { item_count: '2' },
+    })
+    expect(metadata.page_context).not.toHaveProperty('active_resource_kind')
+    expect(metadata.page_context).not.toHaveProperty('active_resource_id')
+  })
+
+  it('does not invent a resource ID for an empty preset catalog', () => {
+    const message = buildConfigurationAgentMessage('Create a narrative style.', {
+      origin: 'teller', resourceId: 'teller',
+      context: { active_resource_kind: 'teller', active_resource_id: '' },
+    })
+    const metadata = JSON.parse(message.slice(message.indexOf('{')))
+    expect(metadata.resource).toBe('narrative_style')
+    expect(metadata).not.toHaveProperty('resource_id')
+  })
+
   it('routes extension work to development guidance and retains the latest bounded feedback', () => {
     const source = { developmentId: 'source', projectId: 'project', projectName: 'Project', kind: 'game' as const, relativePath: '.' }
     const message = buildDevelopmentMessage('Repair this game.', source, 'x'.repeat(20000) + 'latest failure')

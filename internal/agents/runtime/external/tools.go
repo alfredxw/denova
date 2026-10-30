@@ -168,10 +168,11 @@ func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool prep
 	var result agentschema.ToolResult
 	var callErr error
 	var invocation toolruntime.HostToolInvocation
-	if reason := operation.hostPermissionError(call, tool); reason != "" {
+	executionCall, artifactPath := operation.projectArtifactRead(ctx, call)
+	if reason := operation.hostPermissionError(executionCall, tool, artifactPath); reason != "" {
 		result = agenttool.ToolErrorResult(reason, i18n.New(operation.request.Locale).T("agentRuntime.toolPermissionDenied", "tool", call.Name))
 	} else {
-		outcome, err := toolruntime.InvokeHostTool(ctx, operation.request.ToolPolicy, identity, tool.definition, string(call.Arguments))
+		outcome, err := toolruntime.InvokeHostTool(ctx, operation.request.ToolPolicy, identity, tool.definition, string(executionCall.Arguments))
 		result, invocation, callErr = outcome.Result, outcome.Invocation, err
 	}
 	if callErr != nil {
@@ -232,6 +233,32 @@ func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool prep
 		return ToolResult{}, err
 	}
 	return ToolResult{Text: finished.Result, Success: finished.Success, Images: images}, callErr
+}
+
+// Artifact references in live results and reconstructed history are relative to
+// the session store. Resolve those reads before permission checks and execution;
+// the canonical call above retains the original portable arguments. Other read
+// paths continue through their existing filesystem or URI adapter.
+func (operation *Operation) projectArtifactRead(ctx context.Context, call ToolCall) (ToolCall, string) {
+	if call.Name != "read" {
+		return call, ""
+	}
+	resolver, ok := operation.request.Session.ToolArtifactStore().(agenttool.ToolArtifactPathResolver)
+	if !ok {
+		return call, ""
+	}
+	var arguments map[string]json.RawMessage
+	var path string
+	if json.Unmarshal(call.Arguments, &arguments) != nil || json.Unmarshal(arguments["path"], &path) != nil {
+		return call, ""
+	}
+	resolved, err := resolver.ResolveToolArtifactPath(ctx, path)
+	if err != nil {
+		return call, ""
+	}
+	arguments["path"], _ = json.Marshal(resolved)
+	call.Arguments, _ = json.Marshal(arguments)
+	return call, resolved
 }
 
 func (operation *Operation) transition(ctx context.Context, kind externaljournal.Kind, data any) error {
