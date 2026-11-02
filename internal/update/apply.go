@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"denova/internal/buildinfo"
 )
 
 const applyRestartDelay = 500 * time.Millisecond
@@ -96,6 +98,9 @@ func (s ApplyScheduler) Schedule(ctx context.Context) error {
 // Apply hands the observed staged transaction to the updater. expectedID must
 // match Status.ID; only an acknowledged handoff may trigger shutdown and exit.
 func (s *Service) Apply(ctx context.Context, shutdown func(), port int, expectedID string) (ApplyResult, error) {
+	if buildinfo.Distribution == "desktop" {
+		return ApplyResult{}, errors.New("desktop updates are managed by the desktop application")
+	}
 	if !updateOperation.TryLock() {
 		return ApplyResult{}, ErrUpdateBusy
 	}

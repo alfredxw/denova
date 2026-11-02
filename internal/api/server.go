@@ -26,6 +26,7 @@ type Server struct {
 	app    *app.App
 	port   string
 	host   string
+	access *remoteAccessGate
 }
 
 // NewServer 构造 HTTP 服务。
@@ -66,6 +67,7 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 	h.Use(requestObservabilityMiddleware)
 	h.Use(corsMiddleware)
 	accessGate := newRemoteAccessGate(application.RemoteAccessConfig, port)
+	s.access = accessGate
 	h.Use(accessGate.middleware)
 	h.Use(analyticsMiddleware(application))
 	accessGate.registerRoutes(h)
@@ -76,7 +78,7 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 	// path while preserving compressed transfers. SSE stays unbuffered.
 	h.Use(hertzgzip.Gzip(gzip.BestSpeed, hertzgzip.WithExcludedPathRegexes([]string{
 		`^/api/.*/stream(?:\?.*)?$`,
-		`^/api/(?:chat|interactive/chat|projects/[^/]+/agent-chat/chat|workspace/events)(?:\?.*)?$`,
+		`^/api/(?:chat|interactive/chat|projects/[^/]+/(?:agent-chat/chat|events)|workspace/events)(?:\?.*)?$`,
 	})))
 	s.registerRoutes(h)
 	s.engine = h
@@ -88,4 +90,22 @@ func (s *Server) Run() {
 	slog.InfoContext(context.Background(), "http_server_started", "host", s.host, "port", s.port)
 	s.engine.Spin()
 	slog.InfoContext(context.Background(), "http_server_stopped")
+}
+
+// EnableDesktopAccess grants the owned Electron transport access. Call once,
+// before serving; the per-launch secret travels only over the parent pipe.
+func (s *Server) EnableDesktopAccess(token string) { s.access.desktopToken = token }
+
+// RunUntil lets the desktop owner request the same graceful HTTP shutdown as
+// an ordinary server signal, including draining live event subscriptions.
+func (s *Server) RunUntil(ctx context.Context) {
+	s.engine.SetCustomSignalWaiter(func(failures chan error) error {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-failures:
+			return err
+		}
+	})
+	s.Run()
 }

@@ -7,12 +7,16 @@ import (
 	"time"
 
 	"denova/config"
+	"denova/internal/buildinfo"
 	"denova/internal/update"
 )
 
 // Update scheduling belongs to the App, never to a browser or Agent runtime.
 // Both workers share root cancellation and are joined by App.Close.
 func (a *App) startSoftwareUpdates(ctx context.Context) {
+	if buildinfo.Distribution == "desktop" {
+		return
+	}
 	for _, work := range []func(context.Context){
 		func(ctx context.Context) { a.updates.RunAutomatic(ctx, a.updatePolicy) },
 		a.waitForUpdateRestart,

@@ -78,7 +78,7 @@ func (s *Service) checkRelease(release githubRelease) CheckResult {
 		CurrentVersion:  current,
 		LatestVersion:   latest,
 		UpdateAvailable: updateAvailable,
-		CanInstall:      updateAvailable && asset != nil && selectChecksumAsset(release.Assets) != nil,
+		CanInstall:      buildinfo.Distribution == "web" && updateAvailable && asset != nil && selectChecksumAsset(release.Assets) != nil,
 		Platform:        platform,
 		ReleaseURL:      release.HTMLURL,
 		PublishedAt:     release.PublishedAt,

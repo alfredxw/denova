@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"denova/internal/buildinfo"
 )
 
 const (
@@ -20,6 +22,9 @@ type Policy struct {
 }
 
 func (s *Service) beginOperation(operation string) error {
+	if buildinfo.Distribution == "desktop" && operation != "checking" {
+		return errors.New("desktop updates are managed by the Electron application")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.operation != "" {

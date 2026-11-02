@@ -20,6 +20,7 @@ import (
 // remoteAccessGate owns browser authentication for one server. Static application
 // assets and explicit auth endpoints bootstrap the UI; all user resources stay behind the gate.
 type remoteAccessGate struct {
+	desktopToken string
 	config       func() config.RemoteAccessConfig
 	sessions     *browserSessions
 	cookieName   string
@@ -37,6 +38,17 @@ func (g *remoteAccessGate) middleware(ctx context.Context, c *app.RequestContext
 	// Isolated plugin/game views must not read legacy APIs through the host's
 	// cookies or embed private resources as images, frames, or scripts.
 	c.Response.Header.Set("Cross-Origin-Resource-Policy", "same-origin")
+	if g.desktopToken != "" && isLocalClientIP(directClientIP(c)) &&
+		subtle.ConstantTimeCompare(c.GetHeader("X-Denova-Desktop"), []byte(g.desktopToken)) == 1 &&
+		string(c.GetHeader("Origin")) == "https://denova.localhost" {
+		// WebSocket upgraders retain their local HTTP origin check. Ordinary
+		// requests keep the real renderer origin for extension frame policies.
+		if strings.EqualFold(string(c.GetHeader("Upgrade")), "websocket") {
+			c.Request.Header.Set("Origin", "http://"+string(c.Host()))
+		}
+		c.Next(ctx)
+		return
+	}
 	if strings.HasPrefix(string(c.Path()), "/api/") && (len(c.GetHeader("Origin")) > 0 || len(c.GetHeader("Referer")) > 0) && !sameOriginRequest(c) {
 		abortWithLocalizedError(c, consts.StatusForbidden, "api.access.originRejected")
 		return
