@@ -39,6 +39,13 @@ async function launch() {
   page.setDefaultTimeout(30_000)
   page.on('pageerror', error => errors.push(error.message))
   await page.waitForURL('https://denova.localhost/**', { timeout: 30_000 })
+  // CI displays can clamp the initial window below the desktop breakpoint.
+  await application.evaluate(({ app, BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.setContentSize(1280, 850)
+    app.focus({ steal: true })
+    window.focus()
+  })
   await expect(page.getByLabel('工作台侧边栏')).toBeVisible({ timeout: 60_000 })
   backendOrigin = await page.evaluate(() => window.denovaDesktop.backendOrigin)
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -95,7 +102,8 @@ try {
   }
   await page.screenshot({ path: path.join(artifacts, 'desktop-empty.png'), animations: 'disabled' })
   await application.evaluate(async ({ clipboard, ClipboardItem }) => {
-    globalThis.denovaSmokeClipboard = await Promise.all((await clipboard.read()).map(async item =>
+    // A fresh desktop can expose an empty item without any clipboard formats.
+    globalThis.denovaSmokeClipboard = await Promise.all((await clipboard.read()).filter(item => item.types.length > 0).map(async item =>
       new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)]))))))
   })
   try {
@@ -308,12 +316,27 @@ try {
   assert.deepEqual(await application.evaluate(() => globalThis.denovaSmokeMainErrors), [])
   await api('/api/auth/status')
   console.log('Disconnected launcher pipes preserve logging and backend requests')
-  await page.evaluate(() => document.documentElement.requestFullscreen())
-  assert.equal(await page.evaluate(() => !!document.fullscreenElement), true)
-  await expect.poll(() => application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFullScreen())).toBe(true)
-  await page.keyboard.press('Escape')
+  // Native fullscreen needs an active window, which a test launcher cannot
+  // assume on macOS. CDP key events also do not invoke the native Escape action.
+  await application.evaluate(({ app, BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    app.focus({ steal: true })
+    window.focus()
+    globalThis.denovaSmokeFullscreen = 'windowed'
+    window.once('enter-full-screen', () => { globalThis.denovaSmokeFullscreen = 'entered' })
+    window.once('leave-full-screen', () => { globalThis.denovaSmokeFullscreen = 'left' })
+  })
+  await expect.poll(() => application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())).toBe(true)
+  await page.evaluate(() => { void document.documentElement.requestFullscreen() })
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true)
+  // macOS reports isFullScreen before its animation has finished. Wait for the
+  // native transition event before requesting the opposite transition.
+  await expect.poll(() => application.evaluate(() => globalThis.denovaSmokeFullscreen), { timeout: 15_000 }).toBe('entered')
+  assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFullScreen()), true)
+  await page.evaluate(() => { void document.exitFullscreen() })
+  await expect.poll(() => application.evaluate(() => globalThis.denovaSmokeFullscreen), { timeout: 15_000 }).toBe('left')
   await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false)
-  await expect.poll(() => application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFullScreen())).toBe(false)
+  assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFullScreen()), false)
   console.log('Fullscreen passed')
   await close()
   const shellLog = readFileSync(path.join(userData, 'log/desktop.log'), 'utf8')

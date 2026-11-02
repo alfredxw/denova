@@ -29,6 +29,8 @@ async function launch() {
   page = await application.firstWindow()
   page.setDefaultTimeout(30_000)
   await page.waitForURL('https://denova.localhost/**')
+  // CI displays can clamp the initial window below the desktop breakpoint.
+  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 850))
   // Empty roots resolve to the bookshelf, but the shell can restore Settings
   // after a relaunch. Wait for either surface before using its toggle button.
   await expect(page.getByRole('heading', { name: '书籍管理', exact: true })
