@@ -64,15 +64,18 @@ async function api(route, method = 'GET', body) {
 async function close() {
   const current = application
   if (!current) return
-  const exited = once(current.process(), 'exit', { signal: AbortSignal.timeout(30_000) })
-  await current.evaluate(({ app, dialog }) => {
+  await current.evaluate(({ dialog }) => {
     dialog.showMessageBox = async options => {
       if (options.message !== '退出 Denova？') throw new Error(`Unexpected quit dialog: ${options.message}`)
       return { response: 1, checkboxChecked: false }
     }
-    app.quit()
   })
-  const [code, signal] = await exited
+  // Playwright must detach its debugger explicitly once stderr is disconnected;
+  // otherwise Node waits for a debugger that cannot see its shutdown message.
+  const [[code, signal]] = await Promise.all([
+    once(current.process(), 'exit', { signal: AbortSignal.timeout(30_000) }),
+    current.close(),
+  ])
   assert.equal(code, 0, `Desktop did not quit normally: ${signal}`)
   application = undefined
 }
