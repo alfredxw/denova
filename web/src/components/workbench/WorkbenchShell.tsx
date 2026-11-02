@@ -488,6 +488,7 @@ export function WorkbenchShell({
       <SidebarProvider
         ref={activityBarSizing.wrapperRef}
         open={activityBarExpanded}
+        data-activity-bar-expanded={activityBarExpanded}
         style={{
           '--sidebar-width': `${activityBarSizing.width}px`,
           '--sidebar-width-icon': `${ACTIVITY_BAR_COLLAPSED_WIDTH}px`,

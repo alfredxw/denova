@@ -39,13 +39,14 @@ export function FieldRow({ label, description, children }: { label: string; desc
   )
 }
 
-function ValueRow({ label, children }: { label: string; children: ReactNode }) {
+function ValueRow({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
     <SettingsFieldRow
       title={label}
+      description={description}
       className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
       contentClassName="sm:w-44 sm:flex-none"
-      controlClassName="flex-1"
+      controlClassName="flex-1 gap-2"
     >
       {children}
     </SettingsFieldRow>
@@ -66,13 +67,14 @@ export function TextSizeRow({ label, description, children }: { label: string; d
   )
 }
 
-export function ReadOnly({ label, value }: { label: string; value?: string }) {
+export function ReadOnly({ label, value, description, action }: { label: string; value?: string; description?: string; action?: ReactNode }) {
   const { t } = useTranslation()
   return (
-    <ValueRow label={label}>
-      <code className="min-h-7 flex-1 truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
+    <ValueRow label={label} description={description}>
+      <code title={value} className="min-h-7 min-w-0 flex-1 truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
         {value || t('common.notSet')}
       </code>
+      {action}
     </ValueRow>
   )
 }

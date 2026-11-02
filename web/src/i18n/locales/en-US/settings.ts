@@ -1,4 +1,5 @@
 const settings = {
+  'settings.updates.desktopManaged': 'Manage updates in the Denova desktop application.',
   'settings.updates.notes.thisUpgrade': 'This upgrade',
   'settings.updates.notes.availableTitle': 'Update to {{version}}',
   'settings.updates.notes.completedTitle': 'Updated to {{version}}',
@@ -451,6 +452,9 @@ const settings = {
   'settings.imageApi.workflowUpload': 'Import API JSON',
   'settings.imageApi.workflowImportedHint': 'Imported ComfyUI API Format JSON is ready to generate. Recognizable prompt, image count, and size inputs are injected before execution.',
   'settings.paths.novaDir': 'Denova Data Directory',
+  'settings.paths.change': 'Change folder…',
+  'settings.paths.changeHint': 'Selecting a folder restarts the app. Existing data will not be moved.',
+  'settings.paths.changeFailed': 'Could not change the data folder. Please try again.',
   'settings.paths.skillsDir': 'Skills Directory',
   'settings.paths.userConfig': 'User Config File',
   'settings.onboarding.title': 'New User Guide',

@@ -36,6 +36,7 @@ import { TextSizeControl } from './TextSizeControl'
 import { LANAccessSettings } from './LANAccessSettings'
 import { UpdateSettings } from './UpdateSettings'
 import { MarketSettings } from './MarketSettings'
+import { DataDirectorySetting } from './DataDirectorySetting'
 import { SETTINGS_SECTIONS, type SettingsFieldRequest, type SettingsSectionId } from './settings-sections'
 import { modelProfilesForEditor, modelEndpointsForEditor, imageAPIProfilesForEditor, imageAPIEndpointsForEditor } from './settings-editor-draft'
 import { FieldRow, TextSizeRow, ReadOnly, Text, Num, BoolTri, AgentApprovalModeSelect, ShellEnvironmentSelect, TraceCaptureSelect, TraceExporterSelect, LanguageSelect, ThemeSelect, MotionIntensitySelect, AgentTraceDisplaySelect, TellerSelect } from './SettingsFields'
@@ -46,10 +47,11 @@ interface SettingsSectionsProps {
   setDraft: Dispatch<SetStateAction<Settings>>
   fieldRequest?: SettingsFieldRequest
   onSelectSection: (id: SettingsSectionId) => void
+  onSave: () => Promise<unknown>
 }
 
 /** Keep the form independent of route visibility, navigation, and autosave status. */
-export const SettingsSections = memo(function SettingsSections({ layered, draft, setDraft, fieldRequest, onSelectSection }: SettingsSectionsProps) {
+export const SettingsSections = memo(function SettingsSections({ layered, draft, setDraft, fieldRequest, onSelectSection, onSave }: SettingsSectionsProps) {
   const { t } = useTranslation()
   const approval = useAgentApprovalMode()
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
@@ -377,7 +379,7 @@ export const SettingsSections = memo(function SettingsSections({ layered, draft,
       <>
         <Text label={t('settings.paths.skillsDir')} value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
               onChange={(v) => setField('skills_dir', v)} />
-        <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.denova_dir || layered?.paths?.nova_dir} />
+        <DataDirectorySetting value={layered?.paths?.denova_dir || layered?.paths?.nova_dir} onBeforeChange={onSave} />
         <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
       </>
     ),

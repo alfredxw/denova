@@ -11,6 +11,7 @@ import type { CompletedUpdate, UpdateCheckResult, UpdateInstallProgress, UpdateI
 import { UpdateNotesDialog, UpdateNotesView } from '@/features/updates/UpdateNotes'
 import { notifyUpdateCheckResult } from './update-events'
 import { scheduleFrontendReloadAfterUpdate } from './update-reload'
+import { desktopBridge } from '@/lib/desktop'
 
 type UpdateOperation = 'idle' | 'checking' | 'installing' | 'uploading' | 'applying' | 'restarting' | 'waiting'
 
@@ -30,6 +31,7 @@ export function useUpdateSettings() {
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [backgroundError, setBackgroundError] = useState<string | null>(null)
   const [activeWork, setActiveWork] = useState(false)
+  const [distribution, setDistribution] = useState<'web' | 'desktop'>(desktopBridge() ? 'desktop' : 'web')
   const requestActive = useRef(false)
   const restartTarget = useRef<{ id: string; monitoring: boolean } | null>(null)
   const cancelReload = useRef<(() => void) | undefined>(undefined)
@@ -39,6 +41,7 @@ export function useUpdateSettings() {
     cancelReload.current?.()
     setUpdateError(null)
     setOperation('restarting')
+    if (desktopBridge()) return
     cancelReload.current = scheduleFrontendReloadAfterUpdate(target, { onError: (reason, status) => {
       // Keep this attempt's identity after timeout. Passive status polls may
       // recover its state, but only an explicit retry starts a new deadline.
@@ -56,6 +59,7 @@ export function useUpdateSettings() {
     const status = await getUpdateStatus(AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]))
     if (signal?.aborted || (signal && (requestActive.current || restartTarget.current?.monitoring))) return
     setActiveWork(Boolean(status.busy))
+    setDistribution(status.distribution || 'web')
     setCompletedUpdate(status.completed_update ?? null)
     if (status.check) setUpdateStatus(status.check)
     setOperation(status.restart_waiting ? 'waiting' : status.operation === 'downloading' ? 'installing' : status.operation || 'idle')
@@ -180,6 +184,7 @@ export function useUpdateSettings() {
   }
 
   return {
+    distribution,
     activeWork,
     completedUpdate,
     status: updateStatus,
@@ -197,6 +202,7 @@ export function useUpdateSettings() {
 }
 
 export function UpdatePanel({
+  distribution,
   activeWork,
   completedUpdate,
   onWait,
@@ -233,6 +239,9 @@ export function UpdatePanel({
       : completedUpdate
         ? { fromVersion: completedUpdate.previous_version, toVersion: completedUpdate.version, kind: 'completed' as const }
         : null
+  if (distribution === 'desktop' && !desktopBridge()) {
+    return <p className="text-[var(--nova-text-muted)]">{t('settings.updates.desktopManaged')}</p>
+  }
   const installActions = <>
     {!applyReady && <Button size="sm" onClick={onInstall} disabled={installDisabled}>
       {installing ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Download data-icon="inline-start" />}
@@ -333,7 +342,7 @@ export function UpdatePanel({
           {installActions}
         </div>
       </div>
-      <Collapsible className="mt-3">
+      {distribution !== 'desktop' && <Collapsible className="mt-3">
         <CollapsibleTrigger asChild>
           <Button variant="ghost" size="sm" className="group w-full justify-start">
             <ChevronDown data-icon="inline-start" className="transition-transform group-data-[state=open]:rotate-180" />
@@ -370,7 +379,7 @@ export function UpdatePanel({
             </div>
           </div>
         </CollapsibleContent>
-      </Collapsible>
+      </Collapsible>}
       {notesTarget && <UpdateNotesDialog range={notesTarget} kind={notesTarget.kind} open={notesOpen} onOpenChange={setNotesOpen} error={error}
         actions={notesTarget.kind === 'available' && installActions} />}
     </div>

@@ -1,0 +1,48 @@
+{
+  "name": "denova-desktop",
+  "version": "0.6.3",
+  "private": true,
+  "description": "Denova AI creation workspace",
+  "author": "Denova contributors",
+  "license": "MIT",
+  "main": "src/main.cjs",
+  "packageManager": "pnpm@11.15.1",
+  "scripts": {
+    "build:backend": "node scripts/prepare.mjs",
+    "dev": "electron .",
+    "package": "electron-builder --publish never",
+    "test": "node --test test/*.test.cjs",
+    "test:smoke": "node test/smoke.mjs && node test/data-directory.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "app.denova.desktop",
+    "productName": "Denova",
+    "copyright": "Copyright © Denova contributors",
+    "asar": true,
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "files": ["src/**", "assets/tray.png"],
+    "extraResources": [{ "from": "build/backend", "to": "backend" }],
+    "publish": [{ "provider": "github", "owner": "alfredxw", "repo": "denova" }],
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64"] }, { "target": "zip", "arch": ["arm64"] }],
+      "artifactName": "denova-desktop-${version}-mac-${arch}.${ext}",
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.png",
+      "hardenedRuntime": true,
+      "notarize": true
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "artifactName": "denova-desktop-${version}-win-${arch}.${ext}",
+      "icon": "assets/icon.png"
+    },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false }
+  }
+}

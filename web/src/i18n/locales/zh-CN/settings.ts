@@ -1,4 +1,5 @@
 const settings = {
+  'settings.updates.desktopManaged': '请在 Denova 桌面应用中管理更新。',
   'settings.updates.notes.thisUpgrade': '本次升级',
   'settings.updates.notes.availableTitle': '更新到 {{version}}',
   'settings.updates.notes.completedTitle': '已更新到 {{version}}',
@@ -451,6 +452,9 @@ const settings = {
   'settings.imageApi.workflowUpload': '导入 API JSON',
   'settings.imageApi.workflowImportedHint': '已导入 ComfyUI API Format JSON，可直接用于生成；执行前会自动写入可识别的提示词、图片数量和尺寸。',
   'settings.paths.novaDir': 'Denova 数据目录',
+  'settings.paths.change': '切换目录…',
+  'settings.paths.changeHint': '选择后将重启应用，当前数据不会自动搬迁。',
+  'settings.paths.changeFailed': '切换数据目录失败，请重试。',
   'settings.paths.skillsDir': 'Skills 目录',
   'settings.paths.userConfig': '用户配置文件',
   'settings.onboarding.title': '新手引导',

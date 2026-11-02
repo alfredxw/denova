@@ -16,6 +16,13 @@ nova-windows-test/
 nova-test.exe
 data/
 web/node_modules/
+desktop/node_modules/
+desktop/build/
+desktop/dist/
+desktop/assets/icon.icns
+desktop/assets/icon.ico
+desktop/assets/tray.png
+desktop/assets/icon.png
 web/dist/
 web/playwright-report/
 web/test-results/
@@ -34,6 +41,7 @@ docs/tests/*
 !docs/skills-library.md
 !docs/lore-index.md
 !docs/automatic-updates.md
+!docs/desktop-distribution.md
 !docs/speech.md
 !docs/analytics.md
 !docs/creative-evaluation.md

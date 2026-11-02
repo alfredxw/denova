@@ -1,4 +1,5 @@
 import { APIError, fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
+import { desktopBridge } from '@/lib/desktop'
 import type { ComfyUIWorkflowCatalog, ComfyUIWorkflowSnapshot, ImageAPIEndpointSettings, ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelEndpointSettings, ModelPingResult, ModelProfileSettings, SettingsLayer, UpdateStatus, UpdateApplyResult, UpdateCheckResult, UpdateInstallResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
@@ -127,6 +128,7 @@ function sameQueryKey(left: readonly unknown[], right: readonly unknown[]): bool
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
+  if (desktopBridge()) return desktopBridge()!.updates.check()
   return requestJSON('/api/update/check')
 }
 
@@ -137,6 +139,24 @@ export function getUpdateNotes(range: UpdateNotesRange, signal?: AbortSignal): P
 }
 
 export async function installUpdateStream(signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
+  const desktop = desktopBridge()
+  if (desktop) {
+    return new ReadableStream<SSEEvent>({
+      async start(controller) {
+        let finished = false
+        const timer = setInterval(() => {
+          void desktop.updates.status().then(status => {
+            if (!finished && status.progress) controller.enqueue({ event: 'update_progress', data: JSON.stringify(status.progress) })
+          }).catch(error => console.warn('[desktop/update] progress unavailable', error))
+        }, 500)
+        try {
+          const result = await desktop.updates.download()
+          controller.enqueue({ event: 'update_result', data: JSON.stringify(result) })
+          controller.close()
+        } catch (error) { controller.error(error) } finally { finished = true; clearInterval(timer) }
+      },
+    })
+  }
   const res = await fetchAPI('/api/update/install/stream', { method: 'POST', signal })
   if (!res.ok) throw new Error(await readErrorMessage(res))
   if (!res.body) throw new Error('No response body')
@@ -144,6 +164,7 @@ export async function installUpdateStream(signal?: AbortSignal): Promise<Readabl
 }
 
 export async function applyUpdate(when: 'now' | 'when_idle' | 'cancel' = 'now'): Promise<UpdateApplyResult> {
+  if (desktopBridge()) return desktopBridge()!.updates.apply(when)
   return requestJSON('/api/update/apply', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ when }) })
 }
 
@@ -209,5 +230,6 @@ export function loadComfyUIWorkflow(endpoint: ImageAPIEndpointSettings, profile:
 }
 
 export function getUpdateStatus(signal?: AbortSignal): Promise<UpdateStatus> {
+  if (desktopBridge()) return desktopBridge()!.updates.status()
   return requestJSON('/api/update/status', { signal, cache: 'no-store' })
 }

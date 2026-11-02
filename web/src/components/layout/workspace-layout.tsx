@@ -259,6 +259,7 @@ export function WorkspaceLayout({
                 groupResizeBehavior="preserve-pixel-size"
                 className="min-w-[180px]"
                 data-nova-collapsible-panel="sidebar"
+                data-nova-leading-pane={sidebarVisible}
                 onResize={(size) => {
                   if (!horizontalPanelLayout.isUserResizeActive() || !Number.isFinite(size.inPixels) || size.inPixels <= 0) return
                   persistWorkspaceSidebarWidth(size.inPixels)
@@ -275,7 +276,7 @@ export function WorkspaceLayout({
               />
             </>
           )}
-          <Panel id="center" minSize={rightPanelWide ? '260px' : '30%'} className="min-w-0">
+          <Panel id="center" minSize={rightPanelWide ? '260px' : '30%'} className="min-w-0" data-nova-leading-pane={!sidebar || !sidebarVisible}>
             <Group
               id="nova-workspace-main-vertical"
               disableCursor

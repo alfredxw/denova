@@ -64,6 +64,6 @@ export async function closeTerminalSession(id: string): Promise<void> {
 
 /** Build the attach WebSocket URL, following the page protocol so HTTPS deployments use wss. */
 export function terminalAttachURL(id: string, token: string): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/api/terminal/sessions/${encodeURIComponent(id)}/attach?token=${encodeURIComponent(token)}`
+  const origin = window.denovaDesktop?.backendOrigin || window.location.origin
+  return `${origin.replace(/^http/, 'ws')}/api/terminal/sessions/${encodeURIComponent(id)}/attach?token=${encodeURIComponent(token)}`
 }

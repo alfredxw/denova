@@ -239,8 +239,8 @@ function ActivityBarBrandRow({
 
   if (expanded) {
     return (
-      <div className="grid h-8 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
-        <span className="flex size-8 items-center justify-center"><WorkbenchBrandIcon /></span>
+      <div className="nova-activity-brand-row grid h-8 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
+        <span className="nova-activity-brand-icon flex size-8 items-center justify-center"><WorkbenchBrandIcon /></span>
         <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span>
         {toggle}
       </div>
@@ -248,11 +248,11 @@ function ActivityBarBrandRow({
   }
 
   return (
-    <div className="group/activity-toggle relative flex h-8 items-center justify-center">
-      <span className="pointer-events-none flex size-8 items-center justify-center opacity-100 transition-opacity group-hover/activity-toggle:opacity-0 group-focus-within/activity-toggle:opacity-0 motion-reduce:transition-none">
+    <div className="nova-activity-brand-row group/activity-toggle relative flex h-8 items-center justify-center">
+      <span className="nova-activity-brand-icon pointer-events-none flex size-8 items-center justify-center opacity-100 transition-opacity group-hover/activity-toggle:opacity-0 group-focus-within/activity-toggle:opacity-0 motion-reduce:transition-none">
         <WorkbenchBrandIcon />
       </span>
-      <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/activity-toggle:opacity-100 group-focus-within/activity-toggle:opacity-100 motion-reduce:transition-none">
+      <span className="nova-activity-brand-toggle absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/activity-toggle:opacity-100 group-focus-within/activity-toggle:opacity-100 motion-reduce:transition-none">
         {toggle}
       </span>
     </div>

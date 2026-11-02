@@ -724,6 +724,7 @@ export interface UpdateInstallProgress {
 }
 
 export interface UpdateStatus {
+  distribution?: 'web' | 'desktop'
   completed_update?: CompletedUpdate
   check?: UpdateCheckResult
   checked_at?: string
