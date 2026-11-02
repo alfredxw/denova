@@ -83,6 +83,10 @@ Denova 把小说写作、互动故事、结构化资料库、AI Agent、图像�
 
 ### 安装发布版
 
+Denova 支持 Web 与 Electron 桌面两种分发。桌面版提供 macOS Apple Silicon 的 DMG 和 Windows x64 的 EXE 安装器；不提供 macOS Intel 或 Linux 桌面包。桌面入口首次发行前，可按[桌面构建说明](docs/desktop-distribution.md)从源码打包。
+
+Web 分发继续支持 Windows、macOS 和 Linux：
+
 macOS / Linux 可以使用一键安装脚本：
 
 ```bash

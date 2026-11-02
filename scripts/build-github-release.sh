@@ -127,9 +127,9 @@ EOF
 
 - The release workflow requires successful CI for the exact tagged commit, including both Go modules, frontend unit tests, translations, and browser journeys against the built distribution.
 - Packaging reuses the frontend from that CI run; platform archives are compiled in parallel without repeating the test suites.
-- Packaging: five platform archives are generated from the same source revision and listed in `checksums.txt`.
+- Packaging: five Web platform archives and macOS Apple Silicon / Windows x64 desktop installers are generated from the same source revision and listed in `checksums.txt`. Native desktop smoke checks run on both target operating systems.
 
-发布流程要求标签对应提交的 CI 成功，覆盖两个 Go module、前端单测、双语键检查、生产构建及构建产物上的浏览器流程；复用该次 CI 的前端产物，并行生成五个平台压缩包及 `checksums.txt`。
+发布流程要求标签对应提交的 CI 成功，覆盖两个 Go module、前端单测、双语键检查、生产构建及浏览器流程，并在两个目标系统验证桌面应用；复用该次 CI 的前端产物，生成五个平台 Web 压缩包、macOS Apple Silicon / Windows x64 桌面安装器及 `checksums.txt`。
 
 ## Install / 安装
 

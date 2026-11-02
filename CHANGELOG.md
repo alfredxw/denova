@@ -32,6 +32,9 @@ Denova records major user-visible features, important compatibility or data chan
 
 ### Added / 新增
 
+- 新增 Electron 桌面分发，提供 macOS Apple Silicon DMG 与 Windows x64 EXE，复用 Web 的写作、游戏和数据目录，支持原生目录选择、后台任务和整包更新。
+- Adds an Electron desktop distribution for macOS Apple Silicon (DMG) and Windows x64 (EXE), sharing Web writing, Game and data folders, with native folder selection, background tasks and whole-application updates.
+
 - 游戏控制台支持就地开关、编辑当前故事的叙事规则，可恢复预设或另存为共享风格。叙事风格目录兼容导入 SillyTavern 聊天补全预设：直接导入保留条目、顺序与默认启停，也可由 AI 整理；不执行宏或扩展脚本。
 - The Game console can toggle and edit story-specific narrative rules, restore preset defaults, or save a reusable style. The narrative style directory imports SillyTavern Chat Completion presets with their text, order, and default activation states, or optional AI adaptation; macros and extension scripts are not executed.
 - 新建和导入作品可选择一至三层章节结构，支持空卷、空章与分节编辑；已有作品可在书籍管理中预览转换，自动保存恢复版本，目录、Agent 阅读顺序与 TXT 导出保持一致。
