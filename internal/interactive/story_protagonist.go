@@ -78,7 +78,7 @@ func StoryProtagonistContext(protagonist StoryProtagonist) string {
 	}
 	var builder strings.Builder
 	builder.WriteString("The player controls this story-owned protagonist. Treat this snapshot as canonical for identity and backstory.\n")
-	builder.WriteString("Runtime Actor ID: `protagonist`\n")
+	builder.WriteString("Reuse the existing state Actor for this character when present. Otherwise, use the normal Actor creation rules when state tracking is needed.\n")
 	builder.WriteString("Name: ")
 	builder.WriteString(protagonist.Name)
 	if protagonist.Profile != "" {

@@ -25,8 +25,10 @@ func TestOpeningSelectsStateTemplatesAndReplaysCreatedActors(t *testing.T) {
 						actorStateTemplateByID(GeneratedStoryActorStateCore(), ActorStateStoryContextTemplateID),
 					},
 				}
+				actorID := "林川"
 				if configured {
-					base.InitialActors = []ActorStateInitialActor{{ID: DefaultActorID, Name: "林川", TemplateID: templateID, Role: "protagonist"}}
+					actorID = DefaultActorID
+					base.InitialActors = []ActorStateInitialActor{{ID: actorID, Name: "林川", TemplateID: templateID, Role: "protagonist"}}
 				}
 				policy := StoryStateSchemaPolicy{Mode: StoryStateSchemaModeAdaptTemplate}
 				story, err := store.CreateStory(CreateStoryRequest{
@@ -63,7 +65,7 @@ func TestOpeningSelectsStateTemplatesAndReplaysCreatedActors(t *testing.T) {
 					t.Fatal(err)
 				}
 				updates := []interactivestate.Update{{
-					Op: interactivestate.Create, Path: "/protagonist",
+					Op: interactivestate.Create, Path: "/" + actorID,
 					Value: map[string]any{"template_id": templateID, "name": "林川", "role": "protagonist", "state": map[string]any{fieldID: 4}},
 				}, {
 					Op: interactivestate.Create, Path: "/story",
@@ -72,7 +74,7 @@ func TestOpeningSelectsStateTemplatesAndReplaysCreatedActors(t *testing.T) {
 					}},
 				}}
 				if configured {
-					updates[0] = interactivestate.Update{Op: interactivestate.Replace, Path: "/protagonist/" + fieldID, Value: 4}
+					updates[0] = interactivestate.Update{Op: interactivestate.Replace, Path: "/" + actorID + "/" + fieldID, Value: 4}
 				}
 				choices := []string{"出发", "等待"}
 				prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
@@ -102,20 +104,20 @@ func TestOpeningSelectsStateTemplatesAndReplaysCreatedActors(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if got := getPath(loaded.Snapshot.State, "actors.protagonist.template_id"); got != templateID {
+					if got := getPath(loaded.Snapshot.State, actorStateActorPath(actorID, "template_id")); got != templateID {
 						t.Fatalf("replay lost the selected template: got=%v want=%s", got, templateID)
 					}
-					if got := getPath(loaded.Snapshot.State, "actors.protagonist.name"); got != "林川" {
+					if got := getPath(loaded.Snapshot.State, actorStateActorPath(actorID, "name")); got != "林川" {
 						t.Fatalf("stable protagonist ID replaced the display name: %v", got)
 					}
-					if got := actorStateFieldValue(loaded.Snapshot.State, DefaultActorID, fieldID); got != float64(4) {
+					if got := actorStateFieldValue(loaded.Snapshot.State, actorID, fieldID); got != float64(4) {
 						t.Fatalf("replay lost the selected template's state: %v", got)
 					}
 					if !reflect.DeepEqual(loaded.Meta.ActorStateSchema.System.InitialActors, normalizeActorStateSystem(base).InitialActors) {
 						t.Fatal("runtime Actor creation changed reusable initial Actor definitions")
 					}
 					next := []interactivestate.Update{
-						{Op: interactivestate.Delta, Path: "/protagonist/" + fieldID, Value: -1},
+						{Op: interactivestate.Delta, Path: "/" + actorID + "/" + fieldID, Value: -1},
 						{Op: interactivestate.Replace, Path: "/story/" + storyContextCurrentEventField, Value: "林川离开旧车站"},
 					}
 					_, nextReceipt := PrepareTurnSubmission(TurnSubmissionContext{

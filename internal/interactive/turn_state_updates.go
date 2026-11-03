@@ -158,9 +158,8 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			if err != nil {
 				return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_actor_create", update.Path, "actor create object", stateUpdateActual(update.Value), err)
 			}
-			// System Actor identities stay stable even when the preset leaves their
-			// creation and template selection to the opening Agent.
-			stableActorID := foundationalTurnSubmissionActor(actorID) || actorStateInitialActorIndex(system.InitialActors, actorID) >= 0
+			// System Actors and preset Actors already have assigned identities.
+			stableActorID := actorID == DefaultStoryContextActorID || actorID == DefaultWorldEntitiesActorID || actorStateInitialActorIndex(system.InitialActors, actorID) >= 0
 			if !stableActorID && (patch.ActorName == "" || normalizeStatePanelActorID(patch.ActorName) != actorID) {
 				return CompiledTurnStateUpdates{}, stateUpdateError(index, "actor_name_id_mismatch", update.Path, "actor_id identical to name", patch.ActorName, fmt.Errorf("新建 Actor 的 actor_id 必须与 name 完全相同，并直接使用故事语言中的角色名称: actor_id=%q name=%q", actorID, patch.ActorName))
 			}
