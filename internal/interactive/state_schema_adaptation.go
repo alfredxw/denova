@@ -207,10 +207,6 @@ func normalizeActorStateSchemaActorValueSource(source *ActorStateSchemaActorValu
 // the complete State System plus every frozen TRPG binding.
 func ApplyActorStateSchemaAdaptation(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem, adaptation ActorStateSchemaAdaptation) (StoryDirectorActorStateSystem, ActorStateSchemaAdaptationRecord, error) {
 	system := normalizeActorStateSystem(base)
-	requireProtagonistTemplate := actorStateTemplateByID(system, DefaultActorID).ID != ""
-	requireStoryTemplate := actorStateTemplateByID(system, ActorStateStoryContextTemplateID).ID != ""
-	requireProtagonistActor := actorStateInitialActorIndex(system.InitialActors, DefaultActorID) >= 0
-	requireStoryActor := actorStateInitialActorIndex(system.InitialActors, DefaultStoryContextActorID) >= 0
 	for _, op := range adaptation.TemplateOps {
 		var err error
 		system, err = applyActorStateTemplateSchemaOp(system, op)
@@ -225,7 +221,7 @@ func ApplyActorStateSchemaAdaptation(base StoryDirectorActorStateSystem, trpg St
 			return StoryDirectorActorStateSystem{}, ActorStateSchemaAdaptationRecord{}, err
 		}
 	}
-	if err := validateAdaptedActorStateSystem(system, requireProtagonistTemplate, requireStoryTemplate, requireProtagonistActor, requireStoryActor); err != nil {
+	if err := validateAdaptedActorStateSystem(system); err != nil {
 		return StoryDirectorActorStateSystem{}, ActorStateSchemaAdaptationRecord{}, err
 	}
 	if err := validateActorStateTRPGReferences(system, trpg); err != nil {
@@ -274,7 +270,7 @@ func applyActorStateTemplateSchemaOp(system StoryDirectorActorStateSystem, op Ac
 		if templateID == "" {
 			return system, fmt.Errorf("state template removal is missing template_id")
 		}
-		if templateID == DefaultActorID || templateID == ActorStateStoryContextTemplateID {
+		if templateID == ActorStateStoryContextTemplateID {
 			return system, fmt.Errorf("core story state template cannot be removed: %s", templateID)
 		}
 		index := actorStateTemplateIndex(system.Templates, templateID)

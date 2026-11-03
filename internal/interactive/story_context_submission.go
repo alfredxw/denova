@@ -11,17 +11,20 @@ const (
 	storyContextCurrentEventField    = "当前事件"
 )
 
-// storyContextSubmissionDiagnostic keeps the built-in story_context useful
-// after the model-facing contract was reduced to state_changes and choices.
+// storyContextSubmissionDiagnostic checks continuity for both existing and
+// newly created story Actors after the state changes pass compilation.
 func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, currentState map[string]any, updates []interactivestate.Update) *TurnSubmissionDiagnostic {
 	template := actorStateTemplateByID(system, ActorStateStoryContextTemplateID)
-	if template.ID == "" || !hasStoryContextActor(system, currentState) || len(template.Fields) == 0 {
+	if len(template.Fields) == 0 {
+		return nil
+	}
+	values, created := submittedStoryContextState(updates)
+	if !created && !hasStoryContextActor(system, currentState) {
 		return nil
 	}
 
 	if _, exists := actorStateFieldByID(template, storyContextCurrentEventField); exists {
-		value, found := submittedStoryContextValue(updates, storyContextCurrentEventField)
-		if !found || !meaningfulStoryContextValue(value) {
+		if !hasConcreteActorStateValue(values[actorStateFieldNameKey(storyContextCurrentEventField)]) {
 			return newStoryContextRequiredDiagnostic(storyContextCurrentEventField, "This turn's state_changes is missing a non-empty story/当前事件 value.")
 		}
 	}
@@ -33,27 +36,38 @@ func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, curr
 	if strings.TrimSpace(currentLocation) != "" {
 		return nil
 	}
-	value, found := submittedStoryContextValue(updates, storyContextCurrentLocationField)
-	if !found || !meaningfulStoryContextValue(value) {
+	if !hasConcreteActorStateValue(values[actorStateFieldNameKey(storyContextCurrentLocationField)]) {
 		return newStoryContextRequiredDiagnostic(storyContextCurrentLocationField, "Story state has not been initialized, so state_changes must provide a non-empty story/当前详细地点 value.")
 	}
 	return nil
 }
 
-func submittedStoryContextValue(updates []interactivestate.Update, fieldID string) (any, bool) {
+// submittedStoryContextState reads submissions rather than reducer operations.
+// A repeated current event satisfies the protocol even when it changes no state.
+func submittedStoryContextState(updates []interactivestate.Update) (values map[string]any, created bool) {
 	for _, update := range updates {
-		if update.Op != interactivestate.Replace {
-			continue
-		}
 		segments, err := interactivestate.ParsePath(update.Path)
-		if err != nil || len(segments) != 2 {
+		if err != nil || len(segments) == 0 || segments[0] != DefaultStoryContextActorID {
 			continue
 		}
-		if segments[0] == DefaultStoryContextActorID && actorStateFieldNameKey(segments[1]) == actorStateFieldNameKey(fieldID) {
-			return update.Value, true
+		if update.Op == interactivestate.Create && len(segments) == 1 {
+			patch, err := actorPatchFromCreateUpdate(DefaultStoryContextActorID, update.Value)
+			if err == nil && normalizeActorStateID(patch.TemplateID) == ActorStateStoryContextTemplateID {
+				values = make(map[string]any, len(patch.State))
+				for field, value := range patch.State {
+					values[actorStateFieldNameKey(field)] = value
+				}
+				return values, true
+			}
+		}
+		if update.Op == interactivestate.Replace && len(segments) == 2 {
+			if values == nil {
+				values = map[string]any{}
+			}
+			values[actorStateFieldNameKey(segments[1])] = update.Value
 		}
 	}
-	return nil, false
+	return values, false
 }
 
 func hasStoryContextActor(system StoryDirectorActorStateSystem, currentState map[string]any) bool {
@@ -63,16 +77,6 @@ func hasStoryContextActor(system StoryDirectorActorStateSystem, currentState map
 	return false
 }
 
-func meaningfulStoryContextValue(value any) bool {
-	if value == nil {
-		return false
-	}
-	if text, ok := value.(string); ok {
-		return strings.TrimSpace(text) != ""
-	}
-	return true
-}
-
 func newStoryContextRequiredDiagnostic(field, reason string) *TurnSubmissionDiagnostic {
 	path := interactivestate.FormatPath([]string{DefaultStoryContextActorID, field})
 	return newTurnSubmissionDiagnostic(
@@ -80,8 +84,8 @@ func newStoryContextRequiredDiagnostic(field, reason string) *TurnSubmissionDiag
 		nil,
 		TurnSubmissionDiagnosticStoryContextRequired,
 		path,
-		fmt.Sprintf(`{"op":"replace","actor_id":%q,"field_id":%q,"value":"..."}`, DefaultStoryContextActorID, field),
+		fmt.Sprintf("a non-empty %s value on the story Actor", field),
 		"missing",
-		reason+" Every turn must replace story/当前事件, and initialization must also replace story/当前详细地点. Do not clear unchanged fields.",
+		reason+" Use create.initial_state when creating story, or replace the field on an existing story Actor. Do not clear unchanged fields.",
 	)
 }

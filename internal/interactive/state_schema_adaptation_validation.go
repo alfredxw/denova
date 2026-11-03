@@ -5,21 +5,7 @@ import (
 	"strings"
 )
 
-func validateAdaptedActorStateSystem(system StoryDirectorActorStateSystem, requireProtagonistTemplate, requireStoryTemplate, requireProtagonistActor, requireStoryActor bool) error {
-	if requireProtagonistTemplate && actorStateTemplateByID(system, DefaultActorID).ID == "" {
-		return fmt.Errorf("适配后的状态系统缺少 protagonist 模板")
-	}
-	if requireStoryTemplate && actorStateTemplateByID(system, ActorStateStoryContextTemplateID).ID == "" {
-		return fmt.Errorf("适配后的状态系统缺少 story_context 模板")
-	}
-	protagonistIndex := actorStateInitialActorIndex(system.InitialActors, DefaultActorID)
-	if requireProtagonistActor && (protagonistIndex < 0 || normalizeActorStateID(system.InitialActors[protagonistIndex].TemplateID) != DefaultActorID) {
-		return fmt.Errorf("适配后的状态系统缺少绑定 protagonist 模板的 protagonist 初始 Actor")
-	}
-	storyIndex := actorStateInitialActorIndex(system.InitialActors, DefaultStoryContextActorID)
-	if requireStoryActor && (storyIndex < 0 || normalizeActorStateID(system.InitialActors[storyIndex].TemplateID) != ActorStateStoryContextTemplateID) {
-		return fmt.Errorf("适配后的状态系统缺少绑定 story_context 模板的 story 初始 Actor")
-	}
+func validateAdaptedActorStateSystem(system StoryDirectorActorStateSystem) error {
 	if err := validateActorStateSystem(system); err != nil {
 		return err
 	}
@@ -37,6 +23,9 @@ func validateAdaptedActorStateSystem(system StoryDirectorActorStateSystem, requi
 		}
 	}
 	for _, actor := range system.InitialActors {
+		if actor.ID == DefaultStoryContextActorID && normalizeActorStateID(actor.TemplateID) != ActorStateStoryContextTemplateID {
+			return fmt.Errorf("story Actor must use the %s template", ActorStateStoryContextTemplateID)
+		}
 		template := actorStateTemplateByID(system, actor.TemplateID)
 		if template.ID == "" {
 			return fmt.Errorf("初始 Actor 引用了不存在的状态模板: actor=%s template=%s", actor.ID, actor.TemplateID)
@@ -116,9 +105,6 @@ func validateActorStateRuntimeSchemaOps(target StoryDirectorActorStateSystem, op
 		template := actorStateTemplateByID(target, actor.TemplateID)
 		if template.ID == "" {
 			return fmt.Errorf("运行时 Actor %s 引用的模板不存在: %s", actorID, actor.TemplateID)
-		}
-		if actorID == DefaultActorID && actor.TemplateID != DefaultActorID {
-			return fmt.Errorf("主角运行时 Actor 必须使用 %s 模板", DefaultActorID)
 		}
 		if actorID == DefaultStoryContextActorID && actor.TemplateID != ActorStateStoryContextTemplateID {
 			return fmt.Errorf("故事上下文运行时 Actor 必须使用 %s 模板", ActorStateStoryContextTemplateID)

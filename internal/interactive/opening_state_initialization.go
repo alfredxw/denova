@@ -49,26 +49,27 @@ func openingInitialStateCoverage(system StoryDirectorActorStateSystem, state map
 	system = normalizeActorStateSystem(system)
 	total := 0
 	missing := make([]OpeningStateInitializationField, 0)
-	for _, actor := range system.InitialActors {
-		template := actorStateTemplateByID(system, actor.TemplateID)
+	for _, actorID := range turnSubmissionExistingActorIDs(system, state) {
+		templateID, _ := actorTemplateIDFromStateOrSystem(state, system, actorID)
+		template := actorStateTemplateByID(system, templateID)
 		if template.ID == "" {
 			continue
 		}
 		for _, field := range template.Fields {
 			total++
 			fieldID := actorStateFieldID(field)
-			if meaningfulOpeningInitialStateValue(actorStateFieldValue(state, actor.ID, fieldID)) {
+			if hasConcreteActorStateValue(actorStateFieldValue(state, actorID, fieldID)) {
 				continue
 			}
 			missing = append(missing, OpeningStateInitializationField{
-				ActorID: actor.ID, TemplateID: template.ID, FieldID: fieldID, Type: field.Type,
+				ActorID: actorID, TemplateID: template.ID, FieldID: fieldID, Type: field.Type,
 			})
 		}
 	}
 	return total, missing
 }
 
-func meaningfulOpeningInitialStateValue(value any) bool {
+func hasConcreteActorStateValue(value any) bool {
 	if value == nil {
 		return false
 	}
@@ -78,12 +79,7 @@ func meaningfulOpeningInitialStateValue(value any) bool {
 
 func openingInitialStateSubmissionDiagnostic(system StoryDirectorActorStateSystem, currentState map[string]any, compiled CompiledTurnStateUpdates) *TurnSubmissionDiagnostic {
 	state := cloneActorStateRoot(currentState)
-	for _, op := range compiled.Ops {
-		applyStateOp(state, op)
-	}
-	for _, op := range compiled.ActorOps {
-		applyActorStateOp(state, op)
-	}
+	applyStateDeltaToProjection(state, StateDelta{Ops: compiled.Ops, ActorOps: compiled.ActorOps})
 	_, missing := openingInitialStateCoverage(system, state)
 	if len(missing) == 0 {
 		return nil
@@ -106,8 +102,8 @@ func openingInitialStateSubmissionDiagnostic(system StoryDirectorActorStateSyste
 		nil,
 		TurnSubmissionDiagnosticInitialStateIncomplete,
 		"/state_changes",
-		"every writable field of each initial Actor has a concrete opening value",
+		"every writable field of each opening Actor has a concrete value",
 		actual,
-		"The opening state is incomplete: "+actual+". Initialize every field listed by initialization_guide.required_state_changes with a concrete value in one state_changes submission; do not use empty, unset, unknown, or pending placeholders.",
+		"The opening state is incomplete: "+actual+". Fill initialization_guide.required_state_changes and every field without a default on Actors created in this submission. Put new Actor values in create.initial_state; do not use empty, unset, unknown, or pending placeholders.",
 	)
 }

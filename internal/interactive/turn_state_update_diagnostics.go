@@ -165,7 +165,7 @@ func stateUpdateDiagnosticEnglish(code string) string {
 	case "invalid_actor_lifecycle_path", "invalid_actor_lifecycle_reason":
 		return "archive and restore require only an existing actor_id and a non-empty reason."
 	case "actor_name_id_mismatch":
-		return "A newly created Actor must use its story-language name unchanged as both actor_id and name."
+		return "A new Actor without a reserved or configured ID must use its story-language name as both actor_id and name."
 	case "state_field_not_found":
 		return "The state field does not exist in the Actor's frozen schema."
 	case "delta_target_not_number":

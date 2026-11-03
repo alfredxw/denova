@@ -47,6 +47,8 @@ Denova records major user-visible features, important compatibility or data chan
 
 ### Changed / 变更
 
+- 游戏预设可以只定义状态表模板，由 Agent 在开局选择模板并创建状态对象；主角可以使用任意适用的模板。
+- Game presets can provide templates without initial state objects. The Agent chooses templates and creates those objects at the opening. The player character can use any applicable template.
 - 软件更新展示当前版本到目标版本的变化，按版本阅读简要说明和详情；更新完成后保留本次升级范围，并提供完整历史入口。
 - Software updates show changes from the current version to the target, with per-version summaries and details. Completed upgrades retain their comparison range and link to the full history.
 

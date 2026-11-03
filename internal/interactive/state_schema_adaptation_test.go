@@ -110,7 +110,7 @@ func TestApplyActorStateSchemaAdaptationRejectsBrokenTRPGBinding(t *testing.T) {
 }
 
 func TestApplyActorStateSchemaAdaptationProtectsRuntimeFoundation(t *testing.T) {
-	_, _, err := ApplyActorStateSchemaAdaptation(defaultActorStateSystem(), StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{Op: "remove", TemplateID: DefaultActorID}}})
+	_, _, err := ApplyActorStateSchemaAdaptation(defaultActorStateSystem(), StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{Op: "remove", TemplateID: ActorStateStoryContextTemplateID}}})
 	if err == nil || !strings.Contains(err.Error(), "cannot be removed") {
 		t.Fatalf("expected protected template error, got %v", err)
 	}
