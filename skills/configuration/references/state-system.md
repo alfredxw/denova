@@ -39,6 +39,10 @@ Do not write legacy `id`, `path`, `legacy_path`, `order`, or `display_groups`; r
 
 ## Initial Actors
 
+Omit `initial_actors` to let the Game Agent choose templates and create Actors during play. Describe when each template applies so the Agent can choose from the opening facts and Lore. To assign a template in advance, add an initial Actor with that `template_id`.
+
+A new player character uses the same naming and template selection rules as any other character. Reuse the ID of an existing Actor. Use `id: "story"` with `template_id: "story_context"` for the built-in story continuity fields.
+
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `id` | yes | Stable Actor identity. Control characters and `.` are removed; keep it simple. |

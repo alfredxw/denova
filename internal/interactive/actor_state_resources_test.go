@@ -132,7 +132,7 @@ func TestResourceReferencesAndPartialInitializationAreRejected(t *testing.T) {
 		{Name: "生命上限", Type: "number"},
 	}}}}
 	_, err := CompileTurnStateUpdates(system, nil, []interactivestate.Update{{
-		Op: interactivestate.Create, Path: "/protagonist", Value: map[string]any{"template_id": "protagonist", "state": map[string]any{"生命": 8}},
+		Op: interactivestate.Create, Path: "/旅人", Value: map[string]any{"template_id": "protagonist", "name": "旅人", "state": map[string]any{"生命": 8}},
 	}}, TurnStateUpdateCompileOptions{})
 	if err == nil {
 		t.Fatal("a resource must not be initialized without its capacity")

@@ -144,9 +144,6 @@ func actorTemplateIDFromStateOrSystem(state map[string]any, system StoryDirector
 			return normalizeActorStateID(actor.TemplateID), true
 		}
 	}
-	if actorID == DefaultActorID {
-		return "protagonist", true
-	}
 	return "", false
 }
 
