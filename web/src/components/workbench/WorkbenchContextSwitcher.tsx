@@ -28,7 +28,7 @@ export function WorkbenchContextSwitcherTrigger({
       type={type}
       data-slot="workbench-context-switcher-trigger"
       className={cn(
-        'flex min-w-0 select-none items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-2 focus-visible:ring-[var(--nova-field-focus-border)] data-[state=open]:border-[var(--nova-field-focus-border)] data-[state=open]:bg-[var(--nova-active)] data-[state=open]:text-[var(--nova-text)]',
+        'nova-workbench-context-trigger flex min-w-0 select-none items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-2 focus-visible:ring-[var(--nova-field-focus-border)] data-[state=open]:border-[var(--nova-field-focus-border)] data-[state=open]:bg-[var(--nova-active)] data-[state=open]:text-[var(--nova-text)]',
         iconOnly
           ? 'h-9 w-8 p-0'
           : compact

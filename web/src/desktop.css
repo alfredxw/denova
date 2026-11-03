@@ -1,117 +1,89 @@
+html[data-desktop-platform] {
+  --nova-desktop-navigation-width: 80px;
+}
+
+/* Browser zoom can make the native control region wider than the chosen size. */
+html[data-desktop-platform] :is(.nova-activity-bar, [data-activity-bar-expanded] [data-slot="sidebar-gap"]) {
+  min-width: var(--nova-desktop-navigation-width);
+}
+
 /* The native overlay supplies its safe area, including browser zoom changes.
    Keep a stable minimum when macOS hides its controls in fullscreen. */
 html[data-desktop-platform="darwin"] {
   --nova-desktop-controls-width: max(80px, env(titlebar-area-x, 80px));
   --nova-desktop-controls-height: max(48px, env(titlebar-area-height, 48px));
+  --nova-desktop-navigation-width: var(--nova-desktop-controls-width);
 }
 
-html[data-desktop-platform="darwin"] .nova-workspace-frame {
-  position: relative;
-  margin: 0;
-  border-radius: 0;
-  border-width: 0;
-  padding-left: 1px;
-  box-shadow: none;
-  --nova-desktop-header-inset: 0px;
+/* The native controls belong entirely to the primary navigation column. The
+   workspace keeps the same inset surface and page geometry as the Web app. */
+html[data-desktop-platform="darwin"] .nova-activity-bar [data-slot="sidebar-inner"] {
+  padding-top: var(--nova-desktop-controls-height);
 }
 
-html[data-desktop-platform="darwin"] .nova-workspace-frame::before {
+html[data-desktop-platform="darwin"] .nova-activity-bar::before {
   content: '';
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 1px;
-  background: var(--nova-border-soft);
-  pointer-events: none;
-}
-
-html[data-desktop-platform="darwin"] [data-activity-bar-expanded="false"] .nova-workspace-frame::before {
-  top: var(--nova-desktop-controls-height);
-}
-
-/* Keep the collapsed rail narrow. Its toggle moves beside the native controls,
-   and only the leading pane needs to reserve that combined header space. */
-html[data-desktop-platform="darwin"] [data-activity-bar-expanded="false"] [data-nova-leading-pane="true"] {
-  --nova-desktop-header-inset: max(0px, calc(var(--nova-desktop-controls-width) + 2rem - var(--sidebar-width-icon)));
-}
-
-/* The directory tabs keep their full width below the window controls in both
-   sidebar states, so collapsing navigation does not squeeze or move the tabs. */
-html[data-desktop-platform="darwin"] .nova-workspace-frame [data-slot="writing-sidebar-view-switcher"] {
-  padding-top: calc(var(--nova-desktop-controls-height) + 0.5rem);
-}
-
-html[data-desktop-platform="darwin"] :is([data-slot="game-story-header"], .nova-story-stage-header) {
-  padding-left: calc(0.75rem + var(--nova-desktop-header-inset, 0px));
-}
-
-html[data-desktop-platform="darwin"] .nova-topbar {
-  padding-left: calc(1rem + var(--nova-desktop-header-inset, 0px));
-}
-
-html[data-desktop-platform="darwin"] [data-slot="workbench-tab-strip"] {
-  padding-left: var(--nova-desktop-header-inset, 0px);
-}
-
-html[data-desktop-platform="darwin"] [data-agent-chat-tab-group] [data-slot="workbench-tab-strip"] {
-  padding-left: 0;
-}
-
-html[data-desktop-platform="darwin"] [data-agent-chat-sidebar-toggle] > button {
-  left: calc(0.5rem + var(--nova-desktop-header-inset, 0px));
-}
-
-html[data-desktop-platform="darwin"] [data-slot="game-player-menu"] {
-  left: calc(0.75rem + var(--nova-desktop-header-inset, 0px));
-}
-
-html[data-desktop-platform="darwin"] .nova-activity-brand-row {
-  height: calc(var(--nova-desktop-controls-height) - 16px);
-  grid-template-columns: minmax(0, 1fr) 2rem;
-  padding-left: calc(var(--nova-desktop-controls-width) - 8px);
+  inset: 0 0 auto;
+  height: var(--nova-desktop-controls-height);
   -webkit-app-region: drag;
 }
 
-html[data-desktop-platform="darwin"] .nova-activity-brand-icon {
+html[data-desktop-platform="darwin"] .nova-activity-bar-resize-handle {
+  top: var(--nova-desktop-controls-height);
+  -webkit-app-region: no-drag;
+}
+
+/* The compact desktop rail already reserves room for native controls. Use that
+   space for readable labels instead of leaving a narrow icon strip in its center. */
+html[data-desktop-platform] .nova-activity-bar :is([data-sidebar="menu-button"], .nova-activity-message-button, .nova-workbench-context-trigger) {
+  transition-property: width, height, padding, gap;
+  transition-duration: var(--nova-panel-motion-duration);
+  transition-timing-function: var(--nova-panel-motion-ease);
+}
+
+html[data-desktop-platform] [data-collapsible="icon"] .nova-activity-bar :is([data-sidebar="menu-button"], .nova-activity-message-button, .nova-workbench-context-trigger) {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 48px !important;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 2px !important;
+}
+
+html[data-desktop-platform] [data-collapsible="icon"] .nova-activity-bar :is([data-sidebar="menu-button"], .nova-activity-message-button, .nova-workbench-context-trigger) > span:last-of-type {
+  width: 100%;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+html[data-desktop-platform] [data-collapsible="icon"] .nova-activity-bar .nova-workbench-context-trigger > svg:last-child {
   display: none;
 }
 
-html[data-desktop-platform="darwin"] [data-collapsible="icon"] .nova-activity-brand-row {
-  width: 100%;
-  padding-left: 0;
-}
-
-html[data-desktop-platform="darwin"] .nova-activity-brand-toggle {
-  position: fixed;
-  inset: auto;
-  top: calc((var(--nova-desktop-controls-height) - 2rem) / 2);
-  left: var(--nova-desktop-controls-width);
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--nova-radius);
-  background: var(--nova-surface);
-  -webkit-app-region: no-drag;
-  opacity: 1;
-}
-
-html[data-desktop-platform="darwin"] [data-collapsible="icon"] .nova-activity-bar :is([data-sidebar="header"], [data-sidebar="menu"]) {
-  align-items: center;
-}
-
-html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"]) {
+html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"]) {
   position: relative;
 }
 
-/* Native drag regions consume pointer events from overlapping controls. Keep
-   them geometrically clear of the navigation toggle floating above this pane. */
-html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"])::before {
+/* Only header backgrounds drag the window; their controls remain interactive. */
+html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"], .nova-story-stage-header)::before {
   content: '';
   position: absolute;
-  inset: 0 0 0 var(--nova-desktop-header-inset, 0px);
+  inset: 0;
   -webkit-app-region: drag;
   pointer-events: none;
 }
 
-html[data-desktop-platform="darwin"] :is(.nova-activity-brand-row, .nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"]) :is(button, a, input, select, textarea, [role="button"], [role="tab"], [contenteditable="true"]) {
+html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"], .nova-story-stage-header) :is(button, a, input, select, textarea, [role="button"], [role="tab"], [contenteditable="true"]) {
+  -webkit-app-region: no-drag;
+}
+
+/* Portals can cover draggable headers without inheriting their no-drag rules.
+   Native hit testing ignores z-index, so overlays must exclude their own area. */
+html[data-desktop-platform="darwin"] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot="sheet-overlay"], [data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]) {
   -webkit-app-region: no-drag;
 }
 

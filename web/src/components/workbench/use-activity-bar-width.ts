@@ -2,19 +2,23 @@ import { useEffect, useRef, useState, type KeyboardEventHandler, type PointerEve
 
 // User-level width preference; it survives reloads and development hot updates.
 const STORAGE_KEY = 'nova.layout.activityBarWidth'
-const MIN_WIDTH = 192
-const LEGACY_DEFAULT_WIDTH = 152
+const MIN_WIDTH = 112
 const DEFAULT_WIDTH = 224
 const MAX_WIDTH = 288
 const KEYBOARD_STEP = 8
 
-/** Owns primary-menu sizing. Pointer previews update the DOM; only completed resizes update React and storage. */
-export function useActivityBarWidth(enabled: boolean) {
+/** Previews resizing locally; only completed gestures persist width and expansion. */
+export function useActivityBarWidth({ enabled, expanded, onToggle }: {
+  enabled: boolean
+  expanded: boolean
+  onToggle: () => void
+}) {
   const [width, setWidth] = useState(readStoredWidth)
+  const [previewExpanded, setPreviewExpanded] = useState<boolean | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const finishResizeRef = useRef<(() => void) | null>(null)
+  const cancelResizeRef = useRef<(() => void) | null>(null)
 
-  useEffect(() => () => finishResizeRef.current?.(), [enabled])
+  useEffect(() => () => cancelResizeRef.current?.(), [enabled, expanded])
 
   const commitWidth = (nextWidth: number) => {
     setWidth(nextWidth)
@@ -25,68 +29,103 @@ export function useActivityBarWidth(enabled: boolean) {
     const wrapper = wrapperRef.current
     const handle = event.currentTarget
     const sidebar = handle.closest<HTMLElement>('[data-slot="sidebar"]')
-    if (!enabled || !wrapper || !sidebar || event.button !== 0 || !event.isPrimary || finishResizeRef.current) return
+    if (!enabled || !wrapper || !sidebar || event.button !== 0 || !event.isPrimary || cancelResizeRef.current) return
 
     event.preventDefault()
     const pointerID = event.pointerId
     const startX = event.clientX
+    const startWidth = handle.closest<HTMLElement>('[data-slot="sidebar-container"]')!.getBoundingClientRect().width
     let previewWidth = width
+    let nextExpanded = expanded
     // Disable both the visible sidebar and its layout gap before the first move.
     sidebar.setAttribute('data-nova-activity-bar-resizing', 'true')
     handle.setPointerCapture(pointerID)
 
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerID) return
-      const nextWidth = clampWidth(width + moveEvent.clientX - startX)
+      const requestedWidth = startWidth + moveEvent.clientX - startX
+      // Separate thresholds prevent jitter at the boundary. Text never squeezes
+      // below its readable minimum; the remaining distance snaps to the icon rail.
+      const shouldExpand = requestedWidth >= MIN_WIDTH - (nextExpanded ? 8 : 0)
+      if (shouldExpand !== nextExpanded) {
+        nextExpanded = shouldExpand
+        setPreviewExpanded(nextExpanded)
+      }
+      const nextWidth = nextExpanded ? clampWidth(requestedWidth) : width
       if (nextWidth === previewWidth) return
       previewWidth = nextWidth
       wrapper.style.setProperty('--sidebar-width', `${nextWidth}px`)
-      handle.setAttribute('aria-valuenow', String(nextWidth))
     }
-    const finish = () => {
-      finishResizeRef.current = null
+    const finish = (result: 'commit' | 'cancel') => {
+      cancelResizeRef.current = null
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', cancel)
-      window.removeEventListener('blur', finish)
-      handle.removeEventListener('lostpointercapture', finish)
+      window.removeEventListener('blur', cancel)
+      window.removeEventListener('keydown', keyDown)
+      handle.removeEventListener('lostpointercapture', cancel)
       // Apply the final pointer coordinate before restoring collapse/expand transitions.
       handle.getBoundingClientRect()
       sidebar.removeAttribute('data-nova-activity-bar-resizing')
       if (handle.hasPointerCapture(pointerID)) handle.releasePointerCapture(pointerID)
-      if (previewWidth !== width) commitWidth(previewWidth)
+      const finalWidth = result === 'commit' && nextExpanded ? previewWidth : width
+      wrapper.style.setProperty('--sidebar-width', `${finalWidth}px`)
+      if (finalWidth !== width) commitWidth(finalWidth)
+      setPreviewExpanded(null)
+      if (result === 'commit' && nextExpanded !== expanded) onToggle()
     }
     const end = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== pointerID) return
       move(endEvent)
-      finish()
+      finish('commit')
     }
-    const cancel = (cancelEvent: PointerEvent) => {
-      if (cancelEvent.pointerId === pointerID) finish()
+    const cancel = () => finish('cancel')
+    const keyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key !== 'Escape') return
+      keyEvent.preventDefault()
+      cancel()
     }
-    finishResizeRef.current = finish
+    cancelResizeRef.current = cancel
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', end)
     window.addEventListener('pointercancel', cancel)
-    window.addEventListener('blur', finish)
-    handle.addEventListener('lostpointercapture', finish)
+    window.addEventListener('blur', cancel)
+    window.addEventListener('keydown', keyDown)
+    handle.addEventListener('lostpointercapture', cancel)
   }
 
   const onResizeKeyDown: KeyboardEventHandler<HTMLDivElement> = (event) => {
-    if (!enabled || finishResizeRef.current) return
+    if (!enabled || cancelResizeRef.current) return
     let nextWidth: number
     switch (event.key) {
-      case 'ArrowLeft': nextWidth = clampWidth(width - KEYBOARD_STEP); break
-      case 'ArrowRight': nextWidth = clampWidth(width + KEYBOARD_STEP); break
-      case 'Home': nextWidth = MIN_WIDTH; break
-      case 'End': nextWidth = MAX_WIDTH; break
+      case 'Enter':
+      case ' ':
+        event.preventDefault()
+        onToggle()
+        return
+      case 'Home':
+      case 'ArrowLeft':
+        event.preventDefault()
+        if (!expanded) return
+        if (event.key === 'Home' || width === MIN_WIDTH) { onToggle(); return }
+        nextWidth = clampWidth(width - KEYBOARD_STEP)
+        break
+      case 'ArrowRight':
+        event.preventDefault()
+        if (!expanded) { onToggle(); return }
+        nextWidth = clampWidth(width + KEYBOARD_STEP)
+        break
+      case 'End':
+        if (!expanded) onToggle()
+        nextWidth = MAX_WIDTH
+        break
       default: return
     }
     event.preventDefault()
     if (nextWidth !== width) commitWidth(nextWidth)
   }
 
-  return { width, minWidth: MIN_WIDTH, maxWidth: MAX_WIDTH, wrapperRef, onResizePointerDown, onResizeKeyDown }
+  return { width, expanded: previewExpanded ?? expanded, maxWidth: MAX_WIDTH, wrapperRef, onResizePointerDown, onResizeKeyDown }
 }
 
 function readStoredWidth() {
@@ -94,7 +133,6 @@ function readStoredWidth() {
   const raw = window.localStorage.getItem(STORAGE_KEY)
   if (raw === null) return DEFAULT_WIDTH
   const value = Number(raw)
-  if (value === LEGACY_DEFAULT_WIDTH) return DEFAULT_WIDTH
   return Number.isFinite(value) ? clampWidth(value) : DEFAULT_WIDTH
 }
 

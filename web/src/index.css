@@ -904,13 +904,18 @@ html[data-nova-motion="off"] .shimmer {
   border-color: var(--nova-border);
   background: var(--nova-bg-deep);
   color: var(--nova-text-muted);
+}
+
+/* The page frame and visible navigation must move on the same curve. */
+[data-activity-bar-expanded] [data-slot="sidebar-gap"],
+.nova-activity-bar {
   transition-duration: var(--nova-panel-motion-duration) !important;
   transition-timing-function: var(--nova-panel-motion-ease) !important;
 }
 
-/* Pointer resizing follows the pointer directly; explicit collapse/expand still animates. */
-[data-nova-activity-bar-resizing="true"] > [data-slot="sidebar-gap"],
-[data-nova-activity-bar-resizing="true"] > .nova-activity-bar {
+/* Continuous sizing follows the pointer; snapping into the compact rail animates. */
+[data-nova-activity-bar-resizing="true"][data-state="expanded"] > [data-slot="sidebar-gap"],
+[data-nova-activity-bar-resizing="true"][data-state="expanded"] > .nova-activity-bar {
   transition-duration: 0s !important;
 }
 

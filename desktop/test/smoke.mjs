@@ -6,6 +6,8 @@ import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { expectWorkspaceFrame, setNavigationExpanded, verifyNavigation } from './navigation.mjs'
+import { verifyMessageCenter } from './messages.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const requireWeb = createRequire(path.join(root, 'web/package.json'))
@@ -96,12 +98,7 @@ try {
       return [window.getBounds().height, window.getContentBounds().height]
     })
     assert.equal(windowHeights[0], windowHeights[1], 'macOS content must extend through the native title bar')
-    for (const zoom of [0.8, 1]) {
-      await application.evaluate(({ BrowserWindow }, zoom) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(zoom), zoom)
-      // CSS layout rounds fractional pixels differently from the native overlay.
-      await expect.poll(() => page.locator('.nova-activity-brand-row > span').last().evaluate(element =>
-        element.getBoundingClientRect().left - navigator.windowControlsOverlay.getTitlebarAreaRect().x)).toBeGreaterThanOrEqual(-1)
-    }
+    await expectWorkspaceFrame(page)
   }
   await page.screenshot({ path: path.join(artifacts, 'desktop-empty.png'), animations: 'disabled' })
   await application.evaluate(async ({ clipboard, ClipboardItem }) => {
@@ -150,64 +147,27 @@ try {
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+S' : 'Control+S')
   await expect.poll(async () => (await api(`/api/projects/${book.project_id}/files/file?path=chapters/desktop-chapter.md`)).content).toContain('Electron 真实保存。')
   console.log('Writing persistence passed')
+  await verifyMessageCenter(page)
   await page.screenshot({ path: path.join(artifacts, 'writing-desktop.png'), animations: 'disabled' })
-  if (process.platform === 'darwin') {
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '收起', exact: true }).click()
-    await expect.poll(() => page.getByLabel('工作台侧边栏').evaluate(element => element.getBoundingClientRect().width)).toBe(48)
-    const navigationToggle = page.locator('[data-activity-bar-toggle]')
-    // DOM clicks bypass native window hit testing. Also check the actual drag
-    // rectangles so an unrelated header cannot swallow this floating button.
-    await expect.poll(() => navigationToggle.evaluate(button => {
-      const target = button.getBoundingClientRect()
-      const overlaps = []
-      for (const element of document.querySelectorAll('*')) {
-        if (element.contains(button)) continue
-        for (const pseudo of [null, '::before', '::after']) {
-          const style = getComputedStyle(element, pseudo)
-          if (style.getPropertyValue('-webkit-app-region') !== 'drag' || (pseudo && style.content === 'none')) continue
-          let rect = element.getBoundingClientRect()
-          if (pseudo) {
-            const left = rect.left + element.clientLeft + parseFloat(style.left)
-            const top = rect.top + element.clientTop + parseFloat(style.top)
-            rect = { left, top, right: left + parseFloat(style.width), bottom: top + parseFloat(style.height) }
-          }
-          if (rect.left < target.right && rect.right > target.left && rect.top < target.bottom && rect.bottom > target.top) {
-            overlaps.push(`${element.getAttribute('data-slot') || element.className}${pseudo || ''}`)
-          }
-        }
-      }
-      return overlaps
-    })).toEqual([])
-    await expect.poll(() => navigationToggle.evaluate(element =>
-      element.getBoundingClientRect().left - navigator.windowControlsOverlay.getTitlebarAreaRect().x)).toBeGreaterThanOrEqual(-1)
-    await expect.poll(() => navigationToggle.evaluate(element =>
-      element.getBoundingClientRect().bottom <= navigator.windowControlsOverlay.getTitlebarAreaRect().height)).toBe(true)
-    for (const name of ['作品目录', '项目文件', '全局搜索']) {
-      const tab = page.getByRole('button', { name, exact: true })
-      await expect.poll(() => tab.evaluate(element => {
-        return element.getBoundingClientRect().top >= navigator.windowControlsOverlay.getTitlebarAreaRect().height
-          && element.scrollWidth <= element.clientWidth
-      })).toBe(true)
-      await tab.click()
-    }
-    await page.getByRole('button', { name: '作品目录', exact: true }).click()
-    await page.screenshot({ path: path.join(artifacts, 'writing-collapsed.png'), animations: 'disabled' })
-    await page.getByRole('button', { name: '隐藏目录', exact: true }).click()
-    await expect.poll(() => page.getByRole('tab', { name: 'desktop chapter', exact: true }).evaluate(element =>
-      element.getBoundingClientRect().left - document.querySelector('[data-activity-bar-toggle]').getBoundingClientRect().right)).toBeGreaterThanOrEqual(-1)
-    await page.getByRole('button', { name: '显示目录', exact: true }).click()
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '工作台', exact: true }).click()
-    const projectToggle = page.locator('[data-agent-chat-sidebar-toggle] > button')
-    await expect(projectToggle).toBeVisible()
-    for (let i = 0; i < 2; i++) {
-      await projectToggle.click()
-      await expect.poll(() => projectToggle.evaluate(element =>
-        element.getBoundingClientRect().left - document.querySelector('[data-activity-bar-toggle]').getBoundingClientRect().right)).toBeGreaterThanOrEqual(-1)
-    }
-    await page.screenshot({ path: path.join(artifacts, 'agent-workbench-collapsed.png'), animations: 'disabled' })
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '写作', exact: true }).click()
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '展开', exact: true }).click()
+  await verifyNavigation(application, page, artifacts, 'writing-dark')
+  await setNavigationExpanded(page, false)
+  for (const name of ['作品目录', '项目文件', '全局搜索']) {
+    const tab = page.getByRole('button', { name, exact: true })
+    await expect(tab).toBeVisible()
+    await tab.click()
   }
+  await page.getByRole('button', { name: '作品目录', exact: true }).click()
+  await page.getByRole('button', { name: '隐藏目录', exact: true }).click()
+  await expectWorkspaceFrame(page)
+  await page.getByRole('button', { name: '显示目录', exact: true }).click()
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '工作台', exact: true }).click()
+  const projectToggle = page.locator('[data-agent-chat-sidebar-toggle] > button')
+  await expect(projectToggle).toBeVisible()
+  for (let i = 0; i < 2; i++) { await projectToggle.click(); await expectWorkspaceFrame(page) }
+  await verifyMessageCenter(page)
+  await page.screenshot({ path: path.join(artifacts, 'agent-workbench-collapsed.png'), animations: 'disabled' })
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '写作', exact: true }).click()
+  await setNavigationExpanded(page, true)
 
   const streamed = await page.evaluate(async project => {
     const controller = new AbortController()
@@ -235,20 +195,21 @@ try {
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
   await expect(page.getByText('暮色落在旧车站外，石门后的轨道传来遥远的回声。', { exact: true })).toBeVisible({ timeout: 30_000 })
   console.log('Game turn persisted and rendered')
+  await verifyMessageCenter(page)
   for (const theme of ['dark', 'light']) {
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 850))
     await api('/api/settings', 'PATCH', { layer: 'user', changes: { theme } })
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     await expect(page.getByText('暮色落在旧车站外，石门后的轨道传来遥远的回声。', { exact: true })).toBeVisible()
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '收起', exact: true }).click()
-    if (process.platform === 'darwin') {
-      await expect.poll(() => page.getByLabel('工作台侧边栏').evaluate(element => element.getBoundingClientRect().width)).toBe(48)
-      await expect.poll(() => page.locator('.nova-story-stage-controls').evaluate(element =>
-        element.getBoundingClientRect().left - document.querySelector('[data-activity-bar-toggle]').getBoundingClientRect().right)).toBeGreaterThanOrEqual(-1)
-    }
-    await page.screenshot({ path: path.join(artifacts, `game-${theme}-collapsed.png`), animations: 'disabled' })
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '展开', exact: true }).click()
+    await verifyNavigation(application, page, artifacts, `game-${theme}`)
+    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '写作', exact: true }).click()
+    await expect(editor).toBeVisible()
+    await setNavigationExpanded(page, false)
+    await page.screenshot({ path: path.join(artifacts, `writing-${theme}-collapsed.png`), animations: 'disabled' })
+    await setNavigationExpanded(page, true)
+    await page.screenshot({ path: path.join(artifacts, `writing-${theme}-expanded.png`), animations: 'disabled' })
+    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
     for (const width of [1280, 500]) {
       await application.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 850), width)
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -273,12 +234,9 @@ try {
   await extension.getByRole('button', { name: '保存测试数据', exact: true }).click()
   await expect(extension.locator('[role="status"]')).toHaveText('测试数据已保存')
   assert.equal(await extension.locator('body').evaluate(() => typeof window.denovaDesktop), 'undefined')
-  if (process.platform === 'darwin') {
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '收起', exact: true }).click()
-    await expect.poll(() => page.locator('[data-slot="game-player-menu"]').evaluate(element =>
-      element.getBoundingClientRect().left - document.querySelector('[data-activity-bar-toggle]').getBoundingClientRect().right)).toBeGreaterThanOrEqual(-1)
-    await page.getByLabel('工作台侧边栏').getByRole('button', { name: '展开', exact: true }).click()
-  }
+  await setNavigationExpanded(page, false)
+  await expectWorkspaceFrame(page)
+  await setNavigationExpanded(page, true)
   console.log('Extension iframe, handshake and storage passed')
   await page.getByLabel('工作台侧边栏').getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: '软件更新', exact: true }).click()
