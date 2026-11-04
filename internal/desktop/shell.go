@@ -387,7 +387,23 @@ func (s *shell) start() error {
 		options.TrafficLightPosition = &mygo.Point{X: 12, Y: 17}
 		options.TitleBarHeight = 48
 	}
+	if runtime.GOOS == "windows" {
+		// Share one strip with the page menus while retaining native snap,
+		// resize, system-menu and caption-button behavior.
+		options.TitleBarStyle = mygo.TitleBarHidden
+		options.TitleBarHeight = 40
+		options.AutoHideMenuBar = true
+	}
 	w := mygo.NewWindow(options)
+	if runtime.GOOS == "windows" {
+		icon, iconErr := os.ReadFile(filepath.Join(s.resources, "icon.png"))
+		if iconErr == nil {
+			iconErr = w.SetIcon(icon)
+		}
+		if iconErr != nil {
+			slog.Error("Desktop window icon failed", "error", iconErr)
+		}
+	}
 	if old := s.window.Swap(w); old != nil {
 		old.Destroy()
 	}

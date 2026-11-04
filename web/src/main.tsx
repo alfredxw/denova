@@ -20,6 +20,7 @@ import { installGlobalRuntimeLoggers, recordRuntimeLog, scheduleWhiteScreenCheck
 import { fetchSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { AgentApprovalProvider } from '@/features/agent-approval/AgentApprovalProvider'
+import { DesktopFrame } from '@/components/layout/DesktopFrame'
 
 // Fetch public application code while authentication is checked. Protected
 // queries still start only after the access gate has authenticated the browser.
@@ -46,12 +47,14 @@ createRoot(root).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem themes={['light', 'dark']}>
         <TooltipProvider>
-          <RuntimeErrorBoundary>
-            <RemoteAccessGate>
-              <AuthenticatedApp />
-            </RemoteAccessGate>
-            <Toaster richColors closeButton />
-          </RuntimeErrorBoundary>
+          <DesktopFrame>
+            <RuntimeErrorBoundary>
+              <RemoteAccessGate>
+                <AuthenticatedApp />
+              </RemoteAccessGate>
+              <Toaster richColors closeButton />
+            </RuntimeErrorBoundary>
+          </DesktopFrame>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

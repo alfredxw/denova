@@ -24,6 +24,24 @@ try {
   const modelURL = await new Promise((resolve, reject) => { let text = ''; model.stdout.on('data', chunk => { text += chunk; const match = text.match(/http:\/\/127\.0\.0\.1:\d+/); if (match) resolve(match[0]) }); model.once('error', reject) })
   writeFileSync(path.join(directory, 'data/config.toml'), `language = "zh-CN"\nupdate_check_enabled = false\nupdate_download_enabled = false\nmodel_max_retries = 1\n\n[[model_endpoints]]\nid = "e2e"\nname = "Desktop fixture"\nprovider = "openai-compatible"\nprotocol = "openai-chat-completions"\napi_key = "test"\nbase_url = "${modelURL}/v1"\n\n[[model_profiles]]\nid = "e2e"\nname = "Desktop fixture"\nendpoint_id = "e2e"\nmodel = "denova-e2e"\ncontext_window_tokens = 100000\n\n[agent_models.default]\nprofile_id = "e2e"\nthinking_level = "off"\n\n[agent_models.interactive_story]\nprofile_id = "e2e"\nthinking_level = "off"\n`)
   app = await launch(directory); await ready()
+  if (process.platform === 'win32') {
+    assert.deepEqual(await app.evaluate(() => {
+      const bar = document.querySelector('.nova-desktop-titlebar')
+      const workspace = document.querySelector('[data-nova-app-shell]')
+      const controls = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mygo-titlebar-inset-right'))
+      return {
+        captionReserved: controls > 0,
+        belowTitlebar: workspace.getBoundingClientRect().top >= bar.getBoundingClientRect().bottom,
+        fillsWindow: workspace.getBoundingClientRect().height > innerHeight * 0.75,
+        menusClearOfButtons: bar.querySelector('nav').getBoundingClientRect().right <= innerWidth - controls,
+      }
+    }), { captionReserved: true, belowTitlebar: true, fillsWindow: true, menusClearOfButtons: true })
+    await app.evaluate(() => window.mygo.window.maximize())
+    await until(() => app.evaluate(() => window.mygo.window.isMaximized()))
+    await app.evaluate(() => window.mygo.window.unmaximize())
+    await until(async () => !(await app.evaluate(() => window.mygo.window.isMaximized())))
+    console.log('Integrated Windows titlebar layout and maximize/restore passed')
+  }
   const backend = await app.evaluate(() => window.denovaDesktop.backendOrigin)
   const origin = await app.evaluate(() => location.origin)
   assert.equal(await app.evaluate(() => typeof window.require), 'undefined')
@@ -68,10 +86,30 @@ try {
   for (const theme of ['dark', 'light']) {
     await app.api('/api/settings', 'PATCH', { layer: 'user', changes: { theme } }); await reload()
     await until(() => app.evaluate(theme => document.documentElement.dataset.theme === theme, theme))
+    await until(() => app.evaluate(() => document.body.textContent.includes('暮色落在旧车站外')))
     assert.equal(await app.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
     await app.screenshot(path.join(artifacts, `game-${theme}.png`))
   }
   console.log('Game generation, persistence and both themes passed')
+
+  if (process.platform === 'win32') {
+    // Native zoom changes the CSS viewport and caption-button safe area.
+    for (let i = 0; i < 5; i++) await app.command('menu', { path: ['视图', '放大'] })
+    await until(() => app.evaluate(() => innerWidth < 768))
+    assert.equal(await app.evaluate(() => {
+      const bar = document.querySelector('.nova-desktop-titlebar')
+      const workspace = document.querySelector('[data-nova-app-shell]')
+      const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mygo-titlebar-inset-right'))
+      return document.documentElement.scrollWidth <= innerWidth &&
+        bar.querySelector('nav').getBoundingClientRect().right <= innerWidth - inset &&
+        workspace.getBoundingClientRect().top >= bar.getBoundingClientRect().bottom &&
+        workspace.getBoundingClientRect().bottom <= innerHeight + 1
+    }), true)
+    await app.screenshot(path.join(artifacts, 'windows-narrow-light.png'))
+    await app.command('menu', { path: ['视图', '实际大小'] })
+    await until(() => app.evaluate(() => innerWidth > 1000))
+    console.log('Windows zoom, narrow layout and caption safe area passed')
+  }
 
   const project = await app.api('/api/agent-chat/projects/directory', 'POST', { name: 'Desktop extension fixture' })
   const projectDir = (await app.api('/api/agent-chat/projects')).projects.find(p => p.id === project.id).path

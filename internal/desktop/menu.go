@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"runtime"
@@ -35,7 +36,7 @@ func (s *shell) menus() {
 		}
 		return result
 	}
-	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{Label: "Denova", Submenu: items}, {Label: s.t("edit"), Submenu: roles([]string{"undo", "redo", "cut", "copy", "paste", "selectAll"})}, {Label: s.t("view"), Submenu: roles([]string{"reload", "resetZoom", "zoomIn", "zoomOut", "togglefullscreen", "minimize"})}}))
+	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{ID: "application", Label: "Denova", Submenu: items}, {ID: "edit", Label: s.t("edit"), Submenu: roles([]string{"undo", "redo", "cut", "copy", "paste", "selectAll"})}, {ID: "view", Label: s.t("view"), Submenu: roles([]string{"reload", "resetZoom", "zoomIn", "zoomOut", "togglefullscreen", "minimize"})}}))
 	if s.tray != nil {
 		var tray []*mygo.MenuItem
 		for _, item := range items {
@@ -45,4 +46,26 @@ func (s *shell) menus() {
 		}
 		s.tray.SetMenu(mygo.NewMenu(tray))
 	}
+}
+
+// OpenMenu exposes only the three existing application menus to the owning
+// page. Coordinates are page pixels; MyGo owns popup placement and commands.
+func (b *Bridge) OpenMenu(ctx context.Context, id string, x, y int) error {
+	if err := b.authorize(ctx); err != nil {
+		return err
+	}
+	if id != "application" && id != "edit" && id != "view" {
+		return errors.New("unknown desktop menu")
+	}
+	mygo.RunOnMain(func() {
+		if menu := mygo.App.Menu(); menu != nil {
+			if item := menu.ItemByID(id); item != nil {
+				slog.Info("Desktop menu opened", "menu", id)
+				w := b.shell.window.Load()
+				zoom := w.Page().ZoomFactor()
+				mygo.NewMenu(item.Submenu).PopupAt(w, int(float64(x)*zoom), int(float64(y)*zoom))
+			}
+		}
+	})
+	return nil
 }

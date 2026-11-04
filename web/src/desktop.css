@@ -2,6 +2,59 @@ html[data-desktop-platform] {
   --nova-desktop-navigation-width: 80px;
 }
 
+.nova-desktop-frame {
+  --nova-desktop-titlebar-height: max(40px, var(--mygo-titlebar-height, 40px));
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--nova-bg-deep);
+  color: var(--nova-text);
+}
+
+.nova-desktop-titlebar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  height: var(--nova-desktop-titlebar-height);
+  padding-left: 12px;
+  padding-right: var(--mygo-titlebar-inset-right, 138px);
+  --app-region: drag;
+}
+
+.nova-desktop-titlebar button {
+  --app-region: no-drag;
+  color: var(--nova-text-muted);
+}
+
+.nova-desktop-titlebar button:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  color: var(--nova-text);
+}
+
+/* Fixed sidebars and compact layouts use this content viewport, so they
+   cannot cover the titlebar or extend below the resized window. */
+.nova-desktop-workspace {
+  contain: layout;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  height: calc(100dvh - var(--nova-desktop-titlebar-height));
+}
+
+.nova-desktop-workspace [data-slot="sidebar-container"] {
+  height: 100%;
+}
+
+.nova-desktop-workspace [data-nova-app-shell="true"] {
+  height: calc(100dvh - var(--nova-desktop-titlebar-height));
+  min-height: 0;
+}
+
+.nova-desktop-workspace [data-nova-mobile-shell="true"] {
+  top: 0;
+}
+
 /* Browser zoom can make the native control region wider than the chosen size. */
 html[data-desktop-platform] :is(.nova-activity-bar, [data-activity-bar-expanded] [data-slot="sidebar-gap"]) {
   min-width: var(--nova-desktop-navigation-width);
@@ -80,7 +133,7 @@ html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sideb
 
 /* Portals can cover draggable headers without inheriting their no-drag rules.
    Native hit testing ignores z-index, so overlays must exclude their own area. */
-html[data-desktop-platform="darwin"] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot="sheet-overlay"], [data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]) {
+html[data-desktop-platform] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot="sheet-overlay"], [data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]) {
   --app-region: no-drag;
 }
 

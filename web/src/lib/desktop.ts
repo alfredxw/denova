@@ -5,6 +5,8 @@ import type { UpdateStatus } from '@/features/settings/types'
 export interface DesktopBridge {
   readonly platform: string
   readonly backendOrigin: string
+  /** Opens an existing native menu at page coordinates; shell owns actions. */
+  openMenu(id: 'application' | 'edit' | 'view', position: { x: number; y: number }): Promise<void>
   chooseDirectory(initialPath?: string): Promise<{ path: string; canceled: boolean }>
   /** Owns native selection, activity checks, backend shutdown, and relaunch. */
   changeDataDirectory(): Promise<void>

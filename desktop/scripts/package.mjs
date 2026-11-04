@@ -17,7 +17,7 @@ const config = {
   name: 'Denova', slug: 'denovadesktop', identifier: 'app.denova.desktop', version,
   copyright: 'Copyright © Denova contributors', main: './cmd/denova-desktop',
   i18n: { dir: 'internal/desktop/locales', source: 'en-US' },
-  icon: 'desktop/assets/icon.png', out: 'desktop/dist', resources: ['desktop/build/backend', 'desktop/assets/tray.png'],
+  icon: 'desktop/assets/icon.png', out: 'desktop/dist', resources: ['desktop/build/backend', 'desktop/assets/tray.png', 'desktop/assets/icon.png'],
   macos: { minimumSystemVersion: '12.0', category: 'public.app-category.productivity',
     ...(process.env.DENOVA_MAC_SIGNING_IDENTITY ? { signingIdentity: process.env.DENOVA_MAC_SIGNING_IDENTITY } : {}),
     ...(process.env.DENOVA_MAC_NOTARY_PROFILE ? { notarize: { keychainProfile: process.env.DENOVA_MAC_NOTARY_PROFILE } } : {}),

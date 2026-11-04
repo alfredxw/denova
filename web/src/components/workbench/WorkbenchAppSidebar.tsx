@@ -221,6 +221,8 @@ function ActivityBarBrandRow({
   onToggle,
 }: Pick<WorkbenchAppSidebarProps, 'expanded' | 'toggleLabel' | 'onToggle'>) {
   const desktop = desktopBridge()
+  // Windows already presents the brand in its shared titlebar.
+  if (desktop?.platform === 'win32') return null
   // MyGo supplies the native control area; keep a real element for dragging.
   if (desktop?.platform === 'darwin') return <div className="nova-activity-brand-row" aria-hidden="true" />
   if (desktop) {
