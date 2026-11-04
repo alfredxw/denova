@@ -1,5 +1,5 @@
 import { closeMobilePanes } from '@/components/layout/mobile-pane-events'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { startTransition, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import { DndContext, KeyboardSensor, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
@@ -54,12 +54,6 @@ export function AgentChatActivitySidebar({
   onArchiveProject,
 }: AgentChatActivitySidebarProps) {
   const { t } = useTranslation()
-  const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set())
-  const [knownProjectIDs, setKnownProjectIDs] = useState<ReadonlySet<string>>(() => new Set())
-  const previousActiveProjectIDRef = useRef('')
-  // A row click owns both selection and expansion. Preserve that explicit toggle when the
-  // parent commits the new selection; active-project changes from elsewhere still auto-expand.
-  const pendingRowToggleProjectIDRef = useRef('')
   const preferences = useAgentChatSidebarPreferences(projects)
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -72,35 +66,6 @@ export function AgentChatActivitySidebar({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
-  useLayoutEffect(() => {
-    const visibleProjectIDs = new Set(projects.map((project) => project.id))
-    const activeProjectChanged = previousActiveProjectIDRef.current !== activeProjectId
-    const preserveExplicitToggle = activeProjectChanged && pendingRowToggleProjectIDRef.current === activeProjectId
-    setCollapsedProjects((current) => {
-      const next = new Set([...current].filter((id) => visibleProjectIDs.has(id)))
-      for (const project of projects) {
-        if (!knownProjectIDs.has(project.id) && project.id !== activeProjectId) next.add(project.id)
-      }
-      if (activeProjectChanged && activeProjectId && !preserveExplicitToggle) next.delete(activeProjectId)
-      return setsEqual(current, next) ? current : next
-    })
-    if (activeProjectChanged) pendingRowToggleProjectIDRef.current = ''
-    setKnownProjectIDs((current) => setsEqual(current, visibleProjectIDs) ? current : visibleProjectIDs)
-    previousActiveProjectIDRef.current = activeProjectId
-  }, [activeProjectId, knownProjectIDs, projects])
-
-  const toggleProject = (project: AgentChatProject) => {
-    preferences.recordProjectOpened(project.id)
-    if (project.id !== activeProjectId) pendingRowToggleProjectIDRef.current = project.id
-    setCollapsedProjects((current) => {
-      const next = new Set(current)
-      if (next.has(project.id)) next.delete(project.id)
-      else next.add(project.id)
-      return next
-    })
-    onSelectProject(project)
-  }
-
   const handleDragEnd = (event: DragEndEvent) => {
     const active = event.active.data.current as AgentChatSidebarProjectDragData | undefined
     const over = event.over?.data.current as AgentChatSidebarProjectDragData | undefined
@@ -150,18 +115,22 @@ export function AgentChatActivitySidebar({
             <>
               <SortableContext items={preferences.orderedProjects.map((project) => projectSortableID(project.id))} strategy={verticalListSortingStrategy}>
                 {preferences.orderedProjects.map((project) => (
-                  <AgentChatSidebarProject
+                  <ExpandableProject
                     deferContent={projects.length > 30}
                     key={project.id}
                     project={project}
-                    active={project.id === activeProjectId}
-                    // New rows must mount in their intended state. Correcting an open row
-                    // in a layout effect can still trigger its CSS collapse transition.
-                    expanded={knownProjectIDs.has(project.id) ? !collapsedProjects.has(project.id) : project.id === activeProjectId}
+                    activeProjectId={activeProjectId}
                     manualSorting={preferences.sortMode === 'manual'}
                     pinned={preferences.isProjectPinned(project.id)}
                     activities={activitiesByProject.get(project.id) ?? []}
-                    onToggle={() => toggleProject(project)}
+                    onToggle={() => {
+                      if (project.id === activeProjectId) { onSelectProject(project); return }
+                      // Paint the row expansion before mounting the destination workspace.
+                      startTransition(() => {
+                        preferences.recordProjectOpened(project.id)
+                        onSelectProject(project)
+                      })
+                    }}
                     onCreateSession={(customAgentId) => {
                       preferences.recordProjectOpened(project.id)
                       onCreateSession(project, customAgentId)
@@ -195,6 +164,25 @@ export function AgentChatActivitySidebar({
   )
 }
 
+/** Keep expansion local so toggling one row does not render the entire Project tree. */
+function ExpandableProject({ activeProjectId, onToggle, ...props }: Omit<ComponentProps<typeof AgentChatSidebarProject>, 'active' | 'expanded'> & {
+  activeProjectId: string
+}) {
+  const active = props.project.id === activeProjectId
+  const [expanded, setExpanded] = useState(active)
+  const rowTogglePending = useRef(false)
+  useLayoutEffect(() => {
+    // External navigation reveals its destination; a row click keeps its explicit toggle.
+    if (active && !rowTogglePending.current) setExpanded(true)
+    rowTogglePending.current = false
+  }, [active, activeProjectId])
+  return <AgentChatSidebarProject {...props} active={active} expanded={expanded} onToggle={() => {
+    rowTogglePending.current = !active
+    setExpanded(current => !current)
+    onToggle()
+  }} />
+}
+
 function SidebarSortMenu({ sortMode, onSortModeChange }: { sortMode: AgentChatSidebarSortMode; onSortModeChange: (mode: AgentChatSidebarSortMode) => void }) {
   const { t } = useTranslation()
   const label = t(`agentChat.sidebar.sort.${sortMode}`)
@@ -221,12 +209,4 @@ function SidebarSortMenu({ sortMode, onSortModeChange }: { sortMode: AgentChatSi
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
-
-function setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  if (left.size !== right.size) return false
-  for (const value of left) {
-    if (!right.has(value)) return false
-  }
-  return true
 }

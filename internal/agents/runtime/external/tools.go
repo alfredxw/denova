@@ -150,6 +150,13 @@ func (operation *Operation) invoke(ctx context.Context, call ToolCall, tool prep
 		pending.AgentKind = operation.request.ToolPolicy.AgentKind
 		operation.send(agentrun.Event{Type: "ask_pending", Data: pending})
 		answer, err := operation.service.Interactions.Wait(ctx, operation.request.ProjectID, operation.request.Session, operation.id, executionID)
+		if err != nil && errors.Is(context.Cause(ctx), ErrInteractionWithdrawn) {
+			reason := "runtime_withdrawn"
+			answer, err = operation.service.Interactions.Resolve(context.WithoutCancel(ctx), operation.request.ProjectID, operation.request.Session, question.ID, nil, &reason)
+			if errors.Is(err, ErrAskConflict) {
+				answer, err = operation.service.Interactions.Wait(context.WithoutCancel(ctx), operation.request.ProjectID, operation.request.Session, operation.id, executionID)
+			}
+		}
 		if err != nil {
 			return ToolResult{}, err
 		}

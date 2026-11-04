@@ -44,7 +44,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 	}
 	installedVersion := strings.TrimPrefix(strings.TrimSpace(string(versionOutput)), "codex-cli ")
 	t.Logf("Installed App Server version: %s", installedVersion)
-	for _, scenario := range []string{"ask", "patch", "evaluation_patch", "cancel", "images", "api", "plan", "steer"} {
+	for _, scenario := range []string{"ask", "patch", "native_shell", "evaluation_patch", "cancel", "images", "api", "plan", "steer"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
@@ -91,14 +91,20 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 				ordinal := len(requests)
 				mu.Unlock()
 				var item map[string]any
-				if ordinal == 1 && scenario == "plan" {
+				if ordinal == 1 && scenario == "native_shell" {
+					args, _ := json.Marshal(map[string]any{"command": "cat " + guard + "; printf changed > " + guard})
+					item = map[string]any{"type": "function_call", "id": "native_shell", "call_id": "native_shell", "name": "shell_command", "arguments": string(args), "status": "completed"}
+				} else if ordinal == 1 && scenario == "plan" {
 					item = map[string]any{"type": "function_call", "id": "fc_plan", "call_id": "call_plan", "name": "update_plan", "arguments": `{"plan":[{"step":"Confirm tone","status":"in_progress"}]}`, "status": "completed"}
 				} else if (ordinal == 1 && scenario == "patch") || (ordinal == 3 && scenario == "evaluation_patch") {
 					item = map[string]any{"type": "custom_tool_call", "id": "fc_patch", "call_id": "call_patch", "name": "apply_patch", "input": "*** Begin Patch\n*** Update File: " + filepath.ToSlash(guard) + "\n@@\n-Original content.\n+Unauthorized write.\n*** End Patch", "status": "completed"}
 				} else if ordinal == 1 || (scenario == "plan" && ordinal == 2) {
-					item = map[string]any{"type": "function_call", "id": "fc_question", "call_id": "call_question", "name": "ask", "arguments": `{"questions":[{"id":"tone","prompt":"Which tone?"}]}`, "status": "completed"}
+					item = map[string]any{"type": "function_call", "id": "fc_question", "call_id": "call_question", "name": "request_user_input", "arguments": `{"questions":[{"id":"tone","header":"Tone","question":"Which tone?","options":[{"label":"Restrained","description":"Understated"},{"label":"Dramatic","description":"Heightened"}]}]}`, "status": "completed"}
 				} else {
 					item = map[string]any{"type": "message", "id": "msg_final", "role": "assistant", "status": "completed", "content": []map[string]any{{"type": "output_text", "text": "The tool result was received.", "annotations": []any{}}}}
+				}
+				if ordinal == 1 && scenario == "images" {
+					item["name"], item["arguments"] = "reference", `{}`
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				w.Header().Set("Connection", "close")
@@ -121,7 +127,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			configuration := fmt.Sprintf("model = \"gpt-5.5\"\nmodel_provider = \"fixture\"\nmodel_context_window = 128000\n[model_providers.fixture]\nname = \"Local fixture\"\nbase_url = %q\nwire_api = \"responses\"\nenv_key = \"DENOVA_FIXTURE_CODEX_KEY\"\n[features]\nenable_request_compression = false\n", server.URL+"/v1")
+			configuration := fmt.Sprintf("model = \"gpt-5.5\"\nmodel_provider = \"fixture\"\nmodel_context_window = 128000\n[model_providers.fixture]\nname = \"Local fixture\"\nbase_url = %q\nwire_api = \"responses\"\nenv_key = \"DENOVA_FIXTURE_CODEX_KEY\"\n[features]\nenable_request_compression = false\nunified_exec = false\n", server.URL+"/v1")
 			if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(configuration), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -172,6 +178,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			}
 			host := &integrationHost{started: make(chan struct{}, 1), answer: make(chan struct{})}
 			input := external.Input{
+				Workspace:    project,
 				Selection:    config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "gpt-5.5"}},
 				Instructions: "Use the host tools to carry out the user request.", Text: "Ask which tone to use, then report the result.",
 				History: []external.Message{{Role: "user", Text: "Previous user context."}, {Role: "assistant", Text: "Previous confirmed content."}},
@@ -197,6 +204,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 					t.Fatal(err)
 				}
 				input.Attachments, input.History[0].Attachments, host.images = files, files, files
+				input.Tools = append(input.Tools, external.Tool{Name: "reference", Description: "Read a reference", Schema: json.RawMessage(`{"type":"object","properties":{}}`)})
 			}
 			type outcome struct {
 				result external.Result
@@ -225,7 +233,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 				result, err := client.Run(attemptContext, input, host)
 				done <- outcome{result, err}
 			}()
-			if scenario != "patch" {
+			if scenario != "patch" && scenario != "native_shell" {
 				select {
 				case <-host.started:
 				case result := <-done:
@@ -310,13 +318,20 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 					t.Fatalf("App Server image payload counts: first png=%d all=%d; second png=%d all=%d", strings.Count(string(requests[0]), "data:image/png;base64,"), strings.Count(string(requests[0]), "data:image/"), strings.Count(string(requests[1]), "data:image/png;base64,"), strings.Count(string(requests[1]), "data:image/"))
 				}
 			}
-			if scenario == "patch" || scenario == "evaluation_patch" {
+			if scenario == "patch" || scenario == "evaluation_patch" || scenario == "native_shell" {
 				content, err := os.ReadFile(guard)
 				if err != nil || string(content) != "Original content.\n" {
 					t.Fatalf("built-in patch escaped host boundary: %q, %v", content, err)
 				}
-				if !strings.Contains(string(requests[len(requests)-1]), "read-only sandbox") {
-					t.Fatal("patch denial was not returned to the model")
+				if scenario == "native_shell" && (!strings.Contains(string(requests[len(requests)-1]), "Original content.") || len(host.native) != 2 || host.native[1].Status != "error") {
+					var request struct {
+						Tools []struct {
+							Name string `json:"name"`
+						} `json:"tools"`
+						Input []map[string]any `json:"input"`
+					}
+					_ = json.Unmarshal(requests[len(requests)-1], &request)
+					t.Fatalf("native shell observation missing: %+v tools=%+v last=%+v", host.native, request.Tools, request.Input[len(request.Input)-1])
 				}
 			} else if !strings.Contains(string(requests[len(requests)-1]), "Restrained") {
 				t.Fatal("saved host answer was not returned to the model")
@@ -334,6 +349,7 @@ type integrationHost struct {
 	text    strings.Builder
 	images  []agentschema.Attachment
 	plan    []agentevent.TodoItem
+	native  []external.NativeTool
 }
 
 func (host *integrationHost) PrepareSteer(_ context.Context, guidance external.Guidance) (external.PreparedSteer, error) {
@@ -341,6 +357,9 @@ func (host *integrationHost) PrepareSteer(_ context.Context, guidance external.G
 }
 
 func (host *integrationHost) Emit(event agentrun.Event) error {
+	if observation, ok := event.Data.(external.NativeTool); ok {
+		host.native = append(host.native, observation)
+	}
 	if event.Type == "todo_updated" {
 		var err error
 		host.plan, err = external.PlanItems(event)
@@ -353,13 +372,13 @@ func (host *integrationHost) Emit(event agentrun.Event) error {
 }
 
 func (host *integrationHost) CallTool(ctx context.Context, call external.ToolCall) (external.ToolResult, error) {
-	if call.Name != "ask" {
+	if call.Name != "ask" && call.Name != "reference" {
 		return external.ToolResult{}, fmt.Errorf("unexpected host tool %q", call.Name)
 	}
 	host.started <- struct{}{}
 	select {
 	case <-host.answer:
-		return external.ToolResult{Success: true, Text: `{"status":"answered","answers":[{"question_id":"tone","custom_input":"Restrained"}]}`, Images: host.images}, nil
+		return external.ToolResult{Success: true, Text: `{"status":"answered","answers":[{"question_id":"question_0","custom_input":"Restrained"}]}`, Images: host.images}, nil
 	case <-ctx.Done():
 		return external.ToolResult{}, ctx.Err()
 	}

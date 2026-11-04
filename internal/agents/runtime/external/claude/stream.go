@@ -23,6 +23,7 @@ type contentBlock struct {
 	Input     json.RawMessage `json:"input"`
 	ToolUseID string          `json:"tool_use_id"`
 	IsError   bool            `json:"is_error"`
+	Content   json.RawMessage `json:"content"`
 }
 type streamMessage struct {
 	ID      string        `json:"id"`
@@ -55,6 +56,13 @@ type streamEvent struct {
 }
 
 type streamFrame struct {
+	RequestID string          `json:"request_id"`
+	Request   json.RawMessage `json:"request"`
+	Response  struct {
+		RequestID string `json:"request_id"`
+		Subtype   string `json:"subtype"`
+		Error     string `json:"error"`
+	} `json:"response"`
 	SessionID     string          `json:"session_id"`
 	UUID          string          `json:"uuid"`
 	Tools         []string        `json:"tools"`
@@ -101,6 +109,8 @@ type streamOutput struct {
 	planCalls        map[string]contentBlock
 	planObserved     bool
 	toolIDs          map[string]bool
+	native           *external.NativeObserver
+	ambientMCP       bool
 }
 
 func (s *streamOutput) feed(line []byte, host external.Host) error {
@@ -112,6 +122,9 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 }
 
 func (s *streamOutput) feedFrame(f streamFrame, host external.Host) error {
+	if err := s.observeNative(f); err != nil {
+		return err
+	}
 	if f.Parent != "" {
 		return nil
 	}
@@ -214,7 +227,7 @@ func (s *streamOutput) feedFrame(f streamFrame, host external.Host) error {
 		if f.Subtype == "init" {
 			s.initialized = true
 			for _, name := range f.Tools {
-				if !s.tools[name] && name != "EndConversation" {
+				if !s.tools[name] && name != "EndConversation" && !(s.ambientMCP && strings.HasPrefix(name, "mcp__") && !strings.HasPrefix(name, "mcp__denova__")) {
 					return fmt.Errorf("Claude exposed an unscoped tool %q", name)
 				}
 			}

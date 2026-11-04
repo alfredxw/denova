@@ -37,10 +37,23 @@ export function captureNativeRequest(body) {
 
 export function runtimeCompletion(body) {
   const serialized = JSON.stringify(body.messages ?? [])
-  const marker = serialized.match(/E2E_RUNTIME_(?:AUTO|PLAN|SWITCH|GOAL|TODO)_(?:WRITING|GAME)/)?.[0]
+  const marker = serialized.match(/E2E_RUNTIME_(?:AUTO|PLAN|SWITCH|GOAL|TODO|NATIVE)_(?:WRITING|GAME)/)?.[0]
   if (!marker) return null
   const lastUser = [...body.messages].reverse().find(message => message.role === 'user')
   const input = JSON.stringify(lastUser?.content)
+  if (marker.includes('_NATIVE_')) {
+    if (!body.messages.some(message => message.tool_call_id === 'call-native-question')) return {
+      tool: 'request_user_input', id: 'call-native-question', arguments: JSON.stringify({ questions: [{
+        id: 'inspect', header: 'Inspect', question: '是否继续读取原生工具证据？', options: [
+          { label: '继续检查', description: '读取运行时证据' }, { label: '停止检查', description: '结束本次检查' },
+        ],
+      }] }),
+    }
+    if (!body.messages.some(message => message.tool_call_id === 'call-native-shell')) return {
+      tool: 'shell_command', id: 'call-native-shell', arguments: JSON.stringify({ command: "printf 'Native runtime evidence.'" }),
+    }
+    return { content: `${marker} native tools completed.` }
+  }
   if (marker.includes('_TODO_')) {
     const stage = input.match(/STAGE_(DEFAULT|ENABLED|DISABLED)/)?.[1]
     if (stage === 'ENABLED' && !body.messages.some(message => message.tool_call_id === 'call-todo-tracking')) {

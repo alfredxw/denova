@@ -119,6 +119,11 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if exe == "" {
 		t.Skip("set DENOVA_TEST_CLAUDE_EXE to exercise the installed CLI against a local model fixture")
 	}
+	project := t.TempDir()
+	guard := filepath.Join(project, "guard.txt")
+	if err := os.WriteFile(guard, []byte("Original content."), 0600); err != nil {
+		t.Fatal(err)
+	}
 	personal := t.TempDir()
 	t.Setenv("HOME", personal)
 	t.Setenv("USERPROFILE", personal)
@@ -177,12 +182,16 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 		stop := "tool_use"
 		switch n {
 		case 1:
-			block = map[string]any{"type": "tool_use", "id": "ask_1", "name": "mcp__denova__ask", "input": map[string]any{"questions": []any{map[string]any{"id": "tone", "prompt": "Which tone?"}}}}
+			block = map[string]any{"type": "tool_use", "id": "ask_1", "name": "AskUserQuestion", "input": map[string]any{"questions": []any{map[string]any{"header": "Tone", "question": "Which tone?", "options": []any{map[string]any{"label": "Restrained", "description": "Understated"}, map[string]any{"label": "Dramatic", "description": "Heightened"}}, "multiSelect": false}}}}
 		case 2:
 			block = map[string]any{"type": "tool_use", "id": "write_1", "name": "mcp__denova__write", "input": map[string]any{"path": "draft.md", "content": "Saved draft"}}
 		case 3:
-			block = map[string]any{"type": "tool_use", "id": "plan_1", "name": "TaskCreate", "input": map[string]any{"subject": "Verify the draft", "description": "Check the saved draft"}}
+			block = map[string]any{"type": "tool_use", "id": "native_read", "name": "Read", "input": map[string]any{"file_path": guard}}
 		case 4:
+			block = map[string]any{"type": "tool_use", "id": "native_shell", "name": "Bash", "input": map[string]any{"command": "cat " + guard + "; printf changed > " + guard, "description": "Inspect protected content and attempt a forbidden write"}}
+		case 5:
+			block = map[string]any{"type": "tool_use", "id": "plan_1", "name": "TaskCreate", "input": map[string]any{"subject": "Verify the draft", "description": "Check the saved draft"}}
+		case 6:
 			block = map[string]any{"type": "tool_use", "id": "plan_2", "name": "TaskUpdate", "input": map[string]any{"taskId": "1", "status": "completed"}}
 		default:
 			block = map[string]any{"type": "text", "text": "Draft saved."}
@@ -276,9 +285,9 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 				return external.ToolResult{}, ctx.Err()
 			}
 		}
-		return external.ToolResult{Text: "Confirmed", Success: true}, nil
+		return external.ToolResult{Text: `{"status":"answered","answers":[{"question_id":"question_0","custom_input":"Restrained"}]}`, Success: true}, nil
 	}}
-	input := external.Input{Selection: config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "sonnet"}}, Instructions: "Use supplied tools to answer the current request.", Text: "Ask then save a draft.", Tools: []external.Tool{{Name: "ask", Description: "Ask the user", Schema: json.RawMessage(`{"type":"object","properties":{"questions":{"type":"array"}}}`)}, {Name: "write", Description: "Write a draft", Schema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}}}`)}}}
+	input := external.Input{Workspace: project, StoreRoot: t.TempDir(), Selection: config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "sonnet"}}, Instructions: "Use supplied tools to answer the current request.", Text: "Ask then save a draft.", Tools: []external.Tool{{Name: "ask", Description: "Ask the user", Schema: json.RawMessage(`{"type":"object","properties":{"questions":{"type":"array"}}}`)}, {Name: "write", Description: "Write a draft", Schema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}}}`)}}}
 	if source == "api" {
 		input.Selection.Claude = &config.ClaudeRuntimeSettings{ProfileID: "api-profile"}
 	}
@@ -296,7 +305,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if err != nil {
 		t.Fatalf("run: %v; requests=%d; calls=%#v; result=%#v", err, requests, host.calls, result)
 	}
-	if result.Text != "Draft saved. Verified." || host.text != result.Text || len(host.calls) != 2 || host.calls[0].Name != "ask" || host.calls[0].ID != "ask_1" || host.calls[1].Name != "write" || host.calls[1].ID != "write_1" {
+	if result.Text != "Draft saved. Verified." || host.text != result.Text || len(host.calls) != 2 || host.calls[0].Name != "ask" || !strings.HasPrefix(host.calls[0].ID, "native-question-") || host.calls[1].Name != "write" || host.calls[1].ID != "write_1" {
 		t.Fatalf("unexpected tool loop: %#v calls=%#v", result, host.calls)
 	}
 	if result.Usage == nil || result.Usage.TotalTokens == 0 {
@@ -304,6 +313,19 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	}
 	if !imageSeen {
 		t.Fatal("CLI model request lost image input")
+	}
+	contents, err := os.ReadFile(guard)
+	if err != nil || string(contents) != "Original content." {
+		t.Fatalf("native shell escaped review: %q %v", contents, err)
+	}
+	nativeReads := 0
+	for _, event := range host.events {
+		if observation, ok := event.Data.(external.NativeTool); ok && observation.Status != "running" && strings.Contains(observation.Result, "Original content.") {
+			nativeReads++
+		}
+	}
+	if nativeReads != 2 {
+		t.Fatalf("native Read/Bash results lost: %+v", host.events)
 	}
 	var plan []agentevent.TodoItem
 	for _, event := range host.events {
@@ -318,7 +340,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 		t.Fatalf("native plan=%+v", plan)
 	}
 	for _, tool := range modelTools {
-		if !strings.HasPrefix(tool, "mcp__denova__") && !slices.Contains([]string{"TaskCreate", "TaskGet", "TaskList", "TaskUpdate"}, tool) {
+		if !strings.HasPrefix(tool, "mcp__denova__") && !slices.Contains([]string{"Read", "Glob", "Grep", "WebFetch", "WebSearch", "AskUserQuestion", "Bash", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate"}, tool) {
 			t.Fatalf("unscoped model tool: %s", tool)
 		}
 	}

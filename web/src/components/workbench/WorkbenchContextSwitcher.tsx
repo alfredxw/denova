@@ -40,7 +40,7 @@ export function WorkbenchContextSwitcherTrigger({
     >
       <Icon aria-hidden="true" className={cn('h-3.5 w-3.5 shrink-0', compact && !iconOnly && 'hidden')} />
       <span className={cn('min-w-0 truncate font-medium', iconOnly && 'sr-only')}>{label}</span>
-      {!iconOnly && <ChevronDown aria-hidden="true" className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
+      {compact && !iconOnly && <ChevronDown aria-hidden="true" className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
     </button>
   )
 }

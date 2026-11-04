@@ -104,7 +104,7 @@ func prepareExternalInput(ctx context.Context, runtime Runtime, request agentcha
 	return external.StartRequest{
 		ProjectID: runtime.ProjectID, AttachmentRoot: runtime.ProjectStore, Session: runtime.Session, CommandID: request.CommandID,
 		Fingerprint: agentexecution.RequestSemanticFingerprint(request),
-		Input:       external.Input{Instructions: assembly.Composition.Instruction(), Text: instruction.String() + "\n\n" + text, Attachments: request.AttachedFiles},
+		Input:       external.Input{Instructions: assembly.Composition.Instruction(), Text: instruction.String() + "\n\n" + text, Attachments: request.AttachedFiles, Workspace: runtime.Workspace, StoreRoot: runtime.ProjectStore, DataRoot: runtime.Config.DataDir(), AgentKind: runtime.AgentKind, Locale: runtime.Config.Language},
 		Message:     agentschema.Message{Role: agentschema.User, Content: request.Message, Attachments: request.AttachedFiles},
 		Metadata: session.MessageMetadata{MessageID: request.CommandID + "-input", AgentKind: runtime.AgentKind,
 			ContextOnly:    request.InputVisibility == agentrun.InputModelOnly,

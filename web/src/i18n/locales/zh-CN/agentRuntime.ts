@@ -17,7 +17,7 @@ const agentRuntime = {
   'agentRuntime.sharedClaudeHome': "使用运行 Denova 的电脑上的 Claude Code 登录和服务商环境配置。模型名称由 Claude Code 解析，实际可用性取决于账号。",
   'agentRuntime.claudeLoginInTerminal': "请在运行 Denova 的电脑上执行 claude auth login，然后重新检查连接。",
   'agentRuntime.claudeNotInstalled': "未找到 Claude Code。请先在此电脑上安装。",
-  'agentRuntime.claudeIncompatibleVersion': "Claude Code 版本过旧或无法识别，最低支持版本为 2.1.259。请在运行 Denova 的电脑上执行 claude update（Homebrew 安装使用 brew upgrade claude-code），更新后点击「检查连接」。",
+  'agentRuntime.claudeIncompatibleVersion': "Claude Code 版本过旧或无法识别，最低支持版本为 2.1.314。请在运行 Denova 的电脑上执行 claude update（Homebrew 安装使用 brew upgrade claude-code），更新后点击「检查连接」。",
 
   'agentRuntime.currentRuntime': "运行时：{{runtime}}",
   'agentRuntime.switchRuntime': "切换运行时",

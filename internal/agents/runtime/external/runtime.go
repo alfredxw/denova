@@ -102,9 +102,11 @@ func (runtime *Runtime) prepare(ctx context.Context, request SessionRequest) (*R
 		return nil, err
 	}
 	prefix, err := json.Marshal(struct {
-		Instructions string
-		Tools        []Tool
-	}{request.Input.Instructions, request.Input.Tools})
+		Instructions  string
+		Tools         []Tool
+		PolicyVersion int
+		Roots         [3]string
+	}{request.Input.NativeInstructions(), request.Input.Tools, 2, [3]string{request.Input.Workspace, request.Input.StoreRoot, request.Input.DataRoot}})
 	if err != nil {
 		return nil, err
 	}

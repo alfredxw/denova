@@ -1,6 +1,21 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createStartedStory } from '../support/api'
 
+test('unavailable usage statistics show a disabled, unchecked switch', async ({ page, request }) => {
+  await createAndOpenBook(request, 'Unavailable analytics validation')
+  await page.route(/\/api\/analytics$/, route => route.fulfill({
+    json: { enabled: true, notice_seen: true, available: false },
+  }))
+  await page.goto('/')
+  await page.getByRole('navigation').first().getByRole('button', { name: '设置', exact: true }).click()
+  const toggle = page.getByRole('switch', { name: '分享匿名使用统计', exact: true })
+  await expect(page.getByText('使用统计当前不可用。', { exact: true })).toBeVisible()
+  await expect(toggle).toBeDisabled()
+  await expect(toggle).not.toBeChecked()
+  await toggle.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath('analytics-unavailable.png') })
+})
+
 for (const { theme, locale, width } of [
   { theme: 'dark', locale: 'zh-CN', width: 1440 },
   { theme: 'light', locale: 'en-US', width: 1440 },
@@ -40,11 +55,11 @@ for (const { theme, locale, width } of [
         await page.getByRole('navigation').first().getByRole('button', { name, exact: true }).click()
       }
     }
-    const dialog = page.getByRole('dialog', { name: chinese ? '使用统计不包含创作内容' : 'Usage statistics without creative content' })
+    const dialog = page.getByRole('dialog', { name: chinese ? '匿名使用统计' : 'Anonymous usage statistics' })
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText(chinese ? '默认开启' : 'enabled by default')
-    await expect(dialog).toContainText(chinese ? '执行结果和耗时' : 'execution outcomes and duration')
-    await expect(dialog).toContainText(chinese ? '不会发送正文' : 'No creative text')
+    await expect(dialog).toContainText(chinese ? '默认开启' : 'on by default')
+    await expect(dialog).toContainText(chinese ? '运行耗时' : 'how long operations take')
+    await expect(dialog).toContainText(chinese ? '创作内容、项目名称、文件路径和 API 密钥均不会发送' : 'Statistics exclude creative content, project names, file paths, and API keys')
     expect(activities).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: test.info().outputPath(`analytics-notice-${locale}-${theme}-${width}.png`) })
@@ -52,11 +67,11 @@ for (const { theme, locale, width } of [
     await expect(dialog).toBeHidden()
     expect(preferences).toEqual({ enabled: true, notice_seen: true, available: true })
     await selectDestination(chinese ? '设置' : 'Settings')
-    const toggle = page.getByRole('switch', { name: chinese ? '分享使用统计' : 'Share usage statistics', exact: true })
+    const toggle = page.getByRole('switch', { name: chinese ? '分享匿名使用统计' : 'Share anonymous usage statistics', exact: true })
     await expect(toggle).toBeChecked()
     await expect(page.getByText(chinese
-      ? '向 PostHog 分享活跃、功能使用、留存、版本、平台、执行结果和耗时、固定错误分类以及主题和语言变更。'
-      : 'Share activity, feature usage, return visits, app version, platform, execution outcomes and duration, fixed error categories, and theme/language changes with PostHog.', { exact: false })).toBeVisible()
+      ? '帮助改进 Denova'
+      : 'Help improve Denova', { exact: false })).toBeVisible()
     await toggle.click()
     await expect(toggle).not.toBeChecked()
     await page.screenshot({ path: test.info().outputPath(`analytics-settings-${locale}-${theme}-${width}.png`) })

@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
+	"sync"
+	"time"
 
 	"denova/internal/agents/runtime/external"
 	"github.com/google/uuid"
@@ -22,6 +25,8 @@ type pendingSteer struct {
 }
 
 type streamRun struct {
+	input        external.Input
+	initialInput []byte
 	output       *streamOutput
 	host         external.Host
 	steeringHost external.SteeringHost
@@ -32,12 +37,12 @@ type streamRun struct {
 	pending *pendingSteer
 }
 
-func (run *streamRun) steer(ctx context.Context) error {
+func (run *streamRun) steer(ctx context.Context, waitingForUser bool) error {
 	guidance, present, err := run.controls.Next(ctx)
 	if err != nil || !present {
 		return err
 	}
-	if run.steeringHost == nil || !run.bridge.holdToolsForSteer() {
+	if waitingForUser || run.steeringHost == nil || !run.bridge.holdToolsForSteer() {
 		run.controls.Interrupt()
 		return nil
 	}
@@ -56,6 +61,22 @@ func (run *streamRun) steer(ctx context.Context) error {
 }
 
 func (run *streamRun) read(ctx context.Context, cancel context.CancelFunc, reader io.Reader, stdin io.Closer) (runErr error) {
+	controlCtx, stopControls := context.WithCancel(ctx)
+	var workers sync.WaitGroup
+	defer func() { stopControls(); workers.Wait() }()
+	type controlResult struct {
+		id   string
+		body []byte
+		err  error
+	}
+	completed := make(chan controlResult, 64)
+	pending := map[string]context.CancelCauseFunc{}
+	var initialization <-chan time.Time
+	if run.initialInput != nil {
+		timer := time.NewTimer(infrastructureTimeout)
+		defer timer.Stop()
+		initialization = timer.C
+	}
 	if run.steeringHost != nil {
 		run.output.toolIDs = map[string]bool{}
 	}
@@ -69,7 +90,7 @@ func (run *streamRun) read(ctx context.Context, cancel context.CancelFunc, reade
 		if run.controls != nil && run.output.initialized && !run.output.terminal && run.pending == nil && ctx.Err() == nil {
 			if recheck {
 				recheck = false
-				if err := run.steer(ctx); err != nil {
+				if err := run.steer(ctx, len(pending) != 0); err != nil {
 					runErr = errors.Join(runErr, fmt.Errorf("steer Claude: %w", err))
 					cancel()
 				}
@@ -79,6 +100,25 @@ func (run *streamRun) read(ctx context.Context, cancel context.CancelFunc, reade
 			}
 		}
 		select {
+		case <-initialization:
+			initialization = nil
+			runErr = errors.Join(runErr, errors.New("Claude initialization timed out"))
+			cancel()
+		case result := <-completed:
+			finish, exists := pending[result.id]
+			if !exists {
+				continue
+			}
+			finish(nil)
+			delete(pending, result.id)
+			if result.err != nil {
+				body, _ := json.Marshal(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "error", "request_id": result.id, "error": result.err.Error()}})
+				result.body = append(body, '\n')
+			}
+			if err := run.write(result.body); err != nil && ctx.Err() == nil {
+				runErr = errors.Join(runErr, err)
+				cancel()
+			}
 		case <-steering:
 			recheck = true
 		case next, ok := <-frames:
@@ -101,6 +141,52 @@ func (run *streamRun) read(ctx context.Context, cancel context.CancelFunc, reade
 				continue
 			}
 			f := next.frame
+			switch f.Type {
+			case "control_response":
+				if f.Response.RequestID == "denova-initialize" && run.initialInput != nil {
+					initialization = nil
+					if f.Response.Subtype != "success" {
+						runErr = errors.Join(runErr, errors.New("Claude rejected initialization"))
+						cancel()
+					} else if err := run.write(run.initialInput); err != nil {
+						runErr = errors.Join(runErr, err)
+						cancel()
+					}
+					run.initialInput = nil
+				}
+				continue
+			case "control_cancel_request":
+				if finish := pending[f.RequestID]; finish != nil {
+					finish(external.ErrInteractionWithdrawn)
+					delete(pending, f.RequestID)
+				}
+				continue
+			case "control_request":
+				if f.RequestID == "" || len(pending) >= cap(completed) || pending[f.RequestID] != nil {
+					runErr = errors.Join(runErr, errors.New("invalid Claude control request"))
+					cancel()
+					continue
+				}
+				requestCtx, finish := context.WithCancelCause(controlCtx)
+				pending[f.RequestID] = finish
+				workers.Add(1)
+				go func() {
+					defer workers.Done()
+					result := controlResult{id: f.RequestID}
+					defer func() {
+						if value := recover(); value != nil {
+							result.err = fmt.Errorf("native interaction panic: %v", value)
+							slog.Error("Native interaction panicked", "error", result.err)
+						}
+						select {
+						case completed <- result:
+						case <-controlCtx.Done():
+						}
+					}()
+					result.body, result.err = run.control(requestCtx, f)
+				}()
+				continue
+			}
 			if run.pending != nil && f.Parent == "" {
 				pending := run.pending
 				switch {

@@ -193,6 +193,9 @@ func (operation *Operation) Emit(event agentrun.Event) error {
 	if operation.closed {
 		return errors.New("external operation is closed")
 	}
+	if event.Type == "native_tool" {
+		return operation.observeNative(event)
+	}
 	// The adapter's terminal notifications never acknowledge a product commit.
 	if event.Type != "chunk" && event.Type != "thinking" && event.Type != "context_compaction" && event.Type != "todo_updated" {
 		return fmt.Errorf("unsupported external adapter event %q", event.Type)

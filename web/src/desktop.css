@@ -72,10 +72,6 @@ html[data-desktop-platform] [data-collapsible="icon"] .nova-activity-bar :is([da
   line-height: 14px;
 }
 
-html[data-desktop-platform] [data-collapsible="icon"] .nova-activity-bar .nova-workbench-context-trigger > svg:last-child {
-  display: none;
-}
-
 html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"]) {
   position: relative;
 }

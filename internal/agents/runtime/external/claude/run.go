@@ -43,7 +43,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	// act on a persisted transcript. Ordinary turns bootstrap in their request.
 	if input.Mode == external.OperationCompact && input.SessionID == "" {
 		bootstrap := input
-		bootstrap.Mode, bootstrap.Tools = external.OperationTurn, nil
+		bootstrap.Mode, bootstrap.Tools = external.OperationSummarize, nil
 		bootstrap.Text = "Load this prior conversation as context. Reply only with Ready. Do not perform any task."
 		loaded, err := c.Run(ctx, bootstrap, silentHost{})
 		defer func() {
@@ -74,7 +74,13 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 		// Only disposable legacy/test attempts remove their private directory.
 		defer os.RemoveAll(dir)
 	}
-	bridge, err := startBridge(runCtx, input.Tools, host, cancel)
+	bridgeTools := make([]external.Tool, 0, len(input.Tools))
+	for _, tool := range input.Tools {
+		if tool.Name != "ask" {
+			bridgeTools = append(bridgeTools, tool)
+		}
+	}
+	bridge, err := startBridge(runCtx, bridgeTools, host, cancel)
 	if err != nil {
 		return result, err
 	}
@@ -82,24 +88,23 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	if err = os.WriteFile(filepath.Join(dir, "mcp.json"), bridge.config(), 0600); err != nil {
 		return result, err
 	}
-	if err = os.WriteFile(filepath.Join(dir, "instructions.txt"), []byte(input.Instructions), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(dir, "instructions.txt"), []byte(input.NativeInstructions()), 0600); err != nil {
 		return result, err
 	}
 	body, err := encodeInput(input, "")
 	if err != nil {
 		return result, err
 	}
-	// Only scoped MCP tools can reach the Project; native task tools own plans.
-	// Restricted mode suppresses
-	// local settings; explicit settings disable hooks and automatic memory.
-	// Auth/provider environment stays host-local and is never copied to data.
-	nativeTools := ""
+	// Preserve native tool instructions and append only the product contract.
+	// Ambient MCP configuration is available to interactive writing/chat turns.
+	args, nativeTools := nativeArguments(input)
 	allowedTools := "mcp__denova__*"
-	if input.Mode == external.OperationTurn {
-		nativeTools = "TaskCreate,TaskGet,TaskList,TaskUpdate"
-		allowedTools += "," + nativeTools
+	for _, name := range nativeTools {
+		if name != "AskUserQuestion" && name != "Bash" {
+			allowedTools += "," + name
+		}
 	}
-	args := append(streamArguments(nativeTools), "--include-partial-messages", "--mcp-config", filepath.Join(dir, "mcp.json"), "--system-prompt-file", filepath.Join(dir, "instructions.txt"), "--allowedTools", allowedTools)
+	args = append(args, "--include-partial-messages", "--mcp-config", filepath.Join(dir, "mcp.json"), "--append-system-prompt-file", filepath.Join(dir, "instructions.txt"), "--allowedTools", allowedTools)
 	if steeringHost != nil {
 		args = append(args, "--replay-user-messages")
 	}
@@ -167,7 +172,11 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 		return result, fmt.Errorf("start Claude attempt: %w", err)
 	}
 	defer func() { c.mu.Lock(); delete(c.active, cmd); c.mu.Unlock() }()
-	if err := write(body); err != nil {
+	firstInput := body
+	if input.Mode == external.OperationTurn {
+		firstInput = []byte("{\"type\":\"control_request\",\"request_id\":\"denova-initialize\",\"request\":{\"subtype\":\"initialize\",\"hooks\":{}}}\n")
+	}
+	if err := write(firstInput); err != nil {
 		cancel()
 		_ = cmd.Wait()
 		return result, err
@@ -184,15 +193,20 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	if input.SessionID != "" {
 		output.plan = append([]agentevent.TodoItem(nil), input.Plan...)
 	}
-	if input.Mode == external.OperationTurn {
-		for _, name := range []string{"TaskCreate", "TaskGet", "TaskList", "TaskUpdate"} {
-			output.tools[name] = true
-		}
+	for _, name := range nativeTools {
+		output.tools[name] = true
 	}
-	for _, tool := range input.Tools {
+	for _, tool := range bridgeTools {
 		output.tools["mcp__denova__"+tool.Name] = true
 	}
-	stream := streamRun{output: &output, host: host, steeringHost: steeringHost, controls: controls, bridge: bridge, write: write}
+	observer := external.NativeObserver{Input: input, Host: host}
+	output.native = &observer
+	output.ambientMCP = input.Mode == external.OperationTurn && input.AgentKind != config.AgentKindInteractiveStory
+	defer func() { runErr = errors.Join(runErr, observer.Close()) }()
+	stream := streamRun{output: &output, input: input, host: host, steeringHost: steeringHost, controls: controls, bridge: bridge, write: write}
+	if input.Mode == external.OperationTurn {
+		stream.initialInput = body
+	}
 	err = stream.read(runCtx, cancel, reader, writer)
 	if err != nil {
 		cancel()
@@ -232,8 +246,8 @@ func (diagnostics *resumeDiagnostics) Write(data []byte) (int, error) {
 	return count, nil
 }
 
-// streamArguments keeps discovery and execution on the same restricted native
-// protocol. Only the execution path adds product instructions and scoped tools.
+// streamArguments isolates discovery and read-only context maintenance. Normal
+// execution uses nativeArguments to expose the permitted native capabilities.
 func streamArguments(nativeTools string) []string {
 	return []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--restricted", "--tools", nativeTools, "--strict-mcp-config", "--settings", `{"disableAllHooks":true,"autoMemoryEnabled":false}`, "--setting-sources", "", "--permission-mode", "dontAsk"}
 }

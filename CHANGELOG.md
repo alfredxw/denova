@@ -32,6 +32,9 @@ Denova records major user-visible features, important compatibility or data chan
 
 ### Added / 新增
 
+- Codex 与 Claude Code 可直接使用原生读取、检索和 Shell 工具，原生提问与工具结果接入会话记录；写作和通用对话可复用已配置的原生浏览器／MCP 能力，受管正文编辑和游戏提交保留原有审阅与事务边界。
+- Codex and Claude Code can use native read, research, and Shell tools, with questions and tool results preserved in conversation history. Writing and General can reuse configured native browser/MCP integrations while managed edits and Game submissions retain product review and transaction boundaries.
+
 - 新增 Electron 桌面分发，提供 macOS Apple Silicon DMG 与 Windows x64 EXE，复用 Web 的写作、游戏和数据目录，支持原生目录选择、后台任务和整包更新。
 - Adds an Electron desktop distribution for macOS Apple Silicon (DMG) and Windows x64 (EXE), sharing Web writing, Game and data folders, with native folder selection, background tasks and whole-application updates.
 

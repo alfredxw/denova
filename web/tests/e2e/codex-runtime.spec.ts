@@ -33,6 +33,29 @@ async function settled(page: Page) {
   await expect(page.locator('[data-action="stop"]').filter({ visible: true })).toHaveCount(0)
 }
 
+test('native Codex questions and Shell results survive reload in Writing', async ({ page, request }, info) => {
+  await createAndOpenBook(request, 'Native runtime tools')
+  await page.goto('/')
+  const marker = 'E2E_RUNTIME_NATIVE_WRITING'
+  await submitAgentChatMessage(page, await openWritingAgent(page), marker)
+  await expect(page.getByText('是否继续读取原生工具证据？', { exact: true })).toBeVisible()
+  await page.getByRole('radio', { name: /继续检查/ }).check()
+  await page.getByRole('button', { name: '提交', exact: true }).click()
+  await expect(page.getByText(`${marker} native tools completed.`, { exact: true })).toBeVisible()
+  await settled(page)
+  const calls = await wire(request, marker)
+  expect(calls[0]?.tools?.some(tool => tool.name === 'request_user_input')).toBe(true)
+  expect(calls[0]?.tools?.some(tool => tool.name === 'ask')).toBe(false)
+  expect(JSON.stringify(calls.at(-1)?.input)).toContain('Native runtime evidence.')
+  await page.reload()
+  await openWritingAgent(page)
+  await page.getByRole('button', { name: /需要你的回答/ }).click()
+  await expect(page.getByText('是否继续读取原生工具证据？', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '执行过程 · 1 次工具调用', exact: true }).click()
+  await expect(page.getByText('native/commandExecution', { exact: true }).first()).toBeVisible()
+  await page.screenshot({ path: info.outputPath('native-runtime-tools.png') })
+})
+
 for (const product of ['writing', 'game'] as const) {
   test(`${product} uses Codex automatic compaction and resumes the compacted thread`, async ({ page, request }) => {
     const book = await createAndOpenBook(request, `Codex automatic ${product}`)

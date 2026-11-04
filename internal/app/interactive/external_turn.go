@@ -350,10 +350,12 @@ func (turn *ExternalTurn) Emit(event agentrun.Event) error {
 	if turn.closed {
 		return errors.New("external Game turn is closed")
 	}
-	if err := turn.ctx.Err(); err != nil {
+	if err := turn.ctx.Err(); err != nil && event.Type != "native_tool" {
 		return err
 	}
 	switch event.Type {
+	case "native_tool":
+		return turn.observeNative(event)
 	case "chunk":
 		if candidate, err := turn.config.Conversation.LoadNarrativeCandidate(turn.ctx); err != nil {
 			return err

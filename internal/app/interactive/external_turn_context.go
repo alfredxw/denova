@@ -80,7 +80,8 @@ func (turn *ExternalTurn) prepareInput(ctx context.Context, mode external.Operat
 		}
 		fragments = append(fragments, shared...)
 	}
-	input := external.Input{Selection: *turn.config.Config.ActiveAgentRuntime, Instructions: turn.config.Assembly.Composition.Instruction(), Plan: turn.config.Plan}
+	input := external.Input{Selection: *turn.config.Config.ActiveAgentRuntime, Instructions: turn.config.Assembly.Composition.Instruction(), Plan: turn.config.Plan,
+		Workspace: c.workspace, StoreRoot: turn.config.Config.ProjectStoreDir, DataRoot: turn.config.Config.DataDir(), AgentKind: config.AgentKindInteractiveStory, Locale: turn.config.Config.Language}
 	var dynamic strings.Builder
 	for _, fragment := range fragments {
 		switch fragment.Placement {

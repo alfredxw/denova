@@ -35,6 +35,13 @@ type Input struct {
 	Text            string
 	Attachments     []agentschema.Attachment
 	Tools           []Tool
+	// Workspace and StoreRoot are host-local execution boundaries. Native tools
+	// may inspect the workspace; product mutations use the supplied host tools.
+	Workspace string
+	StoreRoot string
+	DataRoot  string
+	AgentKind string
+	Locale    string
 	// Plan is the last canonical provider observation. It seeds event projection
 	// on resume and supplies progress context when the disposable cache is gone.
 	Plan []agentevent.TodoItem

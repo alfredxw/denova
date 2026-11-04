@@ -82,8 +82,11 @@ export function AgentChatProjectGroup({
   onOpenPage,
 }: AgentChatProjectGroupProps) {
   const { t } = useTranslation()
-  const pageIds = agentChatPageIdsForProjectType(project.type)
   const groupTabs = tabsInGroup(state.tabs, group)
+  // Hidden panes only need a tree when they own a mounted tab. Saved tabs stay
+  // in the workbench; mounted conversations and terminals keep their streams.
+  if (!paneVisible && !groupTabs.some((tab) => mountedTabKeys.has(mountedAgentChatTabKey(project.id, tab.id)))) return null
+  const pageIds = agentChatPageIdsForProjectType(project.type)
   const secondaryTabs = tabsInGroup(state.tabs, 'secondary')
   const activeID = state.activeTabIds[group]
   const openInGroup = (action: () => void, target: AgentChatGroupId) => {

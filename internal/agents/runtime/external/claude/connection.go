@@ -22,8 +22,8 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-// MinimumVersion includes restricted execution and the recorded stream format.
-const MinimumVersion = "2.1.259"
+// MinimumVersion includes fail-closed sandbox startup for native Bash.
+const MinimumVersion = "2.1.314"
 const infrastructureTimeout = 15 * time.Second
 
 var ErrVersionUnsupported = errors.New("unsupported Claude Code version")

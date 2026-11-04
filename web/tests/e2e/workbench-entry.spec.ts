@@ -64,6 +64,8 @@ for (const [theme, language] of [['dark', 'zh-CN'], ['light', 'en-US']] as const
     await expect(primary.getByRole('tab')).toHaveCount(1)
     await expect(primary.getByRole('tab')).toContainText(labels.draft)
     await expect(composer).toBeFocused()
+    // Unvisited Projects must not mount hidden tab bars and empty workspaces.
+    await expect(page.locator('[data-agent-chat-group]')).toHaveCount(1)
     await page.screenshot({ path: test.info().outputPath('desktop-draft.png'), animations: 'disabled' })
 
     await primary.getByRole('button', { name: labels.closeDraft, exact: true }).click()
