@@ -126,10 +126,12 @@ func Run() error {
 		return err
 	}
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		slog.Info("Desktop quit requested", "allowed", s.allowQuit.Load())
 		if s.allowQuit.Load() {
 			return
 		}
 		if !s.operation.TryLock() {
+			slog.Info("Desktop quit deferred", "reason", "another shell operation is running")
 			e.PreventDefault()
 			return
 		}
@@ -150,7 +152,10 @@ func Run() error {
 			_ = b.in.Close()
 		}
 	})
-	mygo.App.OnQuit(func() { s.backend.Load().stop() })
+	mygo.App.OnQuit(func() {
+		s.backend.Load().stop()
+		slog.Info("Desktop shutdown completed")
+	})
 	mygo.App.OnWindowAllClosed(func() {})
 	mygo.App.OnActivate(func(bool) { s.focus() })
 	mygo.App.OnSecondInstance(func([]string, string) { s.focus() })
@@ -309,6 +314,7 @@ func (s *shell) confirmStop(ctx context.Context, reason string) (bool, error) {
 	if err := b.request(ctx, "inspect", &activity); err != nil {
 		return false, err
 	}
+	slog.Info("Desktop activity inspected", "reason", reason, "active", activity.Active, "scheduled", activity.Scheduled)
 	if !activity.Active && !activity.Scheduled {
 		return true, nil
 	}

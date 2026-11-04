@@ -109,6 +109,10 @@ try {
   await app.evaluate(() => { window.mygo.window.close(); return true })
   await until(async () => !(await app.command('windows')).windows[0].visible)
   assert.equal((await fetch(backend + '/api/auth/status')).ok, true)
+  await app.command('menu', { path: ['Denova', '打开 Denova'] })
+  await until(async () => (await app.command('windows')).windows.find(w => w.id === app.windowID)?.visible)
+  await until(async () => !(await app.api('/api/update/status')).busy)
+  console.log('Background operation, window restoration and idle state passed')
   await app.close(); app = null
   await assert.rejects(fetch(backend + '/api/auth/status'))
   app = await launch(directory); await ready()

@@ -2,15 +2,20 @@ package desktop
 
 import (
 	"context"
-	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/plugins/updater"
+	"log/slog"
 	"path/filepath"
 	"runtime"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
 )
 
 func (s *shell) menus() {
 	action := func(key string, fn func() error) *mygo.MenuItem {
-		return &mygo.MenuItem{ID: key, Label: s.t(key), Click: func(*mygo.MenuItem, *mygo.Window) { s.async(key, fn) }}
+		return &mygo.MenuItem{ID: key, Label: s.t(key), Click: func(*mygo.MenuItem, *mygo.Window) {
+			slog.Info("Desktop menu action", "action", key)
+			s.async(key, fn)
+		}}
 	}
 	items := []*mygo.MenuItem{{Role: mygo.RoleAbout, Label: s.t("about")}, updater.MenuItem(), action("open", func() error { s.focus(); return nil }), action("data", func() error { return s.changeData(context.Background()) }), action("logs", func() error { return mygo.Shell.OpenPath(filepath.Join(s.userData, "log")) }), {Type: mygo.MenuItemSeparator}}
 	if runtime.GOOS == "darwin" {
