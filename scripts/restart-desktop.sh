@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP_PATH="${ROOT_DIR}/desktop/dist/mac-arm64/Denova.app"
+APP_PATH="${ROOT_DIR}/desktop/dist/darwin-arm64/Denova.app"
 
 if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
     echo "Error: this script requires native macOS on Apple Silicon." >&2
@@ -10,7 +10,7 @@ if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
 fi
 
 cd "${ROOT_DIR}"
-ELECTRON_PATH="$(cd desktop && node -p "require('electron')")"
+DEV_PATH="${ROOT_DIR}/desktop/build/Denova"
 mkdir -p desktop/build
 LOCK_PATH="${ROOT_DIR}/desktop/build/.restart-desktop.lock"
 if ! shlock -f "${LOCK_PATH}" -p "$$"; then
@@ -20,25 +20,13 @@ fi
 trap 'rm -f "${LOCK_PATH}"' EXIT
 
 echo "==> Waiting for the local desktop app to quit (confirm in Denova if prompted)"
-osascript -l JavaScript - "${APP_PATH}" "${ELECTRON_PATH}" <<'JXA'
+osascript -l JavaScript - "${APP_PATH}" "${DEV_PATH}" <<'JXA'
 ObjC.import('AppKit')
 
-function runningApplications(bundleId) {
-    const running = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(bundleId)
-    return Array.from({ length: running.count }, (_, index) => running.objectAtIndex(index))
-}
-
-function run([bundlePath, electronPath]) {
-    const packaged = runningApplications('app.denova.desktop')
-    for (const app of packaged) {
-        if (!app.isTerminated && ObjC.unwrap(app.bundleURL.path) !== bundlePath) {
-            throw new Error('Quit the other running copy of Denova before restarting this build.')
-        }
-    }
-
-    const development = runningApplications('com.github.Electron').filter(app =>
-        !app.isTerminated && ObjC.unwrap(app.executableURL.path) === electronPath)
-    const apps = [...packaged, ...development]
+function run([bundlePath, devPath]) {
+    const running = $.NSWorkspace.sharedWorkspace.runningApplications
+    const apps = Array.from({ length: running.count }, (_, index) => running.objectAtIndex(index)).filter(app =>
+        !app.isTerminated && (ObjC.unwrap(app.bundleURL.path) === bundlePath || ObjC.unwrap(app.executableURL.path) === devPath))
     for (const app of apps) {
         if (!app.isTerminated && !app.terminate && !app.isTerminated) {
             throw new Error('Could not request a normal quit. Quit Denova and rerun this script.')

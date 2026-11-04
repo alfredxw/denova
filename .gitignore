@@ -18,6 +18,7 @@ data/
 web/node_modules/
 desktop/node_modules/
 desktop/build/
+/mygo.json
 desktop/dist/
 desktop/assets/icon.icns
 desktop/assets/icon.ico

@@ -1,3 +1,4 @@
+import { installDesktopFetch } from './lib/desktop-fetch'
 import { StrictMode, Suspense, useEffect } from 'react'
 import loadable from '@loadable/component'
 import { createRoot } from 'react-dom/client'
@@ -26,6 +27,8 @@ const App = loadable(() => import('./App'), { fallback: <AppLoadingState /> })
 App.preload()
 
 installGlobalRuntimeLoggers()
+installDesktopFetch()
+
 if (window.denovaDesktop) document.documentElement.dataset.desktopPlatform = window.denovaDesktop.platform
 
 const root = document.getElementById('root')

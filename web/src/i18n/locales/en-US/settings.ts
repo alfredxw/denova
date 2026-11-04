@@ -172,6 +172,7 @@ const settings = {
   'settings.updates.tooLarge': 'The release archive must be 512 MiB or smaller.',
   'settings.updates.asset': 'Package: {{name}} ({{size}})',
   'settings.updates.autoDownload': 'Download updates automatically',
+  'settings.updates.desktopHint': 'Updates are installed by the desktop updater and take effect the next time Denova starts.',
   'settings.updates.autoHint': 'Denova checks for updates every 6 hours while running. If automatic downloads are on, you choose when to restart and install. Turning off automatic checks also pauses automatic downloads.',
   'settings.updates.whenIdle': 'Restart when tasks finish',
   'settings.updates.cancelWait': 'Cancel waiting',

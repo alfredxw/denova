@@ -226,7 +226,7 @@ func (m *Manager) ActivatePlugin(ctx context.Context, request ActivatePlugin) (R
 
 func (m *Manager) startRuntime(id string, owner Release, scope Scope, pins []DependencyPin, configuration RuntimeConfiguration, models map[string]string, options OpenOptions) (*Runtime, error) {
 	parent, err := url.Parse(options.ParentOrigin)
-	if !options.hostOnly && (err != nil || parent.Host == "" || (parent.Scheme != "http" && parent.Scheme != "https") || parent.Path != "") {
+	if !options.hostOnly && (err != nil || parent.Host == "" || (parent.Scheme != "http" && parent.Scheme != "https" && options.ParentOrigin != "mygo://localhost") || parent.Path != "") {
 		return nil, failure("INVALID_ARGUMENT", "A trusted parent origin is required")
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

@@ -1,3 +1,4 @@
+import { desktopBridge } from '@/lib/desktop'
 import { DecisionSettingsEditor, EMPTY_DECISION_SETTINGS } from './DecisionSettingsEditor'
 import { EMPTY_SPEECH_SETTINGS, SpeechSettingsEditor } from './SpeechSettingsEditor'
 import { WebAccessSettingsEditor } from './WebAccessSettingsEditor'
@@ -402,6 +403,7 @@ export const SettingsSections = memo(function SettingsSections({ layered, draft,
     ),
     'updates': (
       <>
+        {!desktopBridge() && <>
         <BoolTri label={t('settings.updates.autoCheck')} value={draft.update_check_enabled ?? null}
                  inherited={inherited.update_check_enabled}
                  onChange={(v) => setField('update_check_enabled', v)} />
@@ -409,6 +411,7 @@ export const SettingsSections = memo(function SettingsSections({ layered, draft,
                  inherited={inherited.update_download_enabled}
                  onChange={(v) => setField('update_download_enabled', v)} />
         <p className="text-xs text-[var(--nova-text-muted)]">{t('settings.updates.autoHint')}</p>
+        </>}
         <UpdateSettings />
       </>
     ),

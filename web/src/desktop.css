@@ -10,8 +10,8 @@ html[data-desktop-platform] :is(.nova-activity-bar, [data-activity-bar-expanded]
 /* The native overlay supplies its safe area, including browser zoom changes.
    Keep a stable minimum when macOS hides its controls in fullscreen. */
 html[data-desktop-platform="darwin"] {
-  --nova-desktop-controls-width: max(80px, env(titlebar-area-x, 80px));
-  --nova-desktop-controls-height: max(48px, env(titlebar-area-height, 48px));
+  --nova-desktop-controls-width: max(80px, var(--mygo-titlebar-left, 80px));
+  --nova-desktop-controls-height: max(48px, var(--mygo-titlebar-height, 48px));
   --nova-desktop-navigation-width: var(--nova-desktop-controls-width);
 }
 
@@ -21,20 +21,13 @@ html[data-desktop-platform="darwin"] .nova-activity-bar [data-slot="sidebar-inne
   padding-top: var(--nova-desktop-controls-height);
 }
 
-html[data-desktop-platform="darwin"] .nova-activity-bar::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: var(--nova-desktop-controls-height);
-  -webkit-app-region: drag;
-}
 
 html[data-desktop-platform="darwin"] .nova-activity-brand-row {
   position: absolute;
   inset: 0 0 auto;
   height: var(--nova-desktop-controls-height);
   padding: 8px;
-  pointer-events: none;
+  --app-region: drag;
 }
 
 html[data-desktop-platform="darwin"] [data-collapsible="icon"] .nova-activity-brand-row {
@@ -43,7 +36,7 @@ html[data-desktop-platform="darwin"] [data-collapsible="icon"] .nova-activity-br
 
 html[data-desktop-platform="darwin"] .nova-activity-bar-resize-handle {
   top: var(--nova-desktop-controls-height);
-  -webkit-app-region: no-drag;
+  --app-region: no-drag;
 }
 
 /* The compact desktop rail already reserves room for native controls. Use that
@@ -77,22 +70,18 @@ html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sideb
 }
 
 /* Only header backgrounds drag the window; their controls remain interactive. */
-html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"], .nova-story-stage-header)::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  -webkit-app-region: drag;
-  pointer-events: none;
+html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"], .nova-story-stage-header) {
+  --app-region: drag;
 }
 
 html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"], .nova-story-stage-header) :is(button, a, input, select, textarea, [role="button"], [role="tab"], [contenteditable="true"]) {
-  -webkit-app-region: no-drag;
+  --app-region: no-drag;
 }
 
 /* Portals can cover draggable headers without inheriting their no-drag rules.
    Native hit testing ignores z-index, so overlays must exclude their own area. */
 html[data-desktop-platform="darwin"] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot="sheet-overlay"], [data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]) {
-  -webkit-app-region: no-drag;
+  --app-region: no-drag;
 }
 
 html[data-desktop-platform="darwin"] :is(.nova-mobile-topbar, .nova-mobile-sheet [data-mobile-drawer-header]) {

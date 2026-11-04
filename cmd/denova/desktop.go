@@ -23,12 +23,13 @@ import (
 	"denova/internal/observability"
 )
 
-// The private pipe belongs to the Electron parent. Its closure cancels the
+// The private pipe belongs to the desktop parent. Its closure cancels the
 // backend even on Windows, where Unix process signals are unavailable.
 type desktopCommand struct {
-	ID    int    `json:"id"`
-	Type  string `json:"type"`
-	Token string `json:"token,omitempty"`
+	ID     int    `json:"id"`
+	Type   string `json:"type"`
+	Token  string `json:"token,omitempty"`
+	Origin string `json:"origin,omitempty"`
 }
 
 func runDesktop() error {
@@ -62,7 +63,7 @@ func runDesktop() error {
 		return ctx.Err()
 	}
 	token, err := hex.DecodeString(start.Token)
-	if start.Type != "start" || err != nil || len(token) != 32 {
+	if start.Type != "start" || err != nil || len(token) != 32 || (start.Origin != "mygo://localhost" && start.Origin != "http://mygo.localhost") {
 		return errors.New("invalid desktop owner handshake")
 	}
 	cfg := config.Load()
@@ -92,7 +93,7 @@ func runDesktop() error {
 	defer application.Close()
 	application.StartAnalytics(buildinfo.Version)
 	server := api.NewServerWithListener(application, port, listener)
-	server.EnableDesktopAccess(start.Token)
+	server.EnableDesktopAccess(start.Token, start.Origin)
 	done := make(chan struct{})
 	runBackground("desktop-server", func() {
 		defer cancel()
@@ -123,9 +124,6 @@ func runDesktop() error {
 			switch command.Type {
 			case "inspect":
 				result, err = application.DesktopActivity(ctx)
-			case "shutdown-if-idle":
-				stop, err = application.FenceDesktopUpdate(ctx)
-				result = map[string]bool{"stopping": stop}
 			case "shutdown":
 				stop = true
 				result = map[string]bool{"stopping": true}

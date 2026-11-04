@@ -23,7 +23,7 @@ type Policy struct {
 
 func (s *Service) beginOperation(operation string) error {
 	if buildinfo.Distribution == "desktop" && operation != "checking" {
-		return errors.New("desktop updates are managed by the Electron application")
+		return errors.New("desktop updates are managed by the desktop application")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -5,7 +5,7 @@ package buildinfo
 var Version = "dev"
 
 // Distribution is fixed by packaging. Desktop program files belong to the
-// signed Electron application and must never be replaced by the Web updater.
+// signed desktop application and must never be replaced by the Web updater.
 var Distribution = "web"
 
 // DevelopmentVersion is the public capability target of this source tree.

@@ -172,6 +172,7 @@ const settings = {
   'settings.updates.tooLarge': '安装包不能超过 512 MiB。',
   'settings.updates.asset': '安装包：{{name}}（{{size}}）',
   'settings.updates.autoDownload': '自动下载更新',
+  'settings.updates.desktopHint': '更新由桌面更新器安装，在下次启动 Denova 时生效。',
   'settings.updates.autoHint': '运行时每 6 小时检查一次更新。开启自动下载后，Denova 会在后台下载，你决定何时重启安装。关闭自动检查也会暂停自动下载。',
   'settings.updates.whenIdle': '任务完成后重启',
   'settings.updates.cancelWait': '取消等待',

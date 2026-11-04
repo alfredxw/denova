@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { createServer as createViteServer } from 'vite'
 
-// Electron owns this server. The window keeps its desktop origin and connects
+// The desktop development runner owns this server. The window keeps its desktop origin and connects
 // directly to the loopback listener only for Vite's HMR WebSocket.
 export async function startDesktopRenderer() {
   const host = '127.0.0.1'

@@ -92,9 +92,11 @@ func (s *Server) Run() {
 	slog.InfoContext(context.Background(), "http_server_stopped")
 }
 
-// EnableDesktopAccess grants the owned Electron transport access. Call once,
+// EnableDesktopAccess grants the owned desktop transport access. Call once,
 // before serving; the per-launch secret travels only over the parent pipe.
-func (s *Server) EnableDesktopAccess(token string) { s.access.desktopToken = token }
+func (s *Server) EnableDesktopAccess(token, origin string) {
+	s.access.desktopToken, s.access.desktopOrigin = token, origin
+}
 
 // RunUntil lets the desktop owner request the same graceful HTTP shutdown as
 // an ordinary server signal, including draining live event subscriptions.

@@ -1,4 +1,0 @@
-allowBuilds:
-  electron: true
-  app-builder-bin: true
-  electron-winstaller: false

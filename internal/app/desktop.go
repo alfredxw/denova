@@ -35,11 +35,3 @@ func (a *App) DesktopActivity(ctx context.Context) (DesktopActivity, error) {
 	}
 	return result, nil
 }
-
-// FenceDesktopUpdate atomically checks activity and closes admission. The
-// caller must shut down this backend after a successful fence.
-func (a *App) FenceDesktopUpdate(ctx context.Context) (bool, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.fenceIdleUpdateLocked(ctx)
-}

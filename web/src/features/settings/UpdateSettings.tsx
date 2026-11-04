@@ -11,6 +11,7 @@ import type { CompletedUpdate, UpdateCheckResult, UpdateInstallProgress, UpdateI
 import { UpdateNotesDialog, UpdateNotesView } from '@/features/updates/UpdateNotes'
 import { notifyUpdateCheckResult } from './update-events'
 import { scheduleFrontendReloadAfterUpdate } from './update-reload'
+import { DesktopUpdates } from './DesktopUpdates'
 import { desktopBridge } from '@/lib/desktop'
 
 type UpdateOperation = 'idle' | 'checking' | 'installing' | 'uploading' | 'applying' | 'restarting' | 'waiting'
@@ -18,6 +19,10 @@ type UpdateOperation = 'idle' | 'checking' | 'installing' | 'uploading' | 'apply
 /** Isolates status polling from the rest of the settings form. Keep this mounted
  * so collapsing the update details cannot discard an upload or staged result. */
 export function UpdateSettings() {
+  return desktopBridge() ? <DesktopUpdates /> : <WebUpdates />
+}
+
+function WebUpdates() {
   return <UpdatePanel {...useUpdateSettings()} />
 }
 
