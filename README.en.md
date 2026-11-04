@@ -83,7 +83,7 @@ Lore, Creative Setups, Skills, and version management are shared between the two
 
 ### Install a Release
 
-Denova supports Web and Electron desktop distributions. Desktop targets macOS Apple Silicon (DMG) and Windows x64 (EXE); macOS Intel and Linux desktop packages are not provided. Until the first desktop release, follow the [desktop build guide](docs/desktop-distribution.md) to package from source.
+Denova supports Web and MyGo desktop distributions. Desktop targets macOS Apple Silicon (DMG) and Windows x64 (EXE); macOS Intel and Linux desktop packages are not provided. Until the first desktop release, follow the [desktop build guide](docs/desktop-distribution.md) to package from source.
 
 The Web distribution continues to support Windows, macOS, and Linux:
 

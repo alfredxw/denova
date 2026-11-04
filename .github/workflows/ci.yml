@@ -233,8 +233,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -244,9 +242,6 @@ jobs:
             go.sum
             agent/go.sum
       - uses: ./.github/actions/setup-web
-      - uses: ./.github/actions/setup-web
-        with:
-          directory: desktop
       - uses: actions/download-artifact@v8
         with:
           name: ci-distribution
@@ -257,16 +252,18 @@ jobs:
         run: |
           pnpm --dir desktop build:backend
           pnpm --dir desktop test
-          pnpm --dir desktop package
+          DENOVA_DESKTOP_E2E=true pnpm --dir desktop package
       - name: Exercise the packaged application
-        env:
-          DENOVA_DESKTOP_PACKAGED: 'true'
         run: pnpm --dir desktop test:smoke
+      - name: Verify production packaging
+        run: |
+          pnpm --dir desktop package
+          node desktop/test/package.mjs
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: desktop-diagnostics-${{ matrix.os }}
-          path: output/playwright/desktop
+          path: output/desktop
           if-no-files-found: ignore
           retention-days: 7
 

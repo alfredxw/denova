@@ -2,7 +2,7 @@
 <title>Storage protocol probe</title><output id="value"></output><button disabled>Save test data</button><p role="status"></p>
 <script type="module">
 // Exercise the public handshake and storage contract without sample gameplay.
-const nonce = crypto.randomUUID(), origin = new URL(document.referrer).origin;
+const nonce = crypto.randomUUID(), origin = new URL(document.referrer || location.ancestorOrigins?.[0]).origin;
 const bootstrap = await new Promise(resolve => {
   window.addEventListener('message', event => {
     if (event.source === parent && event.origin === origin && event.data.type === 'denova:bootstrap' && event.data.nonce === nonce) resolve(event.data);
@@ -25,6 +25,7 @@ async function request(method, body) {
 const stored = await request('GET');
 let revision = stored?.revision ?? null, value = stored ? JSON.parse(stored.content).value : context.setup.initialValue;
 output.textContent = value; button.disabled = false;
+parent.postMessage({ type: 'test:storage-ready', value, nativeBridge: typeof window.mygo }, origin);
 button.onclick = async () => {
   button.disabled = true;
   const result = await request('PUT', { path: 'state.json', content: JSON.stringify({ value: value + 1 }), expectedRevision: revision });

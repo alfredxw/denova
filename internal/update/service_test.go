@@ -59,6 +59,8 @@ func TestUpdateCheckAndDownloadUseConfiguredProxy(t *testing.T) {
 func TestSelectAssetForPlatform(t *testing.T) {
 	assets := []githubAsset{
 		{Name: "checksums.txt"},
+		// Official MyGo archives must not match the Web updater, including old clients.
+		{Name: "denovadesktop-0.1.11-darwin-arm64.tar.gz"},
 		{Name: "denova-v0.1.11-darwin-arm64.tar.gz", DownloadURL: "asset-api-url"},
 		{Name: "denova-v0.1.11-linux-x64.tar.gz"},
 	}

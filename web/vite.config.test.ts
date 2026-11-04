@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer as createViteServer } from 'vite'
 import { expect, it } from 'vitest'
-import config from './vite.config'
+import createConfig from './vite.config'
 
 it('reuses browser and backend connections across API requests', async () => {
   let backendConnections = 0
@@ -19,6 +19,7 @@ it('reuses browser and backend connections across API requests', async () => {
   backend.listen(0, '127.0.0.1')
   await once(backend, 'listening')
 
+  const config = await (typeof createConfig === 'function' ? createConfig({ command: 'serve', mode: 'development' }) : createConfig)
   const proxyOptions = config.server!.proxy!['/api']
   if (typeof proxyOptions === 'string') throw new Error('Expected API proxy options')
   const browserAgent = new Agent({ keepAlive: true })
