@@ -40,6 +40,7 @@ type Operation struct {
 	mutations       []agenttool.Mutation
 	usage           *agentschema.TokenUsage
 	output          strings.Builder
+	committedOutput int // prefix persisted with accepted guidance
 }
 
 func (operation *Operation) Receipt() agentrun.CommandReceipt { return operation.receipt }
@@ -118,6 +119,9 @@ func (operation *Operation) Wait(ctx context.Context) agentrun.Outcome {
 		// Preserve the public text already delivered to the user in every case.
 		if (runErr != nil || ctx.Err() != nil) && operation.output.Len() > 0 {
 			result.Text = operation.output.String()
+		}
+		if operation.committedOutput > 0 {
+			result.Text = operation.output.String()[operation.committedOutput:]
 		}
 		operation.mu.Unlock()
 		cancel()

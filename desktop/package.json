@@ -10,6 +10,7 @@
   "scripts": {
     "build:backend": "node scripts/prepare.mjs",
     "dev": "electron .",
+    "dev:hmr": "electron . --renderer-hmr",
     "package": "electron-builder --publish never",
     "test": "node --test test/*.test.cjs",
     "test:smoke": "node test/smoke.mjs && node test/data-directory.mjs"

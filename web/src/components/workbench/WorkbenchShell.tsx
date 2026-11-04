@@ -232,7 +232,7 @@ export function WorkbenchShell({
 
   const sharedActivityItems: ActivityItem[] = [
     { id: 'statistics', label: t('workbench.activity.statistics'), onClick: () => openRoute('statistics'), active: mode === 'statistics' && !settingsOpen, icon: <BarChart3 className="size-4" /> },
-    { id: 'market', label: t('market.title'), onClick: () => openRoute('market'), active: mode === 'market' && !settingsOpen, icon: <Package className="size-4" /> },
+    { id: 'market', label: t('workbench.activity.market'), onClick: () => openRoute('market'), active: mode === 'market' && !settingsOpen, icon: <Package className="size-4" /> },
     {
       id: 'agentchat',
       label: t('workbench.activity.agentchat'),

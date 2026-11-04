@@ -40,6 +40,14 @@ type ExternalTransaction struct {
 	Records  []externaljournal.Record
 	Message  *agentschema.Message
 	Metadata MessageMetadata
+	// PriorOutput stores the already streamed assistant text before guidance
+	// so both sides of the interruption have their original journal order.
+	PriorOutput *ExternalPriorOutput
+}
+
+type ExternalPriorOutput struct {
+	Text     string
+	Metadata MessageMetadata
 }
 
 // UpdateExternal serializes acceptance, tool outcomes and answers with clear,
@@ -62,20 +70,30 @@ func (s *Session) UpdateExternal(ctx context.Context, expectedRevision uint64, p
 			return err
 		}
 		if len(change.Records) == 0 {
-			if change.Message != nil {
+			if change.Message != nil || change.PriorOutput != nil {
 				return errors.New("external message requires an execution fact")
 			}
 			return nil
 		}
 		probe := state.Projection
-		payloads := make([]any, 0, len(change.Records)+1)
+		payloads := make([]any, 0, len(change.Records)+2)
 		now := time.Now().UTC()
+		contextRevision := s.contextRevision
+		if prior := change.PriorOutput; prior != nil {
+			if len(change.Records) != 1 || change.Records[0].Kind != externaljournal.GuidanceDelivered || prior.Metadata.MessageID == "" || prior.Text == "" {
+				return errors.New("preceding assistant output requires an accepted guidance message")
+			}
+			metadata := sanitizeMessageMetadata(prior.Metadata)
+			contextRevision++
+			metadata.ContextRevision = contextRevision
+			payloads = append(payloads, messageRecord{Type: historyTypeMessage, CreatedAt: now, Message: *agentschema.AssistantMessage(prior.Text, nil), MessageMetadata: metadata})
+		}
 		if change.Message != nil {
 			if change.Metadata.MessageID == "" {
 				return errors.New("external message requires a canonical ID")
 			}
 			metadata := sanitizeMessageMetadata(change.Metadata)
-			metadata.ContextRevision = s.contextRevision + 1
+			metadata.ContextRevision = contextRevision + 1
 			payloads = append(payloads, messageRecord{Type: historyTypeMessage, CreatedAt: now, Message: *change.Message, MessageMetadata: metadata})
 		}
 		for _, record := range change.Records {

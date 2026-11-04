@@ -15,11 +15,14 @@ import (
 
 func TestNativeGuidanceIsCanonicalBeforeSubsequentWork(t *testing.T) {
 	service, request, _ := operationFixture(t)
-	guidance := Guidance{Request: agentchat.ChatRequest{CommandID: "live-guidance", Message: "Keep the ending"}, Count: 1}
+	guidance := Guidance{Request: agentchat.ChatRequest{CommandID: "live-guidance", Message: "Keep the ending"}, Count: 1, StartsNewReply: true}
 	request.PrepareGuidance = func(_ context.Context, input agentchat.ChatRequest) (StartRequest, error) {
 		return StartRequest{Input: Input{Text: input.Message}, Message: agentschema.Message{Role: agentschema.User, Content: input.Message}, Metadata: session.MessageMetadata{MessageID: input.CommandID + "-input"}}, nil
 	}
 	request.Adapter = adapterFunc(func(ctx context.Context, _ Input, host Host) (Result, error) {
+		if err := host.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{"content": "Original draft"}}); err != nil {
+			return Result{}, err
+		}
 		pending := true
 		controls := &Steering{Next: func(context.Context) (Guidance, bool, error) { return guidance, pending, nil }, Delivered: func(Guidance) { pending = false }}
 		check := func(count int) error {
@@ -46,7 +49,10 @@ func TestNativeGuidanceIsCanonicalBeforeSubsequentWork(t *testing.T) {
 		if err := check(1); err != nil {
 			return Result{}, err
 		}
-		return Result{Text: "Kept the ending", Settled: true}, nil
+		if err := host.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{"content": "Kept the ending"}}); err != nil {
+			return Result{}, err
+		}
+		return Result{Text: "Original draftKept the ending", Settled: true}, nil
 	})
 	operation, err := service.Start(t.Context(), request)
 	if err != nil {
@@ -66,12 +72,10 @@ func TestNativeGuidanceIsCanonicalBeforeSubsequentWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for _, message := range messages {
-		found = found || message.Text == guidance.Request.Message
-	}
-	if !found {
-		t.Fatal("native input is missing from canonical history")
+	if len(messages) != 4 || messages[1].Role != "assistant" || messages[1].Text != "Original draft" ||
+		messages[2].Role != "user" || messages[2].Text != guidance.Request.Message ||
+		messages[3].Role != "assistant" || messages[3].Text != "Kept the ending" {
+		t.Fatalf("canonical guidance sequence: %+v", messages)
 	}
 	// Force reload from canonical facts, independent of the live operation.
 	if err := service.Recover(t.Context(), request.ProjectID, request.Session); err != nil {

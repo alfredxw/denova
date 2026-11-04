@@ -36,3 +36,29 @@ test('proxy rejects foreign and opaque origins before touching the backend', asy
   assert.equal((await forwardRequest(new Request('https://denova.localhost:8443/api/private'), null)).status, 403)
   assert.equal((await forwardRequest(new Request(ORIGIN + '/'), null)).status, 503)
 })
+
+test('desktop HMR serves renderer assets without forwarding desktop credentials', async t => {
+  const server = createServer((request, response) => {
+    response.end(JSON.stringify({
+      url: request.url,
+      desktopToken: request.headers['x-denova-desktop'] ?? null,
+      authorization: request.headers.authorization ?? null,
+      cookie: request.headers.cookie ?? null,
+    }))
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => { server.closeAllConnections(); server.close() })
+  const options = { rendererOrigin: `http://127.0.0.1:${server.address().port}` }
+  const request = new Request(ORIGIN + '/src/main.tsx?t=1', {
+    headers: { 'X-Denova-Desktop': 'private', Authorization: 'Bearer private', Cookie: 'secret=private' },
+  })
+  const response = await forwardRequest(request, null, options)
+  assert.equal(response.headers.get('Cross-Origin-Resource-Policy'), 'same-origin')
+  assert.deepEqual(await response.json(), {
+    url: '/src/main.tsx?t=1', desktopToken: null, authorization: null, cookie: null,
+  })
+  for (const path of ['/api', '/api/status']) {
+    assert.equal((await forwardRequest(new Request(ORIGIN + path), null, options)).status, 503)
+  }
+})

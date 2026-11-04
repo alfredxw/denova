@@ -1,4 +1,4 @@
-import { useState, type KeyboardEventHandler, type PointerEventHandler, type ReactNode } from 'react'
+import { useEffect, useState, type KeyboardEventHandler, type PointerEventHandler, type ReactNode } from 'react'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -221,8 +221,18 @@ function ActivityBarBrandRow({
   onToggle,
 }: Pick<WorkbenchAppSidebarProps, 'expanded' | 'toggleLabel' | 'onToggle'>) {
   const desktop = desktopBridge()
-  // Native controls occupy the top of the macOS rail, above all navigation.
-  if (desktop?.platform === 'darwin') return null
+  const [nativeControlsVisible, setNativeControlsVisible] = useState(true)
+  useEffect(() => {
+    if (desktop?.platform !== 'darwin') return
+    const overlay = (navigator as Navigator & { windowControlsOverlay?: EventTarget & { readonly visible: boolean } }).windowControlsOverlay
+    if (!overlay) return
+    const syncVisibility = () => setNativeControlsVisible(overlay.visible)
+    syncVisibility()
+    overlay.addEventListener('geometrychange', syncVisibility)
+    return () => overlay.removeEventListener('geometrychange', syncVisibility)
+  }, [desktop?.platform])
+  // Reuse the native safe area when fullscreen hides the macOS controls.
+  if (desktop?.platform === 'darwin' && nativeControlsVisible) return null
   if (desktop) {
     return (
       <div className="nova-activity-brand-row flex h-8 items-center gap-2">

@@ -15,6 +15,7 @@ const workbench = {
   'workbench.activity.creator': '创作者',
   'workbench.activity.director': '导演',
   'workbench.activity.lore': '资料库',
+  'workbench.activity.market': '资源中心',
   'workbench.activity.settings': '设置',
   'workbench.activity.skills': 'Skills',
   'workbench.activity.game': '游戏',

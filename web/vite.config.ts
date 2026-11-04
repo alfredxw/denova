@@ -24,7 +24,7 @@ const domTests = [
   'src/features/interactive/components/director-console/persistence.test.ts',
 ]
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
   // Isolated browser-test servers must not replace a running dev server's
   // optimized modules while it still holds their previous metadata in memory.
@@ -104,7 +104,7 @@ export default defineConfig({
     // Test workspaces contain their own HTML/JS packages. Their writes must not
     // reload the host application in the middle of a browser interaction.
     watch: { ignored: ['**/test-results/**', '**/playwright-report/**'] },
-    proxy: {
+    proxy: mode === 'desktop' ? undefined : {
       '/api': {
         target: `http://127.0.0.1:${backendPort}`,
         // Without an agent the proxy sends Connection: close, forcing browsers
@@ -125,4 +125,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

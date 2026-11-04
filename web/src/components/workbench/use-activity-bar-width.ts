@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEventHandler, type PointerEve
 // User-level width preference; it survives reloads and development hot updates.
 const STORAGE_KEY = 'nova.layout.activityBarWidth'
 const MIN_WIDTH = 112
-const DEFAULT_WIDTH = 224
+const DEFAULT_WIDTH = 160
 const MAX_WIDTH = 288
 const KEYBOARD_STEP = 8
 

@@ -62,6 +62,9 @@ type streamFrame struct {
 	Subtype       string          `json:"subtype"`
 	Parent        string          `json:"parent_tool_use_id"`
 	IsMeta        bool            `json:"is_meta"`
+	IsReplay      bool            `json:"isReplay"`
+	InputUUID     string          `json:"user_message_uuid"`
+	InputUUIDs    []string        `json:"user_message_uuids"`
 	ToolUseResult json.RawMessage `json:"tool_use_result"`
 	Message       streamMessage   `json:"message"`
 	// Event is an API stream event only in stream_event frames; other frames
@@ -87,6 +90,7 @@ type streamOutput struct {
 	initialized      bool
 	current          string
 	order            []string
+	replyStart       int
 	text             map[string]string
 	complete         map[string]bool
 	wrapperOffsets   map[string]int
@@ -96,6 +100,7 @@ type streamOutput struct {
 	plan             []agentevent.TodoItem
 	planCalls        map[string]contentBlock
 	planObserved     bool
+	toolIDs          map[string]bool
 }
 
 func (s *streamOutput) feed(line []byte, host external.Host) error {
@@ -103,6 +108,10 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 	if err := json.Unmarshal(line, &f); err != nil {
 		return fmt.Errorf("decode Claude stream: %w", err)
 	}
+	return s.feedFrame(f, host)
+}
+
+func (s *streamOutput) feedFrame(f streamFrame, host external.Host) error {
 	if f.Parent != "" {
 		return nil
 	}
@@ -128,6 +137,9 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 		case "message_start":
 			s.current = e.Message.ID
 		case "content_block_start":
+			if s.toolIDs != nil && e.Block.Type == "tool_use" {
+				s.toolIDs[e.Block.ID] = true
+			}
 			if e.Block.Type == "text" && e.Block.Text != "" {
 				return s.append(host, fmt.Sprintf("%s:%d", s.current, e.Index), e.Block.Text, false)
 			}
@@ -156,6 +168,9 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 		offset := s.wrapperOffsets[f.Message.ID]
 		s.wrapperOffsets[f.Message.ID] += len(f.Message.Content)
 		for i, block := range f.Message.Content {
+			if s.toolIDs != nil && block.Type == "tool_use" {
+				s.toolIDs[block.ID] = true
+			}
 			if block.Type == "tool_use" && slices.Contains([]string{"TaskCreate", "TaskUpdate", "TaskList", "TaskGet"}, block.Name) {
 				if s.planCalls == nil {
 					s.planCalls = map[string]contentBlock{}
@@ -171,14 +186,20 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 	case "result":
 		s.terminal = true
 		if u := f.Usage; u != nil {
-			s.usage = &agentschema.TokenUsage{PromptTokens: u.Input + u.CacheRead + u.CacheWrite, CompletionTokens: u.Output, TotalTokens: u.Input + u.CacheRead + u.CacheWrite + u.Output}
-			s.usage.PromptTokenDetails.CachedTokens = u.CacheRead
+			if s.usage == nil {
+				s.usage = &agentschema.TokenUsage{}
+			}
+			prompt := u.Input + u.CacheRead + u.CacheWrite
+			s.usage.PromptTokens += prompt
+			s.usage.CompletionTokens += u.Output
+			s.usage.TotalTokens += prompt + u.Output
+			s.usage.PromptTokenDetails.CachedTokens += u.CacheRead
 		}
 		if f.IsError || f.Subtype != "success" {
 			return fmt.Errorf("Claude attempt failed (%s)", f.Subtype)
 		}
-		if len(s.order) == 0 && f.Result != "" {
-			return s.append(host, "result", f.Result, true)
+		if len(s.order) == s.replyStart && f.Result != "" {
+			return s.append(host, fmt.Sprintf("result-%d", s.replyStart), f.Result, true)
 		}
 	case "system":
 		if f.Subtype == "compact_boundary" {

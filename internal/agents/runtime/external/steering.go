@@ -11,15 +11,21 @@ import (
 // input queue. It holds no queue or recovery state. Adapters choose their native
 // delivery mechanism; product hosts prepare and commit accepted input.
 type Steering struct {
-	Changed   <-chan struct{}
-	Next      func(context.Context) (Guidance, bool, error)
-	Delivered func(Guidance)
-	Interrupt func()
+	// RequireSameTurn keeps a structured draft on its current native turn.
+	// Adapters that interrupt to steer must let the product resume the draft.
+	RequireSameTurn bool
+	Changed         <-chan struct{}
+	Next            func(context.Context) (Guidance, bool, error)
+	Delivered       func(Guidance)
+	Interrupt       func()
 }
 
 type Guidance struct {
 	Request agentchat.ChatRequest
 	Count   int
+	// StartsNewReply marks steering that replaces the provider's active reply
+	// with a new one. The product records the two replies separately.
+	StartsNewReply bool
 }
 
 // PreparedSteer keeps product context and persistence outside provider adapters.

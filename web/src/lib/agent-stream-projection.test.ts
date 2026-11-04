@@ -4,6 +4,29 @@ import type { AgentUIMessage } from './agent-ui'
 import { buildAgentMessageViews } from './agent-message-view'
 
 describe('Agent display stream projection', () => {
+  it('shows accepted guidance once between the original output and its continuation', () => {
+    const projection = new AgentStreamProjection()
+    projection.consume({ type: 'text-start', id: 'original' })
+    projection.consume({ type: 'text-delta', id: 'original', delta: 'Original draft.' })
+    projection.consume({ type: 'text-end', id: 'original' })
+    const guidance = {
+      type: 'data-agent-activity', id: 'guidance-input',
+      data: { event: 'agent_guidance_delivered', message: 'Keep the ending.' },
+    } as const
+    projection.consume(guidance)
+    projection.consume({ type: 'text-start', id: 'corrected' })
+    projection.consume({ type: 'text-delta', id: 'corrected', delta: 'Ending preserved.' })
+    projection.consume({ type: 'text-end', id: 'corrected' })
+    let messages = applyAgentStreamUpdates([], projection.takeUpdates())
+    projection.consume(guidance)
+    messages = applyAgentStreamUpdates(messages, projection.takeUpdates())
+    expect(messages.map(message => [message.role, message.parts[0]])).toEqual([
+      ['assistant', expect.objectContaining({ text: 'Original draft.' })],
+      ['user', expect.objectContaining({ text: 'Keep the ending.' })],
+      ['assistant', expect.objectContaining({ text: 'Ending preserved.' })],
+    ])
+  })
+
   it('retains immutable completed tools while streaming subsequent large results', () => {
     const projection = new AgentStreamProjection()
     let messages: AgentUIMessage[] = []

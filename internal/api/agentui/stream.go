@@ -58,7 +58,7 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 	// Match the durable display recorder's segment boundaries. Notifications
 	// do not end prose, and an event without a source never closes other Agents.
 	switch ev.Type {
-	case "tool_call", "tool_result", "ask_pending", "ask_resolved", "proposed_plan", "subagent_settled":
+	case "tool_call", "tool_result", "ask_pending", "ask_resolved", "proposed_plan", "subagent_settled", "agent_guidance_delivered":
 		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}

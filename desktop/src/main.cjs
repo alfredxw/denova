@@ -247,11 +247,23 @@ else {
       tray.setToolTip('Denova')
       tray.on('double-click', focus)
     }
+    let rendererOrigin
+    if (!app.isPackaged && process.argv.includes('--renderer-hmr')) {
+      const { startDesktopRenderer } = await import('../../web/scripts/desktop-renderer.mjs')
+      const renderer = await startDesktopRenderer()
+      rendererOrigin = renderer.origin
+      console.info('[desktop] Vite renderer ready', { origin: rendererOrigin })
+      app.once('will-quit', event => {
+        event.preventDefault()
+        void renderer.close().catch(error => console.error('[desktop] Vite renderer shutdown failed', error))
+          .finally(() => app.quit())
+      })
+    }
     // Use a standard origin so extension iframe referrers and CSP keep their
     // Web semantics. This reserved host is handled in-process, without TLS or
     // DNS configuration; all other HTTPS requests retain Chromium networking.
     protocol.handle('https', request => isAppURL(request.url)
-      ? forwardRequest(request, backend)
+      ? forwardRequest(request, backend, { rendererOrigin })
       : net.fetch(request, { bypassCustomProtocolHandlers: true }))
     session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(allowRendererPermission(contents, permission, details)))
     session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => allowRendererPermission(contents, permission, details))

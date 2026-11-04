@@ -52,6 +52,20 @@ pnpm --dir desktop package
 
 `build:backend` 包含共享前端、内嵌资源、Go 主程序、Skills、已校验的 ripgrep 和许可证；不会携带 Web updater。`package` 输出到 `desktop/dist/`。可用 `DENOVA_RELEASE_FRONTEND_DIR` 复用已验证的前端产物；`DENOVA_VERSION`、前端版本和 desktop package 版本必须一致。`DENOVA_DESKTOP_TARGET=win32-x64` 可交叉构建 Windows payload，但不能替代 Windows 原生验证。
 
+### 在桌面窗口热更新前端
+
+首次运行前执行 `pnpm --dir desktop build:backend`。退出已打开的桌面版，在仓库根目录启动开发版。
+
+```sh
+pnpm --dir desktop dev:hmr
+```
+
+保存 `web/src/` 中的改动后，Vite 会热更新组件和样式。部分模块变化会刷新整个窗口。修改 Electron 主进程或 preload 后重启开发版。修改 Go 后先重建后端，再重启开发版。
+
+开发版启动自己的本机 Vite 实例，并通过桌面应用启动的 Go 后端处理 API 请求。与 Web 后端并行运行时，为两者选择不同的数据目录。
+
+### 运行桌面测试
+
 ```sh
 pnpm --dir desktop test
 pnpm --dir desktop test:smoke

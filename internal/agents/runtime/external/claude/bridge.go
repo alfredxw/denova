@@ -27,7 +27,59 @@ type toolBridge struct {
 	mu         sync.Mutex
 	closed     bool
 	workers    sync.WaitGroup
+	active     int
+	steering   chan struct{}
+	superseded map[string]bool
 	err        error
+}
+
+// Hold new callbacks until the accepted guidance is in the product journal.
+// A running tool can own a pending question or a mutation and uses the product
+// interrupt path so its cancellation and recovery stay paired.
+func (b *toolBridge) holdToolsForSteer() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.active != 0 {
+		return false
+	}
+	b.steering = make(chan struct{})
+	return true
+}
+
+func (b *toolBridge) acceptSteer(previousCalls map[string]bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.superseded == nil {
+		b.superseded = make(map[string]bool, len(previousCalls))
+	}
+	for id := range previousCalls {
+		b.superseded[id] = true
+	}
+	close(b.steering)
+	b.steering = nil
+}
+
+func (b *toolBridge) admitTool(ctx context.Context, id string) bool {
+	for {
+		b.mu.Lock()
+		if b.closed || ctx.Err() != nil || b.superseded[id] {
+			b.mu.Unlock()
+			return false
+		}
+		gate := b.steering
+		if gate == nil {
+			b.active++
+			b.workers.Add(1)
+			b.mu.Unlock()
+			return true
+		}
+		b.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-gate:
+		}
+	}
 }
 
 func startBridge(ctx context.Context, tools []external.Tool, host external.Host, cancel context.CancelFunc) (*toolBridge, error) {
@@ -39,39 +91,36 @@ func startBridge(ctx context.Context, tools []external.Tool, host external.Host,
 		}
 		names[tool.Name] = true
 		b.mcp.AddTool(&mcp.Tool{Name: tool.Name, Description: tool.Description, InputSchema: tool.Schema}, func(callCtx context.Context, req *mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
-			b.mu.Lock()
-			if b.closed {
-				b.mu.Unlock()
-				return nil, errors.New("tool bridge is closed")
-			}
-			b.workers.Add(1)
-			b.mu.Unlock()
-			defer b.workers.Done()
-			defer func() {
-				if value := recover(); value != nil {
-					slog.ErrorContext(ctx, "[external-runtime] Claude host tool panicked", "tool", tool.Name, "panic", value)
-					err = errors.New("host tool panicked")
-				}
-				if err != nil {
-					b.mu.Lock()
-					b.err = errors.Join(b.err, err)
-					b.mu.Unlock()
-					cancel()
-				}
-			}()
 			// Claude supplies the model's tool-use ID in MCP metadata. Unlike
 			// transport request IDs it survives an MCP reconnect, so a retried
 			// delivery cannot repeat an already committed business effect.
 			id, _ := req.Params.Meta["claudecode/toolUseId"].(string)
-			if id == "" {
-				return nil, errors.New("host tool request lacks identity")
-			}
 			// Request cancellation and run cancellation both reach the original
 			// Host. A result is returned only after Host durably settles the tool.
 			callCtx, stop := context.WithCancel(callCtx)
 			defer stop()
 			unlink := context.AfterFunc(ctx, stop)
 			defer unlink()
+			if !b.admitTool(callCtx, id) {
+				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Tool call was superseded or cancelled."}}}, nil
+			}
+			defer func() {
+				b.mu.Lock()
+				b.active--
+				if value := recover(); value != nil {
+					slog.ErrorContext(ctx, "[external-runtime] Claude host tool panicked", "tool", tool.Name, "panic", value)
+					err = errors.New("host tool panicked")
+				}
+				if err != nil {
+					b.err = errors.Join(b.err, err)
+					cancel()
+				}
+				b.mu.Unlock()
+				b.workers.Done()
+			}()
+			if id == "" {
+				return nil, errors.New("host tool request lacks identity")
+			}
 			value, err := host.CallTool(callCtx, external.ToolCall{ID: id, Name: tool.Name, Arguments: req.Params.Arguments})
 			if err != nil {
 				return nil, err

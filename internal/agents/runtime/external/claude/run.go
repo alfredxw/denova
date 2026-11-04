@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -35,38 +34,10 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	}()
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	if controls := external.SteeringFromContext(ctx); controls != nil {
-		// Stream input is queued by the CLI, without same-turn acceptance. Keep
-		// the confirmed interrupt/resume protocol inside this adapter instead of
-		// imposing interruption on runtimes that support native turn steering.
-		stopped := make(chan struct{})
-		defer func() { cancel(); <-stopped }()
-		go func() {
-			defer close(stopped)
-			defer func() {
-				if value := recover(); value != nil {
-					slog.ErrorContext(ctx, "Claude steering failed", "panic", value)
-					cancel()
-				}
-			}()
-			for {
-				select {
-				case <-runCtx.Done():
-					return
-				case <-controls.Changed:
-					_, pending, err := controls.Next(runCtx)
-					if err != nil {
-						slog.ErrorContext(ctx, "Read Claude steering input failed", "error", err)
-						cancel()
-						return
-					}
-					if pending {
-						controls.Interrupt()
-						return
-					}
-				}
-			}
-		}()
+	controls := external.SteeringFromContext(ctx)
+	steeringHost, _ := host.(external.SteeringHost)
+	if controls == nil || controls.RequireSameTurn {
+		steeringHost = nil
 	}
 	// A cache miss needs one read-only bootstrap before a manual /compact can
 	// act on a persisted transcript. Ordinary turns bootstrap in their request.
@@ -114,7 +85,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	if err = os.WriteFile(filepath.Join(dir, "instructions.txt"), []byte(input.Instructions), 0600); err != nil {
 		return result, err
 	}
-	body, err := encodeInput(input)
+	body, err := encodeInput(input, "")
 	if err != nil {
 		return result, err
 	}
@@ -129,6 +100,9 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 		allowedTools += "," + nativeTools
 	}
 	args := append(streamArguments(nativeTools), "--include-partial-messages", "--mcp-config", filepath.Join(dir, "mcp.json"), "--system-prompt-file", filepath.Join(dir, "instructions.txt"), "--allowedTools", allowedTools)
+	if steeringHost != nil {
+		args = append(args, "--replay-user-messages")
+	}
 	if input.Directory == "" {
 		args = append(args, "--no-session-persistence")
 	}
@@ -218,30 +192,15 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	for _, tool := range input.Tools {
 		output.tools["mcp__denova__"+tool.Name] = true
 	}
-	scanner := bufio.NewScanner(reader)
-	// Matches the external input budget and supports image-bearing tool mirrors;
-	// malformed/oversized frames fail explicitly instead of yielding partial success.
-	scanner.Buffer(make([]byte, 64<<10), 32<<20)
-	for scanner.Scan() {
-		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
-			continue
-		}
-		if feedErr := output.feed(scanner.Bytes(), host); feedErr != nil {
-			err = errors.Join(err, feedErr)
-			cancel()
-		}
-		if output.terminal {
-			_ = writer.Close()
-		}
-	}
-	if scanErr := scanner.Err(); scanErr != nil {
-		err = errors.Join(err, scanErr)
+	stream := streamRun{output: &output, host: host, steeringHost: steeringHost, controls: controls, bridge: bridge, write: write}
+	err = stream.read(runCtx, cancel, reader, writer)
+	if err != nil {
 		cancel()
 	}
 	waitErr := cmd.Wait()
 	waited = true
 	result = output.result()
-	result.Settled = output.terminal && scanner.Err() == nil
+	result.Settled = output.terminal
 	if input.SessionID != "" && !output.initialized && len(output.order) == 0 && strings.Contains(diagnostics.String(), "No conversation found with session ID: "+input.SessionID) {
 		return result, external.ErrSessionUnavailable
 	}
@@ -297,7 +256,7 @@ func runEnvironment(env []string) []string {
 // Claude's fresh stream accepts user turns, not an arbitrary imported transcript.
 // Encode canonical history as quoted conversation data in the single input turn;
 // never submit historical user messages as new independently executing turns.
-func encodeInput(input external.Input) ([]byte, error) {
+func encodeInput(input external.Input, steerID string) ([]byte, error) {
 	content := []map[string]any{}
 	add := func(text string, attachments []agentschema.Attachment) error {
 		if text != "" {
@@ -334,7 +293,13 @@ func encodeInput(input external.Input) ([]byte, error) {
 	if err := add(text, input.Attachments); err != nil {
 		return nil, err
 	}
-	body, err := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
+	frame := map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}}
+	if steerID != "" {
+		// The CLI interrupts the response and consumes this input in the same
+		// process. Omitting a human origin prevents tools from being detached.
+		frame["uuid"], frame["priority"] = steerID, "now"
+	}
+	body, err := json.Marshal(frame)
 	return append(body, '\n'), err
 }
 

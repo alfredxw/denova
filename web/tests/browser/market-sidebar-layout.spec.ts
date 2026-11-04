@@ -39,7 +39,7 @@ for (const theme of ['dark', 'light']) {
     await registry.click()
     await expect(page.getByRole('textbox', { name: 'Registry index URL', exact: true })).toBeInViewport()
     await expect(page.getByLabel('GitHub token (optional)', { exact: true })).toBeVisible()
-    await page.getByLabel('Workbench sidebar').getByRole('button', { name: 'Resource Center', exact: true }).click()
+    await page.getByLabel('Workbench sidebar').getByRole('button', { name: 'Resources', exact: true }).click()
     for (const width of [1440, 1100, 390]) {
       await page.setViewportSize({ width, height: 600 })
       if (width === 390) {
