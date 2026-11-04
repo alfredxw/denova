@@ -17,4 +17,4 @@ try {
   // Windows child.kill terminates the test process, rather than sending a Unix
   // signal. The automation suite separately exercises the native Quit menu.
   console.log('Production application launched and rendered with automation disabled')
-} finally { if (child.exitCode === null) child.kill(); rmSync(directory, { recursive: true, force: true }) }
+} finally { if (child.exitCode === null) child.kill(); rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) }

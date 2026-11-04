@@ -252,7 +252,7 @@ jobs:
         run: |
           pnpm --dir desktop build:backend
           pnpm --dir desktop test
-          DENOVA_DESKTOP_E2E=true pnpm --dir desktop package
+          DENOVA_DESKTOP_E2E=true DENOVA_DESKTOP_SKIP_INSTALLER=true pnpm --dir desktop package
       - name: Exercise the packaged application
         run: pnpm --dir desktop test:smoke
       - name: Verify production packaging

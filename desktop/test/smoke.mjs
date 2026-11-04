@@ -91,7 +91,8 @@ try {
   console.log('Extension origin handshake, storage read and native bridge isolation passed')
 
   await click('设置'); await click('软件更新'); await click('检查更新')
-  const updateWindow = await until(async () => (await app.command('windows')).windows.find(w => w.url && !w.url.startsWith(origin + '/')))
+  // LoadHTML has no URL in WebView2; identify the new native window by ID.
+  const updateWindow = await until(async () => (await app.command('windows')).windows.find(w => w.id !== app.windowID))
   await until(async () => /更新|update/i.test((await app.command('eval', { window: updateWindow.id, script: 'document.body.innerText' })).value))
   await app.command('eval', { window: updateWindow.id, script: 'setTimeout(() => window.mygo.window.close(), 100); true' })
   await until(async () => !(await app.command('windows')).windows.some(w => w.id === updateWindow.id))
@@ -99,7 +100,7 @@ try {
   await app.api('/api/settings', 'PATCH', { layer: 'user', changes: { language: 'en-US' } }); await reload()
   await until(() => app.evaluate(() => !!document.querySelector('[aria-label="Workbench sidebar"]')))
   await until(() => app.command('menu', { path: ['Denova', 'Check for Updates…'] }))
-  const englishUpdate = await until(async () => (await app.command('windows')).windows.find(w => w.url && !w.url.startsWith(origin + '/')))
+  const englishUpdate = await until(async () => (await app.command('windows')).windows.find(w => w.id !== app.windowID))
   await until(async () => /update/i.test((await app.command('eval', { window: englishUpdate.id, script: 'document.body.innerText' })).value))
   await app.command('eval', { window: englishUpdate.id, script: 'setTimeout(() => window.mygo.window.close(), 100); true' })
   await until(async () => !(await app.command('windows')).windows.some(w => w.id === englishUpdate.id))
@@ -120,5 +121,5 @@ try {
   if (app) { try { console.error('Renderer diagnostics', await app.evaluate(() => ({ errors: window.smokeErrors, text: document.body.innerText.slice(0, 2000), resources: performance.getEntriesByType('resource').filter(r => r.duration > 5000).map(r => r.name) }))); await app.screenshot(path.join(artifacts, 'last-screen.png')); await app.close() } catch (error) { console.error(error); process.kill(app.pid, 'SIGTERM') } }
   cpSync(path.join(directory, 'shell/log'), path.join(artifacts, 'log'), { recursive: true })
   model.kill(); await once(model, 'exit')
-  if (process.env.DENOVA_KEEP_TEST_DATA !== 'true') rmSync(directory, { recursive: true, force: true }); else console.log(directory)
+  if (process.env.DENOVA_KEEP_TEST_DATA !== 'true') rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); else console.log(directory)
 }
