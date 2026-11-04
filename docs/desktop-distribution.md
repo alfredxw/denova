@@ -54,6 +54,16 @@ pnpm --dir desktop package
 
 `dev:hmr` 启动前台 Vite 实例，API 使用该桌面进程拥有的后端。切换目录后开发启动器按 MyGo 的重启约定保留 Vite 并重新启动宿主。修改前端会热更新；修改宿主或后端后重新构建并重启。macOS 可用 `scripts/restart-desktop.sh` 正常关闭当前仓库的桌面实例后启动 HMR。与 Web 开发实例并行时使用独立数据目录。
 
+Windows PowerShell 在仓库根目录运行：
+
+```powershell
+.\scripts\restart-desktop.ps1
+# 修改后端、Skills 或内嵌资源后：
+.\scripts\restart-desktop.ps1 -Rebuild
+```
+
+脚本首次运行会安装缺失的前端依赖并构建缺失的资源，每次启动都会重新编译桌面宿主。重启只请求当前仓库 `desktop/build` 或 `desktop/dist/windows-amd64` 下的应用正常退出，等待后端保存和旧 Vite 关闭；有活动任务时在应用内确认。旧版宿主尚不支持退出参数时，手动从「选项 → 退出 Denova」退出即可继续；超时会停止重启，不强杀进程。启动后保持终端开启，前端改动自动热更新。若 PowerShell 执行策略阻止本地脚本，可用 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\restart-desktop.ps1` 单次运行。
+
 `DENOVA_RELEASE_FRONTEND_DIR` 可复用已验证的前端；`DENOVA_VERSION` 必须与两个 package.json 一致。`DENOVA_DESKTOP_TARGET=win32-x64` 可交叉编译后端，宿主也支持交叉编译；完整安装器、签名和行为验证需原生 Windows。
 
 ## 安装更新
@@ -86,6 +96,8 @@ node desktop/test/package.mjs
 ```
 
 以上环境变量写法适用于 Bash；Windows PowerShell 使用 `$env:DENOVA_DESKTOP_E2E='true'`，生产打包前删除该变量。Smoke 使用隔离数据、动态端口和确定性本地模型，覆盖写作输入保存、游戏生成、主题语言、扩展来源握手与存储读取、SSE 取消、终端认证、官方更新窗口、关闭隐藏、正常退出和重开。日志与截图位于 `output/desktop/`。Windows 测试通过一个小型 Go 客户端访问官方 AF_UNIX 自动化接口，不引入生产测试接口。
+
+Windows 重启脚本可在退出开发版后用 `node desktop/test/restart-windows.mjs` 验证；加 `--rebuild` 同时检查完整资源重建。该测试使用隔离数据和 Windows PowerShell 5.1，检查连续启动、PID 保护、正常退出及旧后端和 Vite 的清理。
 
 CI 在 macOS arm64 和 Windows x64 原生构建运行，并单独启动不含自动化的最终生产包。Windows 最终包启动检查的清理由测试进程终止，正常退出行为由前一阶段的原生菜单测试覆盖。
 

@@ -119,6 +119,11 @@ func Run() error {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil
 	}
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "--quit-pid=") {
+			return nil // A restart request must never open a new application.
+		}
+	}
 	mygo.Theme.SetSource(mygo.ThemeSource(s.preferences.Theme))
 	mygo.Use(updater.New(updater.Options{Interval: 6 * time.Hour, DisableAutomaticChecks: true}), fetchplugin.New(fetchplugin.Options{Client: &http.Client{Transport: s}, Allow: s.allowFetch}))
 	mygo.BindAs("Desktop", &Bridge{shell: s})
@@ -158,7 +163,20 @@ func Run() error {
 	})
 	mygo.App.OnWindowAllClosed(func() {})
 	mygo.App.OnActivate(func(bool) { s.focus() })
-	mygo.App.OnSecondInstance(func([]string, string) { s.focus() })
+	mygo.App.OnSecondInstance(func(args []string, _ string) {
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "--quit-pid=") {
+				// Restart scripts verify the executable path; the PID also guards
+				// against another checkout owning the shared single-instance lock.
+				if arg == fmt.Sprintf("--quit-pid=%d", os.Getpid()) {
+					slog.Info("Desktop restart quit requested")
+					s.async("restart quit", s.quit)
+				}
+				return
+			}
+		}
+		s.focus()
+	})
 	mygo.App.WhenReady(func() {
 		s.async("startup", func() error {
 			if s.preferences.DataDir == "" {

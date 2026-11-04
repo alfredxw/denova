@@ -255,6 +255,9 @@ jobs:
           DENOVA_DESKTOP_E2E=true DENOVA_DESKTOP_SKIP_INSTALLER=true pnpm --dir desktop package
       - name: Exercise the packaged application
         run: pnpm --dir desktop test:smoke
+      - name: Verify the Windows desktop restart script
+        if: runner.os == 'Windows'
+        run: node desktop/test/restart-windows.mjs
       - name: Verify production packaging
         run: |
           pnpm --dir desktop package
