@@ -7,3 +7,15 @@ index 95061a20c8ecd48ff3ca732dbb1848cd213f7965..4bbb061da3fc2115cfc1917759b16609
  import { reset } from './dom.js';
 -import purify from './dompurify/dompurify.js';
 +import purify from 'dompurify';
+diff --git a/esm/vs/platform/clipboard/browser/clipboardService.js b/esm/vs/platform/clipboard/browser/clipboardService.js
+--- a/esm/vs/platform/clipboard/browser/clipboardService.js
++++ b/esm/vs/platform/clipboard/browser/clipboardService.js
+@@ -71,6 +71,8 @@
+             const currentWritePromise = new DeferredPromise();
+             // Cancel the previous promise since we just created a new one in response to this new event
+             if (this.webKitPendingClipboardWritePromise && !this.webKitPendingClipboardWritePromise.isSettled) {
++                // WebKit may leave the ClipboardItem data promise unobserved.
++                this.webKitPendingClipboardWritePromise.p.catch(() => { });
+                 this.webKitPendingClipboardWritePromise.cancel();
+             }
+             this.webKitPendingClipboardWritePromise = currentWritePromise;
