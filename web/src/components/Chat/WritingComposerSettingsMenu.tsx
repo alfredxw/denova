@@ -72,6 +72,7 @@ export function WritingComposerSettingsMenu({
 }: WritingComposerSettingsMenuProps) {
   const { t } = useTranslation()
   const selectedTeller = resolveNarrativeStyle(tellers, tellerID)
+  const restoreDefault = { id: '', label: t('chat.writingSettings.restoreDefault') }
   const normalizedSkills = useMemo(() => (
     writingSkills.some((option) => option.name === writingSkill)
       ? writingSkills
@@ -90,7 +91,7 @@ export function WritingComposerSettingsMenu({
           label={t('chat.teller')}
           currentLabel={selectedTeller ? narrativeStyleName(selectedTeller, t) : tellerID}
           value={selectedTeller?.id || tellerID}
-          options={tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) }))}
+          options={[restoreDefault, ...tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) }))]}
           saving={savingTeller}
           disabled={!enabled}
           onValueChange={onTellerChange}
@@ -101,11 +102,11 @@ export function WritingComposerSettingsMenu({
         label={t('chat.writingSkill')}
         currentLabel={skillLabel}
         value={selectedSkill?.name || writingSkill}
-        options={normalizedSkills.map((option) => ({
+        options={[restoreDefault, ...normalizedSkills.map((option) => ({
           id: option.name,
           label: writingSkillLabel(option.name, t),
           meta: t(`chat.writingSkill.source.${option.scope}`),
-        }))}
+        }))]}
         saving={savingWritingSkill}
         disabled={!enabled}
         emptyLabel={t('chat.writingSkill.empty')}

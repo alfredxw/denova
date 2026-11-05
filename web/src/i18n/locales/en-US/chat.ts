@@ -87,6 +87,7 @@ const chat = {
   'chat.imagePreset': 'Image Preset',
   'chat.imagePresetTitle': 'Image preset used when the next Writing Agent turn generates images',
   'chat.writingSkill': 'Writing Skill',
+  'chat.writingSettings.restoreDefault': 'Restore Default',
   'chat.writingSkillTitle': 'Writing Skill used by the next Writing Agent turn',
   'chat.writingSkill.preset.lite': 'Lite',
   'chat.writingSkill.preset.standard': 'Standard',

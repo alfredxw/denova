@@ -96,8 +96,6 @@ type Config struct {
 	ProjectFileTreeEntryLimit   int                       `toml:"project_file_tree_entry_limit"`
 	ChapterFilenameFormat       string                    `toml:"-"`
 	VolumeDirFormat             string                    `toml:"-"`
-	ChapterGroupMin             int                       `toml:"-"`
-	ChapterGroupMax             int                       `toml:"-"`
 	VersionTimedEnabled         bool                      `toml:"-"`
 	VersionTimedIntervalMinutes int                       `toml:"-"`
 	InteractiveReplyTargetChars int                       `toml:"-"`
@@ -187,8 +185,6 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		TraceRetentionRuns:          settingsInt(s.TraceRetentionRuns, DefaultTraceRetentionRuns),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
-		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
-		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		VersionTimedEnabled:         settingsBool(s.VersionTimedEnabled, true),
 		VersionTimedIntervalMinutes: settingsInt(s.VersionTimedIntervalMinutes, 10),
 		InteractiveReplyTargetChars: 2000,
@@ -454,8 +450,6 @@ func Load() *Config {
 			TraceRetentionRuns:          settingsInt(d.TraceRetentionRuns, DefaultTraceRetentionRuns),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
-			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
-			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			VersionTimedEnabled:         settingsBool(d.VersionTimedEnabled, true),
 			VersionTimedIntervalMinutes: settingsInt(d.VersionTimedIntervalMinutes, 10),
 			InteractiveReplyTargetChars: 2000,

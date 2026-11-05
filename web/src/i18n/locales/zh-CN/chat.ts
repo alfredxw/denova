@@ -87,6 +87,7 @@ const chat = {
   'chat.imagePreset': '图像方案',
   'chat.imagePresetTitle': '写作 Agent 下一轮生成图像时使用的图像方案',
   'chat.writingSkill': '写作 Skill',
+  'chat.writingSettings.restoreDefault': '恢复默认',
   'chat.writingSkillTitle': '写作 Agent 下一轮使用的写作 Skill',
   'chat.writingSkill.preset.lite': 'Lite',
   'chat.writingSkill.preset.standard': 'Standard',

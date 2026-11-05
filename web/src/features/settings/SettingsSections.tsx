@@ -2,7 +2,7 @@ import { desktopBridge } from '@/lib/desktop'
 import { DecisionSettingsEditor, EMPTY_DECISION_SETTINGS } from './DecisionSettingsEditor'
 import { EMPTY_SPEECH_SETTINGS, SpeechSettingsEditor } from './SpeechSettingsEditor'
 import { WebAccessSettingsEditor } from './WebAccessSettingsEditor'
-import { memo, useEffect, useState, useCallback } from 'react'
+import { memo, useState, useCallback } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/lib/toast'
@@ -10,8 +10,6 @@ import { withErrorLogID } from '@/lib/api-client'
 import type { ImageAPIEndpointSettings, ImageAPIProfileSettings, LabSettings, LayeredSettings, ModelEndpointSettings, ModelProfileSettings, Settings } from './types'
 import { revokeAgentApprovalRule } from './api'
 import { FontPicker } from './FontPicker'
-import { getInteractiveTellers } from '@/features/interactive/api'
-import type { Teller } from '@/features/interactive/types'
 import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { SettingsPageVisibility } from './SettingsPageFrame'
 import { AnalyticsSettings } from '@/features/analytics/AnalyticsPreferences'
@@ -40,7 +38,7 @@ import { MarketSettings } from './MarketSettings'
 import { DataDirectorySetting } from './DataDirectorySetting'
 import { SETTINGS_SECTIONS, type SettingsFieldRequest, type SettingsSectionId } from './settings-sections'
 import { modelProfilesForEditor, modelEndpointsForEditor, imageAPIProfilesForEditor, imageAPIEndpointsForEditor } from './settings-editor-draft'
-import { FieldRow, TextSizeRow, ReadOnly, Text, Num, BoolTri, AgentApprovalModeSelect, ShellEnvironmentSelect, TraceCaptureSelect, TraceExporterSelect, LanguageSelect, ThemeSelect, MotionIntensitySelect, AgentTraceDisplaySelect, TellerSelect } from './SettingsFields'
+import { FieldRow, TextSizeRow, ReadOnly, Text, Num, BoolTri, AgentApprovalModeSelect, ShellEnvironmentSelect, TraceCaptureSelect, TraceExporterSelect, LanguageSelect, ThemeSelect, MotionIntensitySelect, AgentTraceDisplaySelect } from './SettingsFields'
 
 interface SettingsSectionsProps {
   layered: LayeredSettings
@@ -55,14 +53,7 @@ interface SettingsSectionsProps {
 export const SettingsSections = memo(function SettingsSections({ layered, draft, setDraft, fieldRequest, onSelectSection, onSave }: SettingsSectionsProps) {
   const { t } = useTranslation()
   const approval = useAgentApprovalMode()
-  const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
   const [revokingApprovalRuleID, setRevokingApprovalRuleID] = useState('')
-
-  useEffect(() => {
-    getInteractiveTellers()
-      .then((items) => setAvailableTellers(items))
-      .catch((e) => console.warn('[settings] Failed to load the director list', e))
-  }, [])
 
   const effective = layered?.effective ?? {}
   const inherited = layered?.inherited?.user ?? {}
@@ -250,22 +241,6 @@ export const SettingsSections = memo(function SettingsSections({ layered, draft,
         <Num label={t('settings.ide.maxOpenTabs')} value={draft.max_open_tabs ?? null}
              placeholder={placeholderFor('max_open_tabs')}
              onChange={(v) => setField('max_open_tabs', v)} />
-        <Num label={t('settings.ide.chapterGroupMin')} value={draft.chapter_group_min ?? null}
-             placeholder={placeholderFor('chapter_group_min')}
-             onChange={(v) => setField('chapter_group_min', v)} />
-        <Num label={t('settings.ide.chapterGroupMax')} value={draft.chapter_group_max ?? null}
-             placeholder={placeholderFor('chapter_group_max')}
-             onChange={(v) => setField('chapter_group_max', v)} />
-        <TellerSelect
-          label={t('settings.ide.defaultTeller')}
-          value={draft.ide_story_teller_id}
-          inherited={inherited.ide_story_teller_id}
-          tellers={availableTellers}
-          onChange={(v) => setField('ide_story_teller_id', v)}
-        />
-        <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
-              placeholder={placeholderFor('writing_skill_default')}
-              onChange={(v) => setField('writing_skill_default', v)} />
       </>
     ),
     'model': (

@@ -332,8 +332,6 @@ func ideFlowInstruction(cfg *config.Config, workspace string) string {
 		Workspace:             workspace,
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
 		VolumeDirFormat:       cfg.VolumeDirFormat,
-		ChapterGroupMin:       cfg.ChapterGroupMin,
-		ChapterGroupMax:       cfg.ChapterGroupMax,
 	})
 }
 

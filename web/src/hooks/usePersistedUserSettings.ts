@@ -28,6 +28,7 @@ export interface PersistedUserSettingsController<TDefaults extends PersistedStri
   values: PersistedStringSettingValues<TDefaults>
   loading: boolean
   isSaving: (key: keyof TDefaults) => boolean
+  /** An empty value clears the user override and inherits the default. */
   persist: <TKey extends keyof TDefaults>(key: TKey, next: string) => Promise<boolean>
   reload: () => Promise<LayeredSettings | null>
   /** Waits for the owned save lane; false means the local value is still queued for retry. */
@@ -97,8 +98,8 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
     const next = {} as PersistedStringSettingValues<TDefaults>
     for (const key of settingKeys(defaults)) {
       const pending = pendingChangesRef.current.get(key)?.value
-      const effective = snapshot.effective[key]
-      next[key] = (pending ?? (typeof effective === 'string' && effective ? effective : defaults[key] ?? '')) as PersistedStringSettingValues<TDefaults>[typeof key]
+      const effective = pending === '' ? snapshot.inherited?.user[key] : pending ?? snapshot.effective[key]
+      next[key] = (effective || defaults[key] || '') as PersistedStringSettingValues<TDefaults>[typeof key]
     }
     applyValues(next)
   }, [applyValues, defaults])
@@ -216,10 +217,12 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
 
   const persist = useCallback(<TKey extends keyof TDefaults>(key: TKey, next: string): Promise<boolean> => {
     const settingKey = key as PersistedStringSettingKey
-    if (!workspaceRef.current || next === valuesRef.current[key]) return Promise.resolve(false)
-
     const existing = pendingChangesRef.current.get(settingKey)
-    const baselineUser = snapshotRef.current?.user
+    const snapshot = snapshotRef.current
+    const baselineUser = snapshot?.user
+    const current = existing?.value ?? (next === '' ? baselineUser?.[settingKey] ?? '' : valuesRef.current[key])
+    if (!workspaceRef.current || next === current) return Promise.resolve(false)
+
     const mutationID = nextMutationIDRef.current
     nextMutationIDRef.current += 1
     pendingChangesRef.current.set(settingKey, {
@@ -234,18 +237,19 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
       baselineUserPresent: existing?.baselineUserPresent ?? Boolean(
         baselineUser && Object.prototype.hasOwnProperty.call(baselineUser, settingKey)
       ),
-      baseRevision: existing?.baseRevision ?? snapshotRef.current?.revisions?.user,
+      baseRevision: existing?.baseRevision ?? snapshot?.revisions?.user,
     })
     loadGenerationRef.current += 1
     setLoading(false)
-    applyValues({ ...valuesRef.current, [key]: next })
+    if (snapshot) applySnapshot(snapshot)
+    else applyValues({ ...valuesRef.current, [key]: next || defaults[key] || '' })
     setSavingKeys(new Set(pendingChangesRef.current.keys()))
 
     const operation = new Promise<boolean>(resolve => mutationWaitersRef.current.set(mutationID, resolve))
     const request = saveRequestFor(pendingChangesRef.current)
     if (request) lane.edit(request)
     return operation
-  }, [applyValues, lane])
+  }, [applySnapshot, applyValues, defaults, lane])
 
   const isSaving = useCallback(
     (key: keyof TDefaults) => savingKeys.has(key as PersistedStringSettingKey),
@@ -311,7 +315,11 @@ async function updateSettingsOnLatestSnapshot(
     if (request.baselineUserPresent[key]) baseline[key] = request.baselineUserValues[key]
     else delete baseline[key]
   }
-  const local = { ...baseline, ...request.changes }
+  const local = { ...baseline }
+  for (const [key, value] of settingEntries(request.changes)) {
+    if (value === '') delete local[key]
+    else local[key] = value
+  }
   const rebased = await rebaseJSONWithRecovery({
     resource: 'settings',
     scope,

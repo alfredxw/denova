@@ -76,8 +76,6 @@ export interface Settings {
   volume_dir_format?: string
   max_open_tabs?: number | null
   project_file_tree_entry_limit?: number | null
-  chapter_group_min?: number | null
-  chapter_group_max?: number | null
   version_timed_enabled?: boolean | null
   version_timed_interval_minutes?: number | null
   ui_font_family?: string

@@ -4,8 +4,6 @@ import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LOCALE_OPTIONS } from '@/i18n'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
-import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName } from '@/features/interactive/narrative-style'
-import type { Teller } from '@/features/interactive/types'
 import type { AgentApprovalMode, AgentTraceDisplay, ShellEnvironmentMode } from './types'
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
@@ -362,35 +360,6 @@ export function MotionIntensitySelect({ label, value, inherited, onChange }: {
             <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             {MOTION_INTENSITY_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-export function TellerSelect({ label, value, inherited, tellers, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  tellers: Teller[]
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedTeller = tellers.find((teller) => teller.id === inherited)
-  const inheritedName = inheritedTeller ? narrativeStyleName(inheritedTeller, t) : inherited || DEFAULT_NARRATIVE_STYLE_ID
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedName })}</SelectItem>
-            {tellers.map((teller) => (
-              <SelectItem key={teller.id} value={teller.id}>{narrativeStyleName(teller, t)}</SelectItem>
             ))}
           </SelectGroup>
         </SelectContent>
