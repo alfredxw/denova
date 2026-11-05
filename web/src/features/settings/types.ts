@@ -117,8 +117,10 @@ export interface Settings {
   writing_skill_default?: string
   agent_quick_prompts?: AgentQuickPromptRegistry
   agent_quick_prompts_in_commands?: boolean | null
+  interactive_stage_theme?: StageTheme | null
   interactive_stage_font_size?: number | null
   interactive_stage_scrim_opacity?: number | null
+  interactive_stage_text_outline?: boolean | null
   interactive_stage_line_height?: number | null
   interactive_stage_text_max_width?: number | null
   interactive_stage_character_layout?: StageCharacterLayout | null
@@ -760,3 +762,4 @@ export interface UpdateNotesResult {
 
 /** Display-only arrangement; does not change the saved scene or Agent choices. */
 export type StageCharacterLayout = 'center' | 'left' | 'right' | 'sides'
+export type StageTheme = 'light' | 'dark'

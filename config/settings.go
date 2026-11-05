@@ -139,8 +139,10 @@ type Settings struct {
 	TerminalScrollbackKB       *int `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
 	// Game display preferences.
+	InteractiveStageTheme        string   `toml:"interactive_stage_theme,omitempty" json:"interactive_stage_theme,omitempty"`
 	InteractiveStageFontSize     *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageScrimOpacity *float64 `toml:"interactive_stage_scrim_opacity,omitempty" json:"interactive_stage_scrim_opacity,omitempty"`
+	InteractiveStageTextOutline  *bool    `toml:"interactive_stage_text_outline,omitempty" json:"interactive_stage_text_outline,omitempty"`
 	InteractiveStageLineHeight   *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 	// Character layout is a user display preference shared by all Projects.
 	InteractiveStageCharacterLayout string `toml:"interactive_stage_character_layout,omitempty" json:"interactive_stage_character_layout,omitempty"`
@@ -257,6 +259,7 @@ func DefaultSettings() Settings {
 		InteractiveStageFontSize:        intPtr(16),
 		InteractiveStageLineHeight:      floatPtr(1.78),
 		InteractiveStageScrimOpacity:    floatPtr(0.75),
+		InteractiveStageTextOutline:     boolPtr(false),
 		InteractiveStageTextMaxWidth:    intPtr(896),
 		InteractiveStageCharacterLayout: "center",
 		InteractiveStageCharacterSize:   floatPtr(0.7),
@@ -486,11 +489,17 @@ func Merge(parent, child Settings) Settings {
 	if child.AgentQuickPromptsInCommands != nil {
 		out.AgentQuickPromptsInCommands = child.AgentQuickPromptsInCommands
 	}
+	if child.InteractiveStageTheme != "" {
+		out.InteractiveStageTheme = child.InteractiveStageTheme
+	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize
 	}
 	if child.InteractiveStageScrimOpacity != nil {
 		out.InteractiveStageScrimOpacity = child.InteractiveStageScrimOpacity
+	}
+	if child.InteractiveStageTextOutline != nil {
+		out.InteractiveStageTextOutline = child.InteractiveStageTextOutline
 	}
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
@@ -961,6 +970,11 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.RemoteAccessPasswordSet = s.RemoteAccessPasswordHash != ""
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
+	switch s.InteractiveStageTheme {
+	case "", "light", "dark":
+	default:
+		s.InteractiveStageTheme = ""
+	}
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	switch s.AgentTraceDisplay {
 	case "", "compact", "live":

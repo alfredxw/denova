@@ -11,7 +11,8 @@
 @source "../node_modules/@streamdown/math/dist/*.js";
 @source "../node_modules/@rjsf/shadcn/lib/**/*.js";
 
-@custom-variant dark (&:is([data-theme="dark"] *));
+/* A local light theme cancels the document's dark variant. */
+@custom-variant dark (&:is([data-theme="dark"], [data-theme="dark"] *):not(:where([data-theme="light"]:not(:root), [data-theme="light"]:not(:root) *)));
 
 /* Preset Studio: a container-driven workbench nested inside either product mode. */
 .preset-workspace {
@@ -419,7 +420,8 @@
   }
 }
 
-:root {
+:root,
+[data-theme="dark"] {
   --nova-bg: #000000;
   --nova-bg-deep: #000000;
   --nova-surface: #0a0a0a;
@@ -479,13 +481,19 @@
   --nova-code-block-bg: #101010;
   --nova-table-header-bg: #181817;
   --nova-markdown-border: #2b2b29;
-  --nova-dialogue-highlight: #ffd166;
+  --nova-dialogue-highlight: var(--nova-dialogue-highlight-bright);
   --nova-scrollbar-track: #080808;
   --nova-scrollbar-thumb: #343432;
   --nova-scrollbar-thumb-hover: #50504c;
   --nova-editor-ide-bg: #121212;
   --nova-editor-ide-color: #f7f7f4;
   --nova-editor-ide-accent: #242422;
+  --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+  color-scheme: dark;
+}
+
+:root {
+  --nova-dialogue-highlight-bright: #ffd166;
   --nova-radius: 8px;
   --nova-ease: cubic-bezier(0.25, 1.1, 0.4, 1);
   --nova-panel-motion-ease: cubic-bezier(0.2, 0, 0, 1);
@@ -494,7 +502,6 @@
   --nova-motion-slow: 280ms;
   --nova-panel-motion-duration: 180ms;
   --nova-panel-fade-duration: 120ms;
-  --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
   --nova-ui-font-size: 14px;
   --nova-ui-line-height: 20px;
   --nova-ui-nano-font-size: 10px;
@@ -521,7 +528,6 @@
   --nova-ui-font-family: "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, sans-serif;
   --nova-reading-font-family: var(--nova-ui-font-family);
   --nova-source-editor-font-family: "SFMono-Regular", "Cascadia Code", Consolas, "Liberation Mono", monospace;
-  color-scheme: dark;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -678,38 +684,37 @@
   background: var(--nova-surface);
 }
 
-[data-theme="light"] .nova-chat-canvas {
-  background: var(--nova-surface-2);
-}
-
-[data-theme="light"] .nova-chat-composer,
-[data-theme="light"] .nova-agent-composer {
-  background: var(--nova-surface);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    0 10px 28px rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="light"] .nova-chat-composer:focus-within,
-[data-theme="light"] .nova-agent-composer:focus-within {
-  background: var(--nova-surface);
-  box-shadow:
-    0 0 0 1px var(--nova-field-focus-border),
-    0 12px 30px rgba(0, 0, 0, 0.1);
-}
-
 [data-theme="light"] .nova-chat-input-area-floating {
   background:
     linear-gradient(180deg, transparent, color-mix(in srgb, var(--nova-surface-2) 76%, transparent) 34%, color-mix(in srgb, var(--nova-surface-2) 92%, transparent));
 }
 
-[data-theme="light"] .nova-command-menu,
-[data-theme="light"] .nova-editor-settings-panel {
-  background: var(--nova-menu-bg);
-  box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+:is([data-theme="light"], [data-theme="light"] *):not(:where([data-theme="dark"]:not(:root), [data-theme="dark"]:not(:root) *)) {
+  &.nova-chat-canvas {
+    background: var(--nova-surface-2);
+  }
+
+  &:is(.nova-chat-composer, .nova-agent-composer) {
+    background: var(--nova-surface);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.72),
+      0 1px 2px rgba(0, 0, 0, 0.06),
+      0 10px 28px rgba(0, 0, 0, 0.08);
+  }
+
+  &:is(.nova-chat-composer, .nova-agent-composer):focus-within {
+    background: var(--nova-surface);
+    box-shadow:
+      0 0 0 1px var(--nova-field-focus-border),
+      0 12px 30px rgba(0, 0, 0, 0.1);
+  }
+
+  &:is(.nova-command-menu, .nova-editor-settings-panel) {
+    background: var(--nova-menu-bg);
+    box-shadow:
+      0 16px 40px rgba(0, 0, 0, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  }
 }
 
 html,
@@ -2702,6 +2707,9 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   body {
     @apply bg-background text-foreground;
   }
+  :where([data-theme]:not(:root)) {
+    color: var(--foreground);
+  }
   html {
     @apply font-sans;
   }
@@ -2753,7 +2761,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   --story-state-pending: var(--nova-warning);
   --story-state-pending-soft: var(--nova-warning-bg);
   --story-state-meter: var(--nova-text-muted);
-  --story-state-tabs-bg: oklch(0.2 0 0);
+  --story-state-tabs-bg: light-dark(var(--nova-surface-2), oklch(0.2 0 0));
   container-name: story-state-ledger;
   container-type: inline-size;
   background: var(--story-state-canvas);
@@ -2793,10 +2801,6 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 .story-state-ledger__tabs-list {
   background: var(--story-state-tabs-bg);
-}
-
-[data-theme="light"] .story-state-ledger {
-  --story-state-tabs-bg: var(--nova-surface-2);
 }
 
 .story-state-ledger__tabs-scroll::-webkit-scrollbar {
@@ -3149,23 +3153,15 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 /* Game Console: a story-continuity surface scoped to the resizable game sidebar. */
 .director-console {
-  --director-canvas: #070707;
-  --director-panel: #11110f;
-  --director-brass: #c39a58;
-  --director-live: #85aa90;
-  --director-ember: #b45f58;
+  --director-canvas: light-dark(#f5f5f5, #070707);
+  --director-panel: light-dark(#fff, #11110f);
+  --director-brass: light-dark(#8a611f, #c39a58);
+  --director-live: light-dark(#3f6f4d, #85aa90);
+  --director-ember: light-dark(#963f39, #b45f58);
   container-name: director-console;
   container-type: inline-size;
   background: var(--director-canvas);
   font-family: var(--nova-ui-font-family);
-}
-
-[data-theme="light"] .director-console {
-  --director-canvas: #f5f5f5;
-  --director-panel: #ffffff;
-  --director-brass: #8a611f;
-  --director-live: #3f6f4d;
-  --director-ember: #963f39;
 }
 
 .director-console__display {
@@ -3263,6 +3259,19 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   .nova-tool-content
 ) {
   background: transparent;
+}
+
+/* Paint the fill last so the outline does not thin dense glyphs. */
+.nova-story-stage-content[data-text-outline] .nova-story-reading-column .chat-agent-message > .nova-streamdown
+  :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, a) {
+  --nova-dialogue-highlight: var(--nova-dialogue-highlight-bright);
+  color: #fff;
+  -webkit-text-stroke: 0.12em #000;
+  paint-order: stroke fill;
+}
+
+.nova-story-stage-content[data-text-outline] .nova-story-reading-column .chat-agent-message > .nova-streamdown code {
+  -webkit-text-stroke-width: 0;
 }
 
 .nova-story-stage-content[data-artwork="true"] :is(.story-state-ledger, .nova-tool-surface) {

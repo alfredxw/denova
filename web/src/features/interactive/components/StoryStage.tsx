@@ -12,6 +12,7 @@ import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Button } from '@/components/ui/button'
+import { ThemeOverrideContext } from '@/components/ui/theme-override'
 import { AgentTaskControls } from '@/components/Chat/AgentTaskControls'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
@@ -669,8 +670,8 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
     </>
   )
 
-  return (
-    <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]" style={{ '--nova-story-text-max-width': `${stagePreferences.textMaxWidth}px`, '--nova-story-scrollbar-width': `${scrollbarWidth}px` } as CSSProperties}>
+  const stage = (
+    <main data-theme={stagePreferences.theme} className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]" style={{ '--nova-story-text-max-width': `${stagePreferences.textMaxWidth}px`, '--nova-story-scrollbar-width': `${scrollbarWidth}px` } as CSSProperties}>
       {!storySetupVisible && <StoryStageArtwork key={`${projectId}:${stageKey}`} previousTurnId={previousPresentationTurnId} projectId={projectId} turn={presentationTurn} latest={historyWindow.followLatest && presentationTurn?.id === snapshot?.current_turn?.id} settings={story?.presentation_settings} textHidden={artworkOnly} scrimOpacity={stagePreferences.scrimOpacity} characterLayout={stagePreferences.characterLayout} characterSize={stagePreferences.characterSize} />}
       <div data-testid="story-stage-card" className="nova-story-stage-card relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <StoryStageHeader isMobile={isMobile} controls={stageControls} />
@@ -679,7 +680,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
           <SpeechPlayback owner={stageKey} />
         </div>
 
-        <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden" data-setup={storySetupVisible || undefined} data-artwork={hasStageArtwork ? 'true' : undefined} style={{ visibility: artworkOnly ? 'hidden' : undefined }} inert={artworkOnly} aria-hidden={artworkOnly || undefined}>
+        <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden" data-setup={storySetupVisible || undefined} data-artwork={hasStageArtwork ? 'true' : undefined} data-text-outline={stagePreferences.textOutline || undefined} style={{ visibility: artworkOnly ? 'hidden' : undefined }} inert={artworkOnly} aria-hidden={artworkOnly || undefined}>
           {!isMobile && <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} earlierCount={displaySnapshot?.turn_start || 0} loadingEarlier={historyLoading} onSelectEarlier={loadHistoryThroughTurn} />}
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {historyWindow.stageKey === stageKey && !historyWindow.followLatest ? (
@@ -829,7 +830,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
       </div>
     </main>
   )
-
+  return <ThemeOverrideContext value={stagePreferences.theme}>{stage}</ThemeOverrideContext>
 }
 function noop() {}
 function noopStateDisplayPreferenceChange(_value: StoryStateDisplayPreference) {}

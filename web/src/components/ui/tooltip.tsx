@@ -4,6 +4,7 @@ import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { ThemeOverrideContext } from "./theme-override"
 
 /** Keeps incidental pointer movement from producing tooltip noise. */
 const DEFAULT_TOOLTIP_DELAY_MS = 1000
@@ -46,6 +47,7 @@ function TooltipContent({
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
+        data-theme={React.useContext(ThemeOverrideContext)}
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
