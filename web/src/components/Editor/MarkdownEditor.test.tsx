@@ -386,17 +386,17 @@ describe('MarkdownEditor', () => {
     )
 
     act(() => tiptapMock.emit('update'))
-    await user.click(screen.getByRole('radio', { name: '源码' }))
+    await user.click(screen.getByRole('button', { name: '源码' }))
     const source = screen.getByRole('textbox', { name: 'source:chapters/ch01.md' })
     expect(source).toHaveValue('## 标题\n\n正文\n')
 
     const exactSource = '---\ntitle: 示例\n---\n\n# 标题  \n'
     fireEvent.change(source, { target: { value: exactSource } })
-    await user.click(screen.getByRole('radio', { name: '文档' }))
+    await user.click(screen.getByRole('button', { name: '源码' }))
     expect(tiptapMock.editor.markdown.parse).toHaveBeenCalledWith(exactSource)
 
     tiptapMock.markdown = exactSource
-    await user.click(screen.getByRole('radio', { name: '源码' }))
+    await user.click(screen.getByRole('button', { name: '源码' }))
     expect(screen.getByRole('textbox', { name: 'source:chapters/ch01.md' })).toHaveValue(exactSource)
     expect(onSave).not.toHaveBeenCalled()
   })
@@ -416,7 +416,7 @@ describe('MarkdownEditor', () => {
       />,
     )
 
-    await user.click(screen.getByRole('radio', { name: '源码' }))
+    await user.click(screen.getByRole('button', { name: '源码' }))
     const exactSource = '# 标题  \n\n```ts\nconst value = 1\n```\n'
     fireEvent.change(screen.getByRole('textbox', { name: 'source:chapters/ch01.md' }), {
       target: { value: exactSource },
