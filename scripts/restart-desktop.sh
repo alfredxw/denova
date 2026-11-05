@@ -43,10 +43,9 @@ function run([bundlePath, devPath]) {
 }
 JXA
 
-if [ ! -x desktop/build/backend/denova ]; then
-    echo "==> Building the missing desktop backend"
-    env -u DENOVA_RELEASE_FRONTEND_DIR DENOVA_DESKTOP_TARGET=darwin-arm64 pnpm --dir desktop build:backend
-fi
+# Vite serves the current checkout, so the backend must come from it too.
+echo "==> Rebuilding the desktop backend and resources"
+env -u DENOVA_RELEASE_FRONTEND_DIR DENOVA_DESKTOP_TARGET=darwin-arm64 pnpm --dir desktop build:backend
 
 rm -f "${LOCK_PATH}"
 trap - EXIT
