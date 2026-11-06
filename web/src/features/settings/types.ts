@@ -76,8 +76,6 @@ export interface Settings {
   volume_dir_format?: string
   max_open_tabs?: number | null
   project_file_tree_entry_limit?: number | null
-  chapter_group_min?: number | null
-  chapter_group_max?: number | null
   version_timed_enabled?: boolean | null
   version_timed_interval_minutes?: number | null
   ui_font_family?: string
@@ -119,8 +117,10 @@ export interface Settings {
   writing_skill_default?: string
   agent_quick_prompts?: AgentQuickPromptRegistry
   agent_quick_prompts_in_commands?: boolean | null
+  interactive_stage_theme?: StageTheme | null
   interactive_stage_font_size?: number | null
   interactive_stage_scrim_opacity?: number | null
+  interactive_stage_text_outline?: boolean | null
   interactive_stage_line_height?: number | null
   interactive_stage_text_max_width?: number | null
   interactive_stage_character_layout?: StageCharacterLayout | null
@@ -724,6 +724,7 @@ export interface UpdateInstallProgress {
 }
 
 export interface UpdateStatus {
+  distribution?: 'web' | 'desktop'
   completed_update?: CompletedUpdate
   check?: UpdateCheckResult
   checked_at?: string
@@ -761,3 +762,4 @@ export interface UpdateNotesResult {
 
 /** Display-only arrangement; does not change the saved scene or Agent choices. */
 export type StageCharacterLayout = 'center' | 'left' | 'right' | 'sides'
+export type StageTheme = 'light' | 'dark'

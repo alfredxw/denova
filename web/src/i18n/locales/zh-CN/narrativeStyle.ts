@@ -11,7 +11,7 @@ const narrativeStyle = {
   'narrativeStyle.story.reset': '恢复预设',
   'narrativeStyle.story.actions': '叙事风格操作',
   'narrativeStyle.directory.add': '添加叙事风格',
-  'narrativeStyle.import.title': '导入 SillyTavern 预设',
+  'narrativeStyle.import.title': '导入酒馆预设',
   'narrativeStyle.import.description': '兼容 SillyTavern（酒馆）聊天补全预设 JSON。直接导入保留条目原文、顺序与启停；宏不解析，插件脚本和模型参数不导入。',
   'narrativeStyle.import.direct': '直接导入',
   'narrativeStyle.import.directHint': '原文逐条导入为系统提示，保留预设启用状态；变量不解析，扩展脚本和模型参数不导入。',

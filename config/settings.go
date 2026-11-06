@@ -77,8 +77,6 @@ type Settings struct {
 	VolumeDirFormat             string `toml:"volume_dir_format,omitempty" json:"volume_dir_format,omitempty"`
 	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
 	ProjectFileTreeEntryLimit   *int   `toml:"project_file_tree_entry_limit,omitempty" json:"project_file_tree_entry_limit,omitempty"`
-	ChapterGroupMin             *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
-	ChapterGroupMax             *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
 	VersionTimedEnabled         *bool  `toml:"version_timed_enabled,omitempty" json:"version_timed_enabled,omitempty"`
 	VersionTimedIntervalMinutes *int   `toml:"version_timed_interval_minutes,omitempty" json:"version_timed_interval_minutes,omitempty"`
 
@@ -141,8 +139,10 @@ type Settings struct {
 	TerminalScrollbackKB       *int `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
 	// Game display preferences.
+	InteractiveStageTheme        string   `toml:"interactive_stage_theme,omitempty" json:"interactive_stage_theme,omitempty"`
 	InteractiveStageFontSize     *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageScrimOpacity *float64 `toml:"interactive_stage_scrim_opacity,omitempty" json:"interactive_stage_scrim_opacity,omitempty"`
+	InteractiveStageTextOutline  *bool    `toml:"interactive_stage_text_outline,omitempty" json:"interactive_stage_text_outline,omitempty"`
 	InteractiveStageLineHeight   *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 	// Character layout is a user display preference shared by all Projects.
 	InteractiveStageCharacterLayout string `toml:"interactive_stage_character_layout,omitempty" json:"interactive_stage_character_layout,omitempty"`
@@ -209,8 +209,6 @@ func DefaultSettings() Settings {
 		VolumeDirFormat:             "v{order:05}-{volume}",
 		MaxOpenTabs:                 intPtr(5),
 		ProjectFileTreeEntryLimit:   intPtr(DefaultProjectFileTreeEntryLimit),
-		ChapterGroupMin:             intPtr(3),
-		ChapterGroupMax:             intPtr(8),
 		VersionTimedEnabled:         boolPtr(true),
 		VersionTimedIntervalMinutes: intPtr(10),
 		UIFontFamily:                "apple-system",
@@ -261,6 +259,7 @@ func DefaultSettings() Settings {
 		InteractiveStageFontSize:        intPtr(16),
 		InteractiveStageLineHeight:      floatPtr(1.78),
 		InteractiveStageScrimOpacity:    floatPtr(0.75),
+		InteractiveStageTextOutline:     boolPtr(false),
 		InteractiveStageTextMaxWidth:    intPtr(896),
 		InteractiveStageCharacterLayout: "center",
 		InteractiveStageCharacterSize:   floatPtr(0.7),
@@ -365,12 +364,6 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.ProjectFileTreeEntryLimit != nil {
 		out.ProjectFileTreeEntryLimit = child.ProjectFileTreeEntryLimit
-	}
-	if child.ChapterGroupMin != nil {
-		out.ChapterGroupMin = child.ChapterGroupMin
-	}
-	if child.ChapterGroupMax != nil {
-		out.ChapterGroupMax = child.ChapterGroupMax
 	}
 	if child.VersionTimedEnabled != nil {
 		out.VersionTimedEnabled = child.VersionTimedEnabled
@@ -496,11 +489,17 @@ func Merge(parent, child Settings) Settings {
 	if child.AgentQuickPromptsInCommands != nil {
 		out.AgentQuickPromptsInCommands = child.AgentQuickPromptsInCommands
 	}
+	if child.InteractiveStageTheme != "" {
+		out.InteractiveStageTheme = child.InteractiveStageTheme
+	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize
 	}
 	if child.InteractiveStageScrimOpacity != nil {
 		out.InteractiveStageScrimOpacity = child.InteractiveStageScrimOpacity
+	}
+	if child.InteractiveStageTextOutline != nil {
+		out.InteractiveStageTextOutline = child.InteractiveStageTextOutline
 	}
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
@@ -613,7 +612,7 @@ func ReadSettingsFile(path string) (Settings, error) {
 				return snapshot.Content, nil
 			}
 			migrationDetected = true
-			backupPath, decodeErr = preserveModelSettingsMigrationBackup(path, snapshot)
+			backupPath, decodeErr = preserveSettingsMigrationBackup(path, snapshot)
 			if decodeErr != nil {
 				return nil, decodeErr
 			}
@@ -629,13 +628,13 @@ func ReadSettingsFile(path string) (Settings, error) {
 	}
 	if err != nil {
 		if migrationDetected {
-			slog.WarnContext(context.Background(), "[config] could not persist migrated model settings; using the migrated in-memory view", "path", path, "error", err)
+			slog.WarnContext(context.Background(), "[config] could not persist migrated settings; using the migrated in-memory view", "path", path, "error", err)
 			return settings, nil
 		}
 		return Settings{}, fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
 	if backupPath != "" {
-		slog.InfoContext(context.Background(), "[config] migrated legacy model settings", "path", path, "backup_path", backupPath)
+		slog.InfoContext(context.Background(), "[config] migrated legacy settings", "path", path, "backup_path", backupPath)
 	}
 	return settings, nil
 }
@@ -646,11 +645,17 @@ func decodeSettingsFile(path string, data []byte) (Settings, error) {
 }
 
 func decodeSettingsFileWithMigration(path string, data []byte) (Settings, bool, error) {
-	var s Settings
-	if err := toml.Unmarshal(data, &s); err != nil {
+	var document struct {
+		Settings
+		ChapterGroupMin *int `toml:"chapter_group_min"`
+		ChapterGroupMax *int `toml:"chapter_group_max"`
+	}
+	if err := toml.Unmarshal(data, &document); err != nil {
 		return Settings{}, false, fmt.Errorf("解析 %s 失败: %w", path, err)
 	}
-	migrated := hasLegacyImageSettings(s) || hasEmbeddedModelEndpointSettings(s) || hasEmbeddedImageAPIEndpointSettings(s)
+	s := document.Settings
+	migrated := document.ChapterGroupMin != nil || document.ChapterGroupMax != nil ||
+		hasLegacyImageSettings(s) || hasEmbeddedModelEndpointSettings(s) || hasEmbeddedImageAPIEndpointSettings(s)
 	if err := validateSettingsRuntimes(s); err != nil {
 		return Settings{}, false, fmt.Errorf("validate settings %s: %w", path, err)
 	}
@@ -715,7 +720,7 @@ func MutateSettingsFile(
 					return nil, decodeErr
 				}
 				if migrated {
-					backupPath, decodeErr = preserveModelSettingsMigrationBackup(path, snapshot)
+					backupPath, decodeErr = preserveSettingsMigrationBackup(path, snapshot)
 					if decodeErr != nil {
 						return nil, decodeErr
 					}
@@ -739,7 +744,7 @@ func MutateSettingsFile(
 		return "", err
 	}
 	if backupPath != "" {
-		slog.InfoContext(context.Background(), "[config] migrated legacy model settings during mutation", "path", path, "backup_path", backupPath)
+		slog.InfoContext(context.Background(), "[config] migrated legacy settings during mutation", "path", path, "backup_path", backupPath)
 	}
 	return result.Revision, nil
 }
@@ -965,6 +970,11 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.RemoteAccessPasswordSet = s.RemoteAccessPasswordHash != ""
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
+	switch s.InteractiveStageTheme {
+	case "", "light", "dark":
+	default:
+		s.InteractiveStageTheme = ""
+	}
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	switch s.AgentTraceDisplay {
 	case "", "compact", "live":

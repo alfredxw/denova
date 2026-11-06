@@ -2,6 +2,7 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { ThemeOverrideContext } from "./theme-override"
 import { Button } from "@/components/ui/button"
 
 const ALERT_DIALOG_WIDTH: Record<"default" | "sm", string> = {
@@ -54,6 +55,7 @@ function AlertDialogContent({
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
+        data-theme={React.useContext(ThemeOverrideContext)}
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(

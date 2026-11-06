@@ -11,15 +11,31 @@ export function narrativeImportCompletion(body) {
   if (source.includes('IGNORED_EXTENSION') || source.includes('UNSELECTED_RULE') || payload.prompts.map(prompt => prompt.identifier).join(',') !== 'voice,style,apply') {
     return { content: 'Import selection or source isolation failed.' }
   }
+  const contextMarker = '[Configuration Page Context]\n'
+  const contextStart = source.indexOf(contextMarker)
+  if (contextStart < 0) return { content: 'Configuration page context is missing.' }
+  const page = JSON.parse(source.slice(contextStart + contextMarker.length))
+  if (page.origin !== 'presets' || page.resource !== 'narrative_style' || !page.resource_id || page.resource_id === 'teller'
+    || page.page_context?.active_resource_kind || page.page_context?.active_resource_id) {
+    return { content: 'Configuration page context did not resolve the selected tool resource.' }
+  }
+  for (const name of ['config_read', 'config_apply']) {
+    const resources = body.tools?.find(tool => tool.function?.name === name)?.function?.parameters?.properties?.resource?.enum
+    if (!resources?.includes(page.resource) || resources.includes('teller')) {
+      return { content: 'Configuration tool schema does not expose canonical resource names.' }
+    }
+  }
   const history = messages.slice(index + 1)
   const result = id => history.find(message => message.role === 'tool' && message.tool_call_id === id)
   const call = (tool, args, id) => ({ tool, arguments: JSON.stringify(args), id })
   if (!result('import-reference')) return call('read', { path: 'skill://configuration/references/narrative-import.md' }, 'import-reference')
   if (!text(result('import-reference')).includes('originally_enabled')) return { content: 'Import Skill reference is unavailable.' }
   if (!result('style-reference')) return call('read', { path: 'skill://configuration/references/narrative-style.md' }, 'style-reference')
-  if (!result('style-describe')) return call('config_read', { operation: 'describe', resource: 'narrative_style' }, 'style-describe')
+  if (!result('style-describe')) return call('config_read', { operation: 'describe', resource: page.resource }, 'style-describe')
+  if (!result('style-current')) return call('config_read', { operation: 'get', resource: page.resource, ids: [page.resource_id] }, 'style-current')
+  if (JSON.parse(text(result('style-current'))).items?.[0]?.id !== page.resource_id) return { content: 'Selected preset read failed.' }
   if (!result('style-create')) return call('config_apply', {
-    operation: 'create', resource: 'narrative_style', scope: 'user',
+    operation: 'create', resource: page.resource, scope: 'user',
     value: {
       ...payload.target, description: `Imported from ${payload.source_filename}`,
       slots: [
@@ -28,7 +44,7 @@ export function narrativeImportCompletion(body) {
       ],
     },
   }, 'style-create')
-  if (!result('style-verify')) return call('config_read', { operation: 'get', resource: 'narrative_style', ids: [payload.target.id] }, 'style-verify')
+  if (!result('style-verify')) return call('config_read', { operation: 'get', resource: page.resource, ids: [payload.target.id] }, 'style-verify')
   const saved = JSON.parse(text(result('style-verify'))).items?.[0]
   return { content: saved?.slots?.length === 2 ? 'E2E narrative import verified.' : 'Import verification failed.' }
 }

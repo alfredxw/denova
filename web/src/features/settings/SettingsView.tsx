@@ -57,7 +57,7 @@ export function SettingsView({ visible = true }: { visible?: boolean }) {
         <LoadingState label={t('common.loading')} className="min-h-0 flex-1" />
       ) : (
         <div ref={contentRef} data-nova-settings-content="true" className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 [container-type:size]">
-          <SettingsSections layered={layered} draft={draft} setDraft={setDraft} fieldRequest={fieldRequest} onSelectSection={selectSection} />
+          <SettingsSections layered={layered} draft={draft} setDraft={setDraft} fieldRequest={fieldRequest} onSelectSection={selectSection} onSave={saveNow} />
         </div>
       )}
     </SettingsPageFrame>

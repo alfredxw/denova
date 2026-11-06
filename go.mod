@@ -1,6 +1,6 @@
 module denova
 
-go 1.26.9
+go 1.27.3
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2
@@ -12,6 +12,7 @@ require (
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/charmbracelet/x/xpty v0.1.3
 	github.com/cloudwego/hertz v0.10.5
+	github.com/egoist/mygo v0.7.4
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/fsnotify/fsevents v0.2.0
 	github.com/fsnotify/fsnotify v1.10.1
@@ -31,11 +32,11 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/sergi/go-diff v1.4.0
 	golang.org/x/crypto v0.57.0
-	golang.org/x/image v0.45.0
+	golang.org/x/image v0.46.0
 	golang.org/x/net v0.60.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.42.0
+	golang.org/x/text v0.43.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	mvdan.cc/sh/v3 v3.13.1
@@ -74,6 +75,7 @@ require (
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/dop251/goja v0.0.0-20260806115107-493f22071ef6 // indirect
+	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect

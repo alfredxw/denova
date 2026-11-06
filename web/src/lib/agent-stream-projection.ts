@@ -1,6 +1,7 @@
 import { randomUUID } from '@/lib/uuid'
 import type { UIMessageChunk } from 'ai'
 import type { AgentMessageMetadata, AgentUIMessage } from './agent-ui'
+import { createAgentTextMessage } from './agent-ui-message'
 
 type Part = AgentUIMessage['parts'][number]
 type ToolPart = Extract<Part, { type: 'dynamic-tool' }>
@@ -21,6 +22,19 @@ export class AgentStreamProjection {
 
   consume(chunk: UIMessageChunk) {
     if (isAgentDataChunk(chunk)) {
+      if (chunk.type === 'data-agent-activity' && chunk.data && typeof chunk.data === 'object') {
+        const data = chunk.data as Record<string, unknown>
+        if (data.event === 'agent_guidance_delivered' && typeof chunk.id === 'string' && typeof data.message === 'string') {
+          this.updates.set(chunk.id, createAgentTextMessage({
+            id: chunk.id, role: 'user', text: data.message,
+            metadata: {
+              attachments: data.attachments as AgentMessageMetadata['attachments'],
+              user_references: data.user_references as AgentMessageMetadata['user_references'],
+            },
+          }))
+          return
+        }
+      }
       if (!chunk.transient) this.publish(`data:${chunk.type}:${chunk.id || ++this.sequence}`, chunk as Part, false)
       return
     }

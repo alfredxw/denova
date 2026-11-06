@@ -91,7 +91,8 @@ func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
 	storyID := c.storyID
 	store := c.store
 	if turnID == "" || store == nil {
-		if store != nil && (role == "todo_updated" || (role == "context_compaction" && event.RuntimeManaged)) && c.agentCycleIdentity.CommandID != "" {
+		terminalRuntimeObservation := event.RuntimeManaged && (role == "context_compaction" || (role == "tool_call" && status != "running"))
+		if store != nil && (role == "todo_updated" || terminalRuntimeObservation) && c.agentCycleIdentity.CommandID != "" {
 			c.mu.Unlock()
 			err := c.persistDraftDisplay(next)
 			c.mu.Lock()

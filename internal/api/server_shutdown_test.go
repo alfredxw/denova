@@ -77,7 +77,9 @@ func TestServerShutdownDrainsSubscriptionsAndFinishesRequests(t *testing.T) {
 			t.Error("server did not stop")
 		}
 	})
-	transport := &http.Transport{DisableCompression: true}
+	// Real browsers and the desktop proxy negotiate compression. An omitted
+	// SSE exclusion buffers forever instead of delivering initial events.
+	transport := &http.Transport{}
 	t.Cleanup(transport.CloseIdleConnections)
 	client := &http.Client{Transport: transport, Timeout: 8 * time.Second}
 	baseURL := "http://" + listener.Addr().String()

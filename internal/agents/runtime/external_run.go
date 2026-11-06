@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"denova/config"
 	agentchat "denova/internal/agents/chat"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
@@ -159,7 +160,8 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 		run.cancel = cancel
 		run.steering = make(chan struct{}, 1)
 		cycleCtx = external.WithSteering(cycleCtx, &external.Steering{
-			Changed: run.steering,
+			RequireSameTurn: control.binding.AgentKind == config.AgentKindInteractiveStory,
+			Changed:         run.steering,
 			Next: func(ctx context.Context) (external.Guidance, bool, error) {
 				control.mu.Lock()
 				defer control.mu.Unlock()

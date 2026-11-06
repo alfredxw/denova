@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/buildinfo"
+
 	"github.com/gofrs/flock"
 )
 
@@ -29,6 +31,7 @@ const (
 
 // Status is the stable UI boundary; internal filesystem transaction fields stay private.
 type Status struct {
+	Distribution    string           `json:"distribution"`
 	CompletedUpdate *CompletedUpdate `json:"completed_update,omitempty"`
 	Check           *CheckResult     `json:"check,omitempty"`
 	CheckedAt       time.Time        `json:"checked_at,omitempty"`
@@ -46,7 +49,10 @@ type Status struct {
 }
 
 func (s *Service) Status() (Status, error) {
-	status := Status{CurrentVersion: s.currentVersion, Phase: "idle"}
+	status := Status{CurrentVersion: s.currentVersion, Phase: "idle", Distribution: buildinfo.Distribution}
+	if buildinfo.Distribution == "desktop" {
+		return status, nil
+	}
 	completed, err := s.CompletedUpdate()
 	if err != nil {
 		return status, err

@@ -291,7 +291,9 @@ func paginateCatalog(catalog Catalog, request ReadRequest) (ListResult, error) {
 		}
 		if exceedsReadBudget(candidate, request.ResultMaxBytes) {
 			if len(result.Items) == 0 {
-				return ListResult{}, fmt.Errorf("config resource %q contains a catalog item larger than the %d-byte shared result budget", request.Resource, request.ResultMaxBytes)
+				// One oversized item must still make progress. The shared result
+				// processor stores the complete page before bounding model context.
+				result = candidate
 			}
 			break
 		}
@@ -368,7 +370,10 @@ func (r *Registry) readExactItems(ctx context.Context, adapter Adapter, request 
 		}
 		if exceedsReadBudget(candidate, request.ResultMaxBytes) {
 			if result.Processed == 0 {
-				return GetResult{}, fmt.Errorf("config resource %q item %q is larger than the %d-byte shared result budget", request.Resource, id, request.ResultMaxBytes)
+				// Keep the item intact for the shared result processor and advance
+				// both counters so an oversized final success is not lost.
+				result = candidate
+				successes = candidateSuccesses
 			}
 			break
 		}

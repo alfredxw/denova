@@ -141,12 +141,6 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	if effective.VolumeDirFormat != "" {
 		cfg.VolumeDirFormat = effective.VolumeDirFormat
 	}
-	if effective.ChapterGroupMin != nil {
-		cfg.ChapterGroupMin = positiveInt(effective.ChapterGroupMin, 3)
-	}
-	if effective.ChapterGroupMax != nil {
-		cfg.ChapterGroupMax = positiveInt(effective.ChapterGroupMax, 8)
-	}
 	if effective.VersionTimedEnabled != nil {
 		cfg.VersionTimedEnabled = *effective.VersionTimedEnabled
 	}
@@ -288,12 +282,6 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.VolumeDirFormat != "" {
 		cfg.VolumeDirFormat = settings.VolumeDirFormat
-	}
-	if settings.ChapterGroupMin != nil {
-		cfg.ChapterGroupMin = positiveInt(settings.ChapterGroupMin, 3)
-	}
-	if settings.ChapterGroupMax != nil {
-		cfg.ChapterGroupMax = positiveInt(settings.ChapterGroupMax, 8)
 	}
 	if settings.VersionTimedEnabled != nil {
 		cfg.VersionTimedEnabled = *settings.VersionTimedEnabled

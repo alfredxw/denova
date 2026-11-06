@@ -63,8 +63,12 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	}
 	// Denova supplies its filtered Skill catalog and loader. Ambient discovery
 	// must not inject a second catalog that bypasses the library's opt-in.
-	args := []string{"app-server", "-c", `web_search="disabled"`, "-c", "project_doc_max_bytes=0", "-c", "skills.include_instructions=false"}
-	for _, feature := range []string{"shell_tool", "unified_exec", "apply_patch_freeform", "multi_agent", "apps", "browser_use", "browser_use_external", "computer_use", "in_app_browser", "image_generation", "plugins", "hooks", "goals", "memories", "workspace_dependencies", "shell_snapshot"} {
+	args := []string{"app-server", "-c", "project_doc_max_bytes=0", "-c", "skills.include_instructions=false"}
+	// General tools and configured browser/MCP integrations belong to the engine.
+	// Product commits, child-session ownership and scheduled goals remain host-owned.
+	// Use the native foreground shell. Detached PTY output lacks a complete
+	// item lifecycle in supported App Server versions and cannot be journalled.
+	for _, feature := range []string{"unified_exec", "apply_patch_freeform", "multi_agent", "hooks", "goals", "memories", "image_generation"} {
 		args = append(args, "-c", "features."+feature+"=false")
 	}
 	environment := sharedEnvironment(os.Environ(), options.Home)

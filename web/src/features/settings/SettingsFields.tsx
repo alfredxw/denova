@@ -4,8 +4,6 @@ import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LOCALE_OPTIONS } from '@/i18n'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
-import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName } from '@/features/interactive/narrative-style'
-import type { Teller } from '@/features/interactive/types'
 import type { AgentApprovalMode, AgentTraceDisplay, ShellEnvironmentMode } from './types'
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
@@ -39,13 +37,14 @@ export function FieldRow({ label, description, children }: { label: string; desc
   )
 }
 
-function ValueRow({ label, children }: { label: string; children: ReactNode }) {
+function ValueRow({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
     <SettingsFieldRow
       title={label}
+      description={description}
       className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
       contentClassName="sm:w-44 sm:flex-none"
-      controlClassName="flex-1"
+      controlClassName="flex-1 gap-2"
     >
       {children}
     </SettingsFieldRow>
@@ -66,13 +65,14 @@ export function TextSizeRow({ label, description, children }: { label: string; d
   )
 }
 
-export function ReadOnly({ label, value }: { label: string; value?: string }) {
+export function ReadOnly({ label, value, description, action }: { label: string; value?: string; description?: string; action?: ReactNode }) {
   const { t } = useTranslation()
   return (
-    <ValueRow label={label}>
-      <code className="min-h-7 flex-1 truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
+    <ValueRow label={label} description={description}>
+      <code title={value} className="min-h-7 min-w-0 flex-1 truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
         {value || t('common.notSet')}
       </code>
+      {action}
     </ValueRow>
   )
 }
@@ -360,35 +360,6 @@ export function MotionIntensitySelect({ label, value, inherited, onChange }: {
             <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedLabel })}</SelectItem>
             {MOTION_INTENSITY_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-export function TellerSelect({ label, value, inherited, tellers, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  tellers: Teller[]
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedTeller = tellers.find((teller) => teller.id === inherited)
-  const inheritedName = inheritedTeller ? narrativeStyleName(inheritedTeller, t) : inherited || DEFAULT_NARRATIVE_STYLE_ID
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.defaultValue', { value: inheritedName })}</SelectItem>
-            {tellers.map((teller) => (
-              <SelectItem key={teller.id} value={teller.id}>{narrativeStyleName(teller, t)}</SelectItem>
             ))}
           </SelectGroup>
         </SelectContent>

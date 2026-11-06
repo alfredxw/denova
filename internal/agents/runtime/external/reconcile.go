@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"denova/config"
 	externaljournal "denova/internal/agents/runtime/external/journal"
@@ -92,7 +93,12 @@ func Reconcile(ctx context.Context, sess *session.Session, workspace, stateRoot 
 				return err
 			}
 		case externaljournal.NonReplayable:
-			continue
+			if !strings.HasPrefix(call.started.Tool, "native/") {
+				continue
+			}
+			// The engine owns these external actions. Recovery records uncertainty
+			// for the next model turn; it never replays or fabricates a domain receipt.
+			finished.Result = nativeResultUnknown
 		}
 		record, err := externaljournal.NewRecord(externaljournal.ToolFinished, call.operation, call.revision, finished)
 		if err != nil {

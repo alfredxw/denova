@@ -81,11 +81,12 @@ func (fixture *protocolFixture) receive(t *testing.T) packet {
 }
 
 type testHost struct {
-	calls   atomic.Int32
-	started chan struct{}
-	answer  chan struct{}
-	output  strings.Builder
-	events  chan agentrun.Event
+	calls     atomic.Int32
+	started   chan struct{}
+	answer    chan struct{}
+	cancelled chan error
+	output    strings.Builder
+	events    chan agentrun.Event
 }
 
 func (host *testHost) Emit(event agentrun.Event) error {
@@ -102,6 +103,9 @@ func (host *testHost) CallTool(ctx context.Context, _ external.ToolCall) (extern
 	host.started <- struct{}{}
 	select {
 	case <-ctx.Done():
+		if host.cancelled != nil {
+			host.cancelled <- context.Cause(ctx)
+		}
 		return external.ToolResult{}, ctx.Err()
 	case <-host.answer:
 		return external.ToolResult{Success: true, Text: "Saved answer"}, nil
@@ -129,9 +133,38 @@ func startFixtureTurn(t *testing.T, ctx context.Context, fixture *protocolFixtur
 			}
 			done <- completed
 		}()
-		completed.result, completed.err = fixture.client.runTurn(ctx, sub, "thread", "turn", map[string]bool{"ask": true}, host)
+		completed.result, completed.err = fixture.client.runTurn(ctx, sub, "thread", "turn", map[string]bool{"ask": true}, host, external.Input{Tools: []external.Tool{{Name: "ask"}}})
 	}()
 	return done
+}
+
+func TestProtocolResolvedNativeQuestionDoesNotBlockTurn(t *testing.T) {
+	fixture := newProtocolFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	host := &testHost{started: make(chan struct{}, 1), cancelled: make(chan error, 1)}
+	done := startFixtureTurn(t, ctx, fixture, host)
+	fixture.send(t, `1`, "item/tool/requestUserInput", map[string]any{"threadId": "thread", "turnId": "turn", "questions": []any{map[string]any{"id": "choice", "question": "Continue?"}}})
+	select {
+	case <-host.started:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	fixture.send(t, "", "serverRequest/resolved", map[string]any{"threadId": "thread", "requestId": 1})
+	fixture.send(t, "", "turn/completed", map[string]any{"threadId": "thread", "turn": map[string]any{"id": "turn", "status": "completed"}})
+	select {
+	case result := <-done:
+		if result.err != nil || !result.result.Settled || !errors.Is(<-host.cancelled, external.ErrInteractionWithdrawn) {
+			t.Fatalf("withdrawn question did not settle: %+v", result)
+		}
+	case <-ctx.Done():
+		t.Fatal("server withdrawal left the turn waiting for an obsolete question")
+	}
+	select {
+	case reply := <-fixture.received:
+		t.Fatalf("answered a withdrawn request: %+v", reply)
+	default:
+	}
 }
 
 func TestProtocolDuplicateCallsAndFinalRepairDoNotDuplicateWork(t *testing.T) {

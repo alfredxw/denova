@@ -260,7 +260,7 @@ func TestStatusRestoresStagedUpdateWithUsableLogPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	actual, err := (&Service{currentVersion: "0.1.0", executablePath: filepath.Join(install, "nova")}).Status()
-	want := Status{ID: "staged", Phase: PhaseStaged, Version: "0.2.0", CurrentVersion: "0.1.0", LogPath: ".denova-updates/pending-test/apply.log"}
+	want := Status{Distribution: "web", ID: "staged", Phase: PhaseStaged, Version: "0.2.0", CurrentVersion: "0.1.0", LogPath: ".denova-updates/pending-test/apply.log"}
 	if err != nil || actual != want {
 		t.Fatalf("status=%+v want=%+v err=%v", actual, want, err)
 	}

@@ -36,14 +36,18 @@ type testHost struct {
 	calls  []external.ToolCall
 	events []agentrun.Event
 	call   func(context.Context, external.ToolCall) (external.ToolResult, error)
+	emit   func(agentrun.Event)
 }
 
 func (h *testHost) Emit(event agentrun.Event) error {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.events = append(h.events, event)
 	if event.Type == "chunk" {
 		h.text += event.Data.(map[string]any)["content"].(string)
+	}
+	h.mu.Unlock()
+	if h.emit != nil {
+		h.emit(event)
 	}
 	return nil
 }
@@ -95,7 +99,7 @@ func TestStreamRejectsFailedResult(t *testing.T) {
 }
 
 func TestInputHistoryIsOneTurn(t *testing.T) {
-	body, err := encodeInput(external.Input{History: []external.Message{{Role: "user", Text: "Old request"}, {Role: "assistant", Text: "Old answer"}}, Text: "New request"})
+	body, err := encodeInput(external.Input{History: []external.Message{{Role: "user", Text: "Old request"}, {Role: "assistant", Text: "Old answer"}}, Text: "New request"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +119,11 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if exe == "" {
 		t.Skip("set DENOVA_TEST_CLAUDE_EXE to exercise the installed CLI against a local model fixture")
 	}
+	project := t.TempDir()
+	guard := filepath.Join(project, "guard.txt")
+	if err := os.WriteFile(guard, []byte("Original content."), 0600); err != nil {
+		t.Fatal(err)
+	}
 	personal := t.TempDir()
 	t.Setenv("HOME", personal)
 	t.Setenv("USERPROFILE", personal)
@@ -131,6 +140,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	requests := 0
 	imageSeen := false
 	var modelTools []string
+	steeringResponse := false
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if source == "api" && strings.Contains(r.URL.Path, "messages") && (r.Header.Get("X-Tenant") != "api-fixture" || r.Header.Get("X-Api-Key") != "fixture-only") {
 			t.Error("API headers were not applied")
@@ -166,22 +176,38 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 				modelTools = append(modelTools, tool.(map[string]any)["name"].(string))
 			}
 		}
-		n := requests
+		n, steer := requests, steeringResponse
 		mu.Unlock()
 		var block map[string]any
 		stop := "tool_use"
 		switch n {
 		case 1:
-			block = map[string]any{"type": "tool_use", "id": "ask_1", "name": "mcp__denova__ask", "input": map[string]any{"questions": []any{map[string]any{"id": "tone", "prompt": "Which tone?"}}}}
+			block = map[string]any{"type": "tool_use", "id": "ask_1", "name": "AskUserQuestion", "input": map[string]any{"questions": []any{map[string]any{"header": "Tone", "question": "Which tone?", "options": []any{map[string]any{"label": "Restrained", "description": "Understated"}, map[string]any{"label": "Dramatic", "description": "Heightened"}}, "multiSelect": false}}}}
 		case 2:
 			block = map[string]any{"type": "tool_use", "id": "write_1", "name": "mcp__denova__write", "input": map[string]any{"path": "draft.md", "content": "Saved draft"}}
 		case 3:
-			block = map[string]any{"type": "tool_use", "id": "plan_1", "name": "TaskCreate", "input": map[string]any{"subject": "Verify the draft", "description": "Check the saved draft"}}
+			block = map[string]any{"type": "tool_use", "id": "native_read", "name": "Read", "input": map[string]any{"file_path": guard}}
 		case 4:
+			block = map[string]any{"type": "tool_use", "id": "native_shell", "name": "Bash", "input": map[string]any{"command": "cat " + guard + "; printf changed > " + guard, "description": "Inspect protected content and attempt a forbidden write"}}
+		case 5:
+			block = map[string]any{"type": "tool_use", "id": "plan_1", "name": "TaskCreate", "input": map[string]any{"subject": "Verify the draft", "description": "Check the saved draft"}}
+		case 6:
 			block = map[string]any{"type": "tool_use", "id": "plan_2", "name": "TaskUpdate", "input": map[string]any{"taskId": "1", "status": "completed"}}
 		default:
 			block = map[string]any{"type": "text", "text": "Draft saved."}
 			stop = "end_turn"
+		}
+		if steer {
+			switch n {
+			case 1:
+				block, stop = map[string]any{"type": "text", "text": "Original draft."}, "end_turn"
+			case 2:
+				if strings.Count(string(raw), "Keep the ending") != 1 {
+					t.Error("The replacement request did not carry the guidance exactly once")
+				}
+			case 3:
+				block, stop = map[string]any{"type": "text", "text": "Ending preserved."}, "end_turn"
+			}
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		emit := func(v map[string]any) {
@@ -190,7 +216,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 		}
 		emit(map[string]any{"type": "message_start", "message": map[string]any{"id": fmt.Sprintf("msg_%d", n), "type": "message", "role": "assistant", "model": "claude-sonnet-4-5", "content": []any{}, "stop_reason": nil, "stop_sequence": nil, "usage": map[string]int{"input_tokens": 100, "output_tokens": 0}}})
 		index := 0
-		if block["type"] == "text" {
+		if block["type"] == "text" && !steer {
 			// Exercise the real CLI's split assistant wrappers after thinking.
 			emit(map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "thinking", "thinking": ""}})
 			emit(map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "thinking_delta", "thinking": "Check the saved draft."}})
@@ -210,8 +236,16 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 			delta = map[string]any{"type": "input_json_delta", "partial_json": string(raw)}
 		}
 		emit(map[string]any{"type": "content_block_delta", "index": index, "delta": delta})
+		if steer && n == 1 {
+			w.(http.Flusher).Flush()
+			select {
+			case <-r.Context().Done():
+			case <-ctx.Done():
+			}
+			return
+		}
 		emit(map[string]any{"type": "content_block_stop", "index": index})
-		if block["type"] == "text" {
+		if block["type"] == "text" && !steer {
 			emit(map[string]any{"type": "content_block_start", "index": 2, "content_block": map[string]any{"type": "text", "text": ""}})
 			emit(map[string]any{"type": "content_block_delta", "index": 2, "delta": map[string]any{"type": "text_delta", "text": " Verified."}})
 			emit(map[string]any{"type": "content_block_stop", "index": 2})
@@ -223,6 +257,8 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	t.Setenv("ANTHROPIC_API_KEY", "fixture-only")
 	t.Setenv("ANTHROPIC_BASE_URL", model.URL)
+	// The fixture calls MCP tools directly; it has no deferred tool search.
+	t.Setenv("ENABLE_TOOL_SEARCH", "false")
 	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
 		t.Setenv(key, "")
 	}
@@ -249,9 +285,9 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 				return external.ToolResult{}, ctx.Err()
 			}
 		}
-		return external.ToolResult{Text: "Confirmed", Success: true}, nil
+		return external.ToolResult{Text: `{"status":"answered","answers":[{"question_id":"question_0","custom_input":"Restrained"}]}`, Success: true}, nil
 	}}
-	input := external.Input{Selection: config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "sonnet"}}, Instructions: "Use supplied tools to answer the current request.", Text: "Ask then save a draft.", Tools: []external.Tool{{Name: "ask", Description: "Ask the user", Schema: json.RawMessage(`{"type":"object","properties":{"questions":{"type":"array"}}}`)}, {Name: "write", Description: "Write a draft", Schema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}}}`)}}}
+	input := external.Input{Workspace: project, StoreRoot: t.TempDir(), Selection: config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "sonnet"}}, Instructions: "Use supplied tools to answer the current request.", Text: "Ask then save a draft.", Tools: []external.Tool{{Name: "ask", Description: "Ask the user", Schema: json.RawMessage(`{"type":"object","properties":{"questions":{"type":"array"}}}`)}, {Name: "write", Description: "Write a draft", Schema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}}}`)}}}
 	if source == "api" {
 		input.Selection.Claude = &config.ClaudeRuntimeSettings{ProfileID: "api-profile"}
 	}
@@ -269,7 +305,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if err != nil {
 		t.Fatalf("run: %v; requests=%d; calls=%#v; result=%#v", err, requests, host.calls, result)
 	}
-	if result.Text != "Draft saved. Verified." || host.text != result.Text || len(host.calls) != 2 || host.calls[0].Name != "ask" || host.calls[0].ID != "ask_1" || host.calls[1].Name != "write" || host.calls[1].ID != "write_1" {
+	if result.Text != "Draft saved. Verified." || host.text != result.Text || len(host.calls) != 2 || host.calls[0].Name != "ask" || !strings.HasPrefix(host.calls[0].ID, "native-question-") || host.calls[1].Name != "write" || host.calls[1].ID != "write_1" {
 		t.Fatalf("unexpected tool loop: %#v calls=%#v", result, host.calls)
 	}
 	if result.Usage == nil || result.Usage.TotalTokens == 0 {
@@ -277,6 +313,19 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	}
 	if !imageSeen {
 		t.Fatal("CLI model request lost image input")
+	}
+	contents, err := os.ReadFile(guard)
+	if err != nil || string(contents) != "Original content." {
+		t.Fatalf("native shell escaped review: %q %v", contents, err)
+	}
+	nativeReads := 0
+	for _, event := range host.events {
+		if observation, ok := event.Data.(external.NativeTool); ok && observation.Status != "running" && strings.Contains(observation.Result, "Original content.") {
+			nativeReads++
+		}
+	}
+	if nativeReads != 2 {
+		t.Fatalf("native Read/Bash results lost: %+v", host.events)
 	}
 	var plan []agentevent.TodoItem
 	for _, event := range host.events {
@@ -291,10 +340,46 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 		t.Fatalf("native plan=%+v", plan)
 	}
 	for _, tool := range modelTools {
-		if !strings.HasPrefix(tool, "mcp__denova__") && !slices.Contains([]string{"TaskCreate", "TaskGet", "TaskList", "TaskUpdate"}, tool) {
+		if !strings.HasPrefix(tool, "mcp__denova__") && !slices.Contains([]string{"Read", "Glob", "Grep", "WebFetch", "WebSearch", "AskUserQuestion", "Bash", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate"}, tool) {
 			t.Fatalf("unscoped model tool: %s", tool)
 		}
 	}
+	t.Run("steer-live", func(t *testing.T) {
+		mu.Lock()
+		requests, steeringResponse = 0, true
+		mu.Unlock()
+		defer func() { mu.Lock(); steeringResponse = false; mu.Unlock() }()
+		changed := make(chan struct{}, 1)
+		committed := make(chan struct{})
+		pending := true
+		host := &steeringTestHost{commit: func() { close(committed) }}
+		host.emit = func(event agentrun.Event) {
+			if event.Type == "chunk" && event.DataString("content") == "Original draft." {
+				changed <- struct{}{}
+			}
+		}
+		host.call = func(context.Context, external.ToolCall) (external.ToolResult, error) {
+			select {
+			case <-committed:
+				return external.ToolResult{Text: "Ending kept.", Success: true}, nil
+			default:
+				return external.ToolResult{}, errors.New("corrected tool ran before guidance was committed")
+			}
+		}
+		steerCtx := external.WithSteering(ctx, &external.Steering{
+			Changed: changed,
+			Next: func(context.Context) (external.Guidance, bool, error) {
+				return external.Guidance{Request: agentchat.ChatRequest{CommandID: "guidance", Message: "Keep the ending"}, Count: 1}, pending, nil
+			},
+			Delivered: func(external.Guidance) { pending = false },
+			Interrupt: func() { t.Error("steering restarted the Claude process"); cancel() },
+		})
+		result, err := c.Run(steerCtx, input, host)
+		if err != nil || pending || !result.Settled || result.Text != "Original draft.Ending preserved." ||
+			len(host.calls) != 1 || host.calls[0].ID != "write_1" {
+			t.Fatalf("live steering: result=%+v calls=%+v pending=%t error=%v", result, host.calls, pending, err)
+		}
+	})
 	for _, steering := range []bool{false, true} {
 		mu.Lock()
 		requests = 0
@@ -311,7 +396,8 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 				Interrupt: func() { stop(external.ErrSteered) },
 			})
 		}
-		cancelledHost := &testHost{call: func(callCtx context.Context, call external.ToolCall) (external.ToolResult, error) {
+		cancelledHost := &steeringTestHost{commit: func() { t.Error("Guidance bypassed the active tool's recovery path") }}
+		cancelledHost.call = func(callCtx context.Context, call external.ToolCall) (external.ToolResult, error) {
 			if steering {
 				changed <- struct{}{}
 			} else {
@@ -319,7 +405,7 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 			}
 			<-callCtx.Done()
 			return external.ToolResult{}, callCtx.Err()
-		}}
+		}
 		result, err := c.Run(stopCtx, input, cancelledHost)
 		if !errors.Is(err, context.Canceled) || (steering && (!errors.Is(context.Cause(stopCtx), external.ErrSteered) || !result.Settled)) {
 			t.Fatalf("native interruption: steering=%t settled=%t error=%v", steering, result.Settled, err)
@@ -334,4 +420,19 @@ func testInstalledClaudeToolLoop(t *testing.T, source string) {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		t.Fatal(ctx.Err())
 	}
+}
+
+type steeringTestHost struct {
+	testHost
+	commit func()
+}
+
+func (h *steeringTestHost) PrepareSteer(_ context.Context, guidance external.Guidance) (external.PreparedSteer, error) {
+	return external.PreparedSteer{
+		Input: external.Input{Text: guidance.Request.Message},
+		Commit: func(context.Context) error {
+			h.commit()
+			return nil
+		},
+	}, nil
 }

@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { verticalAxisModifiers } from '@/lib/dnd'
 import { cn } from '@/lib/utils'
+import { desktopBridge } from '@/lib/desktop'
 import { WorkbenchSidebarCustomizationDialog } from './WorkbenchSidebarCustomizationDialog'
 
 export interface WorkbenchSidebarItem {
@@ -45,7 +46,6 @@ interface WorkbenchAppSidebarProps {
   settingsActive: boolean
   toggleLabel: string
   resizeLabel: string
-  minWidth: number
   maxWidth: number
   currentWidth: number
   onOpenSettings: () => void
@@ -73,7 +73,6 @@ export function WorkbenchAppSidebar({
   settingsActive,
   toggleLabel,
   resizeLabel,
-  minWidth,
   maxWidth,
   currentWidth,
   onOpenSettings,
@@ -157,24 +156,29 @@ export function WorkbenchAppSidebar({
                     </ActivityButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
-                {expanded ? (
-                  <div
-                    role="separator"
-                    tabIndex={0}
-                    aria-label={resizeLabel}
-                    aria-orientation="vertical"
-                    aria-valuemin={minWidth}
-                    aria-valuemax={maxWidth}
-                    aria-valuenow={Math.round(currentWidth)}
-                    className="nova-activity-bar-resize-handle"
-                    onPointerDown={onResizePointerDown}
-                    onKeyDown={onResizeKeyDown}
-                  />
-                ) : null}
+                <div
+                  role="separator"
+                  tabIndex={0}
+                  aria-label={resizeLabel}
+                  aria-orientation="vertical"
+                  aria-valuemin={0}
+                  aria-valuemax={maxWidth}
+                  aria-valuenow={expanded ? Math.round(currentWidth) : 0}
+                  aria-valuetext={expanded ? t('workbench.sidebar.expandedWidth', { width: Math.round(currentWidth) }) : t('workbench.sidebar.collapsed')}
+                  title={resizeLabel}
+                  className="nova-activity-bar-resize-handle"
+                  onPointerDown={onResizePointerDown}
+                  onKeyDown={onResizeKeyDown}
+                />
               </SidebarFooter>
             </Sidebar>
           </ContextMenuTrigger>
           <ContextMenuContent className="min-w-48">
+            <ContextMenuItem onSelect={onToggle}>
+              <PanelLeft />
+              {expanded ? t('workbench.sidebar.collapseAction') : t('workbench.sidebar.expandAction')}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
             {contextActivity ? (
               <>
                 <ContextMenuItem
@@ -210,12 +214,25 @@ export function WorkbenchBrandIcon() {
   return <img src="/favicon.svg" alt="Denova" className="size-6 shrink-0 rounded-[7px]" draggable={false} />
 }
 
-/** Keeps the brand and the primary-menu toggle on one stable icon grid. */
+/** Desktop uses the context menu and resize rail; Web retains its visible toggle. */
 function ActivityBarBrandRow({
   expanded,
   toggleLabel,
   onToggle,
 }: Pick<WorkbenchAppSidebarProps, 'expanded' | 'toggleLabel' | 'onToggle'>) {
+  const desktop = desktopBridge()
+  // Windows already presents the brand in its shared titlebar.
+  if (desktop?.platform === 'win32') return null
+  // MyGo supplies the native control area; keep a real element for dragging.
+  if (desktop?.platform === 'darwin') return <div className="nova-activity-brand-row" aria-hidden="true" />
+  if (desktop) {
+    return (
+      <div className="nova-activity-brand-row flex h-8 items-center gap-2">
+        <span className="flex size-8 shrink-0 items-center justify-center"><WorkbenchBrandIcon /></span>
+        {expanded && <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span>}
+      </div>
+    )
+  }
   const toggle = (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -239,8 +256,8 @@ function ActivityBarBrandRow({
 
   if (expanded) {
     return (
-      <div className="grid h-8 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
-        <span className="flex size-8 items-center justify-center"><WorkbenchBrandIcon /></span>
+      <div className="nova-activity-brand-row grid h-8 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
+        <span className="nova-activity-brand-icon flex size-8 items-center justify-center"><WorkbenchBrandIcon /></span>
         <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span>
         {toggle}
       </div>
@@ -248,11 +265,11 @@ function ActivityBarBrandRow({
   }
 
   return (
-    <div className="group/activity-toggle relative flex h-8 items-center justify-center">
-      <span className="pointer-events-none flex size-8 items-center justify-center opacity-100 transition-opacity group-hover/activity-toggle:opacity-0 group-focus-within/activity-toggle:opacity-0 motion-reduce:transition-none">
+    <div className="nova-activity-brand-row group/activity-toggle relative flex h-8 items-center justify-center">
+      <span className="nova-activity-brand-icon pointer-events-none flex size-8 items-center justify-center opacity-100 transition-opacity group-hover/activity-toggle:opacity-0 group-focus-within/activity-toggle:opacity-0 motion-reduce:transition-none">
         <WorkbenchBrandIcon />
       </span>
-      <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/activity-toggle:opacity-100 group-focus-within/activity-toggle:opacity-100 motion-reduce:transition-none">
+      <span className="nova-activity-brand-toggle absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/activity-toggle:opacity-100 group-focus-within/activity-toggle:opacity-100 motion-reduce:transition-none">
         {toggle}
       </span>
     </div>
@@ -308,7 +325,13 @@ function ActivityButton({
     <SidebarMenuButton
       tooltip={!expanded ? label : undefined}
       isActive={active}
-      className={cn('relative h-9 gap-2 text-xs text-[var(--nova-text-muted)] group-data-[collapsible=icon]:h-9! group-data-[collapsible=icon]:w-8! hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] data-[active=true]:bg-[var(--nova-active)] data-[active=true]:text-[var(--nova-text)]', className)}
+      className={cn(
+        'relative h-9 gap-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] data-[active=true]:bg-[var(--nova-active)] data-[active=true]:text-[var(--nova-text)]',
+        desktopBridge()
+          ? 'group-data-[collapsible=icon]:h-12! group-data-[collapsible=icon]:w-full! group-data-[collapsible=icon]:p-1!'
+          : 'group-data-[collapsible=icon]:h-9! group-data-[collapsible=icon]:w-8!',
+        className,
+      )}
       {...props}
       aria-current={active ? 'page' : undefined}
     >

@@ -1,4 +1,8 @@
 const common = {
+  'common.desktopMenu': 'Application menu',
+  'common.desktopOptions': 'Options',
+  'common.desktopView': 'View',
+  'common.desktopMenuFailed': 'Could not open the menu. Try again.',
   'common.agent': 'Agent',
   'common.apiKey': 'API Key',
   'common.baseUrl': 'Base URL',

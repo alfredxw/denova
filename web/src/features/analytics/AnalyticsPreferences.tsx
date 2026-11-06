@@ -78,7 +78,7 @@ export function AnalyticsSettings() {
   return (
     <div data-settings-field="settings.analytics.enabled" className="flex flex-col gap-2">
       <SettingsFieldRow title={t('settings.analytics.enabled')} description={t('settings.analytics.settingsDescription')} controlClassName="shrink-0">
-        <Switch aria-label={t('settings.analytics.enabled')} checked={preferences?.enabled ?? true} disabled={!preferences || saving || !preferences.available} onCheckedChange={enabled => void update(enabled)} />
+        <Switch aria-label={t('settings.analytics.enabled')} checked={preferences?.available === true && preferences.enabled} disabled={!preferences || saving || !preferences.available} onCheckedChange={enabled => void update(enabled)} />
       </SettingsFieldRow>
       <p className="text-xs text-muted-foreground">{t('settings.analytics.privacyDescription')}</p>
       {preferences && !preferences.available && <p className="text-xs text-muted-foreground">{t('settings.analytics.developmentDisabled')}</p>}

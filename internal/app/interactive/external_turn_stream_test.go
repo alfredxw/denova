@@ -2,8 +2,10 @@ package interactiveapp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,35 @@ import (
 
 	agentevent "github.com/alfredxw/denova/agent/lifecycle/event"
 )
+
+func TestNativeToolEvidenceSurvivesInterruptedGameDraft(t *testing.T) {
+	store, story, cfg := externalGameFixture(t)
+	cfg.ActiveAgentRuntime = &config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "fixture"}}
+	turn := externalGameForTest(t, store, story, cfg, agentchat.ChatRequest{CommandID: "native-evidence", Message: "Inspect the station"}, gameAdapterFunc(func(ctx context.Context, input external.Input, host external.Host) (external.Result, error) {
+		observer := external.NativeObserver{Input: input, Host: host}
+		if err := observer.Start("search", "webSearch", json.RawMessage(`{"query":"station architecture"}`)); err != nil {
+			return external.Result{}, err
+		}
+		if err := observer.Finish("search", "The station has a clock tower.", true); err != nil {
+			return external.Result{}, err
+		}
+		return external.Result{}, errors.New("provider disconnected")
+	}))
+	if result := turn.Wait(t.Context()); result.Status != agentrun.OutcomeFailed {
+		t.Fatalf("outcome=%+v", result)
+	}
+	snapshot, err := store.Snapshot(story, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(snapshot.PendingModelContextBatches)
+	if snapshot.TurnCount != 0 || !strings.Contains(string(body), "The station has a clock tower.") {
+		t.Fatalf("native evidence missing or submitted a turn: %s", body)
+	}
+	if len(snapshot.PendingDisplayEvents) != 1 || snapshot.PendingDisplayEvents[0].Status != "success" {
+		t.Fatalf("native card=%+v", snapshot.PendingDisplayEvents)
+	}
+}
 
 func TestExternalPlanSurvivesInterruptedGameDraft(t *testing.T) {
 	store, story, cfg := externalGameFixture(t)

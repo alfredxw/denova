@@ -1,4 +1,5 @@
 import { APIError, fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
+import { desktopBridge } from '@/lib/desktop'
 import type { ComfyUIWorkflowCatalog, ComfyUIWorkflowSnapshot, ImageAPIEndpointSettings, ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelEndpointSettings, ModelPingResult, ModelProfileSettings, SettingsLayer, UpdateStatus, UpdateApplyResult, UpdateCheckResult, UpdateInstallResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
@@ -209,5 +210,6 @@ export function loadComfyUIWorkflow(endpoint: ImageAPIEndpointSettings, profile:
 }
 
 export function getUpdateStatus(signal?: AbortSignal): Promise<UpdateStatus> {
+  if (desktopBridge()) return desktopBridge()!.updates.status()
   return requestJSON('/api/update/status', { signal, cache: 'no-store' })
 }

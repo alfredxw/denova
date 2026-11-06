@@ -1,6 +1,6 @@
 // Optional convenience wrapper. All platform operations are ordinary HTTP.
 export function connect({ prepareExit } = {}) {
-  const parentOrigin = new URL(document.referrer).origin;
+  const parentOrigin = new URL(document.referrer || location.ancestorOrigins?.[0]).origin;
   const nonce = crypto.randomUUID();
   return new Promise((resolve) => {
     function receive(event) {

@@ -40,6 +40,7 @@ type Operation struct {
 	mutations       []agenttool.Mutation
 	usage           *agentschema.TokenUsage
 	output          strings.Builder
+	committedOutput int // prefix persisted with accepted guidance
 }
 
 func (operation *Operation) Receipt() agentrun.CommandReceipt { return operation.receipt }
@@ -119,6 +120,9 @@ func (operation *Operation) Wait(ctx context.Context) agentrun.Outcome {
 		if (runErr != nil || ctx.Err() != nil) && operation.output.Len() > 0 {
 			result.Text = operation.output.String()
 		}
+		if operation.committedOutput > 0 {
+			result.Text = operation.output.String()[operation.committedOutput:]
+		}
 		operation.mu.Unlock()
 		cancel()
 		operation.workers.Wait()
@@ -188,6 +192,9 @@ func (operation *Operation) Emit(event agentrun.Event) error {
 	defer operation.mu.Unlock()
 	if operation.closed {
 		return errors.New("external operation is closed")
+	}
+	if event.Type == "native_tool" {
+		return operation.observeNative(event)
 	}
 	// The adapter's terminal notifications never acknowledge a product commit.
 	if event.Type != "chunk" && event.Type != "thinking" && event.Type != "context_compaction" && event.Type != "todo_updated" {

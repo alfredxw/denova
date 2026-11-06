@@ -1,0 +1,17 @@
+{
+  "name": "denova-desktop",
+  "version": "0.6.3",
+  "private": true,
+  "description": "Denova AI creation workspace",
+  "author": "Denova contributors",
+  "license": "MIT",
+  "packageManager": "pnpm@11.15.1",
+  "scripts": {
+    "build:backend": "node scripts/prepare.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:hmr": "node scripts/dev.mjs --hmr",
+    "package": "node scripts/package.mjs",
+    "test": "go test ../internal/desktop",
+    "test:smoke": "node test/smoke.mjs"
+  }
+}

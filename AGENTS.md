@@ -82,7 +82,7 @@
 
 - 除非用户指定，文档默认放 `docs/`。代码、测试和本文件的长期不变量是事实源；旧文档不得覆盖本文件的不变量。只保留仍有独立阅读价值的文档，及时删除已被实现覆盖的设计稿。
 - `CHANGELOG.md` 的 `Unreleased` 以最近 Release 为基线，只记录重大用户功能、已发布核心流程的重要修复和已发布用户数据的不兼容变化；不记录内部重构、测试、文案、细节 UI 或未发布格式变化。遵循 Keep a Changelog，保留简短中英文摘要，发布前压缩。
-- 发布时同步前端版本号、`CHANGELOG.md`、`README.md`、`README.en.md` 并创建对应 Git tag；GitHub Release notes 简述用户可感知变化，不复制完整 changelog。
+- 发布时同步 `web/package.json` 与 `desktop/package.json` 版本号、`CHANGELOG.md`、`README.md`、`README.en.md` 并创建对应 Git tag；GitHub Release notes 简述用户可感知变化，不复制完整 changelog。Desktop 仅构建 macOS arm64 与 Windows x64，原生构建和签名要求见 `docs/desktop-distribution.md`。
 - PR 标题与 Commit Message 使用英文。
 
 # LESSONS

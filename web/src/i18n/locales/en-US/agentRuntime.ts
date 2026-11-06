@@ -17,7 +17,7 @@ const agentRuntime = {
   'agentRuntime.sharedClaudeHome': "Uses local Claude Code sign-in and provider environment settings. Model aliases are resolved by Claude Code; availability depends on your account.",
   'agentRuntime.claudeLoginInTerminal': "Run claude auth login on the computer running Denova, then check the connection again.",
   'agentRuntime.claudeNotInstalled': "Claude Code was not found. Install it on this computer first.",
-  'agentRuntime.claudeIncompatibleVersion': "The Claude Code version is too old or unrecognized. Minimum supported version: 2.1.259. Run claude update on the computer running Denova (for Homebrew installations, use brew upgrade claude-code), then click Check connection.",
+  'agentRuntime.claudeIncompatibleVersion': "The Claude Code version is too old or unrecognized. Minimum supported version: 2.1.314. Run claude update on the computer running Denova (for Homebrew installations, use brew upgrade claude-code), then click Check connection.",
 
   'agentRuntime.currentRuntime': "Runtime: {{runtime}}",
   'agentRuntime.switchRuntime': "Switch runtime",

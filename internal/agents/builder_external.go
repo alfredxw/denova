@@ -102,7 +102,19 @@ func buildExternalAssembly(ctx context.Context, cfg *config.Config, state *book.
 			return ExternalAssembly{}, err
 		}
 	}
-	definitions := append(assembly.Tools, asks...)
+	definitions := make([]agenttool.ToolDefinition, 0, len(assembly.Tools)+len(asks))
+	for _, definition := range assembly.Tools {
+		info, err := definition.Tool.Info(ctx)
+		if err != nil {
+			return ExternalAssembly{}, err
+		}
+		// Native discovery replaces duplicate filesystem search tools. Keep
+		// product read because it also resolves virtual URIs and durable artifacts.
+		if info.Name != "glob" && info.Name != "grep" {
+			definitions = append(definitions, definition)
+		}
+	}
+	definitions = append(definitions, asks...)
 	definitions, err = agentprofile.ApplyToolGuidance(ctx, cfg, kind, definitions)
 	if err != nil {
 		return ExternalAssembly{}, err
@@ -127,7 +139,7 @@ func ExternalConversationToolSettings(kind string) config.ResolvedAgentToolSetti
 	settings := config.ResolveAgentTools(&config.Config{AgentTools: config.DefaultAgentToolSettings()}, kind)
 	// External engines own their plan tools independently of the Native Todo default.
 	settings[config.AgentToolTodo] = true
-	for _, capability := range []string{config.AgentToolDelegation, config.AgentToolScript} {
+	for _, capability := range []string{config.AgentToolDelegation, config.AgentToolScript, config.AgentToolShell, config.AgentToolWebSearch, config.AgentToolWebFetch, config.AgentToolBrowser} {
 		settings[capability] = false
 	}
 	return settings

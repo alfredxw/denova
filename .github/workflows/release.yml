@@ -84,9 +84,67 @@ jobs:
             dist/github-release/RELEASE_NOTES.md
             dist/github-release/install.sh
 
+  desktop:
+    name: Package signed Desktop (${{ matrix.os }})
+    needs: ci
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    env:
+      MAC_CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
+      MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      MYGO_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      DENOVA_DESKTOP_UPDATE_PUBLIC_KEY: ${{ vars.DENOVA_DESKTOP_UPDATE_PUBLIC_KEY }}
+      MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+      DENOVA_DESKTOP_RELEASE: 'true'
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.ci.outputs.sha }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            agent/go.sum
+      - uses: ./.github/actions/setup-web
+      - uses: actions/download-artifact@v8
+        with:
+          name: ci-distribution
+          run-id: ${{ needs.ci.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - run: mkdir -p output && tar -xf ci-distribution.tar -C output
+      - name: Build and sign the tested application
+        env:
+          DENOVA_RELEASE_FRONTEND_DIR: ${{ github.workspace }}/output/web
+          DENOVA_VERSION: ${{ env.RELEASE_TAG }}
+        run: |
+          node desktop/scripts/signing.mjs
+          pnpm --dir desktop build:backend
+      - name: Package the signed application
+        run: pnpm --dir desktop package
+      - name: Exercise the signed production application
+        run: node desktop/test/package.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-desktop-${{ matrix.os }}
+          path: output/release-desktop/*
+          if-no-files-found: error
+          compression-level: 0
+
   publish:
     name: Publish verified release assets
-    needs: [ci, package]
+    needs: [ci, package, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -108,7 +166,11 @@ jobs:
             if [[ "$target" == windows-x64 ]]; then extension=zip; fi
             test -s "denova-$RELEASE_TAG-$target.$extension"
           done
-          sha256sum denova-* > checksums.txt
+          version="${RELEASE_TAG#v}"
+          for asset in "denovadesktop-$version-arm64.dmg" "denovadesktop-$version-mac-arm64.zip" "denovadesktop-setup-$version-amd64.exe" "denovadesktop-$version-darwin-arm64.tar.gz" "denovadesktop-$version-windows-amd64.tar.gz" update-darwin-arm64.json update-windows-amd64.json; do
+            test -s "$asset"
+          done
+          sha256sum denova-* denovadesktop-* > checksums.txt
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             # Published assets are immutable: replacing them races clients that
             # already pinned this release's checksums.
@@ -117,9 +179,9 @@ jobs:
               exit 1
             fi
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
-            gh release upload "$RELEASE_TAG" denova-* checksums.txt install.sh --clobber
+            gh release upload "$RELEASE_TAG" denova-* denovadesktop-* update-*.json checksums.txt install.sh --clobber
           else
-            gh release create "$RELEASE_TAG" --draft denova-* checksums.txt install.sh --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
+            gh release create "$RELEASE_TAG" --draft denova-* denovadesktop-* update-*.json checksums.txt install.sh --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
           fi
           # Latest only points to this version once every archive and checksum
           # has finished uploading. Interrupted uploads leave a private draft.

@@ -22,6 +22,8 @@ import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/ac
 import { usePluginPages } from '@/features/platform/use-plugin-pages'
 import { localized } from '@/features/platform/api'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { desktopBridge } from '@/lib/desktop'
+import { cn } from '@/lib/utils'
 import type { BookRecord, WorkspaceSummary } from '@/lib/api'
 import { useWorkspaceStore, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
@@ -83,7 +85,7 @@ export function WorkbenchShell({
   books,
   summary,
   projectVisible,
-  activityBarExpanded,
+  activityBarExpanded: storedActivityBarExpanded,
   settingsOpen,
   developerMode = false,
   sidebar,
@@ -109,7 +111,9 @@ export function WorkbenchShell({
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemID[]>>(readStoredActivityOrders)
   const [hiddenActivityIDs, setHiddenActivityIDs] = useState<ActivityItemID[]>(readStoredHiddenActivityIDs)
-  const activityBarSizing = useActivityBarWidth(activityBarExpanded && !isMobile)
+  const activityBarSizing = useActivityBarWidth({ enabled: !isMobile, expanded: storedActivityBarExpanded, onToggle: onToggleActivityBarExpanded })
+  const activityBarExpanded = activityBarSizing.expanded
+  const compactDesktopNavigation = !activityBarExpanded && Boolean(desktopBridge())
   const activitySummary = useActivitySummary().data
   const messageUnread = activitySummary?.message_unread_count ?? 0
   const automationInboxUnread = activitySummary?.automation_inbox_unread_count ?? 0
@@ -228,7 +232,7 @@ export function WorkbenchShell({
 
   const sharedActivityItems: ActivityItem[] = [
     { id: 'statistics', label: t('workbench.activity.statistics'), onClick: () => openRoute('statistics'), active: mode === 'statistics' && !settingsOpen, icon: <BarChart3 className="size-4" /> },
-    { id: 'market', label: t('market.title'), onClick: () => openRoute('market'), active: mode === 'market' && !settingsOpen, icon: <Package className="size-4" /> },
+    { id: 'market', label: t('workbench.activity.market'), onClick: () => openRoute('market'), active: mode === 'market' && !settingsOpen, icon: <Package className="size-4" /> },
     {
       id: 'agentchat',
       label: t('workbench.activity.agentchat'),
@@ -365,7 +369,7 @@ export function WorkbenchShell({
           currentStructure={summary?.structure} currentChapterCount={summary?.chapter_count}
           currentWordCount={summary?.total_words}
           workspace={workspace}
-          iconOnly={!activityBarExpanded}
+          iconOnly={!activityBarExpanded && !compactDesktopNavigation}
           onSwitchBook={onQuickSwitchBook}
           onManageBooks={manageBooks}
         />
@@ -380,8 +384,8 @@ export function WorkbenchShell({
       ) : undefined}
       messageCenter={(
         <MessageCenterButton
-          className={activityBarExpanded ? '' : '!h-9 !w-8 !min-w-8'}
-          showLabel={activityBarExpanded}
+          className={cn('nova-activity-message-button', compactDesktopNavigation ? 'h-12! w-full! min-w-0!' : !activityBarExpanded && 'h-9! w-8! min-w-8!')}
+          showLabel={activityBarExpanded || compactDesktopNavigation}
           unreadCount={messageUnread}
           onUnreadCountChange={setActivityMessageUnreadCount}
           onOpenAutomation={openAutomationNotification}
@@ -392,7 +396,6 @@ export function WorkbenchShell({
       settingsActive={settingsOpen}
       toggleLabel={activityBarExpanded ? t('workbench.activity.toggleCollapse') : t('workbench.activity.toggleExpand')}
       resizeLabel={t('layout.resize.activityBar')}
-      minWidth={activityBarSizing.minWidth}
       maxWidth={activityBarSizing.maxWidth}
       currentWidth={activityBarSizing.width}
       onOpenSettings={onToggleSettings}
@@ -488,9 +491,10 @@ export function WorkbenchShell({
       <SidebarProvider
         ref={activityBarSizing.wrapperRef}
         open={activityBarExpanded}
+        data-activity-bar-expanded={activityBarExpanded}
         style={{
           '--sidebar-width': `${activityBarSizing.width}px`,
-          '--sidebar-width-icon': `${ACTIVITY_BAR_COLLAPSED_WIDTH}px`,
+          '--sidebar-width-icon': `var(--nova-desktop-navigation-width, ${ACTIVITY_BAR_COLLAPSED_WIDTH}px)`,
         } as CSSProperties}
       >
         <WorkspaceLayout

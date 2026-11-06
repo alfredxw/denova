@@ -9,6 +9,8 @@ agent: general,ide
 
 Manage every supported configuration resource through the stable `config_read` and `config_apply` tools. Never edit Denova configuration files or internal JSON storage directly.
 
+When the latest `[Configuration Page Context]` supplies `resource`, use that exact tool resource name and its `resource_id` for the selected item when present. `origin` identifies the UI page, not a tool resource. Prefer the latest selection over earlier page context. If no exact resource name is supplied, discover it with `config_read(operation=describe)` without `resource`; do not guess from UI names.
+
 ## Required workflow
 
 1. For an unfamiliar resource, call `config_read` with `operation=describe`. Omit `resource` to discover all registered kinds, or provide one kind for its contract.
@@ -18,6 +20,9 @@ Manage every supported configuration resource through the stable `config_read` a
 5. For update and delete, copy the latest revision from `config_read`; never guess, copy an example placeholder, or reuse a stale revision. Preserve every field or layer section the user did not ask to change.
 
 `get` accepts any number of IDs. A mixed batch succeeds with existing `items`, explicit `missing_ids`, and per-ID `failures`; an entirely unsuccessful completed batch fails. Large exact reads also return `next_cursor`. Never treat `truncated=true` as a complete read.
+
+A single oversized item occupies its own page. If the tool returns an artifact path with a bounded preview, use `read` on that path and follow its `next_offset` and `next_byte_offset` until the complete page is recovered. The page's `next_cursor` continues the configuration request; the file read offsets continue only that saved page. A preview is not a complete resource. Before a complete-replacement update, recover the entire original value and use the revision from that same snapshot; preserve all unrequested fields. If the revision is stale, reread and reconcile instead of attaching a newer revision to an older value.
+
 6. `config_apply` returns only a compact persistence receipt (`resource`, `operation`, `id`, `revision`). Read the changed item again and compare the requested fields plus preservation-sensitive fields. Report success only when the effective result matches.
 
 Deletion must be explicitly requested by the user. If a stale-revision conflict occurs, read the current item again, reconcile the requested change with that value, and retry once with the new revision. Do not silently overwrite concurrent changes.

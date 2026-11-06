@@ -184,6 +184,7 @@ export async function deleteAgentChatSession(projectId: string, sessionId: strin
 
 /** Open the folder chooser on the machine running Denova. */
 export async function selectAgentChatProjectDirectory(initialPath = ''): Promise<HostDirectorySelection> {
+  if (window.denovaDesktop) return window.denovaDesktop.chooseDirectory(initialPath)
   return requestJSON<HostDirectorySelection>('/api/host/dialogs/directory', {
     method: 'POST',
     headers: jsonHeaders,

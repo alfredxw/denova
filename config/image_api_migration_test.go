@@ -62,7 +62,7 @@ default_size = "1024x1536"
 			t.Fatalf("legacy field %q remained in migrated config:\n%s", legacyField, persisted)
 		}
 	}
-	backups, err := filepath.Glob(path + ".pre-model-endpoint-migration-*.bak")
+	backups, err := filepath.Glob(path + ".pre-settings-migration-*.bak")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestMutateSettingsFileBacksUpLegacyImageSettingsBeforePatch(t *testing.T) {
 	if settings.Theme != "light" || imageEndpointsByID(settings.ImageAPIEndpoints)[defaultProfile.EndpointID].APIKey != "legacy-key" {
 		t.Fatalf("mutated migrated settings = %#v", settings)
 	}
-	backups, err := filepath.Glob(path + ".pre-model-endpoint-migration-*.bak")
+	backups, err := filepath.Glob(path + ".pre-settings-migration-*.bak")
 	if err != nil {
 		t.Fatal(err)
 	}

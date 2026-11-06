@@ -4,6 +4,7 @@ import * as React from "react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { ThemeOverrideContext } from "./theme-override"
 import { CheckIcon, ChevronRightIcon } from "lucide-react"
 
 function DropdownMenu({
@@ -32,6 +33,7 @@ function DropdownMenuContent({
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
+        data-theme={React.useContext(ThemeOverrideContext)}
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         align={align}

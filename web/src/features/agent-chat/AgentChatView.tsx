@@ -331,10 +331,13 @@ export function AgentChatView({
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null
 
   const selectProject = useCallback((projectID: string) => {
-    setWorkbench((current) => ({
-      activeProjectId: projectID,
-      projects: current.projects[projectID] ? current.projects : { ...current.projects, [projectID]: emptyProjectTabState() },
-    }))
+    setWorkbench((current) => {
+      if (current.activeProjectId === projectID) return current
+      return {
+        activeProjectId: projectID,
+        projects: current.projects[projectID] ? current.projects : { ...current.projects, [projectID]: emptyProjectTabState() },
+      }
+    })
   }, [])
 
   const openSessionTab = useCallback(

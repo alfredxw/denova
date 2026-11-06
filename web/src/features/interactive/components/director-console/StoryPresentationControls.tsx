@@ -6,13 +6,13 @@ import type { StageCharacterLayout } from '@/features/settings/types'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Field, FieldTitle } from '@/components/ui/field'
-import { patchProjectSettings, patchSettings } from '@/features/settings/api'
+import { patchProjectSettings, patchSettings, type SettingsPatch } from '@/features/settings/api'
 import { toast } from '@/lib/toast'
 import { visibleStoryPresentation } from '../../presentation'
 import { StoryMaterialSelect } from './StoryMaterialSelect'
 import type { TurnPresentationPatch, PresentationMaterial, TurnEvent, StoryPresentationSettings } from '../../types'
 import { useStagePreferences } from '../story-stage/use-stage-preferences'
-import { ControlSection, NumberSettingInput, TuningRow } from './StoryTuningControls'
+import { ControlSection, NumberSettingInput, TuningRow, TuningSelect } from './StoryTuningControls'
 
 interface StoryPresentationControlsProps {
   projectId?: string
@@ -26,20 +26,19 @@ interface StoryPresentationControlsProps {
 
 export function StoryPresentationControls({ projectId, value, disabled, onChange, currentTurn, onPresentationChange, presentationDisabled = false }: StoryPresentationControlsProps) {
   const { t } = useTranslation()
-  const { scrimOpacity, textMaxWidth, lineHeight, characterLayout, characterSize } = useStagePreferences(projectId || '')
-  const [savingLayout, setSavingLayout] = useState(false)
-  const saveLayout = async (layout: StageCharacterLayout) => {
-    setSavingLayout(true)
+  const { theme, scrimOpacity, textOutline, textMaxWidth, lineHeight, characterLayout, characterSize } = useStagePreferences(projectId || '')
+  const [savingDisplayPreference, setSavingDisplayPreference] = useState(false)
+  const saveDisplayPreference = async (changes: SettingsPatch) => {
+    setSavingDisplayPreference(true)
     try {
-      const changes = { interactive_stage_character_layout: layout }
       if (projectId) await patchProjectSettings(projectId, 'user', changes)
       else await patchSettings('user', changes)
-      console.info('[story-presentation] user character layout saved', { layout })
+      console.info('[story-presentation] user display preference saved', changes)
     } catch (error) {
-      console.warn('[story-presentation] failed to save user character layout', { error })
+      console.warn('[story-presentation] failed to save user display preference', { changes, error })
       toast.error(t('storyStage.presentation.saveFailed'))
     } finally {
-      setSavingLayout(false)
+      setSavingDisplayPreference(false)
     }
   }
   const [savingPresentation, setSavingPresentation] = useState(false)
@@ -80,10 +79,10 @@ export function StoryPresentationControls({ projectId, value, disabled, onChange
       </TuningRow>
       <Field className="director-control-row min-w-0 gap-2 px-2.5 py-2">
         <FieldTitle>{t('storyStage.presentation.characterLayout')}</FieldTitle>
-        <ToggleGroup type="single" variant="outline" size="sm" className="w-full flex-wrap" disabled={savingLayout}
+        <ToggleGroup type="single" variant="outline" size="sm" className="w-full flex-wrap" disabled={savingDisplayPreference}
           aria-label={t('storyStage.presentation.characterLayout')}
           value={characterLayout}
-          onValueChange={value => { if (value) void saveLayout(value as StageCharacterLayout) }}>
+          onValueChange={value => { if (value) void saveDisplayPreference({ interactive_stage_character_layout: value as StageCharacterLayout }) }}>
           {(['center', 'left', 'right', 'sides'] as const).map(layout => (
             <ToggleGroupItem key={layout} value={layout}>{t(`storyStage.presentation.layout.${layout}`)}</ToggleGroupItem>
           ))}
@@ -92,6 +91,19 @@ export function StoryPresentationControls({ projectId, value, disabled, onChange
       <StageDisplaySlider projectId={projectId} setting="interactive_stage_character_size" label={t('storyStage.presentation.characterSize')} value={characterSize} min={0.4} />
       <StageDisplayNumber projectId={projectId} setting="interactive_stage_text_max_width" label={t('storyStage.presentation.textMaxWidth')} value={textMaxWidth} min={480} max={1600} />
       <StageDisplayNumber projectId={projectId} setting="interactive_stage_line_height" label={t('storyStage.presentation.lineHeight')} value={lineHeight} min={1.35} max={2.4} step={0.01} />
+      <TuningRow title={t('storyStage.presentation.theme')}>
+        <TuningSelect label={t('storyStage.presentation.theme')} value={theme ?? 'app'} disabled={savingDisplayPreference}
+          options={[
+            { id: 'app', label: t('storyStage.presentation.followAppTheme') },
+            { id: 'light', label: t('settings.theme.light') },
+            { id: 'dark', label: t('settings.theme.dark') },
+          ]}
+          onChange={value => void saveDisplayPreference({ interactive_stage_theme: value === 'light' || value === 'dark' ? value : null })} />
+      </TuningRow>
+      <TuningRow title={t('storyStage.presentation.textOutline')}>
+        <Switch aria-label={t('storyStage.presentation.textOutline')} checked={textOutline} disabled={savingDisplayPreference}
+          onCheckedChange={checked => void saveDisplayPreference({ interactive_stage_text_outline: checked })} />
+      </TuningRow>
       <StageDisplaySlider projectId={projectId} setting="interactive_stage_scrim_opacity" label={t('storyStage.presentation.scrim')} value={scrimOpacity} min={0} />
     </ControlSection>
   )

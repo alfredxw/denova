@@ -20,11 +20,13 @@ import (
 // remoteAccessGate owns browser authentication for one server. Static application
 // assets and explicit auth endpoints bootstrap the UI; all user resources stay behind the gate.
 type remoteAccessGate struct {
-	config       func() config.RemoteAccessConfig
-	sessions     *browserSessions
-	cookieName   string
-	port         int
-	listeningLAN bool
+	desktopToken  string
+	desktopOrigin string
+	config        func() config.RemoteAccessConfig
+	sessions      *browserSessions
+	cookieName    string
+	port          int
+	listeningLAN  bool
 }
 
 func newRemoteAccessGate(readConfig func() config.RemoteAccessConfig, port string) *remoteAccessGate {
@@ -37,6 +39,21 @@ func (g *remoteAccessGate) middleware(ctx context.Context, c *app.RequestContext
 	// Isolated plugin/game views must not read legacy APIs through the host's
 	// cookies or embed private resources as images, frames, or scripts.
 	c.Response.Header.Set("Cross-Origin-Resource-Policy", "same-origin")
+	if g.desktopToken != "" && isLocalClientIP(directClientIP(c)) && string(c.GetHeader("Origin")) == g.desktopOrigin {
+		authenticated := subtle.ConstantTimeCompare(c.GetHeader("X-Denova-Desktop"), []byte(g.desktopToken)) == 1
+		// WebViews cannot attach private headers to WebSockets. Only this
+		// endpoint may use its existing per-session attach token instead.
+		// The handler checks the token before upgrading the connection.
+		parts := strings.Split(string(c.Path()), "/")
+		terminal := string(c.Method()) == "GET" && len(parts) == 6 && parts[1] == "api" && parts[2] == "terminal" && parts[3] == "sessions" && parts[4] != "" && parts[5] == "attach" && strings.EqualFold(string(c.GetHeader("Upgrade")), "websocket")
+		if authenticated || terminal {
+			if terminal {
+				c.Request.Header.Set("Origin", "http://"+string(c.Host()))
+			}
+			c.Next(ctx)
+			return
+		}
+	}
 	if strings.HasPrefix(string(c.Path()), "/api/") && (len(c.GetHeader("Origin")) > 0 || len(c.GetHeader("Referer")) > 0) && !sameOriginRequest(c) {
 		abortWithLocalizedError(c, consts.StatusForbidden, "api.access.originRejected")
 		return

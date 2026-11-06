@@ -53,7 +53,7 @@ export function InstalledGameStory({ instance, item, active, picker, onRefresh }
       {item && item.currentRelease !== instance.releaseId && <Button size="sm" variant="outline" disabled={busy || !item.enabled || item.removed || !!item.unavailableReason} onClick={() => { setError(''); setUpgrade(item.currentRelease) }}>{t('platform.github.useInstalledUpdate')}</Button>}
     </div>
   return <div className="flex min-h-0 flex-1 flex-col bg-background">
-    {!runtime && <div className="border-b px-3 py-2">{storyControls}</div>}
+    {!runtime && <div data-slot="game-story-header" className="border-b px-3 py-2">{storyControls}</div>}
     {!runtime && error && <InlineErrorNotice className="m-3" message={error} />}
     {runtime ? <GamePlayer runtime={runtime} title={instance.title} visible={active} menuContent={storyControls} onExit={() => setRuntime(null)} onOpenInstance={created => {
       queryClient.setQueryData<Instance[]>(['platform', 'instances'], previous => [...(previous ?? []).filter(item => item.instanceId !== created.instanceId), created])

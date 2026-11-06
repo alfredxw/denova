@@ -1,4 +1,8 @@
 const common = {
+  'common.desktopMenu': '应用菜单',
+  'common.desktopOptions': '选项',
+  'common.desktopView': '视图',
+  'common.desktopMenuFailed': '无法打开菜单，请重试。',
   'common.agent': 'Agent',
   'common.apiKey': 'API Key',
   'common.baseUrl': 'Base URL',

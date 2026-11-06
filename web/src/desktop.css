@@ -1,0 +1,143 @@
+html[data-desktop-platform] {
+  --nova-desktop-navigation-width: 80px;
+}
+
+.nova-desktop-frame {
+  --nova-desktop-titlebar-height: max(40px, var(--mygo-titlebar-height, 40px));
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--nova-bg-deep);
+  color: var(--nova-text);
+}
+
+.nova-desktop-titlebar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  height: var(--nova-desktop-titlebar-height);
+  padding-left: 12px;
+  padding-right: var(--mygo-titlebar-inset-right, 138px);
+  --app-region: drag;
+}
+
+.nova-desktop-titlebar button {
+  --app-region: no-drag;
+  color: var(--nova-text-muted);
+}
+
+.nova-desktop-titlebar button:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  color: var(--nova-text);
+}
+
+/* Fixed sidebars and compact layouts use this content viewport, so they
+   cannot cover the titlebar or extend below the resized window. */
+.nova-desktop-workspace {
+  contain: layout;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  height: calc(100dvh - var(--nova-desktop-titlebar-height));
+}
+
+.nova-desktop-workspace [data-slot="sidebar-container"] {
+  height: 100%;
+}
+
+.nova-desktop-workspace [data-nova-app-shell="true"] {
+  height: calc(100dvh - var(--nova-desktop-titlebar-height));
+  min-height: 0;
+}
+
+.nova-desktop-workspace [data-nova-mobile-shell="true"] {
+  top: 0;
+}
+
+/* Browser zoom can make the native control region wider than the chosen size. */
+html[data-desktop-platform] :is(.nova-activity-bar, [data-activity-bar-expanded] [data-slot="sidebar-gap"]) {
+  min-width: var(--nova-desktop-navigation-width);
+}
+
+/* The native overlay supplies its safe area, including browser zoom changes.
+   Keep a stable minimum when macOS hides its controls in fullscreen. */
+html[data-desktop-platform="darwin"] {
+  --nova-desktop-controls-width: max(80px, var(--mygo-titlebar-left, 80px));
+  --nova-desktop-controls-height: max(48px, var(--mygo-titlebar-height, 48px));
+  --nova-desktop-navigation-width: var(--nova-desktop-controls-width);
+}
+
+/* The native controls belong entirely to the primary navigation column. The
+   workspace keeps the same inset surface and page geometry as the Web app. */
+html[data-desktop-platform="darwin"] .nova-activity-bar [data-slot="sidebar-inner"] {
+  padding-top: var(--nova-desktop-controls-height);
+}
+
+
+html[data-desktop-platform="darwin"] .nova-activity-brand-row {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--nova-desktop-controls-height);
+  padding: 8px;
+  --app-region: drag;
+}
+
+html[data-desktop-platform="darwin"] [data-collapsible="icon"] .nova-activity-brand-row {
+  justify-content: center;
+}
+
+html[data-desktop-platform="darwin"] .nova-activity-bar-resize-handle {
+  top: var(--nova-desktop-controls-height);
+  --app-region: no-drag;
+}
+
+/* The compact desktop rail already reserves room for native controls. Use that
+   space for readable labels instead of leaving a narrow icon strip in its center. */
+html[data-desktop-platform] .nova-activity-bar :is([data-sidebar="menu-button"], .nova-activity-message-button, .nova-workbench-context-trigger) {
+  transition-property: width, height, padding, gap;
+  transition-duration: var(--nova-panel-motion-duration);
+  transition-timing-function: var(--nova-panel-motion-ease);
+}
+
+html[data-desktop-platform] [data-collapsible="icon"] .nova-activity-bar :is([data-sidebar="menu-button"], .nova-activity-message-button, .nova-workbench-context-trigger) {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 48px !important;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 2px !important;
+}
+
+html[data-desktop-platform] [data-collapsible="icon"] .nova-activity-bar :is([data-sidebar="menu-button"], .nova-activity-message-button, .nova-workbench-context-trigger) > span:last-of-type {
+  width: 100%;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"]) {
+  position: relative;
+}
+
+/* Only header backgrounds drag the window; their controls remain interactive. */
+html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"], .nova-story-stage-header) {
+  --app-region: drag;
+}
+
+html[data-desktop-platform="darwin"] :is(.nova-topbar, [data-slot="writing-sidebar-view-switcher"], [data-slot="workbench-tab-strip"], [data-slot="game-story-header"], .nova-story-stage-header) :is(button, a, input, select, textarea, [role="button"], [role="tab"], [contenteditable="true"]) {
+  --app-region: no-drag;
+}
+
+/* Portals can cover draggable headers without inheriting their no-drag rules.
+   Native hit testing ignores z-index, so overlays must exclude their own area. */
+html[data-desktop-platform] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot="sheet-overlay"], [data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"]) {
+  --app-region: no-drag;
+}
+
+html[data-desktop-platform="darwin"] :is(.nova-mobile-topbar, .nova-mobile-sheet [data-mobile-drawer-header]) {
+  min-height: var(--nova-desktop-controls-height);
+  padding-left: var(--nova-desktop-controls-width);
+}

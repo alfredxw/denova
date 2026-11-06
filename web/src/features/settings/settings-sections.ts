@@ -22,7 +22,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'general', group: 'preferences', titleKey: 'settings.section.general', icon: Languages,
     fieldKeys: ['settings.appearance.language', 'settings.appearance.theme', 'settings.appearance.motionIntensity', 'settings.appearance.agentTraceDisplay', 'settings.appearance.uiFont', 'settings.appearance.uiFontSize', 'settings.appearance.readingFont', 'settings.appearance.readingFontSize', 'settings.appearance.sourceEditorFont', 'settings.onboarding.title', 'settings.statistics.enabled', 'settings.analytics.enabled'] },
   { id: 'writing', group: 'creation', titleKey: 'settings.section.writing', icon: BookOpen,
-    fieldKeys: ['settings.ide.autoSave', 'settings.ide.autoSaveInterval', 'settings.ide.chapterFilenameFormat', 'settings.ide.volumeDirFormat', 'settings.ide.maxOpenTabs', 'settings.ide.chapterGroupMin', 'settings.ide.chapterGroupMax', 'settings.ide.defaultTeller', 'settings.agent.writingSkillDefault'] },
+    fieldKeys: ['settings.ide.autoSave', 'settings.ide.autoSaveInterval', 'settings.ide.chapterFilenameFormat', 'settings.ide.volumeDirFormat', 'settings.ide.maxOpenTabs'] },
   { id: 'model', group: 'models', titleKey: 'settings.section.model', icon: Bot,
     fieldKeys: ['settings.model.defaultProfile', ...MODEL_ENDPOINT_FIELD_KEYS, ...MODEL_PROFILE_FIELD_KEYS] },
   { id: 'image', group: 'models', titleKey: 'settings.section.imageApi', icon: Image,

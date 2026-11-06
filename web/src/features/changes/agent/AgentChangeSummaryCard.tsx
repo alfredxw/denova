@@ -120,7 +120,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
       data-change-summary-card={summary.id}
       onPointerEnter={preloadReview}
       onFocusCapture={preloadReview}
-      className="overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-xs text-[var(--nova-text)] shadow-[0_12px_34px_rgba(0,0,0,0.18)]"
+      className="overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-xs text-[var(--nova-text)]"
       aria-label={t('changes.summary.title', { count: fileCount })}
     >
       <header className="flex min-h-16 items-center gap-3 px-3 py-3">

@@ -200,7 +200,7 @@ export function GamePlayer({
   }, [runtime.id, t, visible, variant])
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background" data-game-surface>
-      {showMenu && <Button className="absolute top-3 left-3 z-10 bg-background/85 shadow-sm backdrop-blur-sm" size="icon" variant="outline" aria-label={t(variant === 'plugin' ? 'platform.plugins.panelMenu' : 'platform.storyMenu')} disabled={busy} onClick={() => setMenuOpen(true)}><Ellipsis /></Button>}
+      {showMenu && <Button data-slot="game-player-menu" className="absolute top-3 left-3 z-10 bg-background/85 shadow-sm backdrop-blur-sm" size="icon" variant="outline" aria-label={t(variant === 'plugin' ? 'platform.plugins.panelMenu' : 'platform.storyMenu')} disabled={busy} onClick={() => setMenuOpen(true)}><Ellipsis /></Button>}
       {error && <InlineErrorNotice className="absolute top-16 right-3 left-3 z-10" message={error} />}
       {frameMounted && <iframe
         ref={frame}

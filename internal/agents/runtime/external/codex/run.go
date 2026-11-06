@@ -52,6 +52,9 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 			return external.Result{}, errors.New("invalid or duplicate host tool definition")
 		}
 		toolSet[tool.Name] = true
+		if tool.Name == "ask" {
+			continue
+		} // Native questions use the durable host interaction internally.
 		specs = append(specs, map[string]any{"name": tool.Name, "description": tool.Description, "inputSchema": tool.Schema})
 	}
 	if err := ctx.Err(); err != nil {
@@ -75,11 +78,16 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 		cwd = c.cwd
 	}
 	method := "thread/start"
+	nativeSettings, err := c.nativeConfig(setup, input)
+	if err != nil {
+		return external.Result{}, err
+	}
 	params := map[string]any{
 		"model": model, "cwd": cwd, "ephemeral": input.Directory == "",
-		"sandbox": input.Selection.Codex.EffectiveSandbox(), "approvalPolicy": "never", "baseInstructions": input.Instructions,
-		// Host tools own project access and receipts; the engine cwd is scratch space.
-		"developerInstructions": "Use the provided host tools for all project reads and changes. The process working directory is temporary scratch space, not the project. Host tools enforce the selected permissions and report actual access failures; do not infer that a host tool is read-only from the process sandbox. Do not use built-in file or shell tools to bypass the host tools.",
+		"sandbox": config.CodexReadOnly, "approvalPolicy": "on-request", "config": nativeSettings,
+		// Keep the engine's base tool-use instructions. The filesystem sandbox
+		// contains native commands, not the separately authorized host callbacks.
+		"developerInstructions": input.NativeInstructions(),
 		"dynamicTools":          specs,
 	}
 	if input.Mode != external.OperationTurn {
@@ -184,7 +192,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 			return external.Result{}, err
 		}
 		cancelSetup()
-		result, err := c.runTurn(ctx, sub, threadID, "", map[string]bool{}, host)
+		result, err := c.runTurn(ctx, sub, threadID, "", map[string]bool{}, host, input)
 		completed = err == nil
 		result.SessionID = threadID
 		result = turnUsage(result, input.CumulativeUsage)
@@ -217,7 +225,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	if err := ctx.Err(); err != nil {
 		return external.Result{}, err
 	}
-	result, err := c.runTurn(ctx, sub, threadID, turnID, toolSet, host)
+	result, err := c.runTurn(ctx, sub, threadID, turnID, toolSet, host, input)
 	completed = result.Settled
 	result.SessionID = threadID
 	result = turnUsage(result, input.CumulativeUsage)
@@ -257,13 +265,22 @@ type toolCompletion struct {
 	err    error
 }
 
-func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnID string, tools map[string]bool, host external.Host) (result external.Result, runErr error) {
+func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnID string, tools map[string]bool, host external.Host, input external.Input) (result external.Result, runErr error) {
+	observer := external.NativeObserver{Input: input, Host: host}
+	defer func() { runErr = errors.Join(runErr, observer.Close()) }()
 	var usage *agentschema.TokenUsage
 	defer func() { result.Usage = usage }()
 	toolContext, cancelTools := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() { cancelTools(); workers.Wait() }()
 	finishedTools := make(chan toolCompletion, 64)
+	type controlCompletion struct {
+		id     json.RawMessage
+		result json.RawMessage
+		err    error
+	}
+	finishedControls := make(chan controlCompletion, 64)
+	pendingControls := map[string]context.CancelCauseFunc{}
 	executions := map[string]*toolExecution{}
 	output := messageOutput{items: map[string]string{}}
 	inFlight := 0
@@ -336,14 +353,31 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 				}
 			}
 			execution.requests = nil
+		case completion := <-finishedControls:
+			inFlight--
+			finish, pending := pendingControls[string(completion.id)]
+			if !pending {
+				continue // The server withdrew this request; its worker has settled.
+			}
+			finish(nil)
+			delete(pendingControls, string(completion.id))
+			response := packet{ID: completion.id, Result: completion.result}
+			if completion.err != nil {
+				response.Result = nil
+				response.Error = &rpcError{Code: -32000, Message: completion.err.Error()}
+			}
+			if err := c.send(transport, response); err != nil {
+				return external.Result{}, err
+			}
 		case msg := <-sub.events:
 			var event struct {
-				ThreadID     string    `json:"threadId"`
-				TurnID       string    `json:"turnId"`
-				ItemID       string    `json:"itemId"`
-				Delta        string    `json:"delta"`
-				SummaryIndex int       `json:"summaryIndex"`
-				Turn         turnState `json:"turn"`
+				RequestID    json.RawMessage `json:"requestId"`
+				ThreadID     string          `json:"threadId"`
+				TurnID       string          `json:"turnId"`
+				ItemID       string          `json:"itemId"`
+				Delta        string          `json:"delta"`
+				SummaryIndex int             `json:"summaryIndex"`
+				Turn         turnState       `json:"turn"`
 				Item         struct {
 					ID   string `json:"id"`
 					Type string `json:"type"`
@@ -431,19 +465,41 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 					}()
 					completion.result, completion.err = host.CallTool(toolContext, call)
 				}()
-			case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
-				if err := c.send(transport, packet{ID: msg.ID, Result: json.RawMessage(`{"decision":"decline"}`)}); err != nil {
-					return external.Result{}, err
+			case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval", "item/tool/requestUserInput", "mcpServer/elicitation/request":
+				if terminal || len(msg.ID) == 0 || inFlight >= cap(finishedControls) || pendingControls[string(msg.ID)] != nil {
+					return external.Result{}, errors.New("invalid native interaction request")
 				}
-			case "item/permissions/requestApproval":
-				if err := c.send(transport, packet{ID: msg.ID, Result: json.RawMessage(`{"permissions":{},"scope":"turn"}`)}); err != nil {
-					return external.Result{}, err
-				}
-			case "item/tool/requestUserInput":
-				// Questions use the registered ask schema. This endpoint must not
-				// turn an upstream permission request into a product question.
-				if err := c.send(transport, packet{ID: msg.ID, Error: &rpcError{Code: -32601, Message: "Use the ask host tool for questions; interactive approval is unavailable"}}); err != nil {
-					return external.Result{}, err
+				requestCtx, finish := context.WithCancelCause(toolContext)
+				pendingControls[string(msg.ID)] = finish
+				inFlight++
+				workers.Add(1)
+				go func() {
+					defer workers.Done()
+					completion := controlCompletion{id: msg.ID}
+					defer func() {
+						if value := recover(); value != nil {
+							completion.err = fmt.Errorf("native interaction panic: %v", value)
+							slog.Error("Native interaction panicked", "error", completion.err)
+						}
+						finishedControls <- completion
+					}()
+					switch msg.Method {
+					case "item/tool/requestUserInput":
+						completion.result, completion.err = nativeQuestion(requestCtx, host, input, string(msg.ID), msg.Params)
+					case "mcpServer/elicitation/request":
+						var request external.NativeElicitation
+						completion.err = json.Unmarshal(msg.Params, &request)
+						if completion.err == nil {
+							completion.result, completion.err = external.ElicitNative(requestCtx, host, input, string(msg.ID), request)
+						}
+					default:
+						completion.result, completion.err = nativeApproval(requestCtx, host, input, string(msg.ID), msg.Method, msg.Params)
+					}
+				}()
+			case "serverRequest/resolved":
+				if finish := pendingControls[string(event.RequestID)]; finish != nil {
+					finish(external.ErrInteractionWithdrawn)
+					delete(pendingControls, string(event.RequestID))
 				}
 			case "item/agentMessage/delta":
 				if err := output.append(host, event.ItemID, event.Delta); err != nil && ctx.Err() == nil {
@@ -460,6 +516,9 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 					}
 				}
 			case "item/started", "item/completed":
+				if err := nativeItem(&observer, msg.Params, msg.Method == "item/completed"); err != nil {
+					return external.Result{}, err
+				}
 				if event.Item.Type == "contextCompaction" {
 					status := "started"
 					phase := "model_step"

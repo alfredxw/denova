@@ -100,6 +100,11 @@ func ApplySettingsMergePatch(existing Settings, changes json.RawMessage) (Settin
 	if err := next.WebAccess.Validate(); err != nil {
 		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidSettingsPatch, err)
 	}
+	switch next.InteractiveStageTheme {
+	case "", "light", "dark":
+	default:
+		return Settings{}, fmt.Errorf("%w: invalid stage theme %q", ErrInvalidSettingsPatch, next.InteractiveStageTheme)
+	}
 	switch next.InteractiveStageCharacterLayout {
 	case "", "center", "left", "right", "sides":
 	default:

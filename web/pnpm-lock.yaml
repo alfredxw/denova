@@ -10,7 +10,7 @@ overrides:
 
 patchedDependencies:
   '@monaco-editor/react@4.7.0': 41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b
-  monaco-editor@0.55.1: 19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865
+  monaco-editor@0.55.1: 8c246c1ca4736a17671c2801d0d27bbb5a36b394e99d07f837d8395509eb3b15
 
 importers:
 
@@ -36,7 +36,10 @@ importers:
         version: 5.16.7(react@19.2.6)
       '@monaco-editor/react':
         specifier: ^4.7.0
-        version: 4.7.0(patch_hash=41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b)(monaco-editor@0.55.1(patch_hash=19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 4.7.0(patch_hash=41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b)(monaco-editor@0.55.1(patch_hash=8c246c1ca4736a17671c2801d0d27bbb5a36b394e99d07f837d8395509eb3b15))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@mygo-plugins/fetch':
+        specifier: 0.7.4
+        version: 0.7.4(mygo-runtime@0.7.4)
       '@pierre/diffs':
         specifier: ^1.3.5
         version: 1.3.5(@shikijs/themes@4.3.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -144,10 +147,13 @@ importers:
         version: 2.0.3
       monaco-editor:
         specifier: ^0.55.1
-        version: 0.55.1(patch_hash=19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865)
+        version: 0.55.1(patch_hash=8c246c1ca4736a17671c2801d0d27bbb5a36b394e99d07f837d8395509eb3b15)
       motion:
         specifier: ^12.40.0
         version: 12.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      mygo-runtime:
+        specifier: 0.7.4
+        version: 0.7.4
       nanoid:
         specifier: ^5.1.16
         version: 5.1.16
@@ -813,6 +819,11 @@ packages:
   '@mswjs/interceptors@0.41.9':
     resolution: {integrity: sha512-VVPPgHyQ6ShqnrmDWuxjmUIsO9gWyOZFmuOfLd9LfBGQJwZfy0gvv9pbHSJuoFNIYC7ZDX9aoFwowjcdSC4E8w==}
     engines: {node: '>=18'}
+
+  '@mygo-plugins/fetch@0.7.4':
+    resolution: {integrity: sha512-QGjs6xhye+uTRjYa5YCAAO4FgsvOK9XBdU4PqtXDCCy6bCBjKmRwKRtQ175CmmD5mF2cILBoWiQu2vUYyv7lcQ==}
+    peerDependencies:
+      mygo-runtime: ^0.7.4
 
   '@napi-rs/wasm-runtime@1.1.4':
     resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
@@ -4222,6 +4233,9 @@ packages:
     resolution: {integrity: sha512-dkEJPVvun4FryqBmZ5KhDo0K9iDXAwn08tMLDinNdRBNPcYEDiWYysLcc6k3mjTMlbP9KyylvRpd4wFtwrT9rw==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
+  mygo-runtime@0.7.4:
+    resolution: {integrity: sha512-11BHbfdLp3OdVb5691zkj4xKtU6Qk9ZCVxbi2xOxPvtGTVo1xwKs1cx61Ow/p95qmJvUp8p+DjeXRnVkeSnFww==}
+
   nanoid@3.3.12:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -5912,10 +5926,10 @@ snapshots:
     dependencies:
       state-local: 1.0.7
 
-  '@monaco-editor/react@4.7.0(patch_hash=41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b)(monaco-editor@0.55.1(patch_hash=19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@monaco-editor/react@4.7.0(patch_hash=41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b)(monaco-editor@0.55.1(patch_hash=8c246c1ca4736a17671c2801d0d27bbb5a36b394e99d07f837d8395509eb3b15))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@monaco-editor/loader': 1.7.0
-      monaco-editor: 0.55.1(patch_hash=19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865)
+      monaco-editor: 0.55.1(patch_hash=8c246c1ca4736a17671c2801d0d27bbb5a36b394e99d07f837d8395509eb3b15)
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
 
@@ -5928,6 +5942,10 @@ snapshots:
       outvariant: 1.4.3
       strict-event-emitter: 0.5.1
     optional: true
+
+  '@mygo-plugins/fetch@0.7.4(mygo-runtime@0.7.4)':
+    dependencies:
+      mygo-runtime: 0.7.4
 
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
@@ -9503,7 +9521,7 @@ snapshots:
 
   minimist@1.2.8: {}
 
-  monaco-editor@0.55.1(patch_hash=19e5e8154b431545a745d7d74ee91c83724079f2f9e7848dfaf6f7a6f434f865):
+  monaco-editor@0.55.1(patch_hash=8c246c1ca4736a17671c2801d0d27bbb5a36b394e99d07f837d8395509eb3b15):
     dependencies:
       dompurify: 3.4.16
       marked: 14.0.0
@@ -9552,6 +9570,8 @@ snapshots:
 
   mute-stream@3.0.0:
     optional: true
+
+  mygo-runtime@0.7.4: {}
 
   nanoid@3.3.12: {}
 

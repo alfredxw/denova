@@ -92,9 +92,6 @@ type SystemInstructionInput struct {
 	ChapterFilenameFormat string
 	// VolumeDirFormat is the volume directory template, such as v{order:05}-{volume}.
 	VolumeDirFormat string
-	// ChapterGroupMin and ChapterGroupMax define the recommended chapter-group size.
-	ChapterGroupMin int
-	ChapterGroupMax int
 }
 
 // BuildSystemInstruction assembles the stable writing-agent system prompt.
@@ -136,7 +133,7 @@ func BuildIDEWritingFlowInstruction(in SystemInstructionInput) string {
 	sb.WriteString("- Chapter-group plan directory: setting/chapter-groups/. Each file plans only the next contiguous group of chapters and remains short, scannable, easy to review, and easy to update.\n")
 	sb.WriteString(fmt.Sprintf("- Chapter filename template: %s. Hidden ordering prefixes decouple real paths from display names, for example chapters/v00001-volume-one-wasteland/ch00001-prologue.md and chapters/v00001-volume-one-wasteland/ch00002-chapter-one-opening.md. `order` is the reading sequence. Before creating a chapter, inspect existing ch prefixes and increment them; never automatically rename old chapters.\n", normalizedChapterFilenameFormat(in.ChapterFilenameFormat)))
 	sb.WriteString(fmt.Sprintf("- Volume directory template: %s. Use volume directories only when the current manuscript structure includes volumes; follow the workspace source index. Before creating a new volume, inspect existing v prefixes and increment them.\n", normalizedVolumeDirFormat(in.VolumeDirFormat)))
-	sb.WriteString(fmt.Sprintf("- Recommended chapter-group size: %d-%d chapters. Let the short-term narrative unit determine group size; do not split mechanically at a fixed count.\n", normalizedGroupMin(in.ChapterGroupMin), normalizedGroupMax(in.ChapterGroupMin, in.ChapterGroupMax)))
+	sb.WriteString("- Recommended chapter-group size: 3-8 chapters. Let the short-term narrative unit determine group size; do not split mechanically at a fixed count.\n")
 	sb.WriteString("- Follow the book-wide manuscript structure in the current workspace source index. Write prose at the deepest level only: chapter files for chapters or volumes, and section files inside chapter directories for sections. For sections, use s00001-Title.md, incrementing s prefixes within each chapter. Chapter directories use the configured chapter naming pattern without the file extension. Use the chapter-structure controls to change the selected structure; never reorganize existing prose by editing its configuration. The UI may show a non-empty unconfirmed chapter as a draft and the author may mark it as a chapter, but chapter status is only an editing marker; it does not affect next-chapter detection, context selection, or state synchronization.\n")
 	sb.WriteString("\n---\n\n")
 
@@ -145,24 +142,6 @@ func BuildIDEWritingFlowInstruction(in SystemInstructionInput) string {
 		projectRoot, projectRoot, projectRoot, projectRoot, projectRoot, projectRoot,
 		projectRoot, projectRoot, projectRoot, projectRoot, projectRoot, projectRoot))
 	return sb.String()
-}
-
-func normalizedGroupMin(v int) int {
-	if v <= 0 {
-		return 3
-	}
-	return v
-}
-
-func normalizedGroupMax(min, max int) int {
-	min = normalizedGroupMin(min)
-	if max <= 0 {
-		max = 8
-	}
-	if max < min {
-		return min
-	}
-	return max
 }
 
 func normalizedChapterFilenameFormat(format string) string {

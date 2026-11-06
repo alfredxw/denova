@@ -13,8 +13,8 @@ clicks and App activity do not share an attribution identity.
 ## Collection and identity
 
 - Source builds and `--dev-mode` never read host analytics state or send events.
-- The notice names PostHog and explains the fields. Collection starts only after
-  acknowledgement and remains optional in Settings → General.
+- The notice explains what Denova collects, how it counts return visits, and
+  where to turn off sharing. Collection starts only after acknowledgement.
 - On upgrading from the last Umami release, an enabled instance must acknowledge
   the new collector. A previous opt-out remains disabled without a new prompt.
 - The existing random `app_<UUID>` identity, preference and first-active date
