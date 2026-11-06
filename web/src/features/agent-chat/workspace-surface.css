@@ -3,9 +3,10 @@
   padding-left: calc(2.5rem + var(--nova-desktop-header-inset, 0px));
 }
 
+/* Inset the tabs inside their bordered strip so the divider continues beneath the toggle. */
 [data-agent-chat-surface][data-sidebar-visible="false"][data-secondary-expanded="false"]
-  [data-nova-adaptive-resizable] [data-agent-chat-tab-group="primary"],
+  [data-nova-adaptive-resizable] [data-agent-chat-tab-group="primary"] [data-slot="workbench-tab-strip"],
 [data-agent-chat-surface][data-sidebar-visible="false"][data-secondary-expanded="true"]
-  [data-nova-adaptive-resizable] [data-agent-chat-tab-group="secondary"] {
+  [data-nova-adaptive-resizable] [data-agent-chat-tab-group="secondary"] [data-slot="workbench-tab-strip"] {
   padding-left: calc(2.5rem + var(--nova-desktop-header-inset, 0px));
 }
