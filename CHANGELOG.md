@@ -12,6 +12,20 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+## [v0.7.1] - 2026-11-07
+
+### Brief / 简要说明
+
+#### 中文
+
+- 下载入口明确区分 Desktop 桌面版与 WebUI 浏览器版，统一平台命名，移除多余的 macOS 桌面 ZIP。
+- 保留 macOS Apple Silicon、Windows x64 桌面安装器和五种 WebUI 平台包，支持从 v0.7.0 升级。
+
+#### English
+
+- Separates Desktop and WebUI downloads, standardizes platform names, and removes the extra macOS desktop ZIP.
+- Keeps macOS Apple Silicon and Windows x64 desktop installers and five WebUI builds, with upgrades from v0.7.0.
+
 ## [v0.7.0] - 2026-11-07
 
 ### Brief / 简要说明

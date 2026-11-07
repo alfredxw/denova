@@ -23,7 +23,8 @@ var (
 	ErrPackageTooLarge = errors.New("release package exceeds the size limit")
 	ErrUpdateBusy      = errors.New("another update operation is in progress")
 	updateOperation    sync.Mutex
-	archiveNamePattern = regexp.MustCompile(`^denova-v?([0-9]+\.[0-9]+\.[0-9]+)-(darwin|linux|windows)-(x64|arm64)\.(zip|tar\.gz)$`)
+	// Accept the latest released naming as well as the explicit WebUI names.
+	archiveNamePattern = regexp.MustCompile(`^denova-(?:webui-)?v?([0-9]+\.[0-9]+\.[0-9]+)-(macos|darwin|linux|windows)-(x64|arm64)\.(zip|tar\.gz)$`)
 )
 
 // InstallLocal stages a user-selected release without contacting GitHub or
@@ -52,7 +53,7 @@ func (s *Service) InstallLocal(ctx context.Context, name string, archive io.Read
 		return InstallResult{}, ErrInvalidPackage
 	}
 	version := match[1]
-	if match[2]+"-"+match[3] != platformKey(runtime.GOOS, runtime.GOARCH) {
+	if platformKey(match[2], match[3]) != platformKey(runtime.GOOS, runtime.GOARCH) {
 		return InstallResult{}, ErrPackagePlatform
 	}
 	if compareVersions(s.currentVersion, version) >= 0 {

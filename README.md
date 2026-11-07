@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.7.0</strong>（2026-11-07） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
+  当前版本：<strong>v0.7.1</strong>（2026-11-07） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -83,21 +83,41 @@ Denova 把小说写作、互动故事、结构化资料库、AI Agent、图像�
 
 ### 安装发布版
 
-Denova 支持 Web 与 MyGo 桌面两种分发。桌面版提供 macOS Apple Silicon 的 DMG 和 Windows x64 的 EXE 安装器；不提供 macOS Intel 或 Linux 桌面包。从 [GitHub Releases](https://github.com/alfredxw/denova/releases/latest) 下载桌面安装包，也可按[桌面构建说明](docs/desktop-distribution.md)从源码打包。
+**Denova Desktop · 桌面版（推荐）**：安装后直接打开。
+
+| 系统 | 下载 |
+| --- | --- |
+| macOS Apple Silicon | [下载 DMG](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-desktop-v0.7.1-macos-arm64.dmg) |
+| Windows x64 | [下载 EXE 安装器](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-desktop-v0.7.1-windows-x64-setup.exe) |
+
+macOS 打开 DMG，将 Denova 拖入 Applications；Windows 运行安装器。桌面版不提供 macOS Intel 或 Linux 包。[桌面构建说明](docs/desktop-distribution.md)介绍源码打包。
 
 当前桌面 Beta 未做 Apple Developer ID 签名、公证或 Windows 代码签名，首次打开可能需要在系统安全设置中允许运行；桌面自动更新仍校验更新包签名。
 
-Web 分发继续支持 Windows、macOS 和 Linux：
+<details>
+<summary>Denova WebUI · 浏览器版</summary>
 
-macOS / Linux 可以使用一键安装脚本：
+在本机或服务器运行下载的程序，再通过浏览器访问。WebUI 需要下载运行，不是在线托管网站。
+
+| 系统 | 下载 |
+| --- | --- |
+| macOS Apple Silicon | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-macos-arm64.tar.gz) |
+| macOS Intel | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-macos-x64.tar.gz) |
+| Windows x64 | [zip](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-windows-x64.zip) |
+| Linux x64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-linux-x64.tar.gz) |
+| Linux ARM64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-linux-arm64.tar.gz) |
+
+macOS 和 Linux 可以使用一键安装脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
+curl -fsSL https://github.com/alfredxw/denova/releases/latest/download/install.sh | sh
 ```
 
-安装完成后运行 `denova`。Windows 用户以及希望手动安装的用户，可以从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 下载对应平台的压缩包；Windows 运行 `denova.exe`。
+安装后运行 `denova`；手动下载的包解压后运行 `denova`，Windows 运行 `denova.exe`。
 
-稳定使用建议选择 Release；`master` 分支可能包含尚未发布的改动。
+</details>
+
+稳定使用建议选择 [Release](https://github.com/alfredxw/denova/releases/latest)；`master` 分支可能包含尚未发布的改动。
 
 ### 第一次使用
 

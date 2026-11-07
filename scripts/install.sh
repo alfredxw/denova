@@ -204,7 +204,9 @@ esac
 resolve_platform
 resolve_version
 
-ARCHIVE_NAME="denova-${VERSION}-${PLATFORM}.tar.gz"
+asset_platform="${PLATFORM}"
+case "${platform_os}" in darwin) asset_platform="macos-${platform_arch}" ;; esac
+ARCHIVE_NAME="denova-webui-${VERSION}-${asset_platform}.tar.gz"
 DOWNLOAD_BASE="${RELEASES_URL}/download/${VERSION}"
 
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/denova-install.XXXXXX")"
@@ -214,7 +216,13 @@ EXTRACT_DIR="${TEMP_DIR}/extract"
 mkdir -p "${EXTRACT_DIR}"
 
 log "Downloading Denova ${VERSION} for ${PLATFORM}..."
-curl -fsSL --retry 3 --retry-delay 1 -o "${ARCHIVE_PATH}" "${DOWNLOAD_BASE}/${ARCHIVE_NAME}" || fail "could not download ${ARCHIVE_NAME}"
+if ! http_status="$(curl -fsSL --retry 3 --retry-delay 1 -w '%{http_code}' -o "${ARCHIVE_PATH}" "${DOWNLOAD_BASE}/${ARCHIVE_NAME}")"; then
+  # Explicitly requested older releases still use the original archive names.
+  [ "${http_status}" = 404 ] || fail "could not download ${ARCHIVE_NAME}"
+  ARCHIVE_NAME="denova-${VERSION}-${PLATFORM}.tar.gz"
+  ARCHIVE_PATH="${TEMP_DIR}/${ARCHIVE_NAME}"
+  curl -fsSL --retry 3 --retry-delay 1 -o "${ARCHIVE_PATH}" "${DOWNLOAD_BASE}/${ARCHIVE_NAME}" || fail "could not download ${ARCHIVE_NAME}"
+fi
 curl -fsSL --retry 3 --retry-delay 1 -o "${CHECKSUMS_PATH}" "${DOWNLOAD_BASE}/checksums.txt" || fail "could not download checksums.txt"
 
 expected_checksum="$(awk -v name="${ARCHIVE_NAME}" '$2 == name { print $1; exit }' "${CHECKSUMS_PATH}")"

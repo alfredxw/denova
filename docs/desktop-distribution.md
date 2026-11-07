@@ -1,14 +1,24 @@
 # Web 与 Desktop 分发
 
-Denova 复用 `web/` 的 React 界面、Go HTTP API 和数据格式。桌面宿主使用 MyGo 0.7.4，macOS 使用系统 WKWebView，Windows 使用 WebView2，不内置 Chromium 或 Node.js。Desktop 仅发行 macOS arm64 与 Windows x64；Web 保留原有五个平台的压缩包。
+Denova 复用 `web/` 的 React 界面、Go HTTP API 和数据格式。桌面宿主使用 MyGo 0.7.4，macOS 使用系统 WKWebView，Windows 使用 WebView2，不内置 Chromium 或 Node.js。Desktop 仅发行 macOS arm64 与 Windows x64；WebUI 保留原有五个平台的压缩包，在本机或服务器运行后通过浏览器访问。
+
+## 下载命名与升级
+
+README 和 Release 正文首先提供两个桌面下载入口，WebUI 下载放在折叠区。用户下载文件统一使用 `denova-<desktop|webui>-v<version>-<system>-<arch>`，系统为 `macos`、`windows` 或 `linux`，架构为 `arm64` 或 `x64`。Windows 桌面安装器另加 `-setup.exe`；WebUI Windows 使用 ZIP，macOS 和 Linux 使用 tar.gz。
+
+MyGo 自动更新归档和 manifest 保留官方命名，不属于手动安装入口，不能按安装器规则重命名。WebUI 更新器只匹配 WebUI 包与旧版 Web 包，优先使用新名称，不匹配桌面包。
+
+仅 v0.7.1 额外上传 `denova-v0.7.1-darwin-arm64.tar.gz` 和 `denova-v0.7.1-darwin-x64.tar.gz`，内容与新名称的 macOS WebUI 包相同，用于 v0.7.0 的自动升级；后续发布不再生成这两份过渡包。Windows 和 Linux 的 v0.7.0 在线更新可直接识别新名称。
+
+v0.7.0 离线上传仍要求旧文件名。上传 v0.7.1 WebUI 包前，将文件名改为 `denova-v0.7.1-<platform>.<extension>`；macOS 的 platform 为 `darwin-arm64` 或 `darwin-x64`，Windows 和 Linux 保留 `windows-x64`、`linux-x64` 或 `linux-arm64`。仅改文件名，不修改归档内容。v0.7.1 同时识别新旧名称，无需再重命名。
 
 ## 使用与数据
 
 | 分发 | 安装产物 | 更新 |
 | --- | --- | --- |
-| Web | `denova-v<version>-<platform>.tar.gz/.zip` | 原有 Go updater |
-| Desktop macOS | `denovadesktop-<version>-arm64.dmg` | MyGo 官方 updater |
-| Desktop Windows | `denovadesktop-setup-<version>-amd64.exe` | MyGo 官方 updater |
+| Web | `denova-webui-v<version>-<platform>.tar.gz/.zip` | 原有 Go updater |
+| Desktop macOS | `denova-desktop-v<version>-macos-arm64.dmg` | MyGo 官方 updater |
+| Desktop Windows | `denova-desktop-v<version>-windows-x64-setup.exe` | MyGo 官方 updater |
 
 macOS 将 Denova 拖入 Applications。Windows 使用 MyGo 生成的按用户安装器，缺少 WebView2 时由官方安装流程处理运行时依赖。首次启动选择 `~/.denova` 或已有数据根目录，不会再追加 `.denova`。Web 与 Desktop 可使用同一个目录，但必须先退出另一个实例；旧发行版不识别进程锁，切换前同样需要退出。
 
@@ -50,7 +60,7 @@ pnpm --dir desktop dev:hmr
 pnpm --dir desktop package
 ```
 
-`build:backend` 包含前端、内嵌资源、后端主程序、Skills、校验过的 ripgrep 和许可证。Desktop 不携带 Web updater；官方 updater 编译进 MyGo 宿主。`package` 调用 Go module 固定版本的官方 CLI，输出到 `desktop/dist/darwin-arm64/` 或 `desktop/dist/windows-amd64/`，无需 Bun、Electron 或 electron-builder。macOS 额外提供 ZIP 供手动解压。
+`build:backend` 包含前端、内嵌资源、后端主程序、Skills、校验过的 ripgrep 和许可证。Desktop 不携带 Web updater；官方 updater 编译进 MyGo 宿主。`package` 调用 Go module 固定版本的官方 CLI，输出到 `desktop/dist/darwin-arm64/` 或 `desktop/dist/windows-amd64/`，无需 Bun、Electron 或 electron-builder。手动安装只提供 macOS DMG 和 Windows EXE，不额外提供桌面 ZIP。
 
 `dev:hmr` 启动前台 Vite 实例，API 使用该桌面进程拥有的后端。切换目录后开发启动器按 MyGo 的重启约定保留 Vite 并重新启动宿主。修改前端会热更新；修改宿主或后端后重新构建并重启。macOS 可用 `scripts/restart-desktop.sh` 正常关闭当前仓库的桌面实例后启动 HMR。与 Web 开发实例并行时使用独立数据目录。
 

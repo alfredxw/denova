@@ -63,7 +63,7 @@ else
   (cd "${assets}" && shasum -a 256 -c checksums.txt)
 fi
 mkdir "${TEST_ROOT}/extracted"
-tar -xzf "${assets}/denova-v1.2.3-linux-x64.tar.gz" -C "${TEST_ROOT}/extracted"
+tar -xzf "${assets}/denova-webui-v1.2.3-linux-x64.tar.gz" -C "${TEST_ROOT}/extracted"
 package="${TEST_ROOT}/extracted/denova"
 test -x "${package}/denova"
 test -x "${package}/denova-updater"
@@ -77,11 +77,11 @@ cmp "${TEST_ROOT}/internal/webfs/dist/index.html" "${DENOVA_RELEASE_FRONTEND_DIR
 # Repackaging one target must keep other targets and discard stale ZIP entries.
 rm "${TEST_ROOT}/skills/fixture.md"
 bash "${TEST_ROOT}/scripts/build-github-release.sh" v1.2.3 windows-x64 > "${TEST_ROOT}/rebuild.log"
-test -s "${assets}/denova-v1.2.3-linux-x64.tar.gz"
+test -s "${assets}/denova-webui-v1.2.3-linux-x64.tar.gz"
 if command -v unzip >/dev/null 2>&1; then
-  unzip -Z1 "${assets}/denova-v1.2.3-windows-x64.zip" > "${TEST_ROOT}/zip.txt"
+  unzip -Z1 "${assets}/denova-webui-v1.2.3-windows-x64.zip" > "${TEST_ROOT}/zip.txt"
 else
-  python -m zipfile -l "${assets}/denova-v1.2.3-windows-x64.zip" > "${TEST_ROOT}/zip.txt"
+  python -m zipfile -l "${assets}/denova-webui-v1.2.3-windows-x64.zip" > "${TEST_ROOT}/zip.txt"
 fi
 grep -q 'denova/denova.exe' "${TEST_ROOT}/zip.txt"
 grep -q 'denova/denova-updater.exe' "${TEST_ROOT}/zip.txt"
@@ -91,7 +91,24 @@ if grep -q 'skills/fixture.md' "${TEST_ROOT}/zip.txt"; then exit 1; fi
 if bash "${TEST_ROOT}/scripts/build-github-release.sh" v1.2.3 ../outside > /dev/null 2>&1; then exit 1; fi
 if bash "${TEST_ROOT}/scripts/build-github-release.sh" ../outside > /dev/null 2>&1; then exit 1; fi
 if bash "${TEST_ROOT}/scripts/build-github-release.sh" v9.9.9 > /dev/null 2>&1; then exit 1; fi
+# The one-time macOS aliases keep the latest released WebUI updater working.
+printf '{"version":"0.7.1"}\n' > "${TEST_ROOT}/web/package.json"
+printf '## [v0.7.1]\n### Brief / 简要说明\nRelease fixture.\n' > "${TEST_ROOT}/CHANGELOG.md"
+printf '<strong>v0.7.1</strong>\n' > "${TEST_ROOT}/README.md"
+cp "${TEST_ROOT}/README.md" "${TEST_ROOT}/README.en.md"
+bash "${TEST_ROOT}/scripts/build-github-release.sh" v0.7.1 > "${TEST_ROOT}/transition.log"
+for arch in arm64 x64; do
+  cmp "${assets}/denova-webui-v0.7.1-macos-${arch}.tar.gz" "${assets}/denova-v0.7.1-darwin-${arch}.tar.gz"
+done
+test "$(wc -l < "${assets}/checksums.txt" | tr -d ' ')" = 7
+grep -Fq '/v0.7.1/denova-desktop-v0.7.1-macos-arm64.dmg' "${assets}/RELEASE_NOTES.md"
+grep -Fq '/v0.7.1/denova-desktop-v0.7.1-windows-x64-setup.exe' "${assets}/RELEASE_NOTES.md"
+for target in macos-arm64 macos-x64 linux-arm64 linux-x64 windows-x64; do
+  extension=tar.gz
+  if [[ "$target" == windows-x64 ]]; then extension=zip; fi
+  grep -Fq "/v0.7.1/denova-webui-v0.7.1-${target}.${extension}" "${assets}/RELEASE_NOTES.md"
+done
 rm "${DENOVA_RELEASE_FRONTEND_DIR}/index.html"
-if bash "${TEST_ROOT}/scripts/build-github-release.sh" v1.2.3 linux-x64 > /dev/null 2>&1; then exit 1; fi
-test -s "${assets}/denova-v1.2.3-linux-x64.tar.gz"
+if bash "${TEST_ROOT}/scripts/build-github-release.sh" v0.7.1 linux-x64 > /dev/null 2>&1; then exit 1; fi
+test -s "${assets}/denova-webui-v0.7.1-linux-x64.tar.gz"
 printf 'Release packaging tests passed.\n'

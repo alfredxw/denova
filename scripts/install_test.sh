@@ -24,8 +24,10 @@ case "$(uname -m)" in
   *) printf 'Skipping installer test on unsupported architecture.\n'; exit 0 ;;
 esac
 
-VERSION="v0.4.0"
-ARCHIVE_NAME="denova-${VERSION}-${platform_os}-${platform_arch}.tar.gz"
+VERSION="v0.7.1"
+asset_os="${platform_os}"
+case "${asset_os}" in darwin) asset_os=macos ;; esac
+ARCHIVE_NAME="denova-webui-${VERSION}-${asset_os}-${platform_arch}.tar.gz"
 RELEASE_DIR="${TEST_ROOT}/release"
 PACKAGE_ROOT="${TEST_ROOT}/package"
 PACKAGE_DIR="${PACKAGE_ROOT}/denova"
@@ -36,7 +38,7 @@ mkdir -p "${RELEASE_DIR}" "${PACKAGE_DIR}/web" "${PACKAGE_DIR}/skills" "${FAKE_B
 cat > "${PACKAGE_DIR}/denova" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = "--version" ]; then
-  printf '0.4.0\n'
+  printf '0.7.1\n'
   exit 0
 fi
 printf '%s\n' "${DENOVA_DIR:-}"
@@ -71,9 +73,16 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "${url}" in
-  */releases/latest) printf '%s' 'https://github.com/alfredxw/denova/releases/tag/v0.4.0' ;;
+  */releases/latest) printf '%s' 'https://github.com/alfredxw/denova/releases/tag/v0.7.1' ;;
   */checksums.txt) cp "${DENOVA_INSTALL_TEST_RELEASE_DIR}/checksums.txt" "${output}" ;;
-  */denova-v0.4.0-*.tar.gz) cp "${DENOVA_INSTALL_TEST_RELEASE_DIR}/${url##*/}" "${output}" ;;
+  */denova-webui-v0.7.1-*.tar.gz)
+    if [ ! -f "${DENOVA_INSTALL_TEST_RELEASE_DIR}/${url##*/}" ]; then
+      printf '404'
+      exit 22
+    fi
+    cp "${DENOVA_INSTALL_TEST_RELEASE_DIR}/${url##*/}" "${output}"
+    ;;
+  */denova-v0.7.1-*.tar.gz) cp "${DENOVA_INSTALL_TEST_RELEASE_DIR}/${url##*/}" "${output}" ;;
   *) printf 'Unexpected installer URL: %s\n' "${url}" >&2; exit 1 ;;
 esac
 EOF
@@ -86,7 +95,7 @@ sh "${ROOT_DIR}/scripts/install.sh" >/dev/null
 
 LAUNCHER="${HOME_DIR}/.local/bin/denova"
 INSTALL_DIR="${HOME_DIR}/.local/lib/denova"
-[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.4.0" ]
+[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.7.1" ]
 [ "$(HOME="${HOME_DIR}" "${LAUNCHER}")" = "${HOME_DIR}/.denova" ]
 [ "$(HOME="${HOME_DIR}" DENOVA_DIR="${TEST_ROOT}/custom-data" "${LAUNCHER}")" = "${TEST_ROOT}/custom-data" ]
 [ ! -e "${INSTALL_DIR}/tools" ]
@@ -99,6 +108,19 @@ DENOVA_INSTALL_TEST_RELEASE_DIR="${RELEASE_DIR}" \
 sh "${ROOT_DIR}/scripts/install.sh" >/dev/null
 grep -Fq 'preserved = true' "${INSTALL_DIR}/config.toml"
 
+# A missing new-style asset falls back to the naming used by earlier releases.
+LEGACY_NAME="denova-${VERSION}-${platform_os}-${platform_arch}.tar.gz"
+mv "${RELEASE_DIR}/${ARCHIVE_NAME}" "${RELEASE_DIR}/${LEGACY_NAME}"
+printf '%s  %s\n' "${checksum}" "${LEGACY_NAME}" > "${RELEASE_DIR}/checksums.txt"
+PATH="${FAKE_BIN}:${PATH}" \
+HOME="${HOME_DIR}" \
+DENOVA_INSTALL_TEST_RELEASE_DIR="${RELEASE_DIR}" \
+sh "${ROOT_DIR}/scripts/install.sh" >/dev/null
+[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.7.1" ]
+grep -Fq 'preserved = true' "${INSTALL_DIR}/config.toml"
+mv "${RELEASE_DIR}/${LEGACY_NAME}" "${RELEASE_DIR}/${ARCHIVE_NAME}"
+printf '%s  %s\n' "${checksum}" "${ARCHIVE_NAME}" > "${RELEASE_DIR}/checksums.txt"
+
 # A corrupt download must leave the existing installation and user config intact.
 printf 'corrupt archive\n' >> "${RELEASE_DIR}/${ARCHIVE_NAME}"
 if PATH="${FAKE_BIN}:${PATH}" \
@@ -109,7 +131,7 @@ if PATH="${FAKE_BIN}:${PATH}" \
   exit 1
 fi
 grep -Fq 'SHA-256 verification failed' "${TEST_ROOT}/corrupt-install.log"
-[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.4.0" ]
+[ "$(HOME="${HOME_DIR}" "${LAUNCHER}" --version)" = "0.7.1" ]
 grep -Fq 'preserved = true' "${INSTALL_DIR}/config.toml"
 
 printf 'Installer tests passed.\n'

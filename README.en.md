@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.7.0</strong> (2026-11-07) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.7.1</strong> (2026-11-07) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)
@@ -83,21 +83,41 @@ Lore, Creative Setups, Skills, and version management are shared between the two
 
 ### Install a Release
 
-Denova supports Web and MyGo desktop distributions. Desktop targets macOS Apple Silicon (DMG) and Windows x64 (EXE); macOS Intel and Linux desktop packages are not provided. Download desktop installers from [GitHub Releases](https://github.com/alfredxw/denova/releases/latest), or follow the [desktop build guide](docs/desktop-distribution.md) to package from source.
+**Denova Desktop (recommended)**: install it and open the app.
 
-The current desktop Beta has no Apple Developer ID signing, notarization, or Windows code signing. Your system may require permission to open it the first time. Desktop updates still verify update package signatures.
+| System | Download |
+| --- | --- |
+| macOS Apple Silicon | [Download DMG](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-desktop-v0.7.1-macos-arm64.dmg) |
+| Windows x64 | [Download EXE installer](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-desktop-v0.7.1-windows-x64-setup.exe) |
 
-The Web distribution continues to support Windows, macOS, and Linux:
+macOS: open the DMG and drag Denova into Applications. Windows: run the installer. Desktop does not provide macOS Intel or Linux builds. See the [desktop build guide](docs/desktop-distribution.md) to package from source.
 
-macOS / Linux users can run the installer:
+The current desktop Beta has no Apple Developer ID signing, notarization, or Windows code signing. Your system may require permission on first launch. Desktop updates still verify update package signatures.
+
+<details>
+<summary>Denova WebUI · Browser interface</summary>
+
+Run the downloaded program on your computer or server, then open its address in a browser. WebUI is a downloadable application, not a hosted website.
+
+| System | Download |
+| --- | --- |
+| macOS Apple Silicon | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-macos-arm64.tar.gz) |
+| macOS Intel | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-macos-x64.tar.gz) |
+| Windows x64 | [zip](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-windows-x64.zip) |
+| Linux x64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-linux-x64.tar.gz) |
+| Linux ARM64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-linux-arm64.tar.gz) |
+
+On macOS and Linux, run the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
+curl -fsSL https://github.com/alfredxw/denova/releases/latest/download/install.sh | sh
 ```
 
-Run `denova` after installation. Windows users and anyone who prefers manual installation can download the archive for their platform from [GitHub Releases](https://github.com/alfredxw/denova/releases); on Windows, run `denova.exe`.
+Run `denova` after installation. For manual downloads, extract the archive and run `denova` (`denova.exe` on Windows).
 
-For stable use, choose a Release. The `master` branch may contain unreleased changes.
+</details>
+
+For stable use, choose a [Release](https://github.com/alfredxw/denova/releases/latest). The `master` branch may contain unreleased changes.
 
 ### First Run
 

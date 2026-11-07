@@ -35,17 +35,17 @@ args.push(root)
 execFileSync('go', args, { cwd: root, stdio: 'inherit', env: { ...process.env,
   GOFLAGS: [process.env.GOFLAGS, process.env.DENOVA_DESKTOP_E2E === 'true' ? '-tags=desktop_e2e' : ''].filter(Boolean).join(' '),
 } })
-if (process.platform === 'darwin' && target === 'darwin-arm64') {
-  const out = path.join(desktop, 'dist/darwin-arm64')
-  execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', path.join(out, 'Denova.app'), path.join(out, `denovadesktop-${version}-mac-arm64.zip`)], { stdio: 'inherit' })
-}
-
 if (release) {
   // Keep release artifacts flat when actions/upload-artifact computes its root.
   const directory = path.join(desktop, 'dist', platforms[target].replace('/', '-'))
   const stage = path.join(root, 'output/release-desktop')
   mkdirSync(stage, { recursive: true })
   for (const file of readdirSync(directory)) {
-    if (/^(denovadesktop-|update-).*\.(dmg|zip|exe|tar\.gz|json|patch)$/.test(file)) copyFileSync(path.join(directory, file), path.join(stage, file))
+    // Rename only manual installers. The official updater owns archive and manifest names.
+    let name = file
+    if (file === `denovadesktop-${version}-arm64.dmg`) name = `denova-desktop-v${version}-macos-arm64.dmg`
+    else if (file === `denovadesktop-setup-${version}-amd64.exe`) name = `denova-desktop-v${version}-windows-x64-setup.exe`
+    else if (!/^(denovadesktop-|update-).*\.(tar\.gz|json|patch)$/.test(file)) continue
+    copyFileSync(path.join(directory, file), path.join(stage, name))
   }
 }

@@ -73,7 +73,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
-          path: dist/github-release/denova-${{ env.RELEASE_TAG }}-${{ matrix.target }}.*
+          path: dist/github-release/denova-*${{ env.RELEASE_TAG }}-*
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
@@ -161,13 +161,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64 windows-x64; do
+          for target in macos-arm64 macos-x64 linux-arm64 linux-x64 windows-x64; do
             extension=tar.gz
             if [[ "$target" == windows-x64 ]]; then extension=zip; fi
-            test -s "denova-$RELEASE_TAG-$target.$extension"
+            test -s "denova-webui-$RELEASE_TAG-$target.$extension"
           done
           version="${RELEASE_TAG#v}"
-          for asset in "denovadesktop-$version-arm64.dmg" "denovadesktop-$version-mac-arm64.zip" "denovadesktop-setup-$version-amd64.exe" "denovadesktop-$version-darwin-arm64.tar.gz" "denovadesktop-$version-windows-amd64.tar.gz" update-darwin-arm64.json update-windows-amd64.json; do
+          if [[ "$version" == 0.7.1 ]]; then
+            for target in darwin-arm64 darwin-x64; do
+              test -s "denova-$RELEASE_TAG-$target.tar.gz"
+            done
+          fi
+          for asset in "denova-desktop-$RELEASE_TAG-macos-arm64.dmg" "denova-desktop-$RELEASE_TAG-windows-x64-setup.exe" "denovadesktop-$version-darwin-arm64.tar.gz" "denovadesktop-$version-windows-amd64.tar.gz" update-darwin-arm64.json update-windows-amd64.json; do
             test -s "$asset"
           done
           sha256sum denova-* denovadesktop-* > checksums.txt

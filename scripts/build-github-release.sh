@@ -117,55 +117,74 @@ EOF
   release_tag="v$(release_version_without_prefix)"
   {
     echo "# Denova ${release_tag}"
-    echo
-    echo "## Release highlights / 发布内容"
-    echo
+    cat <<'EOF'
+
+## Desktop / 桌面版（推荐）
+
+| System / 系统 | Download / 下载 |
+| --- | --- |
+| macOS Apple Silicon | [Download DMG / 下载 DMG](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-desktop-@TAG@-macos-arm64.dmg) |
+| Windows x64 | [Download installer / 下载安装器](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-desktop-@TAG@-windows-x64-setup.exe) |
+
+macOS: open the DMG and drag Denova into Applications. Windows: run the EXE installer.
+
+macOS 打开 DMG，将 Denova 拖入 Applications；Windows 运行 EXE 安装器。
+
+This Beta has no platform code signing or macOS notarization. Your system may require permission on first launch. Desktop updates verify package signatures.
+
+当前 Beta 未做平台代码签名或 macOS 公证，首次打开可能需要在系统安全设置中允许运行；桌面更新仍校验更新包签名。
+
+<details>
+<summary>WebUI · Browser interface / 浏览器版</summary>
+
+Run the downloaded program on your computer or server, then open its address in a browser. WebUI is a downloadable application, not a hosted website.
+
+在本机或服务器运行下载的程序，再通过浏览器访问。WebUI 需要下载运行，不是在线托管网站。
+
+| System / 系统 | Download / 下载 |
+| --- | --- |
+| macOS Apple Silicon | [tar.gz](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-webui-@TAG@-macos-arm64.tar.gz) |
+| macOS Intel | [tar.gz](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-webui-@TAG@-macos-x64.tar.gz) |
+| Windows x64 | [zip](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-webui-@TAG@-windows-x64.zip) |
+| Linux x64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-webui-@TAG@-linux-x64.tar.gz) |
+| Linux ARM64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-webui-@TAG@-linux-arm64.tar.gz) |
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://github.com/alfredxw/denova/releases/download/@TAG@/install.sh | sh
+```
+
+Or verify the archive against `checksums.txt`, extract it, and run `denova` (`denova.exe` on Windows).
+
+也可以使用 `checksums.txt` 校验压缩包，解压后运行 `denova`（Windows 为 `denova.exe`）。
+
+</details>
+
+## Changes / 变化
+
+EOF
     extract_release_brief "${release_tag}" < CHANGELOG.md
     cat <<'EOF'
 
-## Verification / 验证
+<details>
+<summary>Update support files / 更新辅助文件</summary>
 
-- The release workflow requires successful CI for the exact tagged commit, including both Go modules, frontend unit tests, translations, and browser journeys against the built distribution.
-- Packaging reuses the frontend from that CI run; platform archives are compiled in parallel without repeating the test suites.
-- Packaging: five Web platform archives and macOS Apple Silicon / Windows x64 desktop installers are generated from the same source revision and listed in `checksums.txt`. Native desktop smoke checks run on both target operating systems.
+The `denovadesktop-*.tar.gz` archives and `update-*.json` manifests are used by automatic updates. Choose a download above for manual installation. See the [distribution guide](https://github.com/alfredxw/denova/blob/@TAG@/docs/desktop-distribution.md) for offline upgrade instructions.
 
-发布流程要求标签对应提交的 CI 成功，覆盖两个 Go module、前端单测、双语键检查、生产构建及浏览器流程，并在两个目标系统验证桌面应用；复用该次 CI 的前端产物，生成五个平台 Web 压缩包、macOS Apple Silicon / Windows x64 桌面安装器及 `checksums.txt`。
+`denovadesktop-*.tar.gz` 和 `update-*.json` 由自动更新使用；手动安装请使用上面的下载入口。离线升级方法见[分发说明](https://github.com/alfredxw/denova/blob/@TAG@/docs/desktop-distribution.md)。
 
-## Install / 安装
-
-Desktop: on macOS Apple Silicon, download the `denovadesktop-*-arm64.dmg` and drag Denova into Applications. On Windows x64, run `denovadesktop-setup-*-amd64.exe`. Without platform code signing or notarization, the first launch may require permission in system security settings. Desktop updates verify update package signatures.
-
-桌面版：macOS Apple Silicon 下载 `denovadesktop-*-arm64.dmg`，将 Denova 拖入 Applications；Windows x64 运行 `denovadesktop-setup-*-amd64.exe`。未做平台代码签名或公证时，首次打开可能需要在系统安全设置中允许运行。桌面自动更新仍校验更新包签名。
-
-Web distribution / Web 分发：
-
-macOS / Linux one-command install / 一键安装：
-
-```bash
-curl -fsSL https://github.com/alfredxw/denova/releases/latest/download/install.sh | sh
-```
-
-Or download the archive for your platform, verify it against `checksums.txt`, extract it, and run Denova from the extracted `denova` directory.
-
-也可以下载对应平台压缩包，使用 `checksums.txt` 校验后解压，并在解压后的 `denova` 目录运行：
-
-```bash
-./denova
-```
-
-Windows:
-
-```powershell
-denova.exe
-```
-
-Checksum example / 校验示例：
-
-```bash
-shasum -a 256 -c checksums.txt
-```
 EOF
-  } > "${DIST_DIR}/RELEASE_NOTES.md"
+    if [[ "${release_tag}" == v0.7.1 ]]; then
+      cat <<'EOF'
+The two legacy macOS WebUI archives in v0.7.1 keep v0.7.0 automatic updates working.
+
+v0.7.1 临时保留两份旧名称 macOS WebUI 包，保证 v0.7.0 自动升级。
+
+EOF
+    fi
+    echo '</details>'
+  } | sed "s/@TAG@/${release_tag}/g" > "${DIST_DIR}/RELEASE_NOTES.md"
 }
 
 require_command go
@@ -212,7 +231,8 @@ cp -R "${FRONTEND_DIR}" "${ROOT_DIR}/internal/webfs/dist"
 echo "==> Compiling and packaging"
 for target in "${TARGETS[@]}"; do
   IFS=":" read -r key goos goarch exe updater_exe archive_type <<<"${target}"
-  package_name="denova-${VERSION}-${key}"
+  asset_platform="${key/darwin-/macos-}"
+  package_name="denova-webui-${VERSION}-${asset_platform}"
   package_dir="${BUILD_DIR}/${package_name}/denova"
   rm -rf "${BUILD_DIR}/${package_name}"
   mkdir -p "${package_dir}"
@@ -264,11 +284,17 @@ for target in "${TARGETS[@]}"; do
       tar -czf "${DIST_DIR}/${package_name}.tar.gz" denova
     )
   fi
+  # One release only: v0.7.0 macOS clients match darwin-* in asset names.
+  # Linux and Windows clients already match the new WebUI names.
+  if [[ "${VERSION#v}" == 0.7.1 && "${goos}" == darwin ]]; then
+    cp "${DIST_DIR}/${package_name}.${archive_type}" "${DIST_DIR}/denova-${VERSION}-${key}.${archive_type}"
+  fi
 done
 
 echo "==> Writing checksums.txt"
 : > "${DIST_DIR}/checksums.txt"
-for file in "${DIST_DIR}"/denova-"${VERSION}"-*; do
+for file in "${DIST_DIR}"/denova-webui-"${VERSION}"-* "${DIST_DIR}"/denova-"${VERSION}"-*; do
+  [[ -f "${file}" ]] || continue
   checksum_file "${file}" >> "${DIST_DIR}/checksums.txt"
 done
 

@@ -148,6 +148,9 @@ type githubAsset struct {
 }
 
 func platformKey(goos, goarch string) string {
+	if goos == "macos" {
+		goos = "darwin"
+	}
 	arch := goarch
 	if arch == "amd64" {
 		arch = "x64"
@@ -156,14 +159,21 @@ func platformKey(goos, goarch string) string {
 }
 
 func selectAsset(assets []githubAsset, platform string) *githubAsset {
+	var legacy *githubAsset
 	for i := range assets {
 		name := strings.ToLower(assets[i].Name)
-		if strings.Contains(name, strings.ToLower(platform)) && strings.HasPrefix(name, "denova-") &&
-			(strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip")) {
+		match := archiveNamePattern.FindStringSubmatch(name)
+		if len(match) != 5 || platformKey(match[2], match[3]) != platform {
+			continue
+		}
+		if strings.HasPrefix(name, "denova-webui-") {
 			return &assets[i]
 		}
+		if legacy == nil {
+			legacy = &assets[i]
+		}
 	}
-	return nil
+	return legacy
 }
 
 func selectChecksumAsset(assets []githubAsset) *githubAsset {

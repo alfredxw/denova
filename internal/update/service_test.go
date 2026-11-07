@@ -59,17 +59,39 @@ func TestUpdateCheckAndDownloadUseConfiguredProxy(t *testing.T) {
 func TestSelectAssetForPlatform(t *testing.T) {
 	assets := []githubAsset{
 		{Name: "checksums.txt"},
-		// Official MyGo archives must not match the Web updater, including old clients.
-		{Name: "denovadesktop-0.1.11-darwin-arm64.tar.gz"},
-		{Name: "denova-v0.1.11-darwin-arm64.tar.gz", DownloadURL: "asset-api-url"},
-		{Name: "denova-v0.1.11-linux-x64.tar.gz"},
+		{Name: "denovadesktop-0.7.1-darwin-arm64.tar.gz"},
+		{Name: "denova-desktop-v0.7.1-macos-arm64.tar.gz"},
+		{Name: "denova-desktop-v0.7.1-windows-x64.zip"},
+		{Name: "denova-v0.7.1-darwin-arm64.tar.gz"},
+		{Name: "denova-webui-v0.7.1-macos-arm64.tar.gz", DownloadURL: "asset-api-url"},
+		{Name: "denova-webui-v0.7.1-macos-x64.tar.gz"},
+		{Name: "denova-webui-v0.7.1-linux-x64.tar.gz"},
+		{Name: "denova-webui-v0.7.1-windows-x64.zip"},
 	}
-	asset := selectAsset(assets, "darwin-arm64")
-	if asset == nil || asset.Name != "denova-v0.1.11-darwin-arm64.tar.gz" {
-		t.Fatalf("unexpected asset: %#v", asset)
+	for _, tc := range []struct{ platform, name string }{
+		{"darwin-arm64", "denova-webui-v0.7.1-macos-arm64.tar.gz"},
+		{"darwin-x64", "denova-webui-v0.7.1-macos-x64.tar.gz"},
+		{"linux-x64", "denova-webui-v0.7.1-linux-x64.tar.gz"},
+		{"windows-x64", "denova-webui-v0.7.1-windows-x64.zip"},
+		{"linux-arm64", ""},
+	} {
+		t.Run(tc.platform, func(t *testing.T) {
+			asset := selectAsset(assets, tc.platform)
+			if tc.name == "" {
+				if asset != nil {
+					t.Fatalf("unexpected asset: %#v", asset)
+				}
+			} else if asset == nil || asset.Name != tc.name {
+				t.Fatalf("asset = %#v, want %s", asset, tc.name)
+			}
+		})
 	}
-	if got := selectAsset(assets, "windows-x64"); got != nil {
-		t.Fatalf("windows asset should not match: %#v", got)
+	legacy := selectAsset(assets[:5], "darwin-arm64")
+	if legacy == nil || legacy.Name != "denova-v0.7.1-darwin-arm64.tar.gz" {
+		t.Fatalf("legacy release: %#v", legacy)
+	}
+	if asset := selectAsset(assets[:4], "windows-x64"); asset != nil {
+		t.Fatalf("desktop archive selected as WebUI: %#v", asset)
 	}
 }
 
