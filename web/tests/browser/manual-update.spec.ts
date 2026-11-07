@@ -220,7 +220,8 @@ test('background preparation survives navigation and idle restart can be cancele
   operation = ''
   await expect(page.getByText(/版本 0.5.2 已就绪/)).toBeVisible()
   await page.getByRole('button', { name: '任务完成后重启', exact: true }).click()
-  await expect(page.getByRole('status').filter({ hasText: '正在等待活动任务' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: '任务和操作结束后，Denova 会自动重启。' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '取消等待', exact: true })).toBeEnabled()
   expect(commands).toEqual(['when_idle'])
   // Reloading must restore the wait without starting the three-minute restart
   // timeout: work may take arbitrarily long before the updater takes over.

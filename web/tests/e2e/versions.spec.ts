@@ -91,8 +91,10 @@ for (const surface of ['writing', 'general'] as const) {
 
 async function openVersionHistory(page: Page) {
   const saveVersion = page.getByRole('button', { name: '保存当前版本', exact: true })
+  const openHistory = page.getByRole('button', { name: '打开版本历史', exact: true })
+  await expect(saveVersion.or(openHistory).filter({ visible: true })).toHaveCount(1)
   if (!(await saveVersion.isVisible())) {
-    await page.getByRole('button', { name: '打开版本历史', exact: true }).click()
+    await openHistory.click()
   }
   await expect(saveVersion).toBeVisible()
   return saveVersion

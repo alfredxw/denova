@@ -250,8 +250,8 @@ async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
     await expect(panel).toBeHidden()
     // Closing the detail pane reflows the parent conversation. Wait for its
     // final width before aiming the next click at another child card.
-    const secondaryPane = page.locator('[data-nova-panel-motion="resizable"][data-nova-panel-side="right"]')
-      .filter({ has: page.locator('[data-agent-chat-group="secondary"]') })
+    // Closing the last tab unmounts its group, but the empty panel remains.
+    const secondaryPane = page.locator('[data-agent-chat-surface] [data-nova-panel-motion="resizable"][data-nova-panel-side="right"]')
     await expect(secondaryPane).toHaveCSS('width', '0px')
   }
   expect([...seen].sort()).toEqual(multiAgentExpectations.map(item => item.marker).sort())
