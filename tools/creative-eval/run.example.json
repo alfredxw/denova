@@ -1,9 +1,0 @@
-{
-  "settings_file": "../../.denova/config.toml",
-  "variants": [
-    { "label": "current", "profile_id": "YOUR_MODEL_PROFILE_ID", "writing_skill": "novel-lite" }
-  ],
-  "grader": {
-    "profile_id": "YOUR_MODEL_PROFILE_ID"
-  }
-}

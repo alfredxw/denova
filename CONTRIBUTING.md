@@ -24,8 +24,6 @@ Useful local commands:
 
 If a frontend command is missing, try the project script first, then use `npx` when appropriate. If port `7788` is already occupied by the user's Vite process, do not kill or replace it; use the existing hot-reload page.
 
-For optional real-model Writing and Game comparisons, run `./scripts/eval-creative.sh` and see [Creative evaluation](docs/creative-evaluation.md) for one-time configuration. This standalone tool runs manually or from a separate scheduler and is not part of CI or release gates.
-
 ## Development Principles
 
 - Keep the main writing and reading surfaces stable; controls belong in the shell layer unless the workflow needs otherwise.

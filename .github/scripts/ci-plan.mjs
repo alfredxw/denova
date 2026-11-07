@@ -2,9 +2,9 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-// Unknown paths require product verification. Only independent documentation,
-// promotional images and the separately verified evaluation tool are excluded.
-const independent = /^(docs\/|img\/|tools\/creative-eval\/|scripts\/eval-creative\.sh$|(?:README(?:\.en)?|AGENTS|CHANGELOG|CONTRIBUTING)\.md$|LICENSE$|\.git(?:ignore|attributes)$)/
+// Unknown paths require product verification. Only independent documentation
+// and promotional images are excluded.
+const independent = /^(docs\/|img\/|(?:README(?:\.en)?|AGENTS|CHANGELOG|CONTRIBUTING)\.md$|LICENSE$|\.gitignore$)/
 const manifests = /^(agent\/)?go\.(mod|sum)$/
 const updater = /^(internal\/(update|hostruntime|localfs|portablepath|buildinfo)\/|cmd\/denova-updater\/)/
 
@@ -22,7 +22,6 @@ export function planCI(files, full) {
     go_modules: modules,
     unit: full || workflow || files.some(file => file.startsWith('web/')),
     updater: full || workflow || dependencies || files.some(file => updater.test(file)),
-    creative_eval: full || workflow || files.some(file => /^(tools\/creative-eval\/|scripts\/eval-creative\.sh$)/.test(file)),
     browser_shards: full ? [1, 2, 3] : [1],
     shard_count: full ? 3 : 1,
   }

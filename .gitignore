@@ -46,7 +46,6 @@ docs/tests/*
 !docs/desktop-distribution.md
 !docs/speech.md
 !docs/analytics.md
-!docs/creative-evaluation.md
 .worktrees/
 .pnpm-store/
 .DS_Store
