@@ -130,6 +130,10 @@ macOS: open the DMG and drag Denova into Applications. Windows: run the EXE inst
 
 macOS 打开 DMG，将 Denova 拖入 Applications；Windows 运行 EXE 安装器。
 
+Desktop v0.7.0 and v0.7.1: install this version manually once to switch to the separate automatic-update feed. Keep your existing data folder. WebUI v0.7.1 can still update automatically.
+
+v0.7.0、v0.7.1 桌面版需手动安装本版一次，以切换自动更新通道；继续使用原数据目录。v0.7.1 WebUI 可继续自动升级。
+
 This Beta has no platform code signing or macOS notarization. Your system may require permission on first launch. Desktop updates verify package signatures.
 
 当前 Beta 未做平台代码签名或 macOS 公证，首次打开可能需要在系统安全设置中允许运行；桌面更新仍校验更新包签名。
@@ -152,7 +156,7 @@ Run the downloaded program on your computer or server, then open its address in 
 macOS / Linux:
 
 ```bash
-curl -fsSL https://github.com/alfredxw/denova/releases/download/@TAG@/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/@TAG@/scripts/install.sh | sh
 ```
 
 Or verify the archive against `checksums.txt`, extract it, and run `denova` (`denova.exe` on Windows).
@@ -165,25 +169,6 @@ Or verify the archive against `checksums.txt`, extract it, and run `denova` (`de
 
 EOF
     extract_release_brief "${release_tag}" < CHANGELOG.md
-    cat <<'EOF'
-
-<details>
-<summary>Update support files / 更新辅助文件</summary>
-
-The `denovadesktop-*.tar.gz` archives and `update-*.json` manifests are used by automatic updates. Choose a download above for manual installation. See the [distribution guide](https://github.com/alfredxw/denova/blob/@TAG@/docs/desktop-distribution.md) for offline upgrade instructions.
-
-`denovadesktop-*.tar.gz` 和 `update-*.json` 由自动更新使用；手动安装请使用上面的下载入口。离线升级方法见[分发说明](https://github.com/alfredxw/denova/blob/@TAG@/docs/desktop-distribution.md)。
-
-EOF
-    if [[ "${release_tag}" == v0.7.1 ]]; then
-      cat <<'EOF'
-The two legacy macOS WebUI archives in v0.7.1 keep v0.7.0 automatic updates working.
-
-v0.7.1 临时保留两份旧名称 macOS WebUI 包，保证 v0.7.0 自动升级。
-
-EOF
-    fi
-    echo '</details>'
   } | sed "s/@TAG@/${release_tag}/g" > "${DIST_DIR}/RELEASE_NOTES.md"
 }
 
@@ -221,8 +206,6 @@ if [[ ! -s "${FRONTEND_DIR}/index.html" ]]; then
   exit 1
 fi
 mkdir -p "${DIST_DIR}" "${BUILD_DIR}"
-cp "${ROOT_DIR}/scripts/install.sh" "${DIST_DIR}/install.sh"
-chmod 0755 "${DIST_DIR}/install.sh"
 # Release builds serve only the frontend embedded in this exact binary.
 # Only generated directories below this checkout are replaced.
 rm -rf "${ROOT_DIR}/internal/webfs/dist"
@@ -284,16 +267,11 @@ for target in "${TARGETS[@]}"; do
       tar -czf "${DIST_DIR}/${package_name}.tar.gz" denova
     )
   fi
-  # One release only: v0.7.0 macOS clients match darwin-* in asset names.
-  # Linux and Windows clients already match the new WebUI names.
-  if [[ "${VERSION#v}" == 0.7.1 && "${goos}" == darwin ]]; then
-    cp "${DIST_DIR}/${package_name}.${archive_type}" "${DIST_DIR}/denova-${VERSION}-${key}.${archive_type}"
-  fi
 done
 
 echo "==> Writing checksums.txt"
 : > "${DIST_DIR}/checksums.txt"
-for file in "${DIST_DIR}"/denova-webui-"${VERSION}"-* "${DIST_DIR}"/denova-"${VERSION}"-*; do
+for file in "${DIST_DIR}"/denova-webui-"${VERSION}"-*; do
   [[ -f "${file}" ]] || continue
   checksum_file "${file}" >> "${DIST_DIR}/checksums.txt"
 done

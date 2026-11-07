@@ -73,16 +73,14 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
-          path: dist/github-release/denova-*${{ env.RELEASE_TAG }}-*
+          path: dist/github-release/denova-webui-${{ env.RELEASE_TAG }}-*
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: matrix.target == 'linux-x64'
         with:
           name: release-metadata
-          path: |
-            dist/github-release/RELEASE_NOTES.md
-            dist/github-release/install.sh
+          path: dist/github-release/RELEASE_NOTES.md
 
   desktop:
     name: Package Desktop (${{ matrix.os }})
@@ -149,6 +147,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.ci.outputs.sha }}
       - uses: actions/download-artifact@v8
         with:
           pattern: release-*
@@ -159,35 +160,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          for target in macos-arm64 macos-x64 linux-arm64 linux-x64 windows-x64; do
-            extension=tar.gz
-            if [[ "$target" == windows-x64 ]]; then extension=zip; fi
-            test -s "denova-webui-$RELEASE_TAG-$target.$extension"
-          done
-          version="${RELEASE_TAG#v}"
-          if [[ "$version" == 0.7.1 ]]; then
-            for target in darwin-arm64 darwin-x64; do
-              test -s "denova-$RELEASE_TAG-$target.tar.gz"
-            done
-          fi
-          for asset in "denova-desktop-$RELEASE_TAG-macos-arm64.dmg" "denova-desktop-$RELEASE_TAG-windows-x64-setup.exe" "denovadesktop-$version-darwin-arm64.tar.gz" "denovadesktop-$version-windows-amd64.tar.gz" update-darwin-arm64.json update-windows-amd64.json; do
-            test -s "$asset"
-          done
-          sha256sum denova-* denovadesktop-* > checksums.txt
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            # Published assets are immutable: replacing them races clients that
-            # already pinned this release's checksums.
-            if [[ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" != true ]]; then
-              echo "Refusing to replace published assets; publish a new version instead." >&2
-              exit 1
-            fi
-            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
-            gh release upload "$RELEASE_TAG" denova-* denovadesktop-* update-*.json checksums.txt install.sh --clobber
-          else
-            gh release create "$RELEASE_TAG" --draft denova-* denovadesktop-* update-*.json checksums.txt install.sh --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
-          fi
-          # Latest only points to this version once every archive and checksum
-          # has finished uploading. Interrupted uploads leave a private draft.
-          gh release edit "$RELEASE_TAG" --draft=false
+          RELEASE_SOURCE_SHA: ${{ needs.ci.outputs.sha }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/publish-release.sh" "$RELEASE_TAG" "$RELEASE_SOURCE_SHA"

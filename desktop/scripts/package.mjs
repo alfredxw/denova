@@ -23,7 +23,8 @@ const config = {
     ...(process.env.DENOVA_MAC_NOTARY_PROFILE ? { notarize: { keychainProfile: process.env.DENOVA_MAC_NOTARY_PROFILE } } : {}),
   },
   windows: { ...(process.env.DENOVA_WINDOWS_CERTIFICATE ? { certificate: process.env.DENOVA_WINDOWS_CERTIFICATE } : {}) },
-  ...(publicKey ? { updates: { publicKey, github: 'alfredxw/denova', tagPrefix: 'v', deltas: 0, changelog: 'CHANGELOG.md' } } : {}),
+  // Keep machine update files out of the primary release's download list.
+  ...(publicKey ? { updates: { publicKey, github: 'alfredxw/denova', tagPrefix: 'desktop-updates-v', deltas: 0, changelog: 'CHANGELOG.md' } } : {}),
 }
 mkdirSync(path.join(desktop, 'build'), { recursive: true })
 writeFileSync(path.join(root, 'mygo.json'), JSON.stringify(config, null, 2) + '\n')

@@ -6,11 +6,11 @@ Denova 复用 `web/` 的 React 界面、Go HTTP API 和数据格式。桌面宿�
 
 README 和 Release 正文首先提供两个桌面下载入口，WebUI 下载放在折叠区。用户下载文件统一使用 `denova-<desktop|webui>-v<version>-<system>-<arch>`，系统为 `macos`、`windows` 或 `linux`，架构为 `arm64` 或 `x64`。Windows 桌面安装器另加 `-setup.exe`；WebUI Windows 使用 ZIP，macOS 和 Linux 使用 tar.gz。
 
-MyGo 自动更新归档和 manifest 保留官方命名，不属于手动安装入口，不能按安装器规则重命名。WebUI 更新器只匹配 WebUI 包与旧版 Web 包，优先使用新名称，不匹配桌面包。
+主 Release 只上传五个 WebUI 包、两个桌面安装包和 `checksums.txt`，共八个附件。GitHub 另行显示两个自动生成的源码归档，因此页面 Assets 数量为十。发布脚本核对远端附件的完整名称集合与 SHA-256，任何多余、缺失或内容不匹配的附件都会阻止发布。
 
-仅 v0.7.1 额外上传 `denova-v0.7.1-darwin-arm64.tar.gz` 和 `denova-v0.7.1-darwin-x64.tar.gz`，内容与新名称的 macOS WebUI 包相同，用于 v0.7.0 的自动升级；后续发布不再生成这两份过渡包。Windows 和 Linux 的 v0.7.0 在线更新可直接识别新名称。
+MyGo 自动更新归档和 manifest 保留官方命名，上传至同仓库的 `desktop-updates-v<version>` Release；该 Release 永不标记为 latest。桌面包使用官方 `tagPrefix: desktop-updates-v` 发现最新的独立更新版本，仍沿用同一签名密钥。主 `v<version>` Release 保持 latest，WebUI 更新器继续从主 Release 读取平台包与 `checksums.txt`。
 
-v0.7.0 离线上传仍要求旧文件名。上传 v0.7.1 WebUI 包前，将文件名改为 `denova-v0.7.1-<platform>.<extension>`；macOS 的 platform 为 `darwin-arm64` 或 `darwin-x64`，Windows 和 Linux 保留 `windows-x64`、`linux-x64` 或 `linux-arm64`。仅改文件名，不修改归档内容。v0.7.1 同时识别新旧名称，无需再重命名。
+v0.7.0、v0.7.1 桌面版固定读取旧更新入口，需要手动安装 v0.7.2 一次，继续选择原数据目录，后续由独立更新通道升级。v0.7.1 WebUI 已识别新名称，可以直接自动升级；更早的 macOS WebUI 可运行新版安装脚本或手动安装。发布历史不覆盖或删除，不为旧名称继续生成重复包。安装脚本从对应源码 tag 的 `scripts/install.sh` 读取，不再作为主 Release 附件。
 
 ## 使用与数据
 
@@ -96,7 +96,7 @@ CI 未设置平台证书及密码时跳过平台签名；只设置其中一项�
 
 本地可直接指定 `DENOVA_MAC_SIGNING_IDENTITY`、`DENOVA_MAC_NOTARY_PROFILE` 或 `DENOVA_WINDOWS_CERTIFICATE`（密码通过 `MYGO_WINDOWS_CERTIFICATE_PASSWORD`）。CI 证书准备仅在临时 runner 执行。私钥与证书不进入仓库。
 
-官方 CLI 生成签名的 `denovadesktop-<version>-<os>-<arch>.tar.gz` 和 `update-<os>-<arch>.json`，发布时同安装器一起上传。使用独立的 `denovadesktop-` 前缀，防止已发行 Web 更新器按 `denova-` 与平台名匹配时误下载桌面包。当前采用全量归档更新，所有平台与 Web 共用 `v<version>` tag；Release 在资产齐全之前保持 draft。
+官方 CLI 生成签名的 `denovadesktop-<version>-<os>-<arch>.tar.gz` 和 `update-<os>-<arch>.json`，从 `desktop-updates-v<version>` 分发，不进入主 Release。当前采用全量归档更新；桌面更新与主 Release 绑定同一源码提交，附件齐全且校验通过后先公开更新通道，再将主 Release 标记为 latest。
 
 ## 验证
 

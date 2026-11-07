@@ -12,6 +12,20 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+## [v0.7.2] - 2026-11-07
+
+### Brief / 简要说明
+
+#### 中文
+
+- 主 Release 只保留五个 WebUI 包、两个桌面安装包与校验文件；桌面自动更新文件移至独立通道。
+- v0.7.0、v0.7.1 桌面版需手动安装本版一次，之后继续自动更新；v0.7.1 WebUI 仍可自动升级。
+
+#### English
+
+- Limits the primary release to five WebUI archives, two desktop installers, and checksums. Desktop update files use a separate feed.
+- Desktop v0.7.0 and v0.7.1 need one manual installation to switch feeds. WebUI v0.7.1 can still update automatically.
+
 ## [v0.7.1] - 2026-11-07
 
 ### Brief / 简要说明

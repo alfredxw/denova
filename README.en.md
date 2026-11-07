@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.7.1</strong> (2026-11-07) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.7.2</strong> (2026-11-07) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)
@@ -87,10 +87,12 @@ Lore, Creative Setups, Skills, and version management are shared between the two
 
 | System | Download |
 | --- | --- |
-| macOS Apple Silicon | [Download DMG](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-desktop-v0.7.1-macos-arm64.dmg) |
-| Windows x64 | [Download EXE installer](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-desktop-v0.7.1-windows-x64-setup.exe) |
+| macOS Apple Silicon | [Download DMG](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-desktop-v0.7.2-macos-arm64.dmg) |
+| Windows x64 | [Download EXE installer](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-desktop-v0.7.2-windows-x64-setup.exe) |
 
 macOS: open the DMG and drag Denova into Applications. Windows: run the installer. Desktop does not provide macOS Intel or Linux builds. See the [desktop build guide](docs/desktop-distribution.md) to package from source.
+
+Desktop v0.7.0 and v0.7.1 need one manual installation of v0.7.2 to switch update feeds. Keep your existing data folder. WebUI v0.7.1 can still update automatically.
 
 The current desktop Beta has no Apple Developer ID signing, notarization, or Windows code signing. Your system may require permission on first launch. Desktop updates still verify update package signatures.
 
@@ -101,16 +103,16 @@ Run the downloaded program on your computer or server, then open its address in 
 
 | System | Download |
 | --- | --- |
-| macOS Apple Silicon | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-macos-arm64.tar.gz) |
-| macOS Intel | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-macos-x64.tar.gz) |
-| Windows x64 | [zip](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-windows-x64.zip) |
-| Linux x64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-linux-x64.tar.gz) |
-| Linux ARM64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.1/denova-webui-v0.7.1-linux-arm64.tar.gz) |
+| macOS Apple Silicon | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-macos-arm64.tar.gz) |
+| macOS Intel | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-macos-x64.tar.gz) |
+| Windows x64 | [zip](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-windows-x64.zip) |
+| Linux x64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-linux-x64.tar.gz) |
+| Linux ARM64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-linux-arm64.tar.gz) |
 
 On macOS and Linux, run the installer:
 
 ```bash
-curl -fsSL https://github.com/alfredxw/denova/releases/latest/download/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/v0.7.2/scripts/install.sh | sh
 ```
 
 Run `denova` after installation. For manual downloads, extract the archive and run `denova` (`denova.exe` on Windows).
