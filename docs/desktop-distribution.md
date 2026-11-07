@@ -70,15 +70,19 @@ Windows PowerShell 在仓库根目录运行：
 
 使用 MyGo 官方 CLI 和 `plugins/updater`，不另建下载、签名校验、解包或安装状态机。设置页保留检查入口及自动检查、自动下载开关；检查、进度、重启由官方更新窗口处理。第一次启动从现有用户配置导入更新偏好，之后由官方插件持久化。自动下载开启时，官方插件安装更新并在下一次启动生效；主动重启仍经过 Denova 退出检查和后端收尾。
 
-正式构建设置 `DENOVA_DESKTOP_RELEASE=true`，必须具备平台签名和更新密钥。缺少更新公钥的本地构建仍可运行，官方更新窗口提示未配置更新。
+正式构建设置 `DENOVA_DESKTOP_RELEASE=true`，必须具备更新公钥和私钥，用于验证更新包来源与完整性。平台代码签名与 macOS 公证可选；未配置平台证书时仍生成安装包，首次打开可能出现系统安全提示。当前桌面 Beta 不做 Apple Developer ID 签名、公证或 Windows 代码签名。缺少更新公钥的本地构建仍可运行，官方更新窗口提示未配置更新。
+
+更新密钥可用 `go run github.com/egoist/mygo/cmd/mygo@v0.7.4 keygen -o <private-directory>` 免费生成。将公钥内容配置为 GitHub variable、私钥内容配置为 secret，并在仓库外保留安全备份。后续版本必须沿用同一密钥对，已安装版本只接受对应私钥签署的更新。
 
 | 用途 | GitHub Actions 配置 |
 | --- | --- |
 | 更新公钥 | variable `DENOVA_DESKTOP_UPDATE_PUBLIC_KEY`，由 `mygo keygen` 生成 |
 | 更新私钥 | secret `MYGO_UPDATER_PRIVATE_KEY`，保存 key 文件内容 |
-| macOS 签名 | secrets `MAC_CERTIFICATE`（p12 的 HTTPS URL 或 base64）、`MAC_CERTIFICATE_PASSWORD` |
-| macOS 公证 | secrets `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` |
-| Windows 签名 | secrets `WINDOWS_CERTIFICATE`（pfx 的 HTTPS URL 或 base64）、`WINDOWS_CERTIFICATE_PASSWORD` |
+| macOS 签名（可选） | secrets `MAC_CERTIFICATE`（p12 的 HTTPS URL 或 base64）、`MAC_CERTIFICATE_PASSWORD` |
+| macOS 公证（启用 macOS 签名时） | secrets `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` |
+| Windows 签名（可选） | secrets `WINDOWS_CERTIFICATE`（pfx 的 HTTPS URL 或 base64）、`WINDOWS_CERTIFICATE_PASSWORD` |
+
+CI 未设置平台证书及密码时跳过平台签名；只设置其中一项会报错，避免把配置错误当成主动禁用。
 
 本地可直接指定 `DENOVA_MAC_SIGNING_IDENTITY`、`DENOVA_MAC_NOTARY_PROFILE` 或 `DENOVA_WINDOWS_CERTIFICATE`（密码通过 `MYGO_WINDOWS_CERTIFICATE_PASSWORD`）。CI 证书准备仅在临时 runner 执行。私钥与证书不进入仓库。
 
@@ -101,7 +105,7 @@ Windows 重启脚本可在退出开发版后用 `node desktop/test/restart-windo
 
 CI 在 macOS arm64 和 Windows x64 原生构建运行，并单独启动不含自动化的最终生产包。Windows 最终包启动检查的清理由测试进程终止，正常退出行为由前一阶段的原生菜单测试覆盖。
 
-发布前仍需在两个原生系统验证签名旧版到新版的真实升级、系统信任提示、Windows 安装卸载、中文输入法及休眠恢复。未签名本地构建与交叉编译不代表这些检查通过。
+发布前在两个原生系统检查实际分发包的系统安全提示、Windows 安装卸载、中文输入法及休眠恢复；已有桌面发行版时还需验证真实升级。启用平台签名后另行验证证书、公证与系统信任流程。未签名本地构建与交叉编译不代表这些检查通过。
 
 ## Electron → MyGo 实测（2026-11-04）
 

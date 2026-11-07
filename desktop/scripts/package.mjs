@@ -25,8 +25,6 @@ const config = {
   windows: { ...(process.env.DENOVA_WINDOWS_CERTIFICATE ? { certificate: process.env.DENOVA_WINDOWS_CERTIFICATE } : {}) },
   ...(publicKey ? { updates: { publicKey, github: 'alfredxw/denova', tagPrefix: 'v', deltas: 0, changelog: 'CHANGELOG.md' } } : {}),
 }
-if (release && target.startsWith('darwin') && (!config.macos.signingIdentity || !config.macos.notarize)) throw new Error('macOS releases require signing and notarization')
-if (release && target.startsWith('win32') && !config.windows.certificate) throw new Error('Windows releases require a signing certificate')
 mkdirSync(path.join(desktop, 'build'), { recursive: true })
 writeFileSync(path.join(root, 'mygo.json'), JSON.stringify(config, null, 2) + '\n')
 const mygoVersion = execFileSync('go', ['list', '-m', '-f', '{{.Version}}', 'github.com/egoist/mygo'], { cwd: root, encoding: 'utf8' }).trim()

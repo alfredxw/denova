@@ -7,6 +7,10 @@ import path from 'node:path'
 const mac = process.platform === 'darwin'
 const value = process.env[mac ? 'MAC_CERTIFICATE' : 'WINDOWS_CERTIFICATE']
 const password = process.env[mac ? 'MAC_CERTIFICATE_PASSWORD' : 'MYGO_WINDOWS_CERTIFICATE_PASSWORD']
+if (!value && !password) {
+  console.log('Platform code signing is disabled; no certificate is configured')
+  process.exit(0)
+}
 if (!value || !password || !process.env.RUNNER_TEMP || !process.env.GITHUB_ENV) throw new Error('Missing native signing credentials or GitHub runner environment')
 const certificate = path.join(process.env.RUNNER_TEMP, mac ? 'denova.p12' : 'denova.pfx')
 const bytes = value.startsWith('https://') ? await fetch(value).then(r => { if (!r.ok) throw new Error(`Certificate download failed: ${r.status}`); return r.arrayBuffer() }) : Buffer.from(value, 'base64')

@@ -133,6 +133,12 @@ EOF
 
 ## Install / 安装
 
+Desktop: on macOS Apple Silicon, download the `denovadesktop-*-arm64.dmg` and drag Denova into Applications. On Windows x64, run `denovadesktop-setup-*-amd64.exe`. Without platform code signing or notarization, the first launch may require permission in system security settings. Desktop updates verify update package signatures.
+
+桌面版：macOS Apple Silicon 下载 `denovadesktop-*-arm64.dmg`，将 Denova 拖入 Applications；Windows x64 运行 `denovadesktop-setup-*-amd64.exe`。未做平台代码签名或公证时，首次打开可能需要在系统安全设置中允许运行。桌面自动更新仍校验更新包签名。
+
+Web distribution / Web 分发：
+
 macOS / Linux one-command install / 一键安装：
 
 ```bash

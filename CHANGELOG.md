@@ -12,10 +12,14 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-11-07
+
 ### Brief / 简要说明
 
 #### 中文
 
+- 首次提供 macOS Apple Silicon 与 Windows x64 桌面版，支持原生目录选择、后台任务和整包更新。
+- Codex、Claude Code 接入原生工具与提问，写作和通用对话可复用浏览器／MCP 能力。
 - 游戏控制台可就地调整本故事的叙事规则；叙事风格目录支持兼容导入 SillyTavern 预设。
 - 章节结构支持章、卷—章、卷—章—节；已有作品可在书籍管理中预览调整并备份恢复。
 - 新增图表统计，可按项目和日期查看稿量变化、章节进度、游戏活动与模型用量。
@@ -24,6 +28,8 @@ Denova records major user-visible features, important compatibility or data chan
 
 #### English
 
+- Introduces macOS Apple Silicon and Windows x64 desktop apps with native folder selection, background tasks, and whole-application updates.
+- Integrates native tools and questions from Codex and Claude Code, with browser/MCP support in Writing and General.
 - Tune story-specific narrative rules in the Game console, and import SillyTavern presets from the narrative style directory.
 - Choose chapters, volumes and chapters, or volumes, chapters and sections; preview and back up structure changes in Book Management.
 - Adds chart-based statistics for manuscript changes, chapter progress, Game activity, and model usage by project and date.
@@ -44,12 +50,8 @@ Denova records major user-visible features, important compatibility or data chan
 - New and imported books support one to three manuscript levels, empty volumes and chapters, and section editing. Book Management previews conversions and saves recovery versions; navigation, Agent reading order and TXT exports share the hierarchy.
 - 共通一级菜单新增「统计」，提供写作趋势、稿量分布、章节进度、游戏每日回合与故事线活动、模型调用与 Token 图表；稿量变化和模型用量从升级后开始记录，游戏活动从现存故事日志读取。可在常规设置中关闭本地统计，保留已有记录与创作内容。
 - A shared Statistics destination adds writing trends, manuscript and chapter charts, daily Game turns and story activity, model calls, and token breakdowns. Manuscript changes and model usage are recorded after upgrading; Game activity comes from retained story journals. Local statistics can be disabled in General settings while keeping existing records and creative content.
-- 内置互动游戏创作 Skill，支持游戏构思与核心循环、世界与角色资料库、状态系统、规则判定、游戏规划、开局回合和跑团诊断。
-- A built-in interactive-game design Skill covers game premises and loops, world and character Lore, state systems, rules and checks, planning, openings and turns, and play diagnostics.
-- 互动游戏创作 Skill 补充经典网文向的成长体系、爽点结构、资源与社会资本、世界阶梯、副本/规则恐怖/都市隐杀和外观沉浸感设计。
-- The interactive-game design Skill now covers classic web-novel progression, payoff structure, resources and social capital, world tiers, instance/rule-horror/urban-undercover patterns, and sensory immersion.
-- Skills 库新增「游戏」分类，可在创建、配置和筛选中使用。
-- The Skills library adds a Game category for creation, configuration, and filtering.
+- 新增内置互动游戏创作 Skill 与「游戏」分类，覆盖构思、世界与角色、成长体系、状态与规则、规划、开局及跑团诊断；增强网文与人物创作指导。
+- Adds a built-in interactive-game design Skill and Game category, covering premises, worlds and characters, progression, state and rules, planning, openings, and play diagnostics, with stronger novel and character guidance.
 
 ### Changed / 变更
 
@@ -57,6 +59,11 @@ Denova records major user-visible features, important compatibility or data chan
 - Game presets can provide templates without initial state objects. The Agent chooses templates and creates those objects at the opening. The player character can use any applicable template.
 - 软件更新展示当前版本到目标版本的变化，按版本阅读简要说明和详情；更新完成后保留本次升级范围，并提供完整历史入口。
 - Software updates show changes from the current version to the target, with per-version summaries and details. Completed upgrades retain their comparison range and link to the full history.
+
+### Fixed / 修复
+
+- 修复作品文件结构变化后目录与统计未刷新，以及重新连接会话后实时执行过程无法展开的问题。
+- Fixes stale navigation and statistics after project file structure changes, and live execution details that could not expand after reattaching to a conversation.
 
 ## [v0.6.3] - 2026-10-20
 

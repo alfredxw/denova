@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.6.3</strong>（2026-10-20） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
+  当前版本：<strong>v0.7.0</strong>（2026-11-07） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -83,7 +83,9 @@ Denova 把小说写作、互动故事、结构化资料库、AI Agent、图像�
 
 ### 安装发布版
 
-Denova 支持 Web 与 MyGo 桌面两种分发。桌面版提供 macOS Apple Silicon 的 DMG 和 Windows x64 的 EXE 安装器；不提供 macOS Intel 或 Linux 桌面包。桌面入口首次发行前，可按[桌面构建说明](docs/desktop-distribution.md)从源码打包。
+Denova 支持 Web 与 MyGo 桌面两种分发。桌面版提供 macOS Apple Silicon 的 DMG 和 Windows x64 的 EXE 安装器；不提供 macOS Intel 或 Linux 桌面包。从 [GitHub Releases](https://github.com/alfredxw/denova/releases/latest) 下载桌面安装包，也可按[桌面构建说明](docs/desktop-distribution.md)从源码打包。
+
+当前桌面 Beta 未做 Apple Developer ID 签名、公证或 Windows 代码签名，首次打开可能需要在系统安全设置中允许运行；桌面自动更新仍校验更新包签名。
 
 Web 分发继续支持 Windows、macOS 和 Linux：
 

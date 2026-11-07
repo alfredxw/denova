@@ -182,7 +182,8 @@ describe('useWorkspace', () => {
   it('关闭后台刷新时窗口唤醒也不扫描目录和章节统计', async () => {
     render(<WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />)
 
-    await waitFor(() => expect(apiMock.getProjectBookTree).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByTestId('workspace-readiness')).toHaveTextContent('true|true|true'))
+    expect(apiMock.getProjectBookTree).toHaveBeenCalledTimes(1)
     expect(apiMock.getProjectBookSummary).toHaveBeenCalledTimes(1)
     apiMock.getProjectBookTree.mockClear()
     apiMock.getProjectBookSummary.mockClear()
@@ -220,7 +221,9 @@ describe('useWorkspace', () => {
 
   it('合并自动刷新期间的重复唤醒，避免目录和统计请求重叠', async () => {
     render(<WorkspaceHarness onChange={() => {}} />)
-    await waitFor(() => expect(apiMock.getProjectBookTree).toHaveBeenCalledTimes(1))
+    // Focus refresh is registered after the initial snapshot has settled.
+    await waitFor(() => expect(screen.getByTestId('workspace-readiness')).toHaveTextContent('true|true|true'))
+    expect(apiMock.getProjectBookTree).toHaveBeenCalledTimes(1)
 
     const treeRefresh = deferred<unknown[]>()
     const summaryRefresh = deferred<{ title: string; author: string; chapter_count: number; total_words: number; chapters: unknown[] }>()

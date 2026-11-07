@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.6.3</strong> (2026-10-20) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
+  Current version: <strong>v0.7.0</strong> (2026-11-07) · Beta · <a href="https://github.com/alfredxw/denova/releases">Download the latest release</a>
 </p>
 
 ![Denova Writing](./img/ide.png)
@@ -83,7 +83,9 @@ Lore, Creative Setups, Skills, and version management are shared between the two
 
 ### Install a Release
 
-Denova supports Web and MyGo desktop distributions. Desktop targets macOS Apple Silicon (DMG) and Windows x64 (EXE); macOS Intel and Linux desktop packages are not provided. Until the first desktop release, follow the [desktop build guide](docs/desktop-distribution.md) to package from source.
+Denova supports Web and MyGo desktop distributions. Desktop targets macOS Apple Silicon (DMG) and Windows x64 (EXE); macOS Intel and Linux desktop packages are not provided. Download desktop installers from [GitHub Releases](https://github.com/alfredxw/denova/releases/latest), or follow the [desktop build guide](docs/desktop-distribution.md) to package from source.
+
+The current desktop Beta has no Apple Developer ID signing, notarization, or Windows code signing. Your system may require permission to open it the first time. Desktop updates still verify update package signatures.
 
 The Web distribution continues to support Windows, macOS, and Linux:
 

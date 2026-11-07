@@ -85,7 +85,7 @@ jobs:
             dist/github-release/install.sh
 
   desktop:
-    name: Package signed Desktop (${{ matrix.os }})
+    name: Package Desktop (${{ matrix.os }})
     needs: ci
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -124,16 +124,16 @@ jobs:
           run-id: ${{ needs.ci.outputs.run-id }}
           github-token: ${{ github.token }}
       - run: mkdir -p output && tar -xf ci-distribution.tar -C output
-      - name: Build and sign the tested application
+      - name: Prepare optional platform signing and build the tested application
         env:
           DENOVA_RELEASE_FRONTEND_DIR: ${{ github.workspace }}/output/web
           DENOVA_VERSION: ${{ env.RELEASE_TAG }}
         run: |
           node desktop/scripts/signing.mjs
           pnpm --dir desktop build:backend
-      - name: Package the signed application
+      - name: Package the application with signed updates
         run: pnpm --dir desktop package
-      - name: Exercise the signed production application
+      - name: Exercise the production application
         run: node desktop/test/package.mjs
       - uses: actions/upload-artifact@v7
         with:
