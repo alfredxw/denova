@@ -12,6 +12,20 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+## [v0.7.3] - 2026-11-09
+
+### Brief / 简要说明
+
+#### 中文
+
+- 修复 macOS、Windows 桌面版使用默认语言时，首次选择数据目录后崩溃、无法打开主窗口的问题。
+- 修正 macOS 安装包的最低系统版本声明，与实际要求的 macOS 13 保持一致。
+
+#### English
+
+- Fixes macOS and Windows Desktop crashing before the main window opens after first selecting a data folder with the default language setting.
+- Corrects the macOS package's minimum system version to match its existing macOS 13 requirement.
+
 ## [v0.7.2] - 2026-11-07
 
 ### Brief / 简要说明

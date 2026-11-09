@@ -20,7 +20,7 @@ v0.7.0、v0.7.1 桌面版固定读取旧更新入口，需要手动安装 v0.7.2
 | Desktop macOS | `denova-desktop-v<version>-macos-arm64.dmg` | MyGo 官方 updater |
 | Desktop Windows | `denova-desktop-v<version>-windows-x64-setup.exe` | MyGo 官方 updater |
 
-macOS 将 Denova 拖入 Applications。Windows 使用 MyGo 生成的按用户安装器，缺少 WebView2 时由官方安装流程处理运行时依赖。首次启动选择 `~/.denova` 或已有数据根目录，不会再追加 `.denova`。Web 与 Desktop 可使用同一个目录，但必须先退出另一个实例；旧发行版不识别进程锁，切换前同样需要退出。
+macOS 需要 Apple Silicon 与 macOS 13 或更新版本，将 Denova 拖入 Applications。Windows 使用 MyGo 生成的按用户安装器，Windows 11 和绝大多数 Windows 10 已有 WebView2，仅缺少运行时的设备需要安装 [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download)；当前安装器不会自动补装。首次启动选择 `~/.denova` 或已有数据根目录，不会再追加 `.denova`。Web 与 Desktop 可使用同一个目录，但必须先退出另一个实例；旧发行版不识别进程锁，切换前同样需要退出。
 
 在「设置 → 数据目录」或原生菜单切换目录。应用停止原后端、重启并加载新目录，不自动复制或移动数据；存在运行任务或已启用自动化时先确认。主 React 页面、导航、编辑器与游戏设计维持原样；macOS 保留导航栏顶部红绿灯与拖动区域，Windows 使用融合菜单栏，保留系统窗口按钮、吸附布局与 Alt/F10 菜单访问。开发窗口与发行包均使用 Denova 图标。
 
@@ -113,7 +113,7 @@ node desktop/test/package.mjs
 
 Windows 重启脚本可在退出开发版后用 `node desktop/test/restart-windows.mjs` 验证；加 `--rebuild` 同时检查完整资源重建。该测试使用隔离数据和 Windows PowerShell 5.1，检查连续启动、PID 保护、正常退出及旧后端和 Vite 的清理。
 
-CI 在 macOS arm64 和 Windows x64 原生构建运行，并单独启动不含自动化的最终生产包。Windows 最终包启动检查的清理由测试进程终止，正常退出行为由前一阶段的原生菜单测试覆盖。
+CI 在 macOS arm64 和 Windows x64 原生构建运行，并用没有配置文件的空数据目录单独启动不含自动化的最终生产包，覆盖默认 `language = "auto"` 的首次初始化。该测试预先传入目录路径；原生目录对话框仍需人工验证。Windows 最终包启动检查通过退出参数请求正常退出。
 
 发布前在两个原生系统检查实际分发包的系统安全提示、Windows 安装卸载、中文输入法及休眠恢复；已有桌面发行版时还需验证真实升级。启用平台签名后另行验证证书、公证与系统信任流程。未签名本地构建与交叉编译不代表这些检查通过。
 

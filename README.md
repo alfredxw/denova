@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.7.2</strong>（2026-11-07） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
+  当前版本：<strong>v0.7.3</strong>（2026-11-09） · Beta · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -87,12 +87,14 @@ Denova 把小说写作、互动故事、结构化资料库、AI Agent、图像�
 
 | 系统 | 下载 |
 | --- | --- |
-| macOS Apple Silicon | [下载 DMG](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-desktop-v0.7.2-macos-arm64.dmg) |
-| Windows x64 | [下载 EXE 安装器](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-desktop-v0.7.2-windows-x64-setup.exe) |
+| macOS Apple Silicon | [下载 DMG](https://github.com/alfredxw/denova/releases/download/v0.7.3/denova-desktop-v0.7.3-macos-arm64.dmg) |
+| Windows x64 | [下载 EXE 安装器](https://github.com/alfredxw/denova/releases/download/v0.7.3/denova-desktop-v0.7.3-windows-x64-setup.exe) |
 
 macOS 打开 DMG，将 Denova 拖入 Applications；Windows 运行安装器。桌面版不提供 macOS Intel 或 Linux 包。[桌面构建说明](docs/desktop-distribution.md)介绍源码打包。
 
-v0.7.0、v0.7.1 桌面版需手动安装 v0.7.2 一次，以切换自动更新通道；继续使用原数据目录。v0.7.1 WebUI 可继续自动升级。
+macOS 需要 13 或更新版本。Windows 11 和绝大多数 Windows 10 已有 WebView2；仅缺少该运行时的设备需要安装 [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download)。
+
+v0.7.0、v0.7.1 桌面版需手动安装本版一次，以切换自动更新通道；v0.7.2 可自动升级。如果旧版无法启动，直接安装本版并选择原数据目录即可。v0.7.1 及之后的 WebUI 可继续自动升级。
 
 当前桌面 Beta 未做 Apple Developer ID 签名、公证或 Windows 代码签名，首次打开可能需要在系统安全设置中允许运行；桌面自动更新仍校验更新包签名。
 
@@ -103,16 +105,16 @@ v0.7.0、v0.7.1 桌面版需手动安装 v0.7.2 一次，以切换自动更新�
 
 | 系统 | 下载 |
 | --- | --- |
-| macOS Apple Silicon | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-macos-arm64.tar.gz) |
-| macOS Intel | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-macos-x64.tar.gz) |
-| Windows x64 | [zip](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-windows-x64.zip) |
-| Linux x64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-linux-x64.tar.gz) |
-| Linux ARM64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.2/denova-webui-v0.7.2-linux-arm64.tar.gz) |
+| macOS Apple Silicon | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.3/denova-webui-v0.7.3-macos-arm64.tar.gz) |
+| macOS Intel | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.3/denova-webui-v0.7.3-macos-x64.tar.gz) |
+| Windows x64 | [zip](https://github.com/alfredxw/denova/releases/download/v0.7.3/denova-webui-v0.7.3-windows-x64.zip) |
+| Linux x64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.3/denova-webui-v0.7.3-linux-x64.tar.gz) |
+| Linux ARM64 | [tar.gz](https://github.com/alfredxw/denova/releases/download/v0.7.3/denova-webui-v0.7.3-linux-arm64.tar.gz) |
 
 macOS 和 Linux 可以使用一键安装脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/v0.7.2/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/v0.7.3/scripts/install.sh | sh
 ```
 
 安装后运行 `denova`；手动下载的包解压后运行 `denova`，Windows 运行 `denova.exe`。

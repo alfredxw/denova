@@ -379,6 +379,8 @@ func (s *shell) start() error {
 	if b.locale == "en-US" || b.locale == "zh-CN" {
 		s.preferences.Locale = b.locale
 	}
+	// The backend can return "auto"; native APIs require the resolved locale.
+	locale := s.preferences.Locale
 	version := mygo.App.Version()
 	if s.preferences.Version != "" && s.preferences.Version != version {
 		s.preferences.CompletedUpdate = &update.CompletedUpdate{ID: "desktop-" + version, PreviousVersion: s.preferences.Version, Version: version, CompletedAt: time.Now().UTC()}
@@ -459,7 +461,7 @@ func (s *shell) start() error {
 	w.OnReadyToShow(s.focus)
 	w.Page().OnDidFinishLoad(func() { slog.Info("Desktop page loaded", "url", w.Page().URL(), "webview_pid", w.Page().ProcessID()) })
 	mygo.RunOnMain(func() {
-		mygo.App.SetLocale(b.locale)
+		mygo.App.SetLocale(locale)
 		s.menus()
 	})
 	if err = w.Page().LoadURL("mygo://localhost/"); err != nil {

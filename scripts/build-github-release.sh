@@ -126,13 +126,17 @@ EOF
 | macOS Apple Silicon | [Download DMG / 下载 DMG](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-desktop-@TAG@-macos-arm64.dmg) |
 | Windows x64 | [Download installer / 下载安装器](https://github.com/alfredxw/denova/releases/download/@TAG@/denova-desktop-@TAG@-windows-x64-setup.exe) |
 
-macOS: open the DMG and drag Denova into Applications. Windows: run the EXE installer.
+macOS 13 or later (Apple Silicon): open the DMG and drag Denova into Applications. Windows x64: run the EXE installer.
 
-macOS 打开 DMG，将 Denova 拖入 Applications；Windows 运行 EXE 安装器。
+macOS 13 及以上（Apple Silicon）打开 DMG，将 Denova 拖入 Applications；Windows x64 运行 EXE 安装器。
 
 Desktop v0.7.0 and v0.7.1: install this version manually once to switch to the separate automatic-update feed. Keep your existing data folder. WebUI v0.7.1 can still update automatically.
 
 v0.7.0、v0.7.1 桌面版需手动安装本版一次，以切换自动更新通道；继续使用原数据目录。v0.7.1 WebUI 可继续自动升级。
+
+If Desktop cannot start, install this version manually and select your existing data folder.
+
+如果旧版桌面程序无法启动，直接安装本版并选择原数据目录即可。
 
 This Beta has no platform code signing or macOS notarization. Your system may require permission on first launch. Desktop updates verify package signatures.
 
