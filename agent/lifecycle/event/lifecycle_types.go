@@ -472,6 +472,15 @@ type Observation struct {
 
 type RunError struct {
 	Result agentschema.Result
+	// Cause preserves the live failure chain without adding diagnostics to the journal.
+	Cause error `json:"-"`
+}
+
+func (err *RunError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Cause
 }
 
 func (err *RunError) Error() string {

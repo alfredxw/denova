@@ -1,4 +1,5 @@
 import { randomUUID } from '@/lib/uuid'
+import { useLocalAccess } from '@/features/remote-access/api'
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
@@ -104,11 +105,15 @@ export function PluginWorkspaceProvider({ children }: { children: ReactNode }) {
 export function PluginActionsButton({ projectId, context, pluginId, label }: PluginLauncherTarget & { label?: string }) {
   const open = useContext(PluginWorkspaceContext)
   const { t } = useTranslation()
+  const local = useLocalAccess()
+  if (!local) return null
   return <Button variant="ghost" size="sm" onClick={() => open?.({ projectId, context, pluginId })}><Puzzle />{label ?? t('platform.plugins.actions')}</Button>
 }
 
 export function PluginActionsMenuItem({ projectId, context }: PluginLauncherTarget) {
   const open = useContext(PluginWorkspaceContext)
   const { t } = useTranslation()
+  const local = useLocalAccess()
+  if (!local) return null
   return <DropdownMenuItem onSelect={() => open?.({ projectId, context })}><Puzzle />{t('platform.plugins.actions')}</DropdownMenuItem>
 }

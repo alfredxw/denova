@@ -87,7 +87,7 @@ export function InstalledPackageDetail({ installation: item, extensions, blocked
             <DropdownMenuTrigger asChild><Button variant="outline" disabled={pending}><MoreHorizontal data-icon="inline-start" />{t('market.acquired.actions')}</Button></DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-auto max-w-[calc(100vw-2rem)]">
               <DropdownMenuGroup>
-                <DropdownMenuItem onSelect={() => onExport({ installation: item })}><Upload />{t('market.export.title')}</DropdownMenuItem>
+                <DropdownMenuItem disabled={!!blockedReason} onSelect={() => onExport({ installation: item })}><Upload />{t('market.export.title')}</DropdownMenuItem>
                 <DropdownMenuItem disabled={!!blockedReason} onSelect={() => setDialog('backup')}><ArchiveRestore />{t('market.backups.title')}</DropdownMenuItem>
                 {item.game_defaults && Object.keys(item.game_defaults).length > 0 && <DropdownMenuItem onSelect={() => setDialog('defaults')}><Settings2 />{t('gameDefaults.adopt')}</DropdownMenuItem>}
               </DropdownMenuGroup>

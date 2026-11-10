@@ -20,7 +20,8 @@ export function BookCoverThumbnail({ book, version, previewURL, title, decorativ
   }, [book?.path, version, previewURL])
 
   const imageTitle = title || book?.name || book?.path || ''
-  const src = previewURL || (book?.path ? bookCoverURL(book.path, version) : '')
+  // No cover timestamp means no cover exists; render the placeholder without a 404 probe.
+  const src = previewURL || (book?.path && version ? bookCoverURL(book.path, version) : '')
   const showImage = Boolean(src) && !failed
 
   return (

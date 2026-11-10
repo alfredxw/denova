@@ -260,19 +260,21 @@ func TestSettingsAndClientErrorsHaveClosedPayloads(t *testing.T) {
 	s.SettingChanged("api_key", "private")
 	s.SettingChanged("theme", "private")
 	s.ClientError("private")
+	s.APIError(Game, "private route", ErrorHTTP, 503)
+	s.APIError(Game, "read", "private error", 503)
 	if len(s.queue) != 0 || len(c.snapshot()) != 0 {
 		t.Fatal("unapproved properties admitted")
 	}
 	s.SettingChanged("theme", "dark")
 	s.ClientError(ErrorRender)
-	s.APIError(Game, 503)
+	s.APIError(Game, "read", ErrorHTTP, 503)
 	s.RecoveredPanic()
 	events := awaitEvents(t, c, 4)
 	want := eventData{AppVersion: "0.6.3", OS: runtime.GOOS, Source: "app", SchemaVersion: 2, SettingName: "theme", SettingValue: "dark"}
 	if !reflect.DeepEqual(events[0].Properties, want) {
 		t.Fatalf("settings leaked data: %+v", events[0])
 	}
-	if events[1].Properties.ErrorSource != Frontend || events[2].Properties.StatusCode != 503 || events[3].Properties.ErrorCode != ErrorPanic {
+	if events[1].Properties.ErrorSource != Frontend || events[2].Properties.StatusCode != 503 || events[2].Properties.Operation != "read" || events[3].Properties.ErrorCode != ErrorPanic {
 		t.Fatalf("missing error context: %+v", events)
 	}
 	if s.state.FirstActive != "" {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocalAccess } from '@/features/remote-access/api'
 import { Download, Gamepad2, MoreHorizontal, Package, Puzzle, RefreshCw, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -30,6 +31,7 @@ import { discardPreview, exchange, getCatalog, type Installation, type MarketEnt
 export function ResourceCenterView({ projectID, visible }: { projectID?: string; visible: boolean }) {
   const { t } = useTranslation()
   const client = useQueryClient()
+  const local = useLocalAccess()
   const destination = useResourceNavigation(state => state.destination)
   const section = destination.section
   const settings = useQuery({ ...settingsQueryOptions(GLOBAL_SETTINGS_TARGET), enabled: visible })
@@ -37,7 +39,7 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
   const catalogKey = ['resource-market', registryURL]
   const catalog = useQuery({ queryKey: catalogKey, queryFn: () => getCatalog(), enabled: visible && settings.isSuccess, retry: false })
   const installed = useQuery({ queryKey: ['resources', 'installations'], queryFn: () => exchange<Installation[]>('/installations'), enabled: visible })
-  const extensions = useQuery({ queryKey: ['platform', 'catalog'], queryFn: () => management<CatalogEntry[]>('/catalog'), enabled: visible })
+  const extensions = useQuery({ queryKey: ['platform', 'catalog'], queryFn: () => management<CatalogEntry[]>('/catalog'), enabled: visible && local })
   const installations = installed.data ?? []
   const updates = installations.filter(item => item.tracking === 'tracked' && item.remote_state === 'update_available')
   // Resolve against all installations so finishing an update does not dismiss its detail.
@@ -63,7 +65,7 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
   const [creationKind, setCreationKind] = useState<PackageKind>()
   const [checking, setChecking] = useState(false)
   const [dirtyExtensions, setDirtyExtensions] = useState<ReadonlySet<string>>(() => new Set())
-  const blockedReason = dirtyExtensions.size ? t('market.unsavedExtensions') : undefined
+  const blockedReason = !local ? t('remoteAccess.localOnly') : dirtyExtensions.size ? t('market.unsavedExtensions') : undefined
   const updateDirty = useCallback((key: string, dirty: boolean) => setDirtyExtensions(previous => {
     if (previous.has(key) === dirty) return previous
     const next = new Set(previous)
@@ -123,9 +125,9 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
       leadingContent={<SidebarVisibilityToggle visible={sidebarVisible} onToggle={() => setSidebarVisible(value => !value)} />}
       actions={<>
         <Button size="sm" onClick={() => openImport({})} disabled={!!blockedReason}><Download data-icon="inline-start" />{t('market.import.title')}</Button>
-        <Button size="sm" variant="outline" onClick={() => setExporting({})}><Upload data-icon="inline-start" />{t('market.export.title')}</Button>
+        <Button size="sm" variant="outline" disabled={!local} onClick={() => setExporting({})}><Upload data-icon="inline-start" />{t('market.export.title')}</Button>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t('market.development')}><MoreHorizontal /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" disabled={!local} aria-label={t('market.development')}><MoreHorizontal /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end"><DropdownMenuGroup>
             <DropdownMenuItem onSelect={() => setCreationKind('plugin')}><Puzzle />{t('platform.create.plugin')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setCreationKind('game')}><Gamepad2 />{t('platform.create.game')}</DropdownMenuItem>
@@ -134,7 +136,7 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
       </>}
     >
       {blockedReason && <div role="status" className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-sm">
-        <span>{blockedReason}</span><Button size="sm" variant="link" onClick={() => openResourceDestination({ section: 'extensions', extensionKey: [...dirtyExtensions][0] })}>{t('market.reviewSettings')}</Button>
+        <span>{blockedReason}</span>{local && <Button size="sm" variant="link" onClick={() => openResourceDestination({ section: 'extensions', extensionKey: [...dirtyExtensions][0] })}>{t('market.reviewSettings')}</Button>}
       </div>}
       <ResourceWorkspace title={t('market.title')} className="flex-1" mainClassName="min-h-0 min-w-0"
         left={{ id: 'market-navigation', title: t('market.navigation'), side: 'left', icon: <Package />, desktopVisible: sidebarVisible, desktopClassName: 'min-h-0 border-r', mobileClassName: 'w-[min(90vw,320px)]', content:
@@ -147,7 +149,7 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
         <div hidden={section !== 'discover' || !!detail} className="h-full overflow-auto">
           <ResourceDiscovery registryURL={registryURL} key={registryURL} category={category} setCategory={setCategory} catalog={catalog.data} loading={catalog.isFetching}
             error={catalog.error ? 'market.errors.catalogUnavailable' : undefined} installations={installations} onOpen={setDetail}
-            onRefresh={() => { void client.fetchQuery({ queryKey: catalogKey, queryFn: () => getCatalog(true), staleTime: 0 }).catch(error => console.error('[resources] catalog refresh failed', error)) }} />
+            onRefresh={() => { void client.fetchQuery({ queryKey: catalogKey, queryFn: () => getCatalog(local), staleTime: 0 }).catch(error => console.error('[resources] catalog refresh failed', error)) }} />
         </div>
         {section === 'discover' && detail && <MarketEntryDetail detail={detail} acquired={matchingInstallations.length}
           onBack={() => setDetail(undefined)} onImport={(source, initialInput) => openImport({ source, initialInput })}
@@ -178,8 +180,8 @@ export function ResourceCenterView({ projectID, visible }: { projectID?: string;
             openResourceDestination({ section })
           }} onChanged={refreshResources} onCheckUpdate={checkUpdate} onImport={openImport} onExport={setExporting} />}
         <div hidden={section !== 'extensions'} className="h-full overflow-auto">
-          <InstalledExtensions visible={visible && section === 'extensions'} catalog={extensions.data} error={extensions.error} installations={installations}
-            dirtyEntries={dirtyExtensions} onDirtyChange={updateDirty} onRefresh={refreshResources} onUpdate={checkUpdate} blockedReason={blockedReason} />
+          {local && <InstalledExtensions visible={visible && section === 'extensions'} catalog={extensions.data} error={extensions.error} installations={installations}
+            dirtyEntries={dirtyExtensions} onDirtyChange={updateDirty} onRefresh={refreshResources} onUpdate={checkUpdate} blockedReason={blockedReason} />}
         </div>
       </ResourceWorkspace>
     </FeaturePageShell>

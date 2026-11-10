@@ -1,4 +1,5 @@
 const remoteAccess = {
+  'remoteAccess.localOnly': 'Use this feature on the device running Denova.',
   'remoteAccess.connecting': 'Connecting to Denova',
   'remoteAccess.connectionFailed': 'Cannot connect to Denova',
   'remoteAccess.retry': 'Retry',

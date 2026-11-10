@@ -59,7 +59,7 @@ pseudonymous analysis, not absolute anonymity.
 | `core_active_day` | First such successful user work per feature per UTC date | `feature_name` |
 | `action_completed` | Successful book creation, book export, or project version restore | `feature_name`, `action` |
 | `settings_changed` | Successfully changed effective theme or language | `setting_name`, enum `value` |
-| `app_error` | Registered authenticated API error, fixed browser exception kind, or recovered API panic | `error_source`, `error_code`; API errors include HTTP `status_code` and a fixed feature when known |
+| `app_error` | Registered authenticated API error, fixed browser exception kind, or recovered API panic | `error_source`, `error_code`; API errors include HTTP `status_code`, an allowlisted `operation`, and a fixed feature when known |
 
 Features are `writing`, `game`, `chat`, `image`, `library`, `versions`,
 `automation`, `projects`, and `resources`. A read is 30 seconds with the page
@@ -97,15 +97,24 @@ Execution errors are classified from structured provider/network/filesystem
 errors into `authentication`, `rate_limit`, `timeout`, `network`,
 `provider_unavailable`, `invalid_request`, `permission_denied`, `not_found`,
 `cancelled`, or `unknown`. Raw text is never used as a cloud property.
-Adapters that lose structured causes may produce `unknown`.
+Native `RunError` preserves its original cause in memory through `Unwrap`;
+the cause is not journaled or uploaded. Failures without a structured cause
+still produce `unknown`.
 
 Browser kinds are `react_error`, `window_error`, `unhandled_rejection`,
 `white_screen`, and `startup`. The API accepts only those enums, rejecting
 messages, stacks and extra fields. Browser error delivery failures are ignored
 and cannot recursively generate more error reports.
 
-API errors use `error_source=api`, `error_code=http_error`, a status, and a
-locally derived feature. No URL, route parameter or response text is serialized.
+API errors use `error_source=api`, a status, and locally derived feature and
+operation categories. Known reads distinguish `book_cover`, `plugin_pages`,
+`extension_catalog`, `extension_development`, `extension_runtimes`,
+`game_instances`, and `game_preferences`; other operations use only
+`read`, `create`, `update`, `delete`, or `other`.
+HTTP status maps to fixed validation, authentication, permission, not-found,
+conflict, rate-limit, or timeout codes, with `http_error` as the fallback.
+Only explicitly recognized server codes can refine these to `local_only` or
+`not_configured`. No URL, route parameter or response text is serialized.
 A 4xx may be validation or an expected conflict; do not treat all API errors as
 bugs. An execution failure may also lead to an HTTP error: do not sum both
 series and call it a count of distinct incidents.
@@ -188,6 +197,16 @@ executions are excluded from user activity and user execution reports. The
 native daily latency chart uses milliseconds; the grouped latency table uses
 seconds and shows its sample size.
 
+The success, application-error and execution-failure tables use release-version
+format samples (`v?x.y.z`) and group by version and OS. The application-error
+trend uses the same filter. This excludes known fork
+and development suffixes but does not prove build provenance. The ingestion
+table retains both sample groups separately and reports unknown execution
+failures / all execution failures (NULL when there are no failures). Application
+errors separate frontend, server 5xx/panics and API 4xx; occurrences and affected
+instances are distinct measures. Older API events show `legacy_unknown` for
+operation. Existing historical events cannot gain missing causes after an upgrade.
+
 The reusable management script requires Node 22+ and a personal API key in the
 process environment or ignored repository-root `.env`, named
 `POSTHOG_PERSONAL_API_KEY`. It checks that the project's public capture token
@@ -199,7 +218,11 @@ do not depend on it remaining in this file.
 ```sh
 node scripts/configure-posthog.mjs --verify
 node scripts/configure-posthog.mjs --apply
+node scripts/configure-posthog.mjs --plan
 ```
+
+`--plan` prints the insight definitions without requiring management credentials
+or contacting PostHog, for review or editing through the authenticated UI.
 
 Verification executes every query, checks saved definitions and layout, and
 runs query-only fixtures for distinct counts, success denominators, P50, empty

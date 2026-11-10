@@ -24,6 +24,9 @@ const (
 	ErrorPermission     ErrorCode = "permission_denied"
 	ErrorNotFound       ErrorCode = "not_found"
 	ErrorHTTP           ErrorCode = "http_error"
+	ErrorLocalOnly      ErrorCode = "local_only"
+	ErrorConflict       ErrorCode = "conflict"
+	ErrorNotConfigured  ErrorCode = "not_configured"
 	ErrorPanic          ErrorCode = "panic_recovered"
 	ErrorRender         ErrorCode = "react_error"
 	ErrorWindow         ErrorCode = "window_error"
@@ -88,23 +91,33 @@ func (s *Service) ClientError(code ErrorCode) {
 	if !ValidClientError(code) {
 		return
 	}
-	s.recordError(Frontend, code, "", 0)
+	s.recordError(Frontend, code, "", "", 0)
 }
 
-// APIError accepts only server-chosen categories/statuses, not routes, response
-// bodies or client-supplied error codes. HTTP errors are separate from run results.
-func (s *Service) APIError(feature Feature, status int) {
+// APIError accepts closed server-chosen categories, never routes, response bodies
+// or raw error codes. HTTP errors are separate from run results.
+func (s *Service) APIError(feature Feature, operation string, code ErrorCode, status int) {
 	if status < 400 || status > 599 || (feature != "" && !feature.Valid()) {
 		return
 	}
-	s.recordError(API, ErrorHTTP, feature, status)
+	switch operation {
+	case "read", "create", "update", "delete", "other", "book_cover", "plugin_pages", "extension_catalog", "extension_development", "extension_runtimes", "game_instances", "game_preferences":
+	default:
+		return
+	}
+	switch code {
+	case ErrorHTTP, ErrorLocalOnly, ErrorConflict, ErrorNotConfigured, ErrorAuthentication, ErrorPermission, ErrorNotFound, ErrorRateLimit, ErrorTimeout, ErrorInvalidRequest:
+	default:
+		return
+	}
+	s.recordError(API, code, feature, operation, status)
 }
 
 // RecoveredPanic is not a claim that the process crashed. Hard termination and
 // failures before analytics consent may have no report at all.
-func (s *Service) RecoveredPanic() { s.recordError(Backend, ErrorPanic, "", 0) }
+func (s *Service) RecoveredPanic() { s.recordError(Backend, ErrorPanic, "", "", 0) }
 
-func (s *Service) recordError(source ErrorSource, code ErrorCode, feature Feature, status int) {
+func (s *Service) recordError(source ErrorSource, code ErrorCode, feature Feature, operation string, status int) {
 	if s == nil {
 		return
 	}
@@ -113,5 +126,5 @@ func (s *Service) recordError(source ErrorSource, code ErrorCode, feature Featur
 	if !s.collectingLocked() {
 		return
 	}
-	s.enqueueLocked(s.newEvent("app_error", eventData{Feature: feature, ErrorSource: source, ErrorCode: code, StatusCode: status}, time.Now().UTC()))
+	s.enqueueLocked(s.newEvent("app_error", eventData{Feature: feature, Operation: operation, ErrorSource: source, ErrorCode: code, StatusCode: status}, time.Now().UTC()))
 }

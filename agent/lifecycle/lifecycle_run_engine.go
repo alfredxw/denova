@@ -82,7 +82,7 @@ func (run *Run) execute() {
 					slog.ErrorContext(run.ctx, "Agent model input rejected", "reason", reason, "error", err)
 				}
 				result := agentschema.Result{Status: agentschema.ResultFailed, Reason: reason}
-				run.finish(result, &agentevent.RunError{Result: result})
+				run.finish(result, &agentevent.RunError{Result: result, Cause: err})
 			}
 			return
 		}

@@ -7,14 +7,13 @@ import { loadEnvFile } from 'node:process'
 const root = new URL('../', import.meta.url)
 try { loadEnvFile(new URL('.env', root)) } catch (error) { if (error.code !== 'ENOENT') throw error }
 const key = process.env.POSTHOG_PERSONAL_API_KEY
-if (!key?.startsWith('phx_')) throw new Error('Set POSTHOG_PERSONAL_API_KEY in the ignored .env file')
 const origin = 'https://us.posthog.com'
 const projectId = 685522
 const base = `/api/projects/${projectId}/`
 const tag = 'denova-app-schema-2'
 const dashboardName = 'Denova App｜产品分析'
 const apply = process.argv.includes('--apply')
-if (process.argv.slice(2).some(arg => !['--apply', '--verify'].includes(arg))) throw new Error('Usage: node scripts/configure-posthog.mjs [--apply | --verify]')
+if (process.argv.slice(2).some(arg => !['--apply', '--verify', '--plan'].includes(arg))) throw new Error('Usage: node scripts/configure-posthog.mjs [--apply | --verify | --plan]')
 
 async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   if (!path.startsWith(base)) throw new Error('Request is outside the authorized project')
@@ -43,6 +42,7 @@ async function query(source) {
 
 const property = (key, value) => ({ key, type: 'event', value: [value], operator: 'exact' })
 const production = [property('source', 'app'), property('schema_version', 2)]
+const releaseProperties = [...production, { ...property('app_version', '^v?[0-9]+[.][0-9]+[.][0-9]+$'), operator: 'regex' }]
 const user = property('trigger', 'user')
 const dates = date_from => ({ date_from, explicitDate: false, excludeIncompletePeriods: false })
 const event = (name, math = 'total', properties = [], custom_name = name) => ({ kind: 'EventsNode', event: name, math, properties, custom_name })
@@ -53,6 +53,9 @@ const trend = (series, extra = {}) => ({
 })
 const breakdown = key => ({ breakdowns: [{ type: 'event', property: key }], breakdown_type: 'event', breakdown_limit: 10 })
 const prodSql = "properties.source = 'app' AND properties.schema_version = 2"
+// Version format separates known fork/development suffixes; it is not proof of build provenance.
+const releaseVersionSql = "match(toString(properties.app_version), '^v?[0-9]+[.][0-9]+[.][0-9]+$')"
+const releaseSql = `${prodSql} AND ${releaseVersionSql}`
 const userSql = "properties.trigger = 'user'"
 const runSql = "event IN ('feature_completed', 'feature_failed', 'feature_ended')"
 const sql = (query, range = '-30d') => ({ kind: 'HogQLQuery', query, filters: { dateRange: dates(range) } })
@@ -120,16 +123,18 @@ SELECT distinct_id AS instance, properties.feature_name AS feature, groupUniqArr
 FROM events WHERE ${prodSql} AND event = 'core_active_day' AND timestamp <= now()
   AND properties.cohort_origin = 'new_instance' AND properties.feature_name IN ('writing', 'game')
 GROUP BY instance, feature`), '-90d')),
-  insight('success', '08 · 已结束执行成功率', '成功 / (成功 + 失败)，按功能与运行时分别统计。取消、暂停、抢占不进分母；分母为 0 显示空值。按结束时间选取，不是同日开始/结束相除。', sql(`
-SELECT properties.feature_name AS feature, properties.runtime AS runtime,
+  insight('success', '08 · 已结束执行成功率', '正式版本号样本（x.y.z）；fork / 开发版本单列在接入状态。成功 / (成功 + 失败)，按版本、系统、功能与运行时统计。取消、暂停、抢占不进分母；空分母不显示 0%。', sql(`
+SELECT properties.app_version AS version, properties.os AS os,
+       properties.feature_name AS feature, properties.runtime AS runtime,
        countIf(event = 'feature_completed') AS succeeded,
        countIf(event = 'feature_failed') AS failed,
+       uniqExactIf(distinct_id, event = 'feature_failed') AS affected_instances,
        round(100.0 * countIf(event = 'feature_completed') / nullIf(countIf(event IN ('feature_completed', 'feature_failed')), 0), 2) AS success_pct,
        countIf(event = 'feature_ended' AND properties.outcome = 'cancelled') AS cancelled,
        countIf(event = 'feature_ended' AND properties.outcome = 'suspended') AS suspended,
        countIf(event = 'feature_ended' AND properties.outcome = 'preempted') AS preempted
-FROM events WHERE {filters} AND ${prodSql} AND ${userSql} AND ${runSql}
-GROUP BY feature, runtime ORDER BY succeeded + failed DESC`)),
+FROM events WHERE {filters} AND ${releaseSql} AND ${userSql} AND ${runSql}
+GROUP BY version, os, feature, runtime ORDER BY succeeded + failed DESC`)),
   insight('outcomes', '09 · 执行结果趋势', '按结束时间统计用户执行的成功、失败、取消、暂停、抢占；不把暂停/取消当作失败。', trend([
     event('feature_completed', 'total', [user], '成功'), event('feature_failed', 'total', [user], '失败'),
     ...['cancelled', 'suspended', 'preempted'].map((value, i) => event('feature_ended', 'total', [user, property('outcome', value)], ['取消', '暂停', '抢占'][i])),
@@ -162,25 +167,46 @@ GROUP BY feature, runtime, outcome ORDER BY samples DESC`)),
     { ...event('feature_completed', 'median', [user], 'P50 · ms'), math_property: 'duration_ms' },
     { ...event('feature_completed', 'p95', [user], 'P95 · ms'), math_property: 'duration_ms' },
   ])),
-  insight('error-trend', '13 · 报错次数与受影响人数', 'app_error 的报告次数及去重受影响实例数。一次故障可能跨层报告；此处不与执行失败次数相加。4xx 不一定是程序缺陷。', trend([
+  insight('error-trend', '13 · 报错次数与受影响人数', '正式版本号样本的 app_error 报告次数及去重受影响实例数。一次故障可能跨层报告；此处不与执行失败次数相加。4xx 不一定是程序缺陷。', trend([
     event('app_error', 'total', [], '报告次数'), event('app_error', 'dau', [], '受影响人数'),
-  ])),
-  insight('errors', '14 · 应用报错分类', '固定错误分类，无提示词、用户内容、原始错误文本或堆栈。api/backend/frontend 分层观察；panic_recovered 不是进程崩溃，硬退出可能无法上报。', sql(`
-SELECT properties.error_source AS source, properties.error_code AS error_code,
+  ], { properties: releaseProperties })),
+  insight('errors', '14 · 应用报错分类', '正式版本号样本；前端异常、服务端 5xx/panic、API 4xx 分开。按版本、系统、固定操作和错误码定位，次数与受影响实例同时展示；旧版本 operation=legacy_unknown。无内容、路径、原始错误或堆栈。', sql(`
+SELECT multiIf(properties.error_source = 'frontend', 'frontend',
+         properties.error_source = 'backend' OR toInt(properties.status_code) >= 500, 'server', 'api_4xx') AS category,
+       properties.app_version AS version, properties.os AS os,
+       coalesce(nullIf(properties.operation, ''), 'legacy_unknown') AS operation,
+       properties.error_source AS source, properties.error_code AS error_code,
        properties.status_code AS http_status, properties.feature_name AS feature,
        count() AS reports, uniqExact(distinct_id) AS affected_instances
-FROM events WHERE {filters} AND ${prodSql} AND event = 'app_error'
-GROUP BY source, error_code, http_status, feature ORDER BY reports DESC LIMIT 100`)),
-  insight('run-errors', '15 · 执行失败原因', '仅用户执行失败，按功能、运行时及结构化 error_code 分类。与应用 HTTP/前端报错分开统计，避免重复计算同一事故。', sql(`
-SELECT properties.feature_name AS feature, properties.runtime AS runtime, properties.error_code AS error_code,
+FROM events WHERE {filters} AND ${releaseSql} AND event = 'app_error'
+GROUP BY category, version, os, operation, source, error_code, http_status, feature ORDER BY category, reports DESC LIMIT 200`)),
+  insight('run-errors', '15 · 执行失败原因', '正式版本号的用户执行失败，按版本、系统、功能、运行时及固定 error_code 分类。与 HTTP/前端报错分别统计；unknown 占比见接入状态，历史 unknown 无法反推根因。', sql(`
+SELECT properties.app_version AS version, properties.os AS os,
+       properties.feature_name AS feature, properties.runtime AS runtime, properties.error_code AS error_code,
        count() AS failed_runs, uniqExact(distinct_id) AS affected_instances
-FROM events WHERE {filters} AND ${prodSql} AND ${userSql} AND event = 'feature_failed'
-GROUP BY feature, runtime, error_code ORDER BY failed_runs DESC LIMIT 100`)),
-  insight('health', '16 · 数据接入状态', '显示所选范围内收到的 schema 2 App 数据。received_events=0 表示尚未收到正式样本，不代表没有真实用户；测试事件已排除。需要用户升级并同意新分析说明。', sql(`
-SELECT count() AS received_events, uniqExact(distinct_id) AS observed_instances,
+FROM events WHERE {filters} AND ${releaseSql} AND ${userSql} AND event = 'feature_failed'
+GROUP BY version, os, feature, runtime, error_code ORDER BY failed_runs DESC LIMIT 200`)),
+  insight('health', '16 · 数据接入状态', 'release_version=正式版本号格式，fork_or_development=其他版本；格式不能证明构建来源。两类样本分别保留，显示错误次数、受影响实例及执行失败 unknown 占比。旧事件不会因升级自动补齐原因；无失败样本时占比为空。', sql(`
+SELECT if(${releaseVersionSql}, 'release_version', 'fork_or_development') AS sample,
+       properties.app_version AS version, properties.os AS os,
+       count() AS received_events, uniqExact(distinct_id) AS observed_instances,
+       countIf(event = 'app_error') AS app_errors,
+       uniqExactIf(distinct_id, event = 'app_error') AS affected_instances,
+       countIf(event = 'feature_failed' AND ${userSql}) AS failed_runs,
+       countIf(event = 'feature_failed' AND ${userSql} AND coalesce(nullIf(properties.error_code, ''), 'unknown') = 'unknown') AS unknown_runs,
+       round(100.0 * unknown_runs / nullIf(failed_runs, 0), 2) AS unknown_pct,
        if(count() = 0, NULL, max(timestamp)) AS last_received_event
-FROM events WHERE {filters} AND ${prodSql}`)),
+FROM events WHERE {filters} AND ${prodSql}
+GROUP BY sample, version, os ORDER BY sample DESC, version DESC, os`)),
 ]
+
+// Emit reviewable definitions for the authenticated UI when management credentials
+// are unavailable. This mode neither contacts PostHog nor writes capture events.
+if (process.argv.includes('--plan')) {
+  console.log(JSON.stringify(insights, null, 2))
+  process.exit(0)
+}
+if (!key?.startsWith('phx_')) throw new Error('Set POSTHOG_PERSONAL_API_KEY in the ignored .env file')
 
 const project = await api(base)
 const captureSource = await fs.readFile(new URL('internal/analytics/project.go', root), 'utf8')

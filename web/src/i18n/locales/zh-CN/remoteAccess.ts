@@ -1,4 +1,5 @@
 const remoteAccess = {
+  'remoteAccess.localOnly': '此功能需要在运行 Denova 的设备上操作。',
   'remoteAccess.connecting': '正在连接 Denova',
   'remoteAccess.connectionFailed': '无法连接 Denova',
   'remoteAccess.retry': '重试',

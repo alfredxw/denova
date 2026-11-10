@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocalAccess } from '@/features/remote-access/api'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useGameCreationRequest } from './extension-navigation'
@@ -24,14 +25,15 @@ export function GameStories({ projectId, active, builtinPicker, children }: {
 }) {
   const { t, i18n } = useTranslation()
   const client = useQueryClient()
+  const local = useLocalAccess()
   const storageKey = 'denova.game-story-selection.' + projectId
   const [selectedId, setSelectedId] = useState(() => readSelection(storageKey))
   const [creating, setCreating] = useState(false)
   const [choice, setChoice] = useState<string | null>(null)
   const requestedGame = useGameCreationRequest(state => state.gameId)
-  const catalog = useQuery({ queryKey: ['platform', 'catalog'], queryFn: () => management<CatalogEntry[]>('/catalog'), enabled: active })
-  const instances = useQuery({ queryKey: ['platform', 'instances'], queryFn: () => management<Instance[]>('/instances'), enabled: active })
-  const preferences = useQuery({ queryKey: ['platform', 'game-preferences'], queryFn: () => management<GamePreferences>('/game-preferences'), enabled: active })
+  const catalog = useQuery({ queryKey: ['platform', 'catalog'], queryFn: () => management<CatalogEntry[]>('/catalog'), enabled: active && local })
+  const instances = useQuery({ queryKey: ['platform', 'instances'], queryFn: () => management<Instance[]>('/instances'), enabled: active && local })
+  const preferences = useQuery({ queryKey: ['platform', 'game-preferences'], queryFn: () => management<GamePreferences>('/game-preferences'), enabled: active && local })
   const installed = (catalog.data ?? []).filter(item => item.kind === 'game')
   const saves = (instances.data ?? []).filter(item => !item.preview && item.projectId === projectId)
   const selected = saves.find(item => item.instanceId === selectedId)

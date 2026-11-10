@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useLocalAccess } from '@/features/remote-access/api'
 import { create } from 'zustand'
 import { management, type DevelopmentSource } from './api'
 import { sourceManifestPath } from './extension-directory'
@@ -28,7 +29,8 @@ export const useDevelopmentContext = create<DevelopmentContextState>(set => ({
 }))
 
 export function useProjectDevelopment(projectId: string, enabled: boolean) {
-  const query = useQuery({ queryKey: ['platform', 'development'], queryFn: () => management<DevelopmentSource[]>('/development'), enabled })
+  const local = useLocalAccess()
+  const query = useQuery({ queryKey: ['platform', 'development'], queryFn: () => management<DevelopmentSource[]>('/development'), enabled: enabled && local })
   const selected = useDevelopmentContext(state => state.selected[projectId])
   const sources = (query.data ?? []).filter(source => source.projectId === projectId)
   const source = sources.find(source => source.developmentId === selected) ?? sources[0]
