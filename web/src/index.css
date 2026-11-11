@@ -906,22 +906,28 @@ html[data-nova-motion="off"] .shimmer {
   --sidebar-accent-foreground: var(--nova-text);
   --sidebar-border: var(--nova-border);
   --sidebar-ring: var(--nova-field-focus-border);
+  position: relative;
+  inset: auto;
+  width: var(--nova-activity-bar-drag-width, var(--sidebar-width));
+  min-width: var(--sidebar-width-icon);
+  height: 100%;
   border-color: var(--nova-border);
   background: var(--nova-bg-deep);
   color: var(--nova-text-muted);
+  transition: width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease);
 }
 
-/* The page frame and visible navigation must move on the same curve. */
-[data-activity-bar-expanded] [data-slot="sidebar-gap"],
-.nova-activity-bar {
-  transition-duration: var(--nova-panel-motion-duration) !important;
-  transition-timing-function: var(--nova-panel-motion-ease) !important;
+[data-collapsible="icon"] > .nova-activity-bar {
+  width: var(--nova-activity-bar-drag-width, var(--sidebar-width-icon));
 }
 
-/* Continuous sizing follows the pointer; snapping into the compact rail animates. */
-[data-nova-activity-bar-resizing="true"][data-state="expanded"] > [data-slot="sidebar-gap"],
-[data-nova-activity-bar-resizing="true"][data-state="expanded"] > .nova-activity-bar {
-  transition-duration: 0s !important;
+/* The activity bar participates in layout, so its edge also positions the workspace. */
+[data-slot="sidebar"]:has(> .nova-activity-bar) > [data-slot="sidebar-gap"] {
+  display: none;
+}
+
+.nova-activity-bar[data-nova-activity-bar-resizing] {
+  transition-property: none;
 }
 
 /* The primary menu belongs to the app canvas; the inset workspace is the single elevated surface. */
@@ -945,7 +951,7 @@ html[data-nova-motion="off"] .shimmer {
 /* Selection and hover must paint immediately when navigating rapidly. Keep this outside
    Tailwind layers so the global button color transition cannot leave a trailing highlight. */
 .nova-activity-bar [data-sidebar="menu-button"] {
-  transition-property: width, height, padding;
+  transition-property: none;
 }
 
 .nova-activity-bar-resize-handle {
@@ -972,7 +978,8 @@ html[data-nova-motion="off"] .shimmer {
 }
 
 .nova-activity-bar-resize-handle:hover::after,
-.nova-activity-bar-resize-handle:focus-visible::after {
+.nova-activity-bar-resize-handle:focus-visible::after,
+[data-nova-activity-bar-resizing] .nova-activity-bar-resize-handle::after {
   background: var(--nova-active);
 }
 

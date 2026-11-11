@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useActivityBarWidth } from './use-activity-bar-width'
 
 function Navigation({ enabled = true }: { enabled?: boolean }) {
   const [expanded, setExpanded] = useState(true)
   const sizing = useActivityBarWidth({ enabled, expanded, onToggle: () => setExpanded(value => !value) })
   return (
-    <div ref={sizing.wrapperRef} data-testid="wrapper" style={{ '--sidebar-width': `${sizing.width}px` } as React.CSSProperties}>
+    <div data-testid="wrapper" style={{ '--sidebar-width': `${sizing.width}px` } as React.CSSProperties}>
       <div data-slot="sidebar">
         <div data-slot="sidebar-container" data-testid="navigation" data-expanded={sizing.expanded}>
           <div role="separator" onPointerDown={sizing.onResizePointerDown} onKeyDown={sizing.onResizeKeyDown} />
@@ -28,6 +28,7 @@ function startDrag() {
 
 function moveTo(clientX: number) {
   fireEvent.pointerMove(window, { pointerId: 1, clientX })
+  act(() => vi.advanceTimersToNextFrame())
 }
 
 function releaseAt(clientX: number) {
@@ -35,7 +36,11 @@ function releaseAt(clientX: number) {
 }
 
 describe('primary menu sizing', () => {
-  beforeEach(() => localStorage.setItem('nova.layout.activityBarWidth', '256'))
+  beforeEach(() => {
+    vi.useFakeTimers()
+    localStorage.setItem('nova.layout.activityBarWidth', '256')
+  })
+  afterEach(() => vi.useRealTimers())
 
   it('snaps both ways, persists only on release, and retains the expanded width when collapsed', () => {
     render(<Navigation />)
@@ -78,6 +83,18 @@ describe('primary menu sizing', () => {
     releaseAt(280)
     expect(screen.getByTestId('wrapper').style.getPropertyValue('--sidebar-width')).toBe('256px')
     expect(localStorage.getItem('nova.layout.activityBarWidth')).toBe('256')
+  })
+
+  it('commits the release coordinate even when a preview frame is pending', () => {
+    render(<Navigation />)
+    startDrag()
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 180 })
+    releaseAt(200)
+    act(() => vi.advanceTimersToNextFrame())
+    const wrapper = screen.getByTestId('wrapper')
+    expect(screen.getByTestId('navigation').style.getPropertyValue('--nova-activity-bar-drag-width')).toBe('')
+    expect(wrapper.style.getPropertyValue('--sidebar-width')).toBe('200px')
+    expect(localStorage.getItem('nova.layout.activityBarWidth')).toBe('200')
   })
 
   it('supports collapsing, restoring and resizing with the keyboard', () => {

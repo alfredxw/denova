@@ -132,7 +132,6 @@ export function WorkbenchAppSidebar({
                               id={sortableID}
                               activityID={item.id}
                               dragDisabled={dragDisabled}
-                              expanded={expanded}
                               label={item.label}
                               onClick={item.onClick}
                               active={item.active}
@@ -151,7 +150,7 @@ export function WorkbenchAppSidebar({
                 <SidebarMenu className="gap-0.5">
                   <SidebarMenuItem>{messageCenter}</SidebarMenuItem>
                   <SidebarMenuItem>
-                    <ActivityButton expanded={expanded} label={settingsLabel} onClick={onOpenSettings} active={settingsActive} data-onboarding-anchor="activity-settings">
+                    <ActivityButton label={settingsLabel} onClick={onOpenSettings} active={settingsActive} data-onboarding-anchor="activity-settings">
                       <Settings data-icon="inline-start" />
                     </ActivityButton>
                   </SidebarMenuItem>
@@ -265,7 +264,7 @@ function ActivityBarBrandRow({
   }
 
   return (
-    <div className="nova-activity-brand-row group/activity-toggle relative flex h-8 items-center justify-center">
+    <div className="nova-activity-brand-row group/activity-toggle relative flex size-8 items-center justify-center">
       <span className="nova-activity-brand-icon pointer-events-none flex size-8 items-center justify-center opacity-100 transition-opacity group-hover/activity-toggle:opacity-0 group-focus-within/activity-toggle:opacity-0 motion-reduce:transition-none">
         <WorkbenchBrandIcon />
       </span>
@@ -285,7 +284,6 @@ function SortableActivityButton({
   id: string
   activityID: string
   dragDisabled: boolean
-  expanded: boolean
   label: string
   children: ReactNode
   active: boolean
@@ -309,21 +307,19 @@ function SortableActivityButton({
 }
 
 function ActivityButton({
-  expanded,
   label,
   children,
   className,
   active = false,
   ...props
 }: React.ComponentProps<'button'> & {
-  expanded: boolean
   label: string
   children: ReactNode
   active?: boolean
 }) {
   return (
     <SidebarMenuButton
-      tooltip={!expanded ? label : undefined}
+      tooltip={label}
       isActive={active}
       className={cn(
         'relative h-9 gap-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] data-[active=true]:bg-[var(--nova-active)] data-[active=true]:text-[var(--nova-text)]',

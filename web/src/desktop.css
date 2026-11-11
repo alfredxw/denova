@@ -55,11 +55,6 @@ html[data-desktop-platform] {
   top: 0;
 }
 
-/* Browser zoom can make the native control region wider than the chosen size. */
-html[data-desktop-platform] :is(.nova-activity-bar, [data-activity-bar-expanded] [data-slot="sidebar-gap"]) {
-  min-width: var(--nova-desktop-navigation-width);
-}
-
 /* The native overlay supplies its safe area, including browser zoom changes.
    Keep a stable minimum when macOS hides its controls in fullscreen. */
 html[data-desktop-platform="darwin"] {
@@ -95,7 +90,7 @@ html[data-desktop-platform="darwin"] .nova-activity-bar-resize-handle {
 /* The compact desktop rail already reserves room for native controls. Use that
    space for readable labels instead of leaving a narrow icon strip in its center. */
 html[data-desktop-platform] .nova-activity-bar :is([data-sidebar="menu-button"], .nova-activity-message-button, .nova-workbench-context-trigger) {
-  transition-property: width, height, padding, gap;
+  transition-property: height, padding, gap;
   transition-duration: var(--nova-panel-motion-duration);
   transition-timing-function: var(--nova-panel-motion-ease);
 }

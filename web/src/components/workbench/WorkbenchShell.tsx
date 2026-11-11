@@ -489,9 +489,7 @@ export function WorkbenchShell({
   return (
     <MobileWorkspaceHeaderProvider route={presentedLayout}>
       <SidebarProvider
-        ref={activityBarSizing.wrapperRef}
         open={activityBarExpanded}
-        data-activity-bar-expanded={activityBarExpanded}
         style={{
           '--sidebar-width': `${activityBarSizing.width}px`,
           '--sidebar-width-icon': `var(--nova-desktop-navigation-width, ${ACTIVITY_BAR_COLLAPSED_WIDTH}px)`,
