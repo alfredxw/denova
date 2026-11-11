@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEventHandler, type PointerEventHandler } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEventHandler, type PointerEventHandler } from 'react'
 
 // User-level width preference; it survives reloads and development hot updates.
 const STORAGE_KEY = 'nova.layout.activityBarWidth'
@@ -15,10 +15,19 @@ export function useActivityBarWidth({ enabled, expanded, onToggle }: {
 }) {
   const [width, setWidth] = useState(readStoredWidth)
   const [previewExpanded, setPreviewExpanded] = useState<boolean | null>(null)
-  const wrapperRef = useRef<HTMLDivElement>(null)
+  const previewSidebarRef = useRef<HTMLElement>(null)
   const cancelResizeRef = useRef<(() => void) | null>(null)
 
   useEffect(() => () => cancelResizeRef.current?.(), [enabled, expanded])
+
+  useLayoutEffect(() => {
+    const sidebar = previewSidebarRef.current
+    if (previewExpanded !== null || !sidebar) return
+    // Release the preview after the saved width and expansion reach the DOM.
+    sidebar.style.removeProperty('--nova-activity-bar-drag-width')
+    delete sidebar.dataset.novaActivityBarResizing
+    previewSidebarRef.current = null
+  }, [previewExpanded])
 
   const commitWidth = (nextWidth: number) => {
     setWidth(nextWidth)
@@ -26,60 +35,67 @@ export function useActivityBarWidth({ enabled, expanded, onToggle }: {
   }
 
   const onResizePointerDown: PointerEventHandler<HTMLDivElement> = (event) => {
-    const wrapper = wrapperRef.current
     const handle = event.currentTarget
-    const sidebar = handle.closest<HTMLElement>('[data-slot="sidebar"]')
-    if (!enabled || !wrapper || !sidebar || event.button !== 0 || !event.isPrimary || cancelResizeRef.current) return
+    const sidebar = handle.closest<HTMLElement>('[data-slot="sidebar-container"]')
+    if (!enabled || !sidebar || event.button !== 0 || !event.isPrimary || cancelResizeRef.current) return
 
     event.preventDefault()
     const pointerID = event.pointerId
     const startX = event.clientX
-    const startWidth = handle.closest<HTMLElement>('[data-slot="sidebar-container"]')!.getBoundingClientRect().width
-    let previewWidth = width
+    const startWidth = sidebar.getBoundingClientRect().width
+    let lastX = startX
+    let requestedWidth = width
     let nextExpanded = expanded
-    // Disable both the visible sidebar and its layout gap before the first move.
-    sidebar.setAttribute('data-nova-activity-bar-resizing', 'true')
+    let frame: number | null = null
+    previewSidebarRef.current = sidebar
+    sidebar.style.setProperty('--nova-activity-bar-drag-width', `${startWidth}px`)
+    sidebar.dataset.novaActivityBarResizing = 'true'
+    setPreviewExpanded(expanded)
     handle.setPointerCapture(pointerID)
 
+    const updateRequest = (clientX: number) => {
+      lastX = clientX
+      requestedWidth = startWidth + clientX - startX
+      // Hysteresis keeps the menu contents stable when the pointer hovers at the boundary.
+      nextExpanded = requestedWidth >= MIN_WIDTH - (nextExpanded ? 8 : 0)
+    }
     const move = (moveEvent: PointerEvent) => {
-      if (moveEvent.pointerId !== pointerID) return
-      const requestedWidth = startWidth + moveEvent.clientX - startX
-      // Separate thresholds prevent jitter at the boundary. Text never squeezes
-      // below its readable minimum; the remaining distance snaps to the icon rail.
-      const shouldExpand = requestedWidth >= MIN_WIDTH - (nextExpanded ? 8 : 0)
-      if (shouldExpand !== nextExpanded) {
-        nextExpanded = shouldExpand
+      if (moveEvent.pointerId !== pointerID || moveEvent.clientX === lastX) return
+      updateRequest(moveEvent.clientX)
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        const dragWidth = Math.max(0, Math.min(MAX_WIDTH, requestedWidth))
+        sidebar.style.setProperty('--nova-activity-bar-drag-width', `${dragWidth}px`)
         setPreviewExpanded(nextExpanded)
-      }
-      const nextWidth = nextExpanded ? clampWidth(requestedWidth) : width
-      if (nextWidth === previewWidth) return
-      previewWidth = nextWidth
-      wrapper.style.setProperty('--sidebar-width', `${nextWidth}px`)
+      })
     }
     const finish = (result: 'commit' | 'cancel') => {
       cancelResizeRef.current = null
+      if (frame !== null) window.cancelAnimationFrame(frame)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
-      window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('pointercancel', cancelPointer)
       window.removeEventListener('blur', cancel)
       window.removeEventListener('keydown', keyDown)
-      handle.removeEventListener('lostpointercapture', cancel)
-      // Apply the final pointer coordinate before restoring collapse/expand transitions.
-      handle.getBoundingClientRect()
-      sidebar.removeAttribute('data-nova-activity-bar-resizing')
+      handle.removeEventListener('lostpointercapture', cancelPointer)
       if (handle.hasPointerCapture(pointerID)) handle.releasePointerCapture(pointerID)
-      const finalWidth = result === 'commit' && nextExpanded ? previewWidth : width
-      wrapper.style.setProperty('--sidebar-width', `${finalWidth}px`)
-      if (finalWidth !== width) commitWidth(finalWidth)
       setPreviewExpanded(null)
-      if (result === 'commit' && nextExpanded !== expanded) onToggle()
+      if (result === 'commit') {
+        const finalWidth = clampWidth(requestedWidth)
+        if (nextExpanded && finalWidth !== width) commitWidth(finalWidth)
+        if (nextExpanded !== expanded) onToggle()
+      }
     }
     const end = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== pointerID) return
-      move(endEvent)
+      if (endEvent.clientX !== lastX) updateRequest(endEvent.clientX)
       finish('commit')
     }
     const cancel = () => finish('cancel')
+    const cancelPointer = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId === pointerID) cancel()
+    }
     const keyDown = (keyEvent: KeyboardEvent) => {
       if (keyEvent.key !== 'Escape') return
       keyEvent.preventDefault()
@@ -88,10 +104,10 @@ export function useActivityBarWidth({ enabled, expanded, onToggle }: {
     cancelResizeRef.current = cancel
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', end)
-    window.addEventListener('pointercancel', cancel)
+    window.addEventListener('pointercancel', cancelPointer)
     window.addEventListener('blur', cancel)
     window.addEventListener('keydown', keyDown)
-    handle.addEventListener('lostpointercapture', cancel)
+    handle.addEventListener('lostpointercapture', cancelPointer)
   }
 
   const onResizeKeyDown: KeyboardEventHandler<HTMLDivElement> = (event) => {
@@ -125,7 +141,7 @@ export function useActivityBarWidth({ enabled, expanded, onToggle }: {
     if (nextWidth !== width) commitWidth(nextWidth)
   }
 
-  return { width, expanded: previewExpanded ?? expanded, maxWidth: MAX_WIDTH, wrapperRef, onResizePointerDown, onResizeKeyDown }
+  return { width, expanded: previewExpanded ?? expanded, maxWidth: MAX_WIDTH, onResizePointerDown, onResizeKeyDown }
 }
 
 function readStoredWidth() {
