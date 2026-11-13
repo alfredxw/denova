@@ -9,24 +9,48 @@ import (
 )
 
 // ErrUnsafeCustomization means the installed CLI cannot isolate executable
-// ambient hooks with its documented per-agent controls. User files stay intact.
-var ErrUnsafeCustomization = errors.New("Antigravity ambient hooks cannot be isolated")
+// ambient hooks or enforce its OS terminal sandbox. User files stay intact.
+var ErrUnsafeCustomization = errors.New("Antigravity runtime isolation cannot be verified")
+
+func checkIsolation(dir string) error {
+	if err := checkAmbientHooksInDir(dir); err != nil {
+		if errors.Is(err, ErrUnsafeCustomization) {
+			return err
+		}
+		return fmt.Errorf("%w: %w", ErrUnsafeCustomization, err)
+	}
+	if err := verifyOSSandbox(); err != nil {
+		return fmt.Errorf("%w: %w", ErrUnsafeCustomization, err)
+	}
+	return nil
+}
 
 // The CLI's hook locations and enabled flag are documented at
 // antigravity.google/docs/hooks. Inheritance controls do not document hook
 // suppression, so refuse active global hooks before starting a conversation.
 func checkAmbientHooks() error {
+	return checkAmbientHooksInDir("")
+}
+
+func checkAmbientHooksInDir(dir string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	for _, source := range []struct {
+	sources := []struct {
 		path     string
 		settings bool
 	}{
 		{filepath.Join(home, ".gemini", "config", "hooks.json"), false},
 		{filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"), true},
-	} {
+	}
+	if dir != "" {
+		sources = append(sources, struct {
+			path     string
+			settings bool
+		}{filepath.Join(dir, ".agents", "hooks.json"), false})
+	}
+	for _, source := range sources {
 		body, err := os.ReadFile(source.path)
 		if errors.Is(err, os.ErrNotExist) {
 			continue

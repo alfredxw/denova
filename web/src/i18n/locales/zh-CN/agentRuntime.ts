@@ -28,8 +28,8 @@ const agentRuntime = {
   'agentRuntime.sharedAntigravityHome': "通过流式协议使用本机 Antigravity CLI（agy）的账号和模型。",
   'agentRuntime.antigravityLoginInTerminal': "请在运行 Denova 的电脑上登录 Antigravity CLI（agy），然后重新检查连接。",
   'agentRuntime.antigravityNotInstalled': "未找到 Antigravity CLI（agy）。请先在此电脑上安装。",
-  'agentRuntime.antigravityIncompatibleVersion': "需要支持所需流式协议的 Antigravity CLI 1.4.2 或更高版本。请更新后重新检查连接。",
-  'agentRuntime.antigravityIsolationUnsupported': "Antigravity 存在当前 CLI 版本无法为 Denova 隔离的全局钩子，当前钩子配置下无法使用此运行时。",
+  'agentRuntime.antigravityIncompatibleVersion': "需要支持所需流式协议与会话隔离参数的 Antigravity CLI 1.4.2 或更高版本（Windows 需 1.4.4+）。请更新后重新检查连接。",
+  'agentRuntime.antigravityIsolationUnsupported': "Antigravity 存在无法为 Denova 隔离的全局钩子，或当前系统无法验证终端沙箱隔离，因此无法安全使用此运行时。",
   'agentRuntime.policy.cliTools': "执行权限由此运行时管理，可用操作取决于它支持的协议。",
 
   'agentRuntime.currentRuntime': "运行时：{{runtime}}",

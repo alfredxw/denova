@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 )
 
@@ -138,5 +139,89 @@ func TestInstalledAntigravityCatalog(t *testing.T) {
 	defer client.Close()
 	if _, err := client.Models(t.Context()); !errors.Is(err, errAuthenticationRequired) {
 		t.Fatalf("native unauthenticated catalog check: %v", err)
+	}
+}
+
+// Exercises real permission enforcement using the signed-in host account:
+// built-in file write and shell command tools must be denied while the scoped
+// Denova MCP host tool executes without --dangerously-skip-permissions.
+func TestInstalledAntigravityPermissionsEnforced(t *testing.T) {
+	executable := os.Getenv("DENOVA_TEST_ANTIGRAVITY_EXE")
+	if executable == "" {
+		t.Skip("set DENOVA_TEST_ANTIGRAVITY_EXE to verify real CLI permission enforcement")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Minute)
+	defer cancel()
+	client, err := Connect(ctx, ProcessOptions{Executable: executable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	state, models, err := client.Probe(ctx)
+	if state.Status == "auth_required" {
+		t.Skip("Antigravity CLI is not signed in; sign in to exercise authenticated permission enforcement")
+	}
+	if err != nil || state.Status != "ready" || len(models.Items) == 0 {
+		t.Fatalf("probe failed: state=%#v models=%#v err=%v", state, models, err)
+	}
+	modelID := models.DefaultID
+	for _, item := range models.Items {
+		if strings.Contains(item.ID, "flash") && strings.Contains(item.ID, "low") {
+			modelID = item.ID
+			break
+		}
+	}
+	scratch := t.TempDir()
+	host := &testHost{
+		onEmit: func(event agentrun.Event) {
+			t.Logf("emit %s: %v", event.Type, event.Data)
+		},
+		onCall: func(_ context.Context, call external.ToolCall) (external.ToolResult, error) {
+			t.Logf("host call %s(%s)", call.Name, call.Arguments)
+			return external.ToolResult{Text: "Committed product outcome", Success: true}, nil
+		},
+	}
+	input := fixtureInput(t)
+	input.Selection.Antigravity.Model = modelID
+	input.Directory = scratch
+	input.Instructions = "Follow the user request literally for this verification test."
+	input.Text = "First attempt write_to_file on blocked.txt with content hello. Second attempt run_command with 'echo blocked > cmd_blocked.txt'. Third call the record tool on MCP server denova with {\"value\":\"verified\"}. Reply briefly with what succeeded and what was denied."
+	result, err := client.Run(ctx, input, host)
+	if result.SessionID != "" {
+		t.Cleanup(func() { releaseTransientConversation(result.SessionID) })
+	}
+	if err != nil || !result.Settled {
+		t.Fatalf("real CLI run failed: result=%#v err=%v", result, err)
+	}
+	for _, name := range []string{"blocked.txt", "cmd_blocked.txt"} {
+		if _, statErr := os.Stat(filepath.Join(scratch, name)); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("native tool bypassed deny rule and created %s (stat=%v)", name, statErr)
+		}
+	}
+	if len(host.calls) == 0 || host.calls[0].Name != "record" {
+		t.Fatalf("expected scoped denova MCP host tool call, got %#v (response=%q)", host.calls, result.Text)
+	}
+}
+
+func TestInstalledAntigravitySandboxUnavailable(t *testing.T) {
+	executable := os.Getenv("DENOVA_TEST_ANTIGRAVITY_EXE")
+	if executable == "" {
+		t.Skip("set DENOVA_TEST_ANTIGRAVITY_EXE to verify real CLI sandbox-unavailable handling")
+	}
+	client, err := Connect(t.Context(), ProcessOptions{Executable: executable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	restore := verifyOSSandbox
+	verifyOSSandbox = func() error { return errors.New("simulated unsupported OS sandbox") }
+	t.Cleanup(func() { verifyOSSandbox = restore })
+
+	state, models, err := client.Probe(t.Context())
+	if !errors.Is(err, ErrUnsafeCustomization) || state.Status != "unavailable" || state.ReasonKey != "agentRuntime.antigravityIsolationUnsupported" || len(models.Items) != 0 {
+		t.Fatalf("sandbox unavailable probe: state=%#v models=%#v err=%v", state, models, err)
+	}
+	if _, err := client.Run(t.Context(), fixtureInput(t), &testHost{}); !errors.Is(err, ErrUnsafeCustomization) {
+		t.Fatalf("real CLI run started when OS sandbox was unavailable: %v", err)
 	}
 }

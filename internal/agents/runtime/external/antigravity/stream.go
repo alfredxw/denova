@@ -30,7 +30,8 @@ type streamFrame struct {
 	Event          string `json:"event"`
 	ConversationID string `json:"conversation_id"`
 	Init           struct {
-		Tools []string `json:"tools"`
+		Tools          []string `json:"tools"`
+		PermissionMode string   `json:"permission_mode"`
 	} `json:"init"`
 	Step struct {
 		ConversationID string `json:"conversation_id"`
@@ -68,6 +69,9 @@ func (s *streamOutput) feed(line []byte, host external.Host) error {
 	case "init":
 		if s.initialized || frame.ConversationID == "" {
 			return errors.New("invalid Antigravity initialization")
+		}
+		if frame.Init.PermissionMode != "request-review" {
+			return fmt.Errorf("Antigravity permission mode %q is not isolated (want request-review)", frame.Init.PermissionMode)
 		}
 		// Verified on CLI 1.4.2: a scoped agent still receives the full native
 		// toolset in init (run_command, write_to_file, browser_*), because the

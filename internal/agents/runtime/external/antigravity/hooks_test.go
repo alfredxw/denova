@@ -47,4 +47,10 @@ func TestCheckRefusesActiveAmbientHooksWithoutEditingThem(t *testing.T) {
 	if err := checkAmbientHooks(); err != nil {
 		t.Fatalf("disabled inline hooks changed readiness: %v", err)
 	}
+	if err := os.WriteFile(path, []byte(`{invalid-json`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkIsolation(""); !errors.Is(err, ErrUnsafeCustomization) {
+		t.Fatalf("malformed hooks config was not classified as ErrUnsafeCustomization: %v", err)
+	}
 }

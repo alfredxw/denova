@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,9 @@ import (
 
 // MinimumVersion is the version verified for unlimited headless NDJSON turns.
 const MinimumVersion = "1.4.2"
+
+// MinimumWindowsVersion is the first CLI version supporting Windows AppContainer terminal sandboxing.
+const MinimumWindowsVersion = "1.4.4"
 const infrastructureTimeout = 15 * time.Second
 
 // catalogTimeout covers the `models` command, which resolves the catalog over
@@ -64,6 +68,19 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	version, err := semver.StrictNewVersion(strings.TrimSpace(string(body)))
 	if err != nil || version.LessThan(semver.MustParse(MinimumVersion)) {
 		return nil, ErrVersionUnsupported
+	}
+	if runtime.GOOS == "windows" && version.LessThan(semver.MustParse(MinimumWindowsVersion)) {
+		return nil, ErrVersionUnsupported
+	}
+	helpCmd := c.command(ctx, "--help")
+	helpCmd.Stderr = nil
+	helpOut, err := helpCmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("read Antigravity CLI capabilities: %w", err)
+	}
+	help := string(helpOut)
+	if !strings.Contains(help, "--settings") || !strings.Contains(help, "--sandbox") {
+		return nil, fmt.Errorf("%w: CLI lacks required --settings or --sandbox isolation flags", ErrVersionUnsupported)
 	}
 	c.version = version.String()
 	slog.InfoContext(ctx, "[external-runtime] detected Antigravity CLI", "version", c.version)
@@ -107,6 +124,8 @@ func (c *Client) Probe(ctx context.Context) (state external.ConnectionState, mod
 		// Interrupted discovery retains the last confirmed readiness, while
 		// authentication, isolation and catalog errors replace it.
 		if state.Status == "unavailable" && c.state.Status == "ready" &&
+			!errors.Is(err, ErrUnsafeCustomization) &&
+			state.ReasonKey != "agentRuntime.antigravityIsolationUnsupported" &&
 			(errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
 			state = c.state
 			models = external.Models{}
@@ -114,7 +133,7 @@ func (c *Client) Probe(ctx context.Context) (state external.ConnectionState, mod
 		}
 		c.state = state
 	}()
-	if err := checkAmbientHooks(); err != nil {
+	if err := checkIsolation(""); err != nil {
 		return external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.antigravityIsolationUnsupported"}, external.Models{}, err
 	}
 	models, err = c.Models(ctx)

@@ -12,12 +12,12 @@ func TestStreamTerminalReconciliationAndProtocolIdentity(t *testing.T) {
 	// Provider tool names change between CLI releases; an unlisted name is
 	// reported but must not abort the turn.
 	private := streamOutput{allowed: map[string]bool{"call_mcp_tool": true}}
-	if err := private.feed([]byte(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["ask_custom_permission","browser_click_element","run_command","write_to_file","call_mcp_tool"]}}`), host); err != nil {
+	if err := private.feed([]byte(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["ask_custom_permission","browser_click_element","run_command","write_to_file","call_mcp_tool"],"permission_mode":"request-review"}}`), host); err != nil {
 		t.Fatalf("provider tools were refused: %v", err)
 	}
 	output := streamOutput{allowed: map[string]bool{}}
 	for _, line := range []string{
-		`{"event":"init","conversation_id":"conversation-1","init":{"tools":[]}}`,
+		`{"event":"init","conversation_id":"conversation-1","init":{"tools":[],"permission_mode":"request-review"}}`,
 		`{"event":"step_update","step_update":{"conversation_id":"conversation-1","step_index":1,"state":"ACTIVE","step_type":"thinking","text_delta":"Private reasoning"}}`,
 		`{"event":"step_update","step_update":{"conversation_id":"conversation-1","step_index":2,"state":"DONE","step_type":"agent_response","text_delta":"Answer"}}`,
 		`{"event":"result","result":{"conversation_id":"conversation-1","status":"SUCCESS","response":"Answer","usage":{"input_tokens":11,"output_tokens":5,"thinking_tokens":3,"cache_read_tokens":7,"total_tokens":16}}}`,
@@ -34,7 +34,6 @@ func TestStreamTerminalReconciliationAndProtocolIdentity(t *testing.T) {
 		`{"type":"control_response","response":{"subtype":"success"}}`,
 		`{"event":"step_update","step_update":{"conversation_id":"uninitialized","step_type":"agent_response","state":"DONE","text_delta":"Unscoped"}}`,
 		`{"event":"result","result":{"status":"SUCCESS","response":"Uninitialized"}}`,
-
 	} {
 		stream := streamOutput{allowed: map[string]bool{}}
 		if err := stream.feed([]byte(line), &testHost{}); err == nil {
@@ -42,15 +41,22 @@ func TestStreamTerminalReconciliationAndProtocolIdentity(t *testing.T) {
 		}
 	}
 	missing := streamOutput{allowed: map[string]bool{"call_mcp_tool": true}}
-	if err := missing.feed([]byte(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[]}}`), &testHost{}); err == nil {
+	if err := missing.feed([]byte(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[],"permission_mode":"request-review"}}`), &testHost{}); err == nil {
 		t.Fatal("missing host dispatcher accepted")
+	}
+	for _, mode := range []string{"", "always-proceed", "auto"} {
+		unisolated := streamOutput{allowed: map[string]bool{}}
+		line := fmt.Sprintf(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[],"permission_mode":%q}}`, mode)
+		if err := unisolated.feed([]byte(line), &testHost{}); err == nil {
+			t.Fatalf("non-isolated permission_mode %q accepted", mode)
+		}
 	}
 }
 
 func TestStreamToleratesStepTerminalStates(t *testing.T) {
 	host := &testHost{}
 	output := streamOutput{allowed: map[string]bool{}}
-	if err := output.feed([]byte(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[]}}`), host); err != nil {
+	if err := output.feed([]byte(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[],"permission_mode":"request-review"}}`), host); err != nil {
 		t.Fatal(err)
 	}
 	for _, state := range []string{"ERROR", "CANCELED", "INTERRUPTED"} {

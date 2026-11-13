@@ -46,7 +46,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	if operation == "" {
 		operation = "turn"
 	}
-	if err := checkAmbientHooks(); err != nil {
+	if err := checkIsolation(input.Directory); err != nil {
 		return result, err
 	}
 	// A resumed conversation that comes back under another identity is the only
@@ -134,15 +134,18 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	if err != nil {
 		return result, err
 	}
-	// Verified on CLI 1.4.2: the agent frontmatter "tools" list only mounts extra
-	// components, it does not filter the built-in toolset, and no approval mode
-	// works here — headless request-review denies call_mcp_tool itself
-	// (denied_actions: mcp), so skipping permissions is what keeps product tools
-	// usable. --sandbox is the boundary that remains: it contains the native
-	// command tools this adapter cannot refuse, while MCP dispatch is unaffected.
-	// It stays on even for a full-access conversation, because product access is
-	// governed by the conversation tool settings and this CLI cannot express them.
-	args := []string{"--input-format", "stream-json", "--output-format", "stream-json", "--print-timeout", "0", "--disable-slash-commands", "--agent", agentName, "--sandbox", "--dangerously-skip-permissions"}
+	settingsJSON, err := sessionSettingsJSON(len(input.Tools) > 0)
+	if err != nil {
+		return result, err
+	}
+	// The agent frontmatter "tools" list only mounts extra components and does
+	// not filter built-in tools, while headless request-review denies all
+	// unapproved tools — including call_mcp_tool unless explicitly allowed.
+	// Passing session-scoped --settings forces Default mode + request-review
+	// (overriding user auto/always-proceed settings), allows only mcp(denova/*)
+	// when host tools exist, and explicitly denies native write/command/URL
+	// tools. --sandbox remains required as defense-in-depth for any native layer.
+	args := []string{"--input-format", "stream-json", "--output-format", "stream-json", "--print-timeout", "0", "--disable-slash-commands", "--agent", agentName, "--sandbox", "--settings", settingsJSON}
 	if input.SessionID != "" {
 		args = append(args, "--conversation", input.SessionID)
 	}
@@ -309,6 +312,40 @@ func reap(exited <-chan error, cancel context.CancelFunc) (err error, forced boo
 	return err, true
 }
 
+type sessionPermissions struct {
+	Allow []string `json:"allow"`
+	Deny  []string `json:"deny"`
+}
+
+type sessionSettings struct {
+	AgentMode               string             `json:"agentMode"`
+	ToolPermission          string             `json:"toolPermission"`
+	EnableTerminalSandbox   bool               `json:"enableTerminalSandbox"`
+	AllowNonWorkspaceAccess bool               `json:"allowNonWorkspaceAccess"`
+	Permissions             sessionPermissions `json:"permissions"`
+}
+
+func sessionSettingsJSON(hasTools bool) (string, error) {
+	allow := []string{}
+	deny := []string{"write_file(*)", "command(*)", "execute_url(*)", "read_url(*)"}
+	if hasTools {
+		allow = append(allow, "mcp(denova/*)")
+	} else {
+		deny = append(deny, "mcp(*)")
+	}
+	body, err := json.Marshal(sessionSettings{
+		AgentMode:               "",
+		ToolPermission:          "request-review",
+		EnableTerminalSandbox:   true,
+		AllowNonWorkspaceAccess: false,
+		Permissions:             sessionPermissions{Allow: allow, Deny: deny},
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
 // inheritCustomizations is the ambient-isolation switch: set to false it stops
 // the agent from adopting the user's skills, rules, plugins, subagents and MCP
 // servers (verified on CLI 1.4.2). excludeDefaultComponents is deliberately left
@@ -351,7 +388,7 @@ func writeAgent(input external.Input, bridge *toolBridge) (string, func() error,
 	}
 	frontmatter, err := yaml.Marshal(map[string]any{
 		"name": name, "description": "Execute the accepted product conversation with its scoped tools.",
-		"mainAgent": true, "subagent": false, "inheritCustomizations": false,
+		"mainAgent": true, "subagent": false, "inheritCustomizations": false, "commandExecutionPolicy": "off",
 		"tools": tools, "mcpServers": servers,
 	})
 	if err != nil {

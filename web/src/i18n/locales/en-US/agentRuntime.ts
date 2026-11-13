@@ -28,8 +28,8 @@ const agentRuntime = {
   'agentRuntime.sharedAntigravityHome': "Uses the local Antigravity CLI (agy) account and models through its streaming protocol.",
   'agentRuntime.antigravityLoginInTerminal': "Sign in with Antigravity CLI (agy) on the computer running Denova, then check the connection again.",
   'agentRuntime.antigravityNotInstalled': "Antigravity CLI (agy) was not found. Install it on this computer first.",
-  'agentRuntime.antigravityIncompatibleVersion': "Antigravity CLI 1.4.2 or later with the required streaming protocol is needed. Update it, then check the connection again.",
-  'agentRuntime.antigravityIsolationUnsupported': "Antigravity has active global hooks that this CLI version cannot isolate for Denova. This runtime is unavailable with the current hook configuration.",
+  'agentRuntime.antigravityIncompatibleVersion': "Antigravity CLI 1.4.2 or later (1.4.4+ on Windows) with the required streaming protocol and session isolation flags is needed. Update it, then check the connection again.",
+  'agentRuntime.antigravityIsolationUnsupported': "Antigravity has active hooks that cannot be isolated for Denova, or this host cannot verify terminal sandbox isolation. This runtime is unavailable until isolation can be verified.",
   'agentRuntime.policy.cliTools': "Execution permissions are managed by this runtime. Available controls depend on its supported protocol.",
 
   'agentRuntime.currentRuntime': "Runtime: {{runtime}}",

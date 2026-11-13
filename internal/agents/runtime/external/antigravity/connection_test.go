@@ -32,3 +32,14 @@ func TestAuthenticationFailureReplacesPreviouslyReadyState(t *testing.T) {
 		t.Fatalf("signed-out probe retained readiness: %+v %+v %v", state, client.Status(), err)
 	}
 }
+
+func TestIsolationTimeoutReplacesPreviouslyReadyState(t *testing.T) {
+	client := fixtureClient(t, "tool")
+	client.state = external.ConnectionState{Status: "ready"}
+	verifyOSSandbox = func() error { return context.DeadlineExceeded }
+	state, err := client.Check(t.Context())
+	if !errors.Is(err, ErrUnsafeCustomization) || state.Status != "unavailable" ||
+		state.ReasonKey != "agentRuntime.antigravityIsolationUnsupported" || client.Status() != state {
+		t.Fatalf("isolation timeout probe retained readiness: %+v %+v %v", state, client.Status(), err)
+	}
+}

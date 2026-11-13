@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -46,6 +47,9 @@ func (host *testHost) CallTool(ctx context.Context, call external.ToolCall) (ext
 
 func fixtureClient(t *testing.T, mode string) *Client {
 	t.Helper()
+	restoreSandbox := verifyOSSandbox
+	verifyOSSandbox = func() error { return nil }
+	t.Cleanup(func() { verifyOSSandbox = restoreSandbox })
 	t.Setenv("DENOVA_ANTIGRAVITY_FIXTURE", mode)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
@@ -291,8 +295,23 @@ func TestAntigravityFixtureProcess(t *testing.T) {
 	}()
 	args := os.Args[slices.Index(os.Args, "--")+1:]
 	if slices.Contains(args, "--version") {
-		fmt.Println(MinimumVersion)
+		if mode == "old-windows" {
+			fmt.Println("1.4.2")
+		} else {
+			fmt.Println("1.5.8")
+		}
 		os.Exit(0)
+	}
+	if slices.Contains(args, "--help") {
+		if mode == "missing-settings" {
+			fmt.Println("Usage of agy:\n  --sandbox  Run in a sandbox")
+		} else {
+			fmt.Println("Usage of agy:\n  --sandbox   Run in a sandbox\n  --settings  Settings for this session only")
+		}
+		os.Exit(0)
+	}
+	if slices.Contains(args, "--dangerously-skip-permissions") {
+		panic("adapter must never pass --dangerously-skip-permissions")
 	}
 	if slices.Contains(args, "models") {
 		if mode == "auth-stderr" {
@@ -316,6 +335,22 @@ func TestAntigravityFixtureProcess(t *testing.T) {
 	if !slices.Contains(args, "--sandbox") {
 		panic("attempt must keep native tools inside the sandbox")
 	}
+	settingsIndex := slices.Index(args, "--settings")
+	if settingsIndex < 0 || settingsIndex+1 >= len(args) {
+		panic("attempt must pass --settings isolation policy")
+	}
+	var parsedSettings sessionSettings
+	if err := json.Unmarshal([]byte(args[settingsIndex+1]), &parsedSettings); err != nil {
+		panic(err)
+	}
+	if parsedSettings.AgentMode != "" || parsedSettings.ToolPermission != "request-review" || !parsedSettings.EnableTerminalSandbox || parsedSettings.AllowNonWorkspaceAccess {
+		panic(fmt.Sprintf("unexpected isolation settings: %#v", parsedSettings))
+	}
+	for _, denied := range []string{"write_file(*)", "command(*)", "execute_url(*)", "read_url(*)"} {
+		if !slices.Contains(parsedSettings.Permissions.Deny, denied) {
+			panic("missing required deny rule " + denied)
+		}
+	}
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() || !json.Valid(scanner.Bytes()) || !strings.Contains(string(scanner.Bytes()), `"event":"user"`) {
 		panic("expected one native NDJSON user event")
@@ -334,38 +369,41 @@ func TestAntigravityFixtureProcess(t *testing.T) {
 	}
 	frontmatter := strings.SplitN(string(data), "---", 3)
 	var agent struct {
-		Tools      []string         `yaml:"tools"`
-		Exclude    bool             `yaml:"excludeDefaultComponents"`
-		Inherit    bool             `yaml:"inheritCustomizations"`
-		Subagent   bool             `yaml:"subagent"`
-		MCPServers []map[string]any `yaml:"mcpServers"`
+		Tools                  []string         `yaml:"tools"`
+		Exclude                bool             `yaml:"excludeDefaultComponents"`
+		Inherit                bool             `yaml:"inheritCustomizations"`
+		Subagent               bool             `yaml:"subagent"`
+		CommandExecutionPolicy string           `yaml:"commandExecutionPolicy"`
+		MCPServers             []map[string]any `yaml:"mcpServers"`
 	}
 	// inheritCustomizations must stay off (ambient isolation), but
 	// excludeDefaultComponents must stay off too: it removes the default file
 	// reader that the "@name" image channel depends on.
-	if len(frontmatter) != 3 || yaml.Unmarshal([]byte(frontmatter[1]), &agent) != nil || agent.Exclude || agent.Inherit || agent.Subagent {
+	if len(frontmatter) != 3 || yaml.Unmarshal([]byte(frontmatter[1]), &agent) != nil || agent.Exclude || agent.Inherit || agent.Subagent || agent.CommandExecutionPolicy != "off" {
 		panic("agent did not isolate product capabilities")
 	}
 	if mode == "summary" {
-		if len(agent.Tools) != 0 || len(agent.MCPServers) != 0 || slices.Contains(args, "--conversation") {
+		if len(agent.Tools) != 0 || len(agent.MCPServers) != 0 || slices.Contains(args, "--conversation") || len(parsedSettings.Permissions.Allow) != 0 || !slices.Contains(parsedSettings.Permissions.Deny, "mcp(*)") {
 			panic("summary reused provider conversation or tools")
 		}
-		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[]}}`)
-	} else if len(agent.Tools) != 0 || len(agent.MCPServers) != 1 {
+		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[],"permission_mode":"request-review"}}`)
+	} else if len(agent.Tools) != 0 || len(agent.MCPServers) != 1 || !slices.Equal(parsedSettings.Permissions.Allow, []string{"mcp(denova/*)"}) {
 		panic("unexpected product tool configuration")
 	} else if mode == "resume-mismatch" {
 		if !slices.Contains(args, "--conversation") {
 			panic("resume mismatch fixture needs a resumed attempt")
 		}
-		fmt.Println(`{"event":"init","conversation_id":"conversation-other","init":{"tools":["call_mcp_tool"]}}`)
+		fmt.Println(`{"event":"init","conversation_id":"conversation-other","init":{"tools":["call_mcp_tool"],"permission_mode":"request-review"}}`)
+	} else if mode == "unisolated" {
+		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["call_mcp_tool"],"permission_mode":"always-proceed"}}`)
 	} else if mode == "unsafe" {
-		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["call_mcp_tool","run_command"]}}`)
+		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["call_mcp_tool","run_command"],"permission_mode":"request-review"}}`)
 	} else if mode == "approval" {
-		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["ask_custom_permission","call_mcp_tool"]}}`)
+		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["ask_custom_permission","call_mcp_tool"],"permission_mode":"request-review"}}`)
 	} else if mode == "browser" {
-		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["browser_click_element","browser_navigate","call_mcp_tool"]}}`)
+		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["browser_click_element","browser_navigate","call_mcp_tool"],"permission_mode":"request-review"}}`)
 	} else {
-		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["call_mcp_tool"]}}`)
+		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":["call_mcp_tool"],"permission_mode":"request-review"}}`)
 	}
 	if mode == "tool" || mode == "unsafe" || mode == "concurrent" || mode == "approval" || mode == "browser" {
 		server := agent.MCPServers[0]
@@ -421,4 +459,79 @@ func (transport bearerTransport) RoundTrip(request *http.Request) (*http.Respons
 	request = request.Clone(request.Context())
 	request.Header.Set("Authorization", transport.value)
 	return http.DefaultTransport.RoundTrip(request)
+}
+
+func TestValidateWindowsSandboxBuild(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		build     uint64
+		ubr       uint64
+		wantError bool
+	}{
+		{"win10", 19045, 5000, true},
+		{"win11-23h2", 22631, 4500, true},
+		{"win11-24h2-pre-aug2026", 26100, 8655, true},
+		{"win11-24h2-aug2026", 26100, 9168, false},
+		{"win11-25h2-aug2026", 26200, 9168, false},
+		{"win11-26h2", 26300, 100, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateWindowsSandboxBuild(tc.build, tc.ubr)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("build %d.%d: err=%v wantError=%v", tc.build, tc.ubr, err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestIsolationFailuresRefuseStartupAndProbe(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("missing-settings-flag", func(t *testing.T) {
+		t.Setenv("DENOVA_ANTIGRAVITY_FIXTURE", "missing-settings")
+		if _, err := Connect(t.Context(), ProcessOptions{Executable: executable, Args: []string{"-test.run=TestAntigravityFixtureProcess", "--"}}); !errors.Is(err, ErrVersionUnsupported) {
+			t.Fatalf("CLI lacking --settings was accepted: %v", err)
+		}
+	})
+	if runtime.GOOS == "windows" {
+		t.Run("old-windows-cli", func(t *testing.T) {
+			t.Setenv("DENOVA_ANTIGRAVITY_FIXTURE", "old-windows")
+			if _, err := Connect(t.Context(), ProcessOptions{Executable: executable, Args: []string{"-test.run=TestAntigravityFixtureProcess", "--"}}); !errors.Is(err, ErrVersionUnsupported) {
+				t.Fatalf("1.4.2 CLI on Windows was accepted: %v", err)
+			}
+		})
+	}
+	t.Run("os-sandbox-unavailable", func(t *testing.T) {
+		client := fixtureClient(t, "tool")
+		verifyOSSandbox = func() error { return errors.New("sandbox disabled on host") }
+		state, err := client.Check(t.Context())
+		if !errors.Is(err, ErrUnsafeCustomization) || state.Status != "unavailable" || state.ReasonKey != "agentRuntime.antigravityIsolationUnsupported" {
+			t.Fatalf("sandbox unavailable check: %#v %v", state, err)
+		}
+		if _, err := client.Run(t.Context(), fixtureInput(t), &testHost{}); !errors.Is(err, ErrUnsafeCustomization) {
+			t.Fatalf("Run started without verified OS sandbox: %v", err)
+		}
+	})
+	t.Run("unisolated-init-permission-mode", func(t *testing.T) {
+		client := fixtureClient(t, "unisolated")
+		if _, err := client.Run(t.Context(), fixtureInput(t), &testHost{}); err == nil || !strings.Contains(err.Error(), "not isolated") {
+			t.Fatalf("non-isolated permission_mode was accepted: %v", err)
+		}
+	})
+	t.Run("workspace-active-hook", func(t *testing.T) {
+		client := fixtureClient(t, "tool")
+		input := fixtureInput(t)
+		hookFile := filepath.Join(input.Directory, ".agents", "hooks.json")
+		if err := os.MkdirAll(filepath.Dir(hookFile), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(hookFile, []byte(`{"ws-hook":{"SessionStart":[{"command":"unsafe"}]}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.Run(t.Context(), input, &testHost{}); !errors.Is(err, ErrUnsafeCustomization) {
+			t.Fatalf("Run started with active workspace hook: %v", err)
+		}
+	})
 }
