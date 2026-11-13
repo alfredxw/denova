@@ -11,10 +11,21 @@ import (
 type RuntimeID string
 
 const (
-	RuntimeNative RuntimeID = "native"
-	RuntimeCodex  RuntimeID = "codex"
-	RuntimeClaude RuntimeID = "claude"
+	RuntimeNative      RuntimeID = "native"
+	RuntimeCodex       RuntimeID = "codex"
+	RuntimeClaude      RuntimeID = "claude"
+	RuntimeGrok        RuntimeID = "grok"
+	RuntimeAntigravity RuntimeID = "antigravity"
 )
+
+// IsExternal identifies the finite set of supported application-owned runtimes.
+func (id RuntimeID) IsExternal() bool {
+	switch id {
+	case RuntimeCodex, RuntimeClaude, RuntimeGrok, RuntimeAntigravity:
+		return true
+	}
+	return false
+}
 
 var ErrInvalidAgentRuntime = errors.New("invalid Agent runtime configuration")
 
@@ -57,12 +68,45 @@ func (settings ClaudeRuntimeSettings) validate() error {
 	return validateRuntimeModel(settings.Model, settings.ProfileID, settings.Effort)
 }
 
+// GrokRuntimeSettings selects a model from the installed Grok Build CLI.
+// Credentials and custom provider configuration remain owned by the CLI.
+type GrokRuntimeSettings struct {
+	Model  string `toml:"model,omitempty" json:"model,omitempty"`
+	Effort string `toml:"effort,omitempty" json:"effort,omitempty"`
+	// ContextWindow is the conversation-owned context size. It is written to the
+	// attempt's private model section because the CLI has no flag for it. Zero
+	// keeps the model default so a new model cannot be pinned to a stale size.
+	ContextWindow int `toml:"context_window,omitempty" json:"context_window,omitempty"`
+}
+
+// GrokContextWindowLimit bounds a conversation-owned context size so a typo
+// cannot request a window the provider will reject.
+const GrokContextWindowLimit = 10_000_000
+
+func (settings GrokRuntimeSettings) validate() error {
+	if err := validateRuntimeModel(settings.Model, "", settings.Effort); err != nil {
+		return err
+	}
+	if settings.ContextWindow < 0 || settings.ContextWindow > GrokContextWindowLimit {
+		return fmt.Errorf("%w: Grok context window must be 0 or within 1..%d tokens", ErrInvalidAgentRuntime, GrokContextWindowLimit)
+	}
+	return nil
+}
+
+// AntigravityRuntimeSettings uses Antigravity's model and effort vocabulary.
+type AntigravityRuntimeSettings struct {
+	Model  string `toml:"model,omitempty" json:"model,omitempty"`
+	Effort string `toml:"effort,omitempty" json:"effort,omitempty"`
+}
+
 // RuntimePreferences retains inactive engine settings across selection changes.
 // Native settings stay in their existing fields and must not be duplicated here.
 type RuntimePreferences struct {
-	Selected RuntimeID              `toml:"selected,omitempty" json:"selected,omitempty"`
-	Codex    *CodexRuntimeSettings  `toml:"codex,omitempty" json:"codex,omitempty"`
-	Claude   *ClaudeRuntimeSettings `toml:"claude,omitempty" json:"claude,omitempty"`
+	Selected    RuntimeID                   `toml:"selected,omitempty" json:"selected,omitempty"`
+	Codex       *CodexRuntimeSettings       `toml:"codex,omitempty" json:"codex,omitempty"`
+	Claude      *ClaudeRuntimeSettings      `toml:"claude,omitempty" json:"claude,omitempty"`
+	Grok        *GrokRuntimeSettings        `toml:"grok,omitempty" json:"grok,omitempty"`
+	Antigravity *AntigravityRuntimeSettings `toml:"antigravity,omitempty" json:"antigravity,omitempty"`
 }
 
 // AgentRuntimeSettings selects defaults for creator-facing conversations only.
@@ -76,14 +120,16 @@ type AgentRuntimeSettings struct {
 // RuntimeSelection is the resolved, immutable engine branch of a conversation.
 // An absent selection in a released conversation always means Native.
 type RuntimeSelection struct {
-	Kind   RuntimeID              `json:"kind"`
-	Codex  *CodexRuntimeSettings  `json:"codex,omitempty"`
-	Claude *ClaudeRuntimeSettings `json:"claude,omitempty"`
+	Kind        RuntimeID                   `json:"kind"`
+	Codex       *CodexRuntimeSettings       `json:"codex,omitempty"`
+	Claude      *ClaudeRuntimeSettings      `json:"claude,omitempty"`
+	Grok        *GrokRuntimeSettings        `json:"grok,omitempty"`
+	Antigravity *AntigravityRuntimeSettings `json:"antigravity,omitempty"`
 }
 
 func (preferences RuntimePreferences) Validate() error {
 	switch preferences.Selected {
-	case "", RuntimeNative, RuntimeCodex, RuntimeClaude:
+	case "", RuntimeNative, RuntimeCodex, RuntimeClaude, RuntimeGrok, RuntimeAntigravity:
 	default:
 		return fmt.Errorf("%w: unknown selected runtime %q", ErrInvalidAgentRuntime, preferences.Selected)
 	}
@@ -93,7 +139,17 @@ func (preferences RuntimePreferences) Validate() error {
 		}
 	}
 	if preferences.Claude != nil {
-		return preferences.Claude.validate()
+		if err := preferences.Claude.validate(); err != nil {
+			return err
+		}
+	}
+	if preferences.Grok != nil {
+		if err := preferences.Grok.validate(); err != nil {
+			return err
+		}
+	}
+	if preferences.Antigravity != nil {
+		return validateRuntimeModel(preferences.Antigravity.Model, "", preferences.Antigravity.Effort)
 	}
 	return nil
 }
@@ -140,27 +196,45 @@ func (selection RuntimeSelection) ModelProfileID() string {
 }
 
 func (selection RuntimeSelection) Validate(agentKind string) error {
-	switch selection.Kind {
-	case RuntimeNative:
-		if selection.Codex != nil || selection.Claude != nil {
-			return fmt.Errorf("%w: Native selection contains external settings", ErrInvalidAgentRuntime)
+	branches := 0
+	for _, present := range []bool{selection.Codex != nil, selection.Claude != nil, selection.Grok != nil, selection.Antigravity != nil} {
+		if present {
+			branches++
 		}
-	case RuntimeCodex:
+	}
+	if selection.Kind.IsExternal() {
+		if branches != 1 {
+			return fmt.Errorf("%w: external settings are required exclusively", ErrInvalidAgentRuntime)
+		}
 		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral && agentKind != AgentKindInteractiveStory {
 			return fmt.Errorf("%w: external runtime does not support Agent kind %q", ErrInvalidAgentRuntime, agentKind)
 		}
-		if selection.Codex == nil || selection.Claude != nil {
+	}
+	switch selection.Kind {
+	case RuntimeNative:
+		if branches != 0 {
+			return fmt.Errorf("%w: Native selection contains external settings", ErrInvalidAgentRuntime)
+		}
+	case RuntimeCodex:
+		if selection.Codex == nil {
 			return fmt.Errorf("%w: Codex settings are required", ErrInvalidAgentRuntime)
 		}
 		return selection.Codex.validate()
 	case RuntimeClaude:
-		if agentKind != AgentKindIDE && agentKind != AgentKindGeneral && agentKind != AgentKindInteractiveStory {
-			return fmt.Errorf("%w: external runtime does not support Agent kind %q", ErrInvalidAgentRuntime, agentKind)
-		}
-		if selection.Claude == nil || selection.Codex != nil {
+		if selection.Claude == nil {
 			return fmt.Errorf("%w: Claude settings are required exclusively", ErrInvalidAgentRuntime)
 		}
 		return selection.Claude.validate()
+	case RuntimeGrok:
+		if selection.Grok == nil {
+			return fmt.Errorf("%w: Grok settings are required", ErrInvalidAgentRuntime)
+		}
+		return selection.Grok.validate()
+	case RuntimeAntigravity:
+		if selection.Antigravity == nil {
+			return fmt.Errorf("%w: Antigravity settings are required", ErrInvalidAgentRuntime)
+		}
+		return validateRuntimeModel(selection.Antigravity.Model, "", selection.Antigravity.Effort)
 	default:
 		return fmt.Errorf("%w: unknown runtime %q", ErrInvalidAgentRuntime, selection.Kind)
 	}
@@ -182,6 +256,14 @@ func (preferences RuntimePreferences) Selection(agentKind string) (RuntimeSelect
 	if kind == RuntimeClaude && preferences.Claude != nil {
 		value := *preferences.Claude
 		selection.Claude = &value
+	}
+	if kind == RuntimeGrok && preferences.Grok != nil {
+		value := *preferences.Grok
+		selection.Grok = &value
+	}
+	if kind == RuntimeAntigravity && preferences.Antigravity != nil {
+		value := *preferences.Antigravity
+		selection.Antigravity = &value
 	}
 	return selection, selection.Validate(agentKind)
 }
@@ -214,6 +296,12 @@ func mergeRuntimePreferences(parent, child *RuntimePreferences) *RuntimePreferen
 		if child.Codex != nil {
 			merged.Codex = child.Codex
 		}
+		if child.Grok != nil {
+			merged.Grok = child.Grok
+		}
+		if child.Antigravity != nil {
+			merged.Antigravity = child.Antigravity
+		}
 	}
 	if merged.Codex != nil {
 		value := *merged.Codex
@@ -222,6 +310,14 @@ func mergeRuntimePreferences(parent, child *RuntimePreferences) *RuntimePreferen
 	if merged.Claude != nil {
 		value := *merged.Claude
 		merged.Claude = &value
+	}
+	if merged.Grok != nil {
+		value := *merged.Grok
+		merged.Grok = &value
+	}
+	if merged.Antigravity != nil {
+		value := *merged.Antigravity
+		merged.Antigravity = &value
 	}
 	return &merged
 }
@@ -265,7 +361,7 @@ func validateSettingsRuntimes(settings Settings) error {
 			return fmt.Errorf("custom Agent %q: %w", definition.ID, err)
 		}
 		kind := CustomAgentRuntimeKind(definition)
-		if (definition.Runtime.Selected == RuntimeCodex || definition.Runtime.Selected == RuntimeClaude) && kind != AgentKindIDE && kind != AgentKindGeneral && kind != AgentKindInteractiveStory {
+		if definition.Runtime.Selected.IsExternal() && kind != AgentKindIDE && kind != AgentKindGeneral && kind != AgentKindInteractiveStory {
 			return fmt.Errorf("%w: custom Agent %q does not support external execution", ErrInvalidAgentRuntime, definition.ID)
 		}
 	}

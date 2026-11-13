@@ -76,6 +76,8 @@ const importCard = {
   'importCard.chooseFileFirst': '请先选择酒馆角色卡文件',
   'importCard.noCurrentBookImportNew': '当前没有打开的书籍，请选择“导入成新书”',
   'importCard.importSuccess': '已导入酒馆角色卡「{{name}}」',
+  'importCard.overriddenList': '已用更详细的设定覆盖：{{names}}',
+  'importCard.skippedList': '保留现有设定（导入内容较简略）：{{names}}',
   'importCard.importFailed': '导入酒馆角色卡失败',
 } as const
 

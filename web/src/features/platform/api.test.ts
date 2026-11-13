@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { APIError } from '@/lib/api-client/client'
-import { platformError } from './api'
+import { queryClient } from '@/lib/query-client'
+import { remoteAccessQuery } from '@/features/remote-access/api'
+import { hostOnlyManagement, management, platformError } from './api'
 
 const originalLanguage = i18n.language
 afterEach(async () => { await i18n.changeLanguage(originalLanguage) })
@@ -39,5 +41,60 @@ describe('platform error diagnostics', () => {
   it('retains browser errors without inventing a server cause', () => {
     expect(platformError(new Error('Connection closed'))).toContain('Connection closed')
     expect(platformError(undefined)).toBe(i18n.t('platform.errors.RUNTIME_FAILED'))
+  })
+})
+
+describe('host-bound management actions', () => {
+  afterEach(() => { queryClient.removeQueries({ queryKey: remoteAccessQuery.queryKey }) })
+
+  it('keeps reads and project configuration available to LAN browsers', () => {
+    for (const [path, method] of [
+      ['/runtimes', 'GET'],
+      ['/catalog', 'GET'],
+      ['/development', 'GET'],
+      ['/packages/plugin', 'GET'],
+      ['/instances/one', 'PATCH'],
+      ['/instances/one', 'DELETE'],
+      ['/runtimes/one/consumers/two', 'DELETE'],
+      ['/projects/p1/plugins/example/content', 'POST'],
+      ['/instances/one/stop', 'POST'],
+      ['/runtimes/one/stop', 'POST'],
+      ['/game-preferences', 'PATCH'],
+      ['/projects/p1/extensions', 'PUT'],
+    ]) {
+      expect(hostOnlyManagement(path, method), `${method} ${path}`).toBe(false)
+    }
+  })
+
+  it('marks runtime starts and package installation as host-bound', () => {
+    for (const [path, method] of [
+      ['/', 'POST'],
+      ['/new-action', 'POST'],
+      ['/runtimes/plugin/extra', 'POST'],
+      ['/projects/p1/extensions/extra', 'PUT'],
+      ['/instances', 'POST'],
+      ['/instances/one/open', 'POST'],
+      ['/instances/one/upgrade', 'POST'],
+      ['/plugin-actions/open', 'POST'],
+      ['/runtimes/plugin', 'POST'],
+      ['/packages/install', 'POST'],
+      ['/packages/plugin/example', 'PATCH'],
+      ['/development/link', 'POST'],
+      ['/candidates/one', 'DELETE'],
+    ]) {
+      expect(hostOnlyManagement(path, method), `${method} ${path}`).toBe(true)
+    }
+  })
+
+  it('fails fast with a clear reason instead of requesting from a remote browser', async () => {
+    queryClient.setQueryData(remoteAccessQuery.queryKey, { local: false, authenticated: true })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      await expect(management('/instances/one/open', 'POST', {})).rejects.toMatchObject({ code: 'LOCAL_HOST_ONLY' })
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

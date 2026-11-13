@@ -300,6 +300,54 @@ func TestCanonicalArchivedCheckpointRetainsIncompleteBatchOnColdLoad(t *testing.
 	}
 }
 
+// A cold load whose retained window can no longer prove the persisted
+// fingerprint rebuilds from the canonical journal instead of failing the
+// conversation; the journal remains complete and readable.
+func TestCanonicalColdLoadRebuildsUnverifiableCheckpoint(t *testing.T) {
+	ctx := t.Context()
+	store := canonicalMessageTestStore{Store: agentsession.Memory()}
+	source := &testHistorySource{
+		head: agentcanonical.CanonicalHistoryHead{Identity: "lane", Revision: "1"},
+		messages: []*agentschema.Message{
+			agentschema.UserMessage("original request"), agentschema.AssistantMessage("original answer", nil),
+		},
+	}
+	open := func() (*Agent, *Session) {
+		owner, err := New(ctx, agentengine.Definition{Model: &lifecycleModel{}}, WithSessionStore(store))
+		if err != nil {
+			t.Fatal(err)
+		}
+		session, err := owner.Session(ctx, agentsession.Named("unverifiable-window"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return owner, session
+	}
+	owner, sess := open()
+	if err := sess.LoadCanonicalHistory(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// The source now reports different bodies under the same checkpoint head.
+	source.messages = []*agentschema.Message{
+		agentschema.UserMessage("original request"), agentschema.AssistantMessage("edited answer", nil),
+	}
+	owner, sess = open()
+	defer owner.Close(ctx)
+	if err := sess.LoadCanonicalHistory(ctx, source); err != nil {
+		t.Fatalf("unverifiable checkpoint failed the conversation: %v", err)
+	}
+	state, err := decodeJournalTranscript(sess.engineState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Messages) != 2 || state.Messages[1].Content != "edited answer" {
+		t.Fatalf("cold load did not rebuild from the canonical journal: %#v", state.Messages)
+	}
+}
+
 func TestCanonicalArchiveRebuildsWhenSummaryLimitIsLowered(t *testing.T) {
 	ctx := t.Context()
 	source := &testHistorySource{head: agentcanonical.CanonicalHistoryHead{Identity: "lane", Revision: "1"}}

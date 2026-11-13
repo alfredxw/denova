@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"denova/internal/book/lore"
 	"denova/internal/revisionfile"
@@ -227,17 +228,34 @@ func (s *Service) stageLoreCollection(ctx context.Context, previewDir string, re
 	for _, member := range binding.Members {
 		reserved = append(reserved, lore.Item{ID: member.ID})
 	}
+	// Snapshot existing names before the merge loop so detail-aware duplicate
+	// resolution never matches an incoming item appended earlier in the loop.
+	existingByName := make(map[string]lore.Item, len(collection.Items))
+	for _, item := range collection.Items {
+		if key := lore.NameKey(item.Name); key != "" {
+			existingByName[key] = item
+		}
+	}
 	applied := map[string]bool{}
 	// Merge by receipt identity, never by name. Missing upstream items remain local.
 	for i := range incoming {
 		sourceID := incoming[i].ID
 		member, found := binding.Members[sourceID]
 		if !found {
-			member.ID, err = lore.NewItemID(reserved, incoming[i].Name)
-			if err != nil {
-				return err
+			if existing, ok := existingByName[lore.NameKey(incoming[i].Name)]; ok && review.overrideByDetail {
+				if !moreDetailed(incoming[i], existing) {
+					review.skipped = append(review.skipped, incoming[i].Name)
+					continue
+				}
+				review.overrides = append(review.overrides, incoming[i].Name)
+				member.ID = existing.ID
+			} else {
+				member.ID, err = lore.NewItemID(reserved, incoming[i].Name)
+				if err != nil {
+					return err
+				}
+				reserved = append(reserved, lore.Item{ID: member.ID})
 			}
-			reserved = append(reserved, lore.Item{ID: member.ID})
 		}
 		var payload struct {
 			Materials *portableMaterials `json:"materials"`
@@ -430,4 +448,27 @@ func remapLoreIndexItemOrder(orders map[string][]string, ids map[string]string) 
 		}
 	}
 	return result
+}
+
+// detailFields reports the detail measure of a lore item: the non-empty field
+// count recorded by the importer, falling back to 1 for any item with content
+// so hand-written or legacy entries still compare sensibly.
+func detailFields(item lore.Item) int {
+	if item.DetailFields > 0 {
+		return item.DetailFields
+	}
+	if strings.TrimSpace(item.Content) != "" {
+		return 1
+	}
+	return 0
+}
+
+// moreDetailed reports whether a carries a richer setting than b: more populated
+// detail fields win first, then a longer body. Equality is not "more detailed".
+func moreDetailed(a, b lore.Item) bool {
+	af, bf := detailFields(a), detailFields(b)
+	if af != bf {
+		return af > bf
+	}
+	return utf8.RuneCountInString(a.Content) > utf8.RuneCountInString(b.Content)
 }

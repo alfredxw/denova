@@ -52,6 +52,16 @@ func engineDescriptor(id config.RuntimeID) EngineDescriptor {
 	case config.RuntimeCodex, config.RuntimeClaude:
 		item.NameKey, item.Status = "agentRuntime."+string(id), "unchecked"
 		item.Capabilities = EngineCapabilities{AskUser: true, Cancel: true, Goal: true, Queue: true, Steer: true, Pause: true}
+	case config.RuntimeGrok:
+		item.NameKey, item.Status = "agentRuntime."+string(id), "unchecked"
+		// A single-turn headless process can be cancelled and queued, but not
+		// steered or paused: there is no live channel into the running turn.
+		// Goal requires an isolated evaluation fork this adapter does not expose.
+		item.Capabilities = EngineCapabilities{AskUser: true, Cancel: true, Queue: true}
+	case config.RuntimeAntigravity:
+		item.NameKey, item.Status = "agentRuntime."+string(id), "unchecked"
+		// Goal requires an isolated evaluation fork, which this adapter does not expose.
+		item.Capabilities = EngineCapabilities{AskUser: true, Cancel: true, Queue: true, Steer: true, Pause: true}
 	}
 	item.ConfigurationSections = EngineConfigurationSections(id)
 	return item
@@ -82,6 +92,10 @@ const (
 	SectionClaudePolicy      ConfigurationSectionID = "claude.execution_policy"
 	SectionCodexModel        ConfigurationSectionID = "codex.model"
 	SectionCodexPolicy       ConfigurationSectionID = "codex.execution_policy"
+	SectionGrokModel         ConfigurationSectionID = "grok.model"
+	SectionGrokPolicy        ConfigurationSectionID = "grok.execution_policy"
+	SectionAntigravityModel  ConfigurationSectionID = "antigravity.model"
+	SectionAntigravityPolicy ConfigurationSectionID = "antigravity.execution_policy"
 )
 
 // AgentConfiguration is an inspection projection, never a second configuration
@@ -136,7 +150,7 @@ func EngineConfigurationSections(selected config.RuntimeID) []ConfigurationSecti
 		}
 		sections = append(sections, section)
 	}
-	for _, engine := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude} {
+	for _, engine := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude, config.RuntimeGrok, config.RuntimeAntigravity} {
 		for _, suffix := range []string{"model", "execution_policy"} {
 			section := ConfigurationSection{ID: ConfigurationSectionID(string(engine) + "." + suffix), Owner: string(engine), State: "editable"}
 			if suffix == "execution_policy" && engine != config.RuntimeCodex {

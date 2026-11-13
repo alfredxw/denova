@@ -146,7 +146,9 @@ func (session *Session) replay(ctx context.Context, access sessionAccess) error 
 			if err := json.Unmarshal(record.Data, &checkpoint); err != nil {
 				return fmt.Errorf("decode Agent Session message checkpoint at revision %d: %w", record.Revision, err)
 			}
-			if checkpoint.Hash == "" || checkpoint.MessageCount < 0 {
+			// An empty hash marks a checkpoint with no retained canonical
+			// window; recovery rebuilds it from the canonical source.
+			if checkpoint.MessageCount < 0 {
 				return fmt.Errorf("decode Agent Session message checkpoint at revision %d: invalid checkpoint", record.Revision)
 			}
 			session.messageCheckpoint = checkpoint
@@ -672,17 +674,6 @@ func (session *Session) publishLocked(event agentevent.Event) {
 	for _, observer := range session.observers {
 		publishLatestEvent(observer.events, event, &observer.drops)
 	}
-}
-
-func (session *Session) nextCommandCursor() agentevent.Cursor {
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	return session.nextCommandCursorLocked()
-}
-
-func (session *Session) nextCommandCursorLocked() agentevent.Cursor {
-	session.cursor++
-	return session.cursor
 }
 
 func (session *Session) addRecentLocked(summary agentevent.RunSummary) {

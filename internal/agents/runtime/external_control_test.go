@@ -304,3 +304,135 @@ func observePlanFixture(t *testing.T, state ProductState, items []agentevent.Tod
 	t.Helper()
 	return state.ObservePlan(t.Context(), external.PlanEvent(items))
 }
+
+
+func TestSuspendedExternalControlDetachesOnlyExactQuiescentCycle(t *testing.T) {
+	_, _, state, options, _ := controlFixture(t)
+	engines := NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "original", Message: "Continue the story"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "original"); !errors.Is(err, ErrOperationActive) {
+		t.Fatalf("live cycle must not detach: %v", err)
+	}
+	// Simulate a cold process that lost its in-memory runner without
+	// completing or discarding its original durable input.
+	control.mu.Lock()
+	control.active = nil
+	control.mu.Unlock()
+	status, err := control.Status(t.Context())
+	if err != nil || status.Phase != agentrun.RunPhaseSuspended {
+		t.Fatalf("cold operation must be suspended: %+v %v", status, err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "wrong"); !errors.Is(err, ErrOperationActive) {
+		t.Fatalf("wrong command detached original input: %v", err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "original"); err != nil {
+		t.Fatalf("quiescent cycle could not detach: %v", err)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "original"); err != nil {
+		t.Fatalf("repeat detach must be idempotent: %v", err)
+	}
+	status, err = control.Status(t.Context())
+	if err != nil || status.Phase != agentrun.RunPhaseIdle {
+		t.Fatalf("old runtime remains occupied: %+v %v", status, err)
+	}
+	receipt, found, err := control.Receipt(t.Context(), "original")
+	if err != nil || !found || receipt.OperationID != run.Receipt().OperationID {
+		t.Fatalf("lost old durable command identity: %+v %t %v", receipt, found, err)
+	}
+	_, err = control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "fresh-CLI", Message: "Resume the existing Game draft"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("detached runtime cannot accept new CLI: %v", err)
+	}
+}
+
+// A suspended cycle is not a running one: clients must resume or discard its
+// accepted input instead of being told to Follow Up, Steer, or Stop a live run.
+func TestExternalStartReportsPausedCycleInsteadOfBusy(t *testing.T) {
+	_, _, state, options, _ := controlFixture(t)
+	engines := NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	run, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "first", Message: "Open the gate"},
+	}, func(ctx context.Context, _ ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (ExternalCycle, error) {
+		return externalCycleFunc(func(ctx context.Context) agentrun.Outcome {
+			close(started)
+			<-ctx.Done()
+			return agentrun.Outcome{Status: agentrun.OutcomeAborted, Error: ctx.Err()}
+		}), nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan agentrun.Outcome, 1)
+	go func() {
+		defer func() {
+			if value := recover(); value != nil {
+				done <- agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: fmt.Errorf("test worker panic: %v", value)}
+			}
+		}()
+		done <- run.Wait(t.Context())
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cycle did not start")
+	}
+	if _, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "concurrent", Message: "Act now"},
+	}, nil, nil); !errors.Is(err, ErrOperationActive) {
+		t.Fatalf("live cycle start error = %v, want ErrOperationActive", err)
+	}
+	if _, err := control.Submit(t.Context(), Command{Kind: agentexecution.CommandSuspend, CommandID: "pause", OperationID: run.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case outcome := <-done:
+		if outcome.Status != agentrun.OutcomeSuspended {
+			t.Fatalf("pause outcome = %+v", outcome)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("pause did not settle")
+	}
+	if _, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "second", Message: "Push the door instead"},
+	}, nil, nil); !errors.Is(err, ErrOperationPaused) {
+		t.Fatalf("suspended cycle start error = %v, want ErrOperationPaused", err)
+	}
+	status, err := control.Status(t.Context())
+	if err != nil || status.Phase != agentrun.RunPhaseSuspended {
+		t.Fatalf("suspended projection: %+v %v", status, err)
+	}
+	resumed, err := control.Resume(t.Context(), agentexecution.RuntimeRecoveryActions(status)[0], func(context.Context, ExternalCycleInput, func(agentrun.Event), func(context.Context, *external.RuntimeSession) error) (ExternalCycle, error) {
+		return externalCycleFunc(func(context.Context) agentrun.Outcome {
+			return agentrun.Outcome{Status: agentrun.OutcomeCompleted}
+		}), nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome := resumed.Wait(t.Context()); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("resume outcome = %+v", outcome)
+	}
+	if _, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "third", Message: "Continue the story"},
+	}, nil, nil); err != nil {
+		t.Fatalf("settled cycle cannot accept a new turn: %v", err)
+	}
+}

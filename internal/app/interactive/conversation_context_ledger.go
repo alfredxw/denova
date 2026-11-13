@@ -33,15 +33,6 @@ type interactiveContextSource struct {
 	ExactMessage bool
 }
 
-func (c *Conversation) stableLeadingMessageSnapshot() string {
-	if c == nil {
-		return ""
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.stableLeadingMessage
-}
-
 // PreserveStableLeadingMessage keeps complete resident Lore outside
 // the compactable history tail, mirroring the stable-prefix behavior used by
 // writing-mode sessions.

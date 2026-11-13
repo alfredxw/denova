@@ -69,7 +69,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	if mode != "manual" && mode != "notify" && mode != "auto_apply" {
 		return Plan{}, fmt.Errorf("invalid update mode")
 	}
-	review := &updateReview{choices: request.Resolutions}
+	review := &updateReview{choices: request.Resolutions, overrideByDetail: request.OverrideByDetail}
 	if err := review.validate(); err != nil {
 		return Plan{}, err
 	}
@@ -164,9 +164,10 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 		case "style.reference":
 			local.ID += ".md"
 		case "lore.collection", "game.openings", "project.cover", "project.creator":
-			if resource.Kind == "project.cover" {
+			switch resource.Kind {
+			case "project.cover":
 				local.ID = "cover"
-			} else if resource.Kind == "project.creator" {
+			case "project.creator":
 				local.ID = "creator"
 			}
 			local.Scope = "project"
@@ -405,6 +406,8 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	}
 	plan.Installation.Bindings = slices.DeleteFunc(plan.Installation.Bindings, func(binding Binding) bool { return blockedNew[binding.ResourceID] })
 	plan.Updates = review.items
+	plan.ImportOverrides = review.overrides
+	plan.ImportSkipped = review.skipped
 	plan.Installation.ReviewedSource = reviewedSource(candidate)
 	// Automatic grants cannot acknowledge additions or dependency changes that
 	// require the user to review a broader resource selection.

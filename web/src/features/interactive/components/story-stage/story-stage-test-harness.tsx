@@ -104,9 +104,11 @@ export function ReplyEditHarness({ readSavedNarrative }: { readSavedNarrative: (
 
 export function StoryStageHarness({
   initialSnapshot,
+  story: storyOverride,
   onDone,
 }: {
   initialSnapshot?: Snapshot
+  story?: StorySummary
   onDone?: (options?: { silent?: boolean }) => Promise<Snapshot | void>
 } = {}) {
   const [snapshot, setSnapshot] = useState<Snapshot>(
@@ -132,8 +134,8 @@ export function StoryStageHarness({
     <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
       <StoryStage
         workspace="/tmp/book"
-        stories={[story()]}
-        story={story()}
+        stories={[storyOverride || story()]}
+        story={storyOverride || story()}
         tellers={[]}
         storyId="story-1"
         branchId="main"

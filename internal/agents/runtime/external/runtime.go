@@ -71,6 +71,10 @@ type RuntimeSession struct {
 	input           Input
 	cache           runtimeCache
 	file            string
+	leaseFile       string
+	leased          bool
+	stashed         []byte
+	accepted        bool
 	prepareInput    func(context.Context, Input, Adapter) (Input, error)
 	rebuildAllowed  bool
 }
@@ -113,21 +117,30 @@ func (runtime *Runtime) prepare(ctx context.Context, request SessionRequest) (*R
 	prefixHash := sha256.Sum256(prefix)
 	lease := &RuntimeSession{file: filepath.Join(dir, "binding.json"), input: request.Input, prepareInput: request.Prepare, rebuildAllowed: true,
 		cache: runtimeCache{Version: 1, Boundary: request.Boundary, PrefixKey: hex.EncodeToString(prefixHash[:])}}
+	lease.leaseFile = lease.file + ".lease"
 	lease.input.Selection, lease.input.Directory = runtime.Selection, dir
 	data, readErr := os.ReadFile(lease.file)
-	var cached runtimeCache
-	if readErr == nil && json.Unmarshal(data, &cached) == nil && cached.Version == 1 &&
-		cached.Boundary == request.Boundary && cached.PrefixKey == lease.cache.PrefixKey {
-		lease.input.SessionID, lease.input.CumulativeUsage = cached.SessionID, cached.CumulativeUsage
-	}
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+	if readErr == nil {
+		// Lease the binding instead of deleting it: exactly one attempt owns the
+		// provider conversation, and Close restores the acknowledged binding when
+		// the attempt never commits. Deleting here made one failure drop reuse for
+		// good, which forced a full source rebuild on every later turn.
+		if err := os.Rename(lease.file, lease.leaseFile); err != nil {
+			return nil, err
+		}
+		lease.leased = true
+		var cached runtimeCache
+		if json.Unmarshal(data, &cached) == nil && cached.Version == 1 &&
+			cached.Boundary == request.Boundary && cached.PrefixKey == lease.cache.PrefixKey {
+			lease.input.SessionID, lease.input.CumulativeUsage = cached.SessionID, cached.CumulativeUsage
+			lease.stashed = data
+		}
+	} else if !errors.Is(readErr, os.ErrNotExist) {
 		return nil, readErr
-	}
-	if err := os.Remove(lease.file); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
 	}
 	lease.adapter, lease.release, err = runtime.Acquire(ctx)
 	if err != nil {
+		_ = lease.Close()
 		return nil, err
 	}
 	return lease, nil
@@ -147,6 +160,9 @@ func (lease *RuntimeSession) run(ctx context.Context, host Host) (Result, error)
 	if input.SessionID != "" {
 		input.History = nil
 	}
+	// An empty resume id with canonical history present is the signature of a
+	// conversation rebuilt on every attempt instead of continued.
+	slog.InfoContext(ctx, "[external-runtime] provider session", "resume", input.SessionID, "history", len(input.History))
 	var err error
 	if lease.prepareInput != nil {
 		input, err = lease.prepareInput(ctx, input, lease.adapter)
@@ -200,11 +216,47 @@ func (lease *RuntimeSession) Accept(_ context.Context, boundary string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(lease.file, body, 0600)
+	if err := writeFileAtomic(lease.file, body); err != nil {
+		return err
+	}
+	lease.accepted = true
+	if lease.leased {
+		_ = os.Remove(lease.leaseFile)
+	}
+	return nil
 }
 
 func (lease *RuntimeSession) Close() error {
-	lease.once.Do(lease.release)
+	lease.once.Do(func() {
+		if lease.release != nil {
+			lease.release()
+		}
+		if !lease.accepted && len(lease.stashed) > 0 {
+			// The attempt never committed: restore the last acknowledged binding so
+			// provider reuse survives a single failure. A newer binding written by a
+			// concurrent attempt always wins.
+			if _, err := os.Stat(lease.file); errors.Is(err, os.ErrNotExist) {
+				_ = writeFileAtomic(lease.file, lease.stashed)
+			}
+		}
+		if lease.leased {
+			_ = os.Remove(lease.leaseFile)
+		}
+	})
+	return nil
+}
+
+// writeFileAtomic replaces path through a sibling temporary file so a crash or a
+// concurrent reader never observes a half-written binding.
+func writeFileAtomic(path string, body []byte) error {
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, body, 0600); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
 	return nil
 }
 

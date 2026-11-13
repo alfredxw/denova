@@ -60,34 +60,3 @@ func decodeResponse(t *testing.T, data []byte, target any) {
 		t.Fatalf("decode response: %v body=%s", err, string(data))
 	}
 }
-
-func assertIdleRuntimeProjection(t *testing.T, body []byte) {
-	t.Helper()
-	var response struct {
-		Active            bool   `json:"active"`
-		Cursor            uint64 `json:"cursor"`
-		Phase             string `json:"phase"`
-		RecoveryPaused    bool   `json:"recovery_paused"`
-		ActiveOperationID string `json:"active_operation_id"`
-		ActiveCycle       int    `json:"active_cycle"`
-		ActiveOutput      struct {
-			Content  string `json:"content"`
-			Thinking string `json:"thinking"`
-		} `json:"active_output"`
-		Queue              []any `json:"queue"`
-		OpenTools          []any `json:"open_tools"`
-		RuntimeRecoverable bool  `json:"runtime_recoverable"`
-		StreamAttached     bool  `json:"stream_attached"`
-		RecoveryActions    []any `json:"recovery_actions"`
-	}
-	decodeResponse(t, body, &response)
-	if response.Active || response.Cursor != 0 || response.Phase != "idle" || response.ActiveOperationID != "" || response.ActiveCycle != 0 {
-		t.Fatalf("runtime projection identity mismatch: %#v body=%s", response, body)
-	}
-	if response.Queue == nil || response.OpenTools == nil || response.RecoveryActions == nil {
-		t.Fatalf("runtime projection collections must be explicit empty arrays: %s", body)
-	}
-	if response.RuntimeRecoverable || response.StreamAttached || len(response.RecoveryActions) != 0 {
-		t.Fatalf("idle runtime must not advertise recovery or an attached stream: %#v body=%s", response, body)
-	}
-}

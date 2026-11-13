@@ -54,7 +54,7 @@ export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', 
           : { approval_mode: mode }),
       }
     : defaultApproval
-  if (!approval.initialized || runtime?.kind === 'claude') return null
+  if (!approval.initialized || (runtime && runtime.kind !== 'native' && runtime.kind !== 'codex')) return null
 
   const selectionDisabled = approval.saving || Boolean(codex && runActive)
 

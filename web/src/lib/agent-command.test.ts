@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { TFunction } from 'i18next'
 import { APIError } from '@/lib/api-client'
-import { agentCommandErrorMessage, rememberAgentCommandID } from './agent-command'
+import { agentCommandErrorCode, agentCommandErrorMessage, rememberAgentCommandID } from './agent-command'
 
 describe('rememberAgentCommandID', () => {
   it('reuses an uncertain identity and bounds retained retry state', () => {
@@ -21,6 +21,14 @@ describe('rememberAgentCommandID', () => {
       ['request-2', 'command-2'],
       ['request-3', 'command-3'],
     ])
+  })
+})
+
+describe('agentCommandErrorCode', () => {
+  it('reads only stable runtime codes', () => {
+    expect(agentCommandErrorCode({ code: 'agent_runtime.operation_paused' })).toBe('agent_runtime.operation_paused')
+    expect(agentCommandErrorCode(new Error('offline'))).toBe('')
+    expect(agentCommandErrorCode(null)).toBe('')
   })
 })
 
@@ -52,5 +60,12 @@ describe('agentCommandErrorMessage', () => {
 
     expect(agentCommandErrorMessage(error, t)).toContain('chat.runtime.invalidCommand')
     expect(agentCommandErrorMessage(error, t)).toContain('0198f2cb-e980-7a21-81ba-e4999869808f')
+  })
+
+  it('guides a suspended turn to resume or discard instead of steering a live run', () => {
+    const t = vi.fn((key: string) => key) as unknown as TFunction
+
+    expect(agentCommandErrorMessage({ code: 'agent_runtime.operation_paused' }, t)).toContain('chat.runtime.pausedTurn')
+    expect(agentCommandErrorMessage({ code: 'agent_runtime.busy' }, t)).toContain('chat.runtime.busy')
   })
 })

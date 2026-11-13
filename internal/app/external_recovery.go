@@ -85,9 +85,19 @@ func (s *InteractiveAppService) recoverExternal(ctx context.Context, control *ag
 	if pending != nil {
 		resumeID = pending.ID
 	}
-	cycle, err := s.prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{CommandID: input.Request.CommandID, ResumeInterruptionID: resumeID, StoryID: options.StoryID, BranchID: options.BranchID, Message: input.Request.Message, Locale: input.Request.Locale, StyleScenes: input.Request.StyleScenes, AttachedFiles: input.Request.AttachedFiles, InputVisibility: input.Request.InputVisibility, RegenerateFromTurnID: input.RegenerateFromTurnID})
-	if err != nil {
-		return AgentRuntimeRecoveryResult{}, err
+	var cycle *interactiveAgentCycle
+	if action.Kind == agentexecution.RuntimeRecoveryAbort {
+		// Abort is a bookkeeping operation. A missing or disconnected model
+		// must not prevent users from settling the interrupted Game turn.
+		a := s.app
+		a.mu.RLock()
+		cycle = &interactiveAgentCycle{store: a.interactive, workspace: a.workspace, storyID: options.StoryID, branchID: options.BranchID}
+		a.mu.RUnlock()
+	} else {
+		cycle, err = s.prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{CommandID: input.Request.CommandID, ResumeInterruptionID: resumeID, StoryID: options.StoryID, BranchID: options.BranchID, Message: input.Request.Message, Locale: input.Request.Locale, StyleScenes: input.Request.StyleScenes, AttachedFiles: input.Request.AttachedFiles, InputVisibility: input.Request.InputVisibility, RegenerateFromTurnID: input.RegenerateFromTurnID})
+		if err != nil {
+			return AgentRuntimeRecoveryResult{}, err
+		}
 	}
 	a := s.app
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
@@ -105,10 +115,21 @@ func (s *InteractiveAppService) recoverExternal(ctx context.Context, control *ag
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err
 	}
+	// Validate and settle the runtime first. If its recovery revision changed,
+	// the canonical story must remain resumable rather than being discarded.
 	run, err := control.Resume(ctx, action, s.externalGameFactory(cycle, task.ID()), task.Emit)
 	if err != nil {
 		rollbackInteractiveAttachTask(a, task, err)
 		return AgentRuntimeRecoveryResult{}, err
+	}
+	if action.Kind == agentexecution.RuntimeRecoveryAbort {
+		if err := settleAbortedExternalGameInput(cycle.store, options.StoryID, options.BranchID, input.Request.CommandID); err != nil {
+			// Resume installed a controller run; retire it even on filesystem
+			// failure so the next recovery request can reconcile the journal.
+			run.Wait(context.WithoutCancel(ctx))
+			rollbackInteractiveAttachTask(a, task, err)
+			return AgentRuntimeRecoveryResult{}, err
+		}
 	}
 	a.mu.Lock()
 	a.activeInteractiveRun.recoveryActions[recoveryActionKey(action)] = run.Receipt()

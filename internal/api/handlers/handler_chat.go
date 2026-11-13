@@ -97,6 +97,10 @@ func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于其他请求 / command_id was already used for a different request", nil)
 		return
 	}
+	if errors.Is(err, novaApp.ErrAgentOperationPaused) {
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.operation_paused", "上一轮已暂停，请继续生成或放弃该轮后再发送 / The previous turn is paused; resume or discard it before sending", nil)
+		return
+	}
 	if errors.Is(err, novaApp.ErrAgentOperationActive) {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "已有 Agent 正在运行，请使用 Follow Up、Steer 或 Stop / An agent is already running; use Follow Up, Steer, or Stop", nil)
 		return

@@ -161,6 +161,11 @@ type PlanRequest struct {
 	Grants             map[string][]string `json:"grants,omitempty"`
 	Names              map[string]string   `json:"names,omitempty"`
 	ReplaceModified    bool                `json:"replace_modified,omitempty"`
+	// OverrideByDetail enables detail-aware duplicate resolution for character
+	// card imports: a same-name existing lore item is replaced only when the
+	// incoming item is more detailed. Package and extension imports never set it,
+	// keeping receipt-identity update semantics.
+	OverrideByDetail bool `json:"override_by_detail,omitempty"`
 }
 
 type PlanItem struct {
@@ -186,6 +191,12 @@ type Plan struct {
 	Items               []PlanItem                   `json:"items"`
 	PlatformState       string                       `json:"platform_state,omitempty"`
 	Changes             []fileChange                 `json:"changes,omitempty"`
+
+	// ImportOverrides and ImportSkipped report detail-aware duplicate resolution
+	// for character card imports: names that replaced a less-detailed existing
+	// entry and names kept over a less-detailed incoming duplicate.
+	ImportOverrides []string `json:"import_overrides,omitempty"`
+	ImportSkipped   []string `json:"import_skipped,omitempty"`
 
 	// Unavailable selections keep the review visible but prevent application
 	// until resources are resolved or the user deselects those defaults.

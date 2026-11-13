@@ -225,7 +225,9 @@ func (control *ExternalController) Start(ctx context.Context, input ExternalCycl
 		if saved.Outcome != "" {
 			return &ExternalRun{control: control, emit: emit, receipt: saved.Receipt, replayed: true, outcome: agentrun.Outcome{Status: saved.Outcome}}, nil
 		}
-		return nil, ErrOperationActive
+		// The command was accepted but has no outcome and no live runner, so its
+		// input is suspended. Only resume or discard may settle it.
+		return nil, ErrOperationPaused
 	}
 	if control.active != nil {
 		return nil, ErrOperationActive
@@ -233,7 +235,7 @@ func (control *ExternalController) Start(ctx context.Context, input ExternalCycl
 	run := &ExternalRun{control: control, factory: factory, emit: emit}
 	err = control.update(ctx, func(state *externalControlState) error {
 		if state.Phase != agentrun.RunPhaseIdle {
-			return ErrOperationActive
+			return ErrOperationPaused
 		}
 		if _, found, err := state.receipt(request.CommandID); err != nil {
 			return err
@@ -306,6 +308,39 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 	}
 	control.active = run
 	return run, nil
+}
+
+// DetachSuspendedGameForEngineSwitch relinquishes only the old provider
+// controller. The Game journal retains its accepted input, draft and dice so
+// a newly selected CLI can resume the same canonical turn. This operation is
+// only permitted for one quiescent suspended cycle with no queued work.
+func (control *ExternalController) DetachSuspendedGameForEngineSwitch(ctx context.Context, commandID string) error {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	state, err := control.read(ctx)
+	if err != nil {
+		return err
+	}
+	if control.active != nil {
+		return ErrOperationActive
+	}
+	if state.Phase == agentrun.RunPhaseIdle {
+		return nil
+	}
+	if state.Phase != agentrun.RunPhaseSuspended || state.Current == nil ||
+		state.Current.Request.CommandID != commandID || len(state.Queue) != 0 ||
+		len(state.Current.Guidance) != 0 {
+		return ErrOperationActive
+	}
+	return control.update(ctx, func(current *externalControlState) error {
+		if current.Phase != agentrun.RunPhaseSuspended || current.Current == nil ||
+			current.Current.Request.CommandID != commandID || len(current.Queue) != 0 ||
+			len(current.Current.Guidance) != 0 {
+			return ErrOperationActive
+		}
+		current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
+		return current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted)
+	})
 }
 
 // Receipt reads the logical product task receipt, independently of the shorter

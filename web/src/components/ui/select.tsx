@@ -81,10 +81,14 @@ function SelectContent({
         {...props}
       >
         <SelectScrollUpButton />
+        {/* Only the width matches the trigger. Pinning the height to the trigger
+            height clipped every option into a one-row strip, so the content
+            swallowed clicks aimed at the selected row. The minimum keeps one
+            full row reachable when the available height is tight. */}
         <SelectPrimitive.Viewport
           data-position={position}
           className={cn(
-            "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
+            "min-h-8 data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
             position === "popper" && ""
           )}
         >
@@ -125,10 +129,12 @@ function SelectScrollUpButton({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.ScrollUpButton>) {
   return (
+    // The overlay is a visual hint: it must not swallow clicks aimed at the
+    // first or last option when the list overflows in a short viewport.
     <SelectPrimitive.ScrollUpButton
       data-slot="select-scroll-up-button"
       className={cn(
-        "z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
+        "pointer-events-none absolute inset-x-0 top-0 z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -144,10 +150,11 @@ function SelectScrollDownButton({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.ScrollDownButton>) {
   return (
+    // Same rule as the up overlay: keep the hint without intercepting clicks.
     <SelectPrimitive.ScrollDownButton
       data-slot="select-scroll-down-button"
       className={cn(
-        "z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
+        "pointer-events-none absolute inset-x-0 bottom-0 z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

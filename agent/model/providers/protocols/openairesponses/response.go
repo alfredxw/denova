@@ -273,6 +273,10 @@ func (state *streamState) convert(event responses.ResponseStreamEventUnion) (*ag
 		"response.reasoning_summary_part.added", "response.reasoning_summary_part.done",
 		"response.reasoning_summary_text.done", "response.reasoning_text.done":
 		return nil, nil
+	// The ChatGPT backend interleaves response.metadata events that only carry
+	// moderation results for the request, never assistant content.
+	case "response.metadata":
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("openai responses stream: unsupported event type %q", event.Type)
 	}

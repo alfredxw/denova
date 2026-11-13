@@ -1,6 +1,7 @@
 import i18n from '@/i18n'
 import { APIError, jsonHeaders, requestJSON } from '@/lib/api-client/client'
 import { errorMessage } from '@/lib/error-diagnostics'
+import { remoteAccessIsLocal } from '@/features/remote-access/api'
 
 export type PackageKind = 'plugin' | 'game'
 export type ContributionContext = 'writing' | 'game' | 'general'
@@ -138,6 +139,43 @@ export interface RuntimeSnapshot {
 }
 export const managementBase = '/api/platform/manage'
 
+/**
+ * Host-bound management actions mirror the backend classification in
+ * internal/api/middleware.go: runtimes listen on loopback, package installation
+ * runs extension code on the Denova host, and previews resolve host paths.
+ * Remote browsers fail fast with a clear reason instead of a generic 403.
+ */
+export function hostOnlyManagement(path: string, method = 'GET'): boolean {
+  const normalized = method.toUpperCase()
+  if (normalized === 'GET' || normalized === 'HEAD' || normalized === 'OPTIONS') return false
+  const parts = path.split('?')[0].split('/').filter(Boolean)
+  const [section, , third, , fifth] = parts
+  switch (section) {
+    case 'game-preferences':
+      return !(parts.length === 1 && normalized === 'PATCH')
+    case 'instances':
+      return !((parts.length === 2 && (normalized === 'PATCH' || normalized === 'DELETE'))
+        || (parts.length === 3 && third === 'stop' && normalized === 'POST'))
+    case 'runtimes':
+      return !((parts.length === 3 && third === 'stop' && normalized === 'POST')
+        || (parts.length === 4 && third === 'consumers' && normalized === 'DELETE'))
+    case 'projects':
+      return !((parts.length === 3 && third === 'extensions' && normalized === 'PUT')
+        || (parts.length === 5 && third === 'plugins' && fifth === 'content' && normalized === 'POST'))
+    default:
+      return true
+  }
+}
+
+function localHostOnlyError(): APIError {
+  const message = i18n.t('platform.errors.LOCAL_HOST_ONLY')
+  return new APIError(message, {
+    status: 403,
+    code: 'LOCAL_HOST_ONLY',
+    payload: { code: 'LOCAL_HOST_ONLY', messageKey: 'platform.errors.LOCAL_HOST_ONLY' },
+  })
+}
+
 export interface ConfigurationProblem {
   messageKey: string
   fields?: { path: string[]; keyword: string }[]
@@ -181,6 +219,7 @@ export function management<T>(
   method = 'GET',
   body?: unknown,
 ): Promise<T> {
+  if (!remoteAccessIsLocal() && hostOnlyManagement(path, method)) return Promise.reject(localHostOnlyError())
   return requestJSON<T>(managementBase + path, {
     method,
     ...(body === undefined

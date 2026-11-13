@@ -171,11 +171,12 @@ func (operation *Operation) Wait(ctx context.Context) agentrun.Outcome {
 		case agentrun.OutcomeAborted:
 			operation.send(agentrun.NewAbortedEvent(agentrun.AbortReasonUserRequested))
 		case agentrun.OutcomeFailed:
-			operation.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "message": i18n.New(operation.request.Locale).T("agentRuntime.operationFailed"), "details": map[string]any{"detail": observability.ErrorCause(operation.outcome.Error)}, "run_id": operation.id}})
+			key := FailureKey(operation.outcome.Error)
+			operation.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": key, "message": i18n.New(operation.request.Locale).T(key), "details": map[string]any{"detail": observability.ErrorCause(operation.outcome.Error)}, "run_id": operation.id}})
 		case agentrun.OutcomeSuspended:
 			operation.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.interrupted", "message": i18n.New(operation.request.Locale).T("agentRuntime.interrupted"), "details": map[string]any{"detail": observability.ErrorCause(operation.outcome.Error)}, "run_id": operation.id}})
 		}
-		if runtimeSession != nil && (settled == externaljournal.Completed || (settled == externaljournal.Interrupted && result.Settled)) {
+		if runtimeSession != nil && (settled == externaljournal.Completed || result.Settled) {
 			err := operation.request.Session.ReadExternal(context.WithoutCancel(ctx), func(state session.ExternalState) error {
 				return runtimeSession.Accept(ctx, fmt.Sprint(state.ContextRevision))
 			})

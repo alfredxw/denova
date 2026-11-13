@@ -226,6 +226,9 @@ func (s *streamOutput) feedFrame(f streamFrame, host external.Host) error {
 		}
 		if f.Subtype == "init" {
 			s.initialized = true
+			// dontAsk plus the explicit --allowedTools grant is the enforcement
+			// boundary: any tool outside it is rejected. EndConversation and
+			// non-denova ambient MCP tools are exempt.
 			for _, name := range f.Tools {
 				if !s.tools[name] && name != "EndConversation" && !(s.ambientMCP && strings.HasPrefix(name, "mcp__") && !strings.HasPrefix(name, "mcp__denova__")) {
 					return fmt.Errorf("Claude exposed an unscoped tool %q", name)

@@ -35,7 +35,24 @@ test('frontend changes do not run Go or updater suites', () => {
   assert.deepEqual(plan.go_modules, [])
   assert.equal(plan.unit, true)
   assert.equal(plan.updater, false)
+  // Every browser journey is reachable from frontend changes.
+  assert.equal(plan.browser_full, true)
+  assert.deepEqual(plan.browser_shards, [1, 2, 3])
+  assert.equal(plan.shard_count, 3)
+})
+
+test('backend-only changes keep the scoped smoke browser run', () => {
+  const plan = planCI(['internal/app/chat.go'], false)
+  assert.equal(plan.code, true)
+  assert.equal(plan.browser_full, false)
   assert.deepEqual(plan.browser_shards, [1])
+  assert.equal(plan.shard_count, 1)
+})
+
+test('workflow changes verify the whole browser suite they describe', () => {
+  const plan = planCI(['.github/workflows/ci.yml'], false)
+  assert.equal(plan.browser_full, true)
+  assert.deepEqual(plan.browser_shards, [1, 2, 3])
 })
 
 test('Agent and dependency changes also verify the root module consumer', () => {
@@ -67,6 +84,7 @@ test('full verification covers every product suite even on a documentation commi
   assert.equal(plan.updater, true)
   assert.equal(plan.manifests, true)
   assert.deepEqual(plan.go_modules, ['.', 'agent'])
+  assert.equal(plan.browser_full, true)
   assert.deepEqual(plan.browser_shards, [1, 2, 3])
 })
 

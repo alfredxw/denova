@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"denova/config"
 	agentchat "denova/internal/agents/chat"
@@ -15,6 +16,13 @@ import (
 	"denova/internal/observability"
 
 	agentgoal "github.com/alfredxw/denova/agent/engine/goal"
+)
+
+// maxAttempts bounds automatic retries of a single external cycle input.
+// retryBackoff separates retries; both only apply to errors marked retryable.
+const (
+	maxAttempts  = 3
+	retryBackoff = time.Second
 )
 
 // ExternalRun drains journaled inputs on the product task goroutine. Pausing
@@ -28,11 +36,13 @@ type ExternalRun struct {
 	once          sync.Once
 	outcome       agentrun.Outcome
 	goal          agentgoal.GoalState
-	goalEvaluated bool          // false when committed work still needs evaluation after recovery
-	guidance      int           // number of instructions supplied to the current provider attempt
-	steering      chan struct{} // wakeups only; accepted inputs live in the journal
+	goalEvaluated bool                 // false when committed work still needs evaluation after recovery
+	guidance      int                  // number of instructions supplied to the current provider attempt
+	steering      chan struct{}        // wakeups only; accepted inputs live in the journal
 	replayed      bool
 	recoveryKey   string
+	attempted     string // input identity for retry accounting
+	attempts      int
 }
 
 func (run *ExternalRun) Receipt() agentrun.CommandReceipt { return run.receipt }
@@ -71,11 +81,11 @@ func (run *ExternalRun) Wait(ctx context.Context) agentrun.Outcome {
 			case agentrun.OutcomeSuspended:
 				if run.outcome.Error != nil && !errors.Is(run.outcome.Error, context.Canceled) {
 					slog.ErrorContext(ctx, "External task suspended after failure", "operation_id", run.receipt.OperationID, "error", run.outcome.Error)
-					run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "details": map[string]any{"detail": observability.ErrorCause(run.outcome.Error)}, "run_id": string(run.receipt.OperationID)}})
+					run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": external.FailureKey(run.outcome.Error), "details": map[string]any{"detail": observability.ErrorCause(run.outcome.Error)}, "run_id": string(run.receipt.OperationID)}})
 				}
 				run.send(agentrun.Event{Type: "suspended", Data: map[string]any{"reason": "runtime_paused"}})
 			case agentrun.OutcomeFailed:
-				run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "details": map[string]any{"detail": observability.ErrorCause(run.outcome.Error)}, "run_id": string(run.receipt.OperationID)}})
+				run.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": external.FailureKey(run.outcome.Error), "details": map[string]any{"detail": observability.ErrorCause(run.outcome.Error)}, "run_id": string(run.receipt.OperationID)}})
 			}
 		}()
 		run.outcome = run.drain(ctx)
@@ -136,12 +146,18 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 			}
 			continue
 		}
+		// The control state is re-decoded from the journal every cycle, so its
+		// pointers are not stable. Retry accounting keys on the logical input
+		// identity (operation + command) instead.
+		if key := string(state.OperationID) + "|" + state.Current.Request.CommandID; run.attempted != key {
+			run.attempted, run.attempts = key, 0
+		}
 		input := *state.Current
 		run.goalEvaluated = false
 		run.guidance = len(input.Guidance)
 		input.OperationID = state.OperationID
 		run.goal = agentgoal.GoalState{}
-		if supportsGoal(control.binding.AgentKind) {
+		if supportsGoal(control.binding.AgentKind) && control.store.supportsGoal() {
 			run.goal, _, err = control.store.Goal(ctx)
 		}
 		if err != nil {
@@ -179,6 +195,7 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 			Interrupt: func() { cancel(external.ErrSteered) },
 		})
 		control.mu.Unlock()
+		run.attempts++
 		cycle, err := run.factory(cycleCtx, input, run.cycleEvent, run.afterCommit)
 		outcome := agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: err}
 		if err == nil {
@@ -193,6 +210,19 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 		cancel(context.Canceled)
 		run.cancel = nil
 		run.steering = nil
+		// A transient provider failure is re-attempted in place, up to the
+		// bound, before the task is suspended for a manual resume. Steered and
+		// cancelled runs are never retried: the user asked to stop.
+		if outcome.Status != agentrun.OutcomeCompleted && external.IsRetryable(outcome.Error) &&
+			run.attempts < maxAttempts && !errors.Is(cause, external.ErrSteered) && ctx.Err() == nil {
+			control.mu.Unlock()
+			slog.InfoContext(ctx, "External cycle failed with a retryable error", "operation_id", run.receipt.OperationID, "attempt", run.attempts)
+			select {
+			case <-time.After(retryBackoff):
+			case <-ctx.Done():
+			}
+			continue
+		}
 		var pendingGoal agentgoal.GoalState
 		if outcome.Status == agentrun.OutcomeCompleted && run.goal.Active() && !run.goalEvaluated {
 			goal, present, goalErr := control.store.Goal(context.WithoutCancel(ctx))

@@ -63,6 +63,8 @@ func (turn *ExternalTurn) CallTool(ctx context.Context, call external.ToolCall) 
 	if err != nil {
 		turn.toolError = err
 		turn.cancel()
+	} else {
+		turn.toolCalls++
 	}
 	turn.calls[call.ID] = externalGameCall{call: call, result: result, err: err}
 	return result, err

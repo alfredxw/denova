@@ -11,6 +11,11 @@ import (
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
+// ErrSummaryUnavailable marks a maintenance call the provider refused, such as a
+// content-policy rejection. The caller degrades to sending the unreduced source
+// instead of failing the turn; cache construction must not own the turn verdict.
+var ErrSummaryUnavailable = errors.New("external context summary unavailable")
+
 // summarize preserves ordered source parts, including native user/tool images.
 // Each image and its source label is indivisible; text may span UTF-8-safe batches.
 func (request HistoryPreparation) summarize(ctx context.Context, input Input, source []Message, summary string, estimator agentmodel.InputEstimator) (string, error) {
@@ -37,7 +42,15 @@ func (request HistoryPreparation) summarize(ctx context.Context, input Input, so
 			request.AddUsage(result.Usage)
 		}
 		if err != nil {
-			return fmt.Errorf("maintain external context: %w", err)
+			// Cancellation stays fatal, and a transient transport failure is still
+			// retried in place; only a provider refusal degrades to unreduced source.
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if IsRetryable(err) {
+				return fmt.Errorf("maintain external context: %w", err)
+			}
+			return fmt.Errorf("%w: maintain external context: %w", ErrSummaryUnavailable, err)
 		}
 		if strings.TrimSpace(result.Text) == "" || len(result.Text) > checkpointSummaryBytes {
 			return errors.New("external context summary is empty or exceeds its source budget")
