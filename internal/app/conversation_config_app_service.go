@@ -14,6 +14,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	agentruntime "denova/internal/agents/runtime"
 	"denova/internal/agents/session"
+	"denova/internal/agents/sessionjournal"
 	agentchatapp "denova/internal/app/agentchat"
 	interactiveapp "denova/internal/app/interactive"
 	appsettings "denova/internal/app/settings"
@@ -458,11 +459,22 @@ func (a *App) patchInteractiveConversationConfig(ctx context.Context, binding Co
 			if acceptedCommandID == "" {
 				return conversationconfig.Snapshot{}, agentruntime.ErrOperationActive
 			}
-			// Only detach a quiescent suspended CLI operation. Canonical
-			// PlayerInput, TurnDraft, dice and tool evidence remain durable.
-			if err := controller.DetachSuspendedGameForEngineSwitch(ctx, acceptedCommandID); err != nil {
+			key, err := agentrun.AgentSessionKeyForOptions(options)
+			if err != nil {
 				return conversationconfig.Snapshot{}, err
 			}
+			var saved conversationconfig.Snapshot
+			// Persist branch config under its CAS revision guard and detach the
+			// suspended controller in the same Story journal transaction so neither
+			// revision conflicts nor disk write failures leave a split state.
+			if err := controller.DetachSuspendedGameInTransaction(ctx, acceptedCommandID, func(update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+				var commitErr error
+				saved, commitErr = store.SetBranchRuntimeConfigWithCapabilities(binding.StoryID, binding.BranchID, next, baseRevision, key, update)
+				return commitErr
+			}); err != nil {
+				return conversationconfig.Snapshot{}, err
+			}
+			return saved, nil
 		}
 	}
 	return store.SetBranchRuntimeConfig(binding.StoryID, binding.BranchID, next, baseRevision)

@@ -107,71 +107,75 @@ func (control *ExternalController) read(ctx context.Context) (externalControlSta
 
 func (control *ExternalController) update(ctx context.Context, mutate func(*externalControlState) error) error {
 	return control.store.Transact(ctx, controlReceiptUpgrade, func(read sessionjournal.CapabilityReader) (map[string]json.RawMessage, error) {
-		raw, present, err := read(externalControlCapability)
-		if err != nil {
-			return nil, err
-		}
-		state, err := decodeControl(raw, present)
-		if err != nil {
-			return nil, err
-		}
-		changes := make(map[string]json.RawMessage)
-		migrating := state.Version == 1
-		if migrating {
-			var released struct {
-				Receipts map[string]controlReceipt `json:"receipts"`
-			}
-			if err := json.Unmarshal(raw, &released); err != nil {
-				return nil, err
-			}
-			for id, saved := range released.Receipts {
-				// v0.5.1 Submit stored exact JSON bytes; Start already stored a
-				// semantic digest, and recovery receipts have no fingerprint.
-				// Hash the original bytes, preserving the released retry equality.
-				if strings.HasPrefix(saved.Fingerprint, "{") {
-					saved.Fingerprint = controlFingerprint([]byte(saved.Fingerprint))
-				}
-				body, err := json.Marshal(saved)
-				if err != nil {
-					return nil, err
-				}
-				changes[controlReceiptPrefix+id] = body
-			}
-			state.Version = 2
-		}
-		state.readReceipt = func(capability string) (json.RawMessage, bool, error) {
-			if value, found := changes[capability]; found {
-				return value, true, nil
-			}
-			return read(capability)
-		}
-		before, err := json.Marshal(state)
-		if err != nil {
-			return nil, err
-		}
-		if err := mutate(&state); err != nil {
-			return nil, err
-		}
-		after, err := json.Marshal(state)
-		if err != nil {
-			return nil, err
-		}
-		changed := !bytes.Equal(before, after) || len(state.receipts) != 0
-		if changed {
-			state.Revision++
-		}
-		if changed || migrating {
-			changes[externalControlCapability], err = json.Marshal(state)
-			if err != nil {
-				return nil, err
-			}
-		}
-		for id, saved := range state.receipts {
-			changes[controlReceiptPrefix+id], err = json.Marshal(saved)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return changes, nil
+		return externalControlChanges(read, mutate)
 	})
+}
+
+func externalControlChanges(read sessionjournal.CapabilityReader, mutate func(*externalControlState) error) (map[string]json.RawMessage, error) {
+	raw, present, err := read(externalControlCapability)
+	if err != nil {
+		return nil, err
+	}
+	state, err := decodeControl(raw, present)
+	if err != nil {
+		return nil, err
+	}
+	changes := make(map[string]json.RawMessage)
+	migrating := state.Version == 1
+	if migrating {
+		var released struct {
+			Receipts map[string]controlReceipt `json:"receipts"`
+		}
+		if err := json.Unmarshal(raw, &released); err != nil {
+			return nil, err
+		}
+		for id, saved := range released.Receipts {
+			// v0.5.1 Submit stored exact JSON bytes; Start already stored a
+			// semantic digest, and recovery receipts have no fingerprint.
+			// Hash the original bytes, preserving the released retry equality.
+			if strings.HasPrefix(saved.Fingerprint, "{") {
+				saved.Fingerprint = controlFingerprint([]byte(saved.Fingerprint))
+			}
+			body, err := json.Marshal(saved)
+			if err != nil {
+				return nil, err
+			}
+			changes[controlReceiptPrefix+id] = body
+		}
+		state.Version = 2
+	}
+	state.readReceipt = func(capability string) (json.RawMessage, bool, error) {
+		if value, found := changes[capability]; found {
+			return value, true, nil
+		}
+		return read(capability)
+	}
+	before, err := json.Marshal(state)
+	if err != nil {
+		return nil, err
+	}
+	if err := mutate(&state); err != nil {
+		return nil, err
+	}
+	after, err := json.Marshal(state)
+	if err != nil {
+		return nil, err
+	}
+	changed := !bytes.Equal(before, after) || len(state.receipts) != 0
+	if changed {
+		state.Revision++
+	}
+	if changed || migrating {
+		changes[externalControlCapability], err = json.Marshal(state)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for id, saved := range state.receipts {
+		changes[controlReceiptPrefix+id], err = json.Marshal(saved)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return changes, nil
 }

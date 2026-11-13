@@ -3,13 +3,20 @@ package app
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"denova/config"
+	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
+	agentexecution "denova/internal/agents/execution"
+	agentrun "denova/internal/agents/run"
 	agentruntime "denova/internal/agents/runtime"
+	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
+	appsettings "denova/internal/app/settings"
 	apptask "denova/internal/app/task"
 	"denova/internal/interactive"
 )
@@ -407,3 +414,238 @@ func TestInteractiveStoryCreationPersistsOpeningRuntimeSelection(t *testing.T) {
 		t.Fatalf("created story runtime config = %#v", snapshot)
 	}
 }
+
+func TestGameStaleRuntimeSwitchPreservesSuspendedControllerAndResumePath(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	if _, err := application.SettingsService().Patch(appsettings.Global(), config.SettingsLayerUser, []byte(`{
+		"model_endpoints": [{"id":"ep-1","provider":"anthropic","base_url":"http://127.0.0.1:1","api_key":"test-key"}],
+		"model_profiles": [
+			{"id":"primary","endpoint_id":"ep-1","model":"claude-primary"},
+			{"id":"alternate","endpoint_id":"ep-1","model":"claude-alternate"}
+		]
+	}`), ""); err != nil {
+		t.Fatal(err)
+	}
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Suspended stale switch", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: story.ID, BranchID: "main"}
+	initial, err := application.ConversationConfig(t.Context(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalConfig := initial.Config
+	externalConfig.Runtime = &config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{ProfileID: "primary"}}
+	saved, err := application.interactive.SetBranchRuntimeConfig(story.ID, "main", externalConfig, initial.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
+		CommandID: "interrupted-cmd", OperationID: "external-game-interrupted-cmd", Cycle: 1,
+	}, "main", "Open the gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := application.interactive.CommitPlayerInput(story.ID, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted, err := application.interactive.MarkTurnInterrupted(story.ID, "main", input.Event.ID, intent.Text, "The gate creaks.", "connection_lost")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, options, err := application.interactiveSessionRuntime(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, selected, err := application.externalController(options)
+	if err != nil || !selected {
+		t.Fatalf("externalController failed: selected=%t err=%v", selected, err)
+	}
+	startedRun, err := controller.Start(t.Context(), agentruntime.ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "interrupted-cmd", Message: "Open the gate"},
+	}, func(_ context.Context, _ agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		return nil, context.Canceled
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Submit(t.Context(), agentruntime.Command{
+		Kind: agentexecution.CommandSuspend, CommandID: "suspend-cmd", OperationID: startedRun.Receipt().OperationID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	startedRun.Wait(t.Context())
+
+	beforeView := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	if !beforeView.RuntimeProjectionOK || beforeView.Runtime.Phase != agentrun.RunPhaseSuspended || beforeView.PendingInterruptionID != interrupted.ID {
+		t.Fatalf("unexpected pre-switch active view: %+v", beforeView)
+	}
+
+	// Attempt to switch model settings with a stale revision.
+	stalePatch := ConversationConfigPatch{Claude: &config.ClaudeRuntimeSettings{ProfileID: "alternate"}}
+	if _, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, initial.Revision); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
+		t.Fatalf("expected revision conflict for stale switch, got %v", err)
+	}
+
+	// Simulate an underlying Story journal write failure with the valid revision.
+	domainLockPath := filepath.Join(application.interactive.Root(), "interactive", "story", "story-"+story.ID+".jsonl.domain.lock")
+	_ = os.Remove(domainLockPath)
+	if err := os.MkdirAll(domainLockPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(domainLockPath) })
+	if _, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision); err == nil {
+		t.Fatal("expected write failure when story domain lock path is blocked")
+	}
+	if err := os.Remove(domainLockPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Branch config, paused controller state, and resume entrypoint must all remain intact.
+	currentCfg, err := application.ConversationConfig(t.Context(), binding)
+	if err != nil || currentCfg.Revision != saved.Revision || currentCfg.Engine().ModelProfileID() != "primary" {
+		t.Fatalf("failed switches mutated branch config: %+v err=%v", currentCfg, err)
+	}
+	afterFailView := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	if !afterFailView.RuntimeProjectionOK || afterFailView.Runtime.Phase != agentrun.RunPhaseSuspended ||
+		afterFailView.Runtime.ActiveCommandID != "interrupted-cmd" || afterFailView.PendingInterruptionID != interrupted.ID {
+		t.Fatalf("failed switches broke suspended runtime projection or resume view: %+v", afterFailView)
+	}
+	recoveryActions := agentexecution.RuntimeRecoveryActions(afterFailView.Runtime)
+	if len(recoveryActions) == 0 || recoveryActions[0].Kind != agentexecution.RuntimeRecoveryResume || recoveryActions[0].OperationID != startedRun.Receipt().OperationID {
+		t.Fatalf("failed switches broke suspended recovery actions: %+v", recoveryActions)
+	}
+	recoveryInput, err := controller.RecoveryInput(t.Context())
+	if err != nil || recoveryInput.Request.CommandID != "interrupted-cmd" {
+		t.Fatalf("failed switches cleared recovery input: %+v err=%v", recoveryInput, err)
+	}
+
+	// Confirm valid revision commits config + controller detach in one transaction while retaining the canonical interruption.
+	switched, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision)
+	if err != nil {
+		t.Fatalf("valid switch after failed switches: %v", err)
+	}
+	if switched.Revision != saved.Revision+1 || switched.Engine().ModelProfileID() != "alternate" {
+		t.Fatalf("unexpected switched config: %+v", switched)
+	}
+	afterSwitchView := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	if !afterSwitchView.RuntimeProjectionOK || afterSwitchView.Runtime.Phase != agentrun.RunPhaseIdle || afterSwitchView.PendingInterruptionID != interrupted.ID {
+		t.Fatalf("valid switch did not cleanly detach controller while retaining interruption: %+v", afterSwitchView)
+	}
+	if afterSwitchView.Runtime.Cursor != beforeView.Runtime.Cursor+1 {
+		t.Fatalf("config switch and controller detach did not commit cleanly in one step: before=%d after=%d", beforeView.Runtime.Cursor, afterSwitchView.Runtime.Cursor)
+	}
+}
+
+func TestGameFailedSwitchAllowsOriginalSuspendedTurnToResumeToCompletion(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	if _, err := application.SettingsService().Patch(appsettings.Global(), config.SettingsLayerUser, []byte(`{
+		"model_endpoints": [{"id":"ep-1","provider":"anthropic","base_url":"http://127.0.0.1:1","api_key":"test-key"}],
+		"model_profiles": [
+			{"id":"primary","endpoint_id":"ep-1","model":"claude-primary"},
+			{"id":"alternate","endpoint_id":"ep-1","model":"claude-alternate"}
+		]
+	}`), ""); err != nil {
+		t.Fatal(err)
+	}
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Resume after failed switch", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: story.ID, BranchID: "main"}
+	initial, err := application.ConversationConfig(t.Context(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalConfig := initial.Config
+	externalConfig.Runtime = &config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{ProfileID: "primary"}}
+	saved, err := application.interactive.SetBranchRuntimeConfig(story.ID, "main", externalConfig, initial.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, options, err := application.interactiveSessionRuntime(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, selected, err := application.externalController(options)
+	if err != nil || !selected {
+		t.Fatalf("externalController failed: selected=%t err=%v", selected, err)
+	}
+	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
+		CommandID: "interrupted-cmd", OperationID: "external-game-interrupted-cmd", Cycle: 1,
+	}, "main", "Open the gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := application.interactive.CommitPlayerInput(story.ID, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.interactive.MarkTurnInterrupted(story.ID, "main", input.Event.ID, intent.Text, "The gate creaks.", "connection_lost"); err != nil {
+		t.Fatal(err)
+	}
+
+	startedRun, err := controller.Start(t.Context(), agentruntime.ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "interrupted-cmd", Message: "Open the gate"},
+	}, func(_ context.Context, _ agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		return nil, context.Canceled
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Submit(t.Context(), agentruntime.Command{
+		Kind: agentexecution.CommandSuspend, CommandID: "suspend-cmd", OperationID: startedRun.Receipt().OperationID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	startedRun.Wait(t.Context())
+
+	patch := ConversationConfigPatch{Claude: &config.ClaudeRuntimeSettings{ProfileID: "alternate"}}
+	if _, err := application.PatchConversationConfig(t.Context(), binding, patch, initial.Revision); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
+		t.Fatalf("expected revision conflict, got %v", err)
+	}
+	domainLockPath := filepath.Join(application.interactive.Root(), "interactive", "story", "story-"+story.ID+".jsonl.domain.lock")
+	_ = os.Remove(domainLockPath)
+	if err := os.MkdirAll(domainLockPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.PatchConversationConfig(t.Context(), binding, patch, saved.Revision); err == nil {
+		_ = os.RemoveAll(domainLockPath)
+		t.Fatal("expected write failure when domain lock path is blocked")
+	}
+	if err := os.Remove(domainLockPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Resume the original suspended turn after both stale conflict and write failure.
+	view := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	actions := agentexecution.RuntimeRecoveryActions(view.Runtime)
+	if len(actions) == 0 || actions[0].Kind != agentexecution.RuntimeRecoveryResume {
+		t.Fatalf("missing resume action after failed switch: %+v", actions)
+	}
+	resumedCmd := ""
+	resumedRun, err := controller.Resume(t.Context(), actions[0], func(_ context.Context, cycleInput agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		resumedCmd = cycleInput.Request.CommandID
+		return testExternalCycleFunc(func(context.Context) agentrun.Outcome {
+			return agentrun.Outcome{Status: agentrun.OutcomeCompleted}
+		}), nil
+	}, nil)
+	if err != nil {
+		t.Fatalf("failed to resume original turn after failed config switch: %v", err)
+	}
+	if outcome := resumedRun.Wait(t.Context()); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("resumed turn did not complete: %+v", outcome)
+	}
+	if resumedCmd != "interrupted-cmd" {
+		t.Fatalf("resumed wrong command: %q", resumedCmd)
+	}
+}
+
+type testExternalCycleFunc func(context.Context) agentrun.Outcome
+
+func (fn testExternalCycleFunc) Wait(ctx context.Context) agentrun.Outcome { return fn(ctx) }

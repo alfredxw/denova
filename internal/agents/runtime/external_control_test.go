@@ -16,6 +16,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
+	"denova/internal/agents/sessionjournal"
 	"denova/internal/interactive"
 
 	sdkexecution "github.com/alfredxw/denova/agent/engine/execution"
@@ -354,6 +355,117 @@ func TestSuspendedExternalControlDetachesOnlyExactQuiescentCycle(t *testing.T) {
 	}, nil, nil)
 	if err != nil {
 		t.Fatalf("detached runtime cannot accept new CLI: %v", err)
+	}
+}
+
+func TestDetachSuspendedGameInTransactionPreservesPausedCycleOnFailure(t *testing.T) {
+	_, _, state, options, _ := controlFixture(t)
+	engines := NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "original", Message: "Continue the story"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate cold restart so the controller transitions to RunPhaseSuspended.
+	control.mu.Lock()
+	control.active = nil
+	control.mu.Unlock()
+	status, err := control.Status(t.Context())
+	if err != nil || status.Phase != agentrun.RunPhaseSuspended {
+		t.Fatalf("cold operation must be suspended: %+v %v", status, err)
+	}
+
+	commitCalls := 0
+	if err := control.DetachSuspendedGameInTransaction(t.Context(), "wrong", func(func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+		commitCalls++
+		return nil
+	}); !errors.Is(err, ErrOperationActive) || commitCalls != 0 {
+		t.Fatalf("wrong command called commit or detached: err=%v calls=%d", err, commitCalls)
+	}
+
+	errConflict := errors.New("revision conflict")
+	if err := control.DetachSuspendedGameInTransaction(t.Context(), "original", func(update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+		commitCalls++
+		// Even if capability changes are computed first, failing the enclosing
+		// transaction must leave the persisted controller untouched.
+		changes, err := update(func(capability string) (json.RawMessage, bool, error) {
+			return control.store.Read(t.Context(), capability)
+		})
+		if err != nil || len(changes) == 0 {
+			t.Fatalf("expected valid pending detach changes, got changes=%v err=%v", changes, err)
+		}
+		return errConflict
+	}); !errors.Is(err, errConflict) || commitCalls != 1 {
+		t.Fatalf("commit failure mismatch: err=%v calls=%d", err, commitCalls)
+	}
+
+	// The paused cycle must remain completely intact and resumable after commit failure.
+	afterFail, err := control.Status(t.Context())
+	if err != nil || afterFail.Phase != agentrun.RunPhaseSuspended || afterFail.ActiveCommandID != "original" {
+		t.Fatalf("failed commit altered suspended controller: %+v %v", afterFail, err)
+	}
+	recoveryInput, err := control.RecoveryInput(t.Context())
+	if err != nil || recoveryInput.Request.CommandID != "original" || !recoveryInput.Resume {
+		t.Fatalf("failed commit lost recovery input: %+v %v", recoveryInput, err)
+	}
+	receipt, found, err := control.Receipt(t.Context(), "original")
+	if err != nil || !found || receipt.OperationID != run.Receipt().OperationID {
+		t.Fatalf("failed commit lost receipt: %+v %t %v", receipt, found, err)
+	}
+
+	// Verify the paused cycle can still be resumed normally after the failed switch.
+	actions := agentexecution.RuntimeRecoveryActions(afterFail)
+	if len(actions) == 0 || actions[0].Kind != agentexecution.RuntimeRecoveryResume {
+		t.Fatalf("missing resume recovery action after failed switch: %+v", actions)
+	}
+	resumed := make(chan string, 1)
+	resumedRun, err := control.Resume(t.Context(), actions[0], func(_ context.Context, input ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (ExternalCycle, error) {
+		return externalCycleFunc(func(context.Context) agentrun.Outcome {
+			resumed <- input.Request.CommandID
+			return agentrun.Outcome{Status: agentrun.OutcomeCompleted}
+		}), nil
+	}, nil)
+	if err != nil {
+		t.Fatalf("suspended cycle is no longer resumable after failed switch: %v", err)
+	}
+	if outcome := resumedRun.Wait(t.Context()); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("resumed outcome: %+v", outcome)
+	}
+	if got := <-resumed; got != "original" {
+		t.Fatalf("resumed wrong command: %q", got)
+	}
+
+	// Now verify a second suspended cycle detaches cleanly when commit persists the update.
+	run2, err := control.Start(t.Context(), ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "second", Message: "Next turn"},
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control.mu.Lock()
+	control.active = nil
+	control.mu.Unlock()
+	if _, err := control.Status(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := control.DetachSuspendedGameInTransaction(t.Context(), "second", func(update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+		return control.store.Transact(t.Context(), controlReceiptUpgrade, update)
+	}); err != nil {
+		t.Fatalf("transaction detach failed: %v", err)
+	}
+	detachedStatus, err := control.Status(t.Context())
+	if err != nil || detachedStatus.Phase != agentrun.RunPhaseIdle {
+		t.Fatalf("controller did not detach after committed transaction: %+v %v", detachedStatus, err)
+	}
+	receipt2, found2, err := control.Receipt(t.Context(), "second")
+	if err != nil || !found2 || receipt2.OperationID != run2.Receipt().OperationID {
+		t.Fatalf("lost second durable receipt: %+v %t %v", receipt2, found2, err)
 	}
 }
 

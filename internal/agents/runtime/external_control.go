@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -11,6 +12,7 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
+	"denova/internal/agents/sessionjournal"
 )
 
 const externalControlCapability = "denova.external.control.v1"
@@ -315,12 +317,47 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 // a newly selected CLI can resume the same canonical turn. This operation is
 // only permitted for one quiescent suspended cycle with no queued work.
 func (control *ExternalController) DetachSuspendedGameForEngineSwitch(ctx context.Context, commandID string) error {
+	return control.DetachSuspendedGameInTransaction(ctx, commandID, func(update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+		return control.store.Transact(ctx, controlReceiptUpgrade, update)
+	})
+}
+
+// DetachSuspendedGameInTransaction verifies under the controller lock that only
+// the matching quiescent suspended cycle exists and passes a pure capability
+// mutation callback to commit, so the caller can persist configuration and
+// controller detachment in one store transaction.
+func (control *ExternalController) DetachSuspendedGameInTransaction(
+	ctx context.Context,
+	commandID string,
+	commit func(func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error,
+) error {
 	control.mu.Lock()
 	defer control.mu.Unlock()
 	state, err := control.read(ctx)
 	if err != nil {
 		return err
 	}
+	if err := control.validateDetachSuspendedGame(state, commandID); err != nil {
+		return err
+	}
+	if commit == nil {
+		return errors.New("external control transaction commit callback is required")
+	}
+	return commit(func(read sessionjournal.CapabilityReader) (map[string]json.RawMessage, error) {
+		return externalControlChanges(read, func(current *externalControlState) error {
+			if err := control.validateDetachSuspendedGame(*current, commandID); err != nil {
+				return err
+			}
+			if current.Phase == agentrun.RunPhaseIdle {
+				return nil
+			}
+			current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
+			return current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted)
+		})
+	})
+}
+
+func (control *ExternalController) validateDetachSuspendedGame(state externalControlState, commandID string) error {
 	if control.active != nil {
 		return ErrOperationActive
 	}
@@ -332,15 +369,7 @@ func (control *ExternalController) DetachSuspendedGameForEngineSwitch(ctx contex
 		len(state.Current.Guidance) != 0 {
 		return ErrOperationActive
 	}
-	return control.update(ctx, func(current *externalControlState) error {
-		if current.Phase != agentrun.RunPhaseSuspended || current.Current == nil ||
-			current.Current.Request.CommandID != commandID || len(current.Queue) != 0 ||
-			len(current.Current.Guidance) != 0 {
-			return ErrOperationActive
-		}
-		current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
-		return current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted)
-	})
+	return nil
 }
 
 // Receipt reads the logical product task receipt, independently of the shorter

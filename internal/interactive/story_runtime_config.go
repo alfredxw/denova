@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -8,6 +9,8 @@ import (
 
 	"denova/config"
 	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/sessionjournal"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 // BranchRuntimeConfig reads the complete durable selection without mutating a
@@ -67,6 +70,19 @@ func (s *Store) EnsureBranchRuntimeConfig(storyID, branchID string, seed convers
 
 // SetBranchRuntimeConfig replaces one branch snapshot with CAS protection.
 func (s *Store) SetBranchRuntimeConfig(storyID, branchID string, next conversationconfig.Config, expectedRevision uint64) (conversationconfig.Snapshot, error) {
+	return s.SetBranchRuntimeConfigWithCapabilities(storyID, branchID, next, expectedRevision, agentsession.Key{}, nil)
+}
+
+// SetBranchRuntimeConfigWithCapabilities atomically updates one branch's
+// runtime configuration and peer-runtime capabilities inside one Story journal
+// transaction under CAS protection.
+func (s *Store) SetBranchRuntimeConfigWithCapabilities(
+	storyID, branchID string,
+	next conversationconfig.Config,
+	expectedRevision uint64,
+	key agentsession.Key,
+	update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error),
+) (conversationconfig.Snapshot, error) {
 	if err := conversationconfig.ValidateShape(next, config.AgentKindInteractiveStory); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
@@ -78,6 +94,11 @@ func (s *Store) SetBranchRuntimeConfig(storyID, branchID string, next conversati
 	}
 	defer releaseStory()
 
+	if update != nil {
+		if _, err := s.refreshStoryJournalLocked(storyID, true); err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+	}
 	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, 1)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
@@ -104,7 +125,21 @@ func (s *Store) SetBranchRuntimeConfig(storyID, branchID string, next conversati
 		V: schemaVersion, Type: StoryEventTypeStoryConfigUpdated, ID: newID("scu"),
 		ParentID: branch.Head, BranchID: branchID, Ts: now, Fields: []string{"runtime_config"},
 	}
-	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
+	newEvents := []any{event}
+	if update != nil {
+		handle, err := s.refreshStoryJournalLocked(storyID, true)
+		if err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+		records, err := handle.projection.AgentSessions.CapabilityChanges(key, update)
+		if err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
+		for _, record := range records {
+			newEvents = append(newEvents, *record)
+		}
+	}
+	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
 	if err := s.syncStorySummaryLocked(storyID); err != nil {
