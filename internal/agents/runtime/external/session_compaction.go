@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"denova/config"
-	agentrun "denova/internal/agents/run"
 	agentcompaction "denova/internal/agents/context/compaction"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 )
 
@@ -76,9 +76,14 @@ func compactThroughCheckpoint(ctx context.Context, request StartRequest, prepare
 	// Maintenance is provider-session independent: no resume, no accumulated
 	// usage and no bound working directory may leak into the summary attempt.
 	input.Directory, input.SessionID, input.CumulativeUsage = "", "", nil
+	checkpointSaved := false
 	if _, err := prepare(ctx, HistoryPreparation{Input: input, Adapter: adapter,
-		ProviderInputMaxBytes: request.ProviderInputMaxBytes, ResolveMedia: projection.media().Resolve, LoadHistory: request.LoadHistory}); err != nil {
+		ProviderInputMaxBytes: request.ProviderInputMaxBytes, ResolveMedia: projection.media().Resolve, LoadHistory: request.LoadHistory,
+		OnCheckpointSaved: func() { checkpointSaved = true }}); err != nil {
 		return agentcompaction.Result{}, err
+	}
+	if !checkpointSaved {
+		return agentcompaction.Result{SkippedReason: "no_progress"}, nil
 	}
 	// The checkpoint is already persisted through SaveCheckpoint; report the
 	// maintenance so the conversation leaves its pending state.
@@ -87,5 +92,5 @@ func compactThroughCheckpoint(ctx context.Context, request StartRequest, prepare
 	}}); err != nil {
 		return agentcompaction.Result{}, err
 	}
-	return agentcompaction.Result{Triggered: true, RuntimeManaged: true}, nil
+	return agentcompaction.Result{Triggered: true}, nil
 }

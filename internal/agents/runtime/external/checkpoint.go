@@ -61,6 +61,8 @@ type HistoryPreparation struct {
 	ProviderInputMaxBytes int
 	AddUsage              func(*agentschema.TokenUsage)
 	SaveCheckpoint        func(externaljournal.Checkpoint) error
+	// OnCheckpointSaved observes successful persistence of a new checkpoint.
+	OnCheckpointSaved func()
 	// LoadHistory is product-owned and bound to a fixed canonical source interval.
 	// Aligned provider sessions skip it, including during manual compaction.
 	LoadHistory func(context.Context) ([]Message, error)
@@ -182,6 +184,9 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 	if checkpoint != nil && request.SaveCheckpoint != nil {
 		if err := request.SaveCheckpoint(*checkpoint); err != nil {
 			return Input{}, err
+		}
+		if request.OnCheckpointSaved != nil {
+			request.OnCheckpointSaved()
 		}
 	}
 	return input, nil
