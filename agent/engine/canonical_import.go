@@ -88,11 +88,11 @@ func PrepareCanonicalImport(ctx context.Context, request CanonicalImportRequest)
 		if selectErr != nil {
 			return CanonicalImport{}, selectErr
 		}
-		prefixHash, hashErr := agentschema.HashCanonicalMessages(prefix)
+		matched, hashErr := checkpointHashMatches(request.Checkpoint, prefix)
 		if hashErr != nil {
 			return CanonicalImport{}, hashErr
 		}
-		checkpointCompatible = request.Checkpoint.Hash == prefixHash
+		checkpointCompatible = matched
 	}
 	outputCommitted := request.OutputCommitted
 	if request.Active && hadCheckpoint && !checkpointCompatible && !outputCommitted {

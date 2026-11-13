@@ -25,6 +25,11 @@ func RestoreCanonicalCheckpoint(ctx context.Context, checkpoint PersistedMessage
 	if len(checkpoint.Metadata) == 0 || checkpoint.Hash == "" {
 		return nil, false, nil
 	}
+	if checkpoint.Version != messageCheckpointLegacyHashVersion && checkpoint.Version != messageCheckpointCanonicalHashVersion {
+		declineCanonicalCheckpoint(ctx, head, checkpoint, "unsupported checkpoint version",
+			fmt.Errorf("%w: unsupported message checkpoint version %d", canonical.ErrInvalidCanonicalMessages, checkpoint.Version))
+		return nil, false, nil
+	}
 	var state engineTranscript
 	if err := json.Unmarshal(checkpoint.Metadata, &state); err != nil {
 		return nil, false, err
@@ -90,11 +95,11 @@ func RestoreCanonicalCheckpoint(ctx context.Context, checkpoint PersistedMessage
 			fmt.Errorf("%w: aligned checkpoint message count changed (%d != %d)", canonical.ErrInvalidCanonicalMessages, count, checkpoint.MessageCount))
 		return nil, false, nil
 	}
-	hash, err := schema.HashCanonicalMessages(state.Messages)
+	matched, err := checkpointHashMatches(checkpoint, state.Messages)
 	if err != nil {
 		return nil, false, err
 	}
-	if hash != checkpoint.Hash {
+	if !matched {
 		declineCanonicalCheckpoint(ctx, head, checkpoint, "content changed",
 			fmt.Errorf("%w: aligned checkpoint content changed", canonical.ErrInvalidCanonicalMessages))
 		return nil, false, nil

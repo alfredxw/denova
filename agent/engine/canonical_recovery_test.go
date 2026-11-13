@@ -212,3 +212,108 @@ type refusedWindowHistory struct{ recoveryHistory }
 func (refusedWindowHistory) ReadCanonicalWindow(context.Context, int, *history.HistoryArchive) ([]*schema.Message, error) {
 	return nil, fmt.Errorf("%w: aligned Game message count changed (1 != 2)", canonical.ErrInvalidCanonicalMessages)
 }
+
+func TestLegacyUnversionedCheckpointWithTelemetryRestoresAndMigrates(t *testing.T) {
+	head := canonical.CanonicalHistoryHead{Identity: "lane", Revision: "4"}
+	retainedAnswer := schema.AssistantMessage("recent prose", nil)
+	retainedAnswer.Extra = map[string]any{
+		"provider":              "openai",
+		"protocol":              "openai-responses",
+		"response_id":           "resp-legacy-1",
+		"model":                 "gpt-5",
+		"created":               int64(1700000123),
+		"response_status":       "completed",
+		"provider-continuation": map[string]any{"payload": []any{map[string]any{"encrypted_content": "tok"}}},
+	}
+	fullMessages := []*schema.Message{
+		schema.UserMessage("archived chapter prompt"),
+		schema.AssistantMessage("archived chapter body", nil),
+		schema.UserMessage("recent prompt"),
+		retainedAnswer,
+	}
+	archive := &history.HistoryArchive{From: 0, To: 2}
+	windowMessages := fullMessages[2:]
+	legacyHash, err := schema.HashCanonical(windowMessages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newHash, err := schema.HashCanonicalMessages(windowMessages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacyHash == newHash {
+		t.Fatal("test fixture requires legacy hash with telemetry to differ from telemetry-stripped hash")
+	}
+	metadataState := engineTranscript{Version: 2, HistoryHead: head, Archive: archive}
+	metadataBytes, err := json.Marshal(metadataState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyCheckpoint := PersistedMessageCheckpoint{
+		Version:      messageCheckpointLegacyHashVersion,
+		Archive:      archive,
+		Hash:         legacyHash,
+		MessageCount: len(fullMessages),
+		Metadata:     metadataBytes,
+	}
+
+	source := recoveryHistory{head: head, messages: fullMessages}
+	raw, matched, err := RestoreCanonicalCheckpoint(t.Context(), legacyCheckpoint, head, source)
+	if err != nil || !matched {
+		t.Fatalf("RestoreCanonicalCheckpoint rejected legacy telemetry checkpoint: matched=%t err=%v", matched, err)
+	}
+	restored, err := decodeEngineTranscript(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(restored.Archive, archive) || len(restored.Messages) != 2 || restored.Messages[1].Content != "recent prose" {
+		t.Fatalf("unexpected restored legacy transcript: %#v", restored)
+	}
+
+	// Simulate an append-only advance or fallback import where PrepareCanonicalImport
+	// validates the legacy checkpoint and preserves CompactionCapability while migrating
+	// the checkpoint to the current version.
+	compactionRaw, err := json.Marshal(history.CompactionRecord{
+		Version:         2,
+		ID:              "compact-legacy",
+		Revision:        1,
+		Summary:         "Legacy compacted summary",
+		ReplacementFrom: 0,
+		ReplacementTo:   2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appended := append(schema.CloneMessages(fullMessages), schema.UserMessage("continue writing"))
+	imported, err := PrepareCanonicalImport(t.Context(), CanonicalImportRequest{
+		Messages:     appended,
+		Head:         canonical.CanonicalHistoryHead{Identity: head.Identity, Revision: "5"},
+		Checkpoint:   legacyCheckpoint,
+		Capabilities: map[string]json.RawMessage{history.CompactionCapability: compactionRaw},
+		Canonical:    true,
+	})
+	if err != nil {
+		t.Fatalf("PrepareCanonicalImport failed on legacy checkpoint: %v", err)
+	}
+	if len(imported.Invalidated) != 0 {
+		t.Fatalf("PrepareCanonicalImport invalidated legacy capabilities: %v", imported.Invalidated)
+	}
+	if imported.Checkpoint.Version != messageCheckpointCanonicalHashVersion {
+		t.Fatalf("migrated checkpoint version = %d, want %d", imported.Checkpoint.Version, messageCheckpointCanonicalHashVersion)
+	}
+	importedState, err := decodeEngineTranscript(imported.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(importedState.Archive, archive) || len(importedState.Messages) != 3 {
+		t.Fatalf("migrated state lost archive or messages: %#v", importedState)
+	}
+
+	// Future unknown versions must be declined safely without failing.
+	futureCheckpoint := legacyCheckpoint
+	futureCheckpoint.Version = 99
+	rawFuture, matchedFuture, err := RestoreCanonicalCheckpoint(t.Context(), futureCheckpoint, head, source)
+	if err != nil || matchedFuture || rawFuture != nil {
+		t.Fatalf("future checkpoint version was not declined cleanly: raw=%s matched=%t err=%v", rawFuture, matchedFuture, err)
+	}
+}
