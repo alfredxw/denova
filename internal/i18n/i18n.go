@@ -145,6 +145,7 @@ var catalogZH = map[string]string{
 	"api.ask.notFound":                  "找不到该交互，请刷新会话状态。",
 	"api.ask.invalidAnswer":             "回答内容不符合该交互要求，请检查选项或输入。",
 
+	"agent_runtime.operation_paused":         "上一轮已暂停，请继续生成或放弃该轮后再发送",
 	"agent_runtime.ask_conflict":             "此问题已有不同的处理结果，请刷新查看。",
 	"agentRuntime.connectionFailed":          "无法连接 Agent 引擎，请检查安装与登录状态。",
 	"agentRuntime.connectionLost":            "Agent 引擎连接已断开。",
@@ -427,6 +428,7 @@ var catalogEN = map[string]string{
 	"api.ask.notFound":                  "This interaction could not be found. Refresh the conversation state.",
 	"api.ask.invalidAnswer":             "The answer does not meet this interaction's requirements. Check the options or input.",
 
+	"agent_runtime.operation_paused":         "The previous turn is paused; resume or discard it before sending",
 	"agent_runtime.ask_conflict":             "This question was already resolved differently. Refresh to view its result.",
 	"agentRuntime.connectionFailed":          "Could not connect to the Agent runtime. Check installation and sign-in status.",
 	"agentRuntime.connectionLost":            "The Agent runtime connection was lost.",
