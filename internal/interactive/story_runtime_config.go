@@ -62,9 +62,7 @@ func (s *Store) EnsureBranchRuntimeConfig(storyID, branchID string, seed convers
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	if err := s.syncStorySummaryLocked(storyID); err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
+	s.syncStoryIndexProjectionLocked(storyID)
 	return conversationconfig.Snapshot{Config: value, Revision: 1}, nil
 }
 
@@ -142,9 +140,10 @@ func (s *Store) SetBranchRuntimeConfigWithCapabilities(
 	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	if err := s.syncStorySummaryLocked(storyID); err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
+	// The canonical config update is already durable. The story catalog is a
+	// rebuildable projection, so an index replacement failure must not turn the
+	// committed switch into a false-negative save error for the caller.
+	s.syncStoryIndexProjectionLocked(storyID)
 	return conversationconfig.Snapshot{Config: value, Revision: revision}, nil
 }
 

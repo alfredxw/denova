@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -478,6 +479,36 @@ func (a *App) patchInteractiveConversationConfig(ctx context.Context, binding Co
 		}
 	}
 	return store.SetBranchRuntimeConfig(binding.StoryID, binding.BranchID, next, baseRevision)
+}
+
+// ConversationProjectionWarning reports the latest failed catalog projection
+// for one Game story as a non-fatal diagnostic. The configuration switch is
+// already committed, so callers attach this to a successful response and log
+// it under the current request instead of failing the operation.
+func (a *App) ConversationProjectionWarning(ctx context.Context, binding ConversationConfigBinding) string {
+	if a == nil || normalizeConversationMode(binding.Mode) != ConversationModeInteractive || strings.TrimSpace(binding.StoryID) == "" {
+		return ""
+	}
+	a.mu.RLock()
+	store := a.interactive
+	a.mu.RUnlock()
+	if store == nil {
+		return ""
+	}
+	projectionErr := store.ConsumeStoryProjectionFailure(binding.StoryID)
+	if projectionErr == nil {
+		return ""
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	slog.ErrorContext(ctx, fmt.Sprintf(
+		"[conversation-config] story catalog projection update failed; the switch is committed but the catalog may be stale story_id=%s err=%v",
+		binding.StoryID, projectionErr,
+	))
+	// The response carries a stable diagnostic only; the raw filesystem error
+	// (which may embed local paths) stays in the server-side log above.
+	return "story catalog projection update failed; the catalog may be stale until the next successful update"
 }
 
 func (a *App) foregroundConversationRuntime(requestedSessionID string) (*session.Store, config.Config, string, error) {
