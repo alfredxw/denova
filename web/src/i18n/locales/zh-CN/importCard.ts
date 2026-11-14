@@ -79,6 +79,14 @@ const importCard = {
   'importCard.overriddenList': '已用更详细的设定覆盖：{{names}}',
   'importCard.skippedList': '保留现有设定（导入内容较简略）：{{names}}',
   'importCard.importFailed': '导入酒馆角色卡失败',
+  'importCard.overridesConfirmTitle': '同名条目确认',
+  'importCard.overridesConfirmHelp': '导入将替换以下同名条目。请逐条确认覆盖或保留；确认前不会写入任何内容。',
+  'importCard.overrideExisting': '现有',
+  'importCard.overrideIncoming': '导入',
+  'importCard.overrideChoiceOverride': '覆盖',
+  'importCard.overrideChoiceKeep': '保留',
+  'importCard.confirmOverridesImport': '覆盖并导入',
+  'importCard.backToPreview': '返回',
 } as const
 
 export default importCard

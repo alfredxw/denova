@@ -46,15 +46,31 @@ export async function previewCharacterCard(file: File): Promise<CharacterCardPre
   })
 }
 
+export interface CharacterCardImportOptions {
+  targetMode: 'current' | 'new_book'
+  projectId?: string
+  bookTitle?: string
+  userCharacterName?: string
+  loreClassification?: 'heuristic' | 'semantic'
+  /** Acknowledges replacing existing same-name lore entries after review. */
+  confirmOverrides?: boolean
+  /** Per-entry duplicate decisions, keyed by lore entry name: 'override' | 'keep'. */
+  overrideChoices?: Record<string, string>
+}
+
 export async function importCharacterCard(
   file: File,
-  options: { targetMode: 'current' | 'new_book'; projectId?: string; bookTitle?: string; userCharacterName?: string; loreClassification?: 'heuristic' | 'semantic' },
+  options: CharacterCardImportOptions,
 ): Promise<CharacterCardImportResult> {
   const form = new FormData()
   form.append('file', file)
   if (options.bookTitle) form.append('book_title', options.bookTitle)
   if (options.userCharacterName) form.append('user_character_name', options.userCharacterName)
   if (options.loreClassification) form.append('lore_classification', options.loreClassification)
+  if (options.confirmOverrides) form.append('confirm_overrides', '1')
+  if (options.overrideChoices && Object.keys(options.overrideChoices).length > 0) {
+    form.append('override_choices', JSON.stringify(options.overrideChoices))
+  }
   const path = options.targetMode === 'new_book'
     ? '/api/books/import-character-card'
     : projectAPIPath(options.projectId || '', 'book/import-character-card')

@@ -69,7 +69,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	if mode != "manual" && mode != "notify" && mode != "auto_apply" {
 		return Plan{}, fmt.Errorf("invalid update mode")
 	}
-	review := &updateReview{choices: request.Resolutions, overrideByDetail: request.OverrideByDetail}
+	review := &updateReview{choices: request.Resolutions, overrideByDetail: request.OverrideByDetail, overrideChoices: request.OverrideChoices}
 	if err := review.validate(); err != nil {
 		return Plan{}, err
 	}
@@ -408,6 +408,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	plan.Updates = review.items
 	plan.ImportOverrides = review.overrides
 	plan.ImportSkipped = review.skipped
+	plan.ImportDuplicates = review.duplicates
 	plan.Installation.ReviewedSource = reviewedSource(candidate)
 	// Automatic grants cannot acknowledge additions or dependency changes that
 	// require the user to review a broader resource selection.

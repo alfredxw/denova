@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -78,6 +79,11 @@ type characterCardImportFields struct {
 	bookTitle          string
 	userCharacterName  string
 	classificationMode string
+	// confirmOverrides acknowledges replacing existing same-name lore entries;
+	// without it the import returns PendingOverrides instead of applying.
+	confirmOverrides bool
+	// overrideChoices map incoming lore entry names to "override" or "keep".
+	overrideChoices map[string]string
 }
 
 func readCharacterCardImportFields(c *app.RequestContext) characterCardImportFields {
@@ -85,11 +91,17 @@ func readCharacterCardImportFields(c *app.RequestContext) characterCardImportFie
 	if classificationMode == "" {
 		classificationMode = lore.ClassificationModeSemantic
 	}
+	overrideChoices := map[string]string{}
+	if raw := strings.TrimSpace(string(c.FormValue("override_choices"))); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &overrideChoices)
+	}
 	return characterCardImportFields{
 		target:             characterCardCurrentBook,
 		bookTitle:          strings.TrimSpace(string(c.FormValue("book_title"))),
 		userCharacterName:  strings.TrimSpace(string(c.FormValue("user_character_name"))),
 		classificationMode: classificationMode,
+		confirmOverrides:   string(c.FormValue("confirm_overrides")) == "1",
+		overrideChoices:    overrideChoices,
 	}
 }
 
@@ -234,16 +246,25 @@ func (h *Handlers) installCharacterResources(ctx context.Context, filename strin
 		}
 		selected = append(selected, resource.ID)
 	}
-	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{PreviewID: preview.ID, CandidateID: candidate.ID, ProjectID: projectID, Resources: selected, OverrideByDetail: true})
-	if err != nil {
-		return character.ImportResult{}, err
-	}
-	installed, err := h.app.ApplyResourcePlan(ctx, plan.ID)
+	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{PreviewID: preview.ID, CandidateID: candidate.ID, ProjectID: projectID, Resources: selected, OverrideByDetail: true, OverrideChoices: fields.overrideChoices})
 	if err != nil {
 		return character.ImportResult{}, err
 	}
 	result := *preview.Character
 	result.ProjectID = projectID
+	// Same-name lore entries must not be replaced before the user reviews them:
+	// return the affected list and hold the plan instead of applying.
+	if !fields.confirmOverrides && len(plan.ImportDuplicates) > 0 {
+		result.PendingOverrides = make([]character.ImportDuplicatePreview, 0, len(plan.ImportDuplicates))
+		for _, dup := range plan.ImportDuplicates {
+			result.PendingOverrides = append(result.PendingOverrides, character.ImportDuplicatePreview(dup))
+		}
+		return result, nil
+	}
+	installed, err := h.app.ApplyResourcePlan(ctx, plan.ID)
+	if err != nil {
+		return character.ImportResult{}, err
+	}
 	result.Overridden = plan.ImportOverrides
 	result.Skipped = plan.ImportSkipped
 	for _, binding := range installed.Bindings {
