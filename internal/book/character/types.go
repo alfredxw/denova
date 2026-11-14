@@ -37,6 +37,19 @@ type ImportResult struct {
 	// less detailed incoming duplicate.
 	Overridden []string `json:"overridden,omitempty"`
 	Skipped    []string `json:"skipped,omitempty"`
+	// PendingOverrides lists same-name lore entries that the import would
+	// replace; present only while user confirmation is still required. After
+	// confirmation the import returns Overridden/Skipped instead.
+	PendingOverrides []ImportDuplicatePreview `json:"pending_overrides,omitempty"`
+}
+
+// ImportDuplicatePreview is a same-name lore entry detected during import, with
+// the backend's automatic resolution suggestion, shown before any replacement.
+type ImportDuplicatePreview struct {
+	Name            string `json:"name"`
+	ExistingPreview string `json:"existing_preview"`
+	IncomingPreview string `json:"incoming_preview"`
+	Suggested       string `json:"suggested"`
 }
 
 // Preview 描述酒馆角色卡预览信息，解析但不写入 workspace。

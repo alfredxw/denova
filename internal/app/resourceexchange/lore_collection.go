@@ -243,7 +243,22 @@ func (s *Service) stageLoreCollection(ctx context.Context, previewDir string, re
 		member, found := binding.Members[sourceID]
 		if !found {
 			if existing, ok := existingByName[lore.NameKey(incoming[i].Name)]; ok && review.overrideByDetail {
-				if !moreDetailed(incoming[i], existing) {
+				// Collect every same-name collision for confirmation. Suggested always
+				// reflects the automatic detail comparison so the UI defaults to
+				// it. With explicit choices present the import is confirmed: only
+				// entries chosen "override" are replaced, everything else is kept.
+				suggested := overrideResolution(moreDetailed(incoming[i], existing))
+				override := suggested == "override"
+				if len(review.overrideChoices) > 0 {
+					override = review.overrideChoices[incoming[i].Name] == "override"
+				}
+				review.duplicates = append(review.duplicates, ImportDuplicate{
+					Name:            incoming[i].Name,
+					ExistingPreview: duplicatePreview(existing),
+					IncomingPreview: duplicatePreview(incoming[i]),
+					Suggested:       suggested,
+				})
+				if !override {
 					review.skipped = append(review.skipped, incoming[i].Name)
 					continue
 				}
@@ -471,4 +486,28 @@ func moreDetailed(a, b lore.Item) bool {
 		return af > bf
 	}
 	return utf8.RuneCountInString(a.Content) > utf8.RuneCountInString(b.Content)
+}
+
+// overrideResolution renders a duplicate decision as the explicit choice value.
+func overrideResolution(override bool) string {
+	if override {
+		return "override"
+	}
+	return "keep"
+}
+
+// duplicatePreview renders a short human-readable digest of a lore entry for
+// duplicate confirmation: the populated detail count plus a truncated body.
+func duplicatePreview(item lore.Item) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d field(s)", detailFields(item))
+	if text := strings.TrimSpace(item.Content); text != "" {
+		runes := []rune(text)
+		if len(runes) > 80 {
+			text = string(runes[:80]) + "…"
+		}
+		b.WriteString(" · ")
+		b.WriteString(text)
+	}
+	return b.String()
 }

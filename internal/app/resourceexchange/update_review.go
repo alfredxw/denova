@@ -24,6 +24,8 @@ type updateReview struct {
 	choices          map[string]map[string]string
 	items            []UpdateItem
 	overrideByDetail bool
+	overrideChoices  map[string]string
+	duplicates       []ImportDuplicate
 	overrides        []string
 	skipped          []string
 }
@@ -72,6 +74,11 @@ func (r *updateReview) validate() error {
 			if choice != "" && choice != "keep" && choice != "remote" {
 				return fmt.Errorf("invalid update resolution for %s/%s", resource, member)
 			}
+		}
+	}
+	for name, choice := range r.overrideChoices {
+		if choice != "keep" && choice != "override" {
+			return fmt.Errorf("invalid override choice for %s", name)
 		}
 	}
 	return nil

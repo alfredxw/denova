@@ -166,6 +166,12 @@ type PlanRequest struct {
 	// incoming item is more detailed. Package and extension imports never set it,
 	// keeping receipt-identity update semantics.
 	OverrideByDetail bool `json:"override_by_detail,omitempty"`
+	// OverrideChoices are explicit duplicate resolutions for character card
+	// imports, keyed by the incoming lore entry name. "override" replaces the
+	// existing same-name entry; "keep" skips the incoming duplicate. They take
+	// precedence over detail-aware resolution and are never set by package or
+	// extension imports.
+	OverrideChoices map[string]string `json:"override_choices,omitempty"`
 }
 
 type PlanItem struct {
@@ -198,9 +204,24 @@ type Plan struct {
 	ImportOverrides []string `json:"import_overrides,omitempty"`
 	ImportSkipped   []string `json:"import_skipped,omitempty"`
 
+	// ImportDuplicates lists same-name lore entries detected during a character
+	// card import, with content digests and the automatic resolution suggestion,
+	// so the UI can ask for confirmation before any replacement is applied.
+	ImportDuplicates []ImportDuplicate `json:"import_duplicates,omitempty"`
+
 	// Unavailable selections keep the review visible but prevent application
 	// until resources are resolved or the user deselects those defaults.
 	GameDefaultsUnavailable []string `json:"game_defaults_unavailable,omitempty"`
+}
+
+// ImportDuplicate reports a same-name lore entry detected during a character
+// card import: the existing local entry against the incoming entry, with the
+// backend's automatic resolution suggestion ("override" or "keep").
+type ImportDuplicate struct {
+	Name            string `json:"name"`
+	ExistingPreview string `json:"existing_preview"`
+	IncomingPreview string `json:"incoming_preview"`
+	Suggested       string `json:"suggested"`
 }
 
 // PublicPlan excludes staged bytes and filesystem locations from API responses.

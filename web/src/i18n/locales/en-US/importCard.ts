@@ -79,6 +79,14 @@ const importCard = {
   'importCard.overriddenList': 'Replaced with more detailed settings: {{names}}',
   'importCard.skippedList': 'Kept existing settings (import was less detailed): {{names}}',
   'importCard.importFailed': 'Failed to import Tavern card',
+  'importCard.overridesConfirmTitle': 'Same-name entries',
+  'importCard.overridesConfirmHelp': 'The import would replace these same-name entries. Review each one; nothing is written until you confirm.',
+  'importCard.overrideExisting': 'Existing',
+  'importCard.overrideIncoming': 'Incoming',
+  'importCard.overrideChoiceOverride': 'Override',
+  'importCard.overrideChoiceKeep': 'Keep',
+  'importCard.confirmOverridesImport': 'Override and import',
+  'importCard.backToPreview': 'Back',
 } as const
 
 export default importCard

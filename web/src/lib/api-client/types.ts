@@ -630,6 +630,15 @@ export interface CharacterCardImportResult {
   uncertain_type_count: number
   overridden?: string[]
   skipped?: string[]
+  /** Same-name lore entries the import would replace; present when confirmation is still required. */
+  pending_overrides?: ImportDuplicatePreview[]
+}
+
+export interface ImportDuplicatePreview {
+  name: string
+  existing_preview: string
+  incoming_preview: string
+  suggested: 'override' | 'keep'
 }
 
 export interface CharacterCardPreview {

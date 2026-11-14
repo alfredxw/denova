@@ -39,6 +39,25 @@ func (s *Service) ReadPlan(ctx context.Context, id string) (Plan, error) {
 	return plan, nil
 }
 
+// DiscardPlan removes a persisted plan that will never be applied, e.g. a
+// character card import held for duplicate confirmation. It is idempotent:
+// removing an already vanished plan succeeds.
+func (s *Service) DiscardPlan(id string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	file, err := resolveTarget(s.root, nil, FileTarget{Path: "resource-exchange/plans/" + id + ".json"})
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // Apply commits only server-persisted plan data. The application must hold the
 // Project mutation lease for plan.Installation.ProjectID for this call.
 func (s *Service) Apply(ctx context.Context, id string) (Installation, error) {

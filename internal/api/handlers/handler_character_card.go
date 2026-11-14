@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -78,19 +79,47 @@ type characterCardImportFields struct {
 	bookTitle          string
 	userCharacterName  string
 	classificationMode string
+	// confirmOverrides acknowledges replacing existing same-name lore entries;
+	// without it the import returns PendingOverrides instead of applying.
+	confirmOverrides bool
+	// overrideChoices map incoming lore entry names to "override" or "keep".
+	overrideChoices map[string]string
 }
 
-func readCharacterCardImportFields(c *app.RequestContext) characterCardImportFields {
+func readCharacterCardImportFields(c *app.RequestContext) (characterCardImportFields, bool) {
 	classificationMode := strings.TrimSpace(string(c.FormValue("lore_classification")))
 	if classificationMode == "" {
 		classificationMode = lore.ClassificationModeSemantic
+	}
+	overrideChoices, err := parseOverrideChoices(string(c.FormValue("override_choices")))
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.invalidOverrideChoices", "detail", err.Error())
+		return characterCardImportFields{}, false
 	}
 	return characterCardImportFields{
 		target:             characterCardCurrentBook,
 		bookTitle:          strings.TrimSpace(string(c.FormValue("book_title"))),
 		userCharacterName:  strings.TrimSpace(string(c.FormValue("user_character_name"))),
 		classificationMode: classificationMode,
+		confirmOverrides:   string(c.FormValue("confirm_overrides")) == "1",
+		overrideChoices:    overrideChoices,
+	}, true
+}
+
+// parseOverrideChoices decodes the optional override_choices form field: a JSON
+// object mapping lore entry names to "override" or "keep". An empty field means
+// no explicit choices; malformed JSON is an error so a confirmed import never
+// silently falls back to automatic resolution.
+func parseOverrideChoices(raw string) (map[string]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return map[string]string{}, nil
 	}
+	choices := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &choices); err != nil {
+		return nil, err
+	}
+	return choices, nil
 }
 
 func (h *Handlers) characterCardImportOptions(ctx context.Context, projectID string, fields characterCardImportFields) character.ImportOptions {
@@ -114,7 +143,10 @@ func (h *Handlers) HandleProjectCharacterCardImport(ctx context.Context, c *app.
 	if !ok {
 		return
 	}
-	fields := readCharacterCardImportFields(c)
+	fields, ok := readCharacterCardImportFields(c)
+	if !ok {
+		return
+	}
 	slog.InfoContext(ctx, "[internal/api/handlers/handler_character_card.go] importing character card into Project",
 		"project_id", scope.ProjectID,
 		"filename", filename,
@@ -134,7 +166,10 @@ func (h *Handlers) HandleNewBookCharacterCardImport(ctx context.Context, c *app.
 	if !ok {
 		return
 	}
-	fields := readCharacterCardImportFields(c)
+	fields, ok := readCharacterCardImportFields(c)
+	if !ok {
+		return
+	}
 	result, err := h.importCharacterCardToNewBook(ctx, filename, data, fields)
 	h.writeCharacterCardImportResult(ctx, c, filename, result, err)
 }
@@ -206,6 +241,18 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 		cleanup()
 		return failedResult, err
 	}
+	// A pending confirmation must not leak an empty Book: no lore entries are
+	// written until the confirmed request, so the created Book is removed and
+	// recreated by that request. Currently unreachable because a fresh Book has
+	// no lore entries to collide with; kept defensively in case CreateBook ever
+	// seeds default entries.
+	if len(result.PendingOverrides) > 0 {
+		cleanup()
+		result.ProjectID = ""
+		result.Workspace = ""
+		result.BookMeta = nil
+		return result, nil
+	}
 	result.ProjectID = created.ProjectID
 	result.Workspace = created.Workspace
 	result.BookMeta = &created.Meta
@@ -234,16 +281,28 @@ func (h *Handlers) installCharacterResources(ctx context.Context, filename strin
 		}
 		selected = append(selected, resource.ID)
 	}
-	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{PreviewID: preview.ID, CandidateID: candidate.ID, ProjectID: projectID, Resources: selected, OverrideByDetail: true})
-	if err != nil {
-		return character.ImportResult{}, err
-	}
-	installed, err := h.app.ApplyResourcePlan(ctx, plan.ID)
+	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{PreviewID: preview.ID, CandidateID: candidate.ID, ProjectID: projectID, Resources: selected, OverrideByDetail: true, OverrideChoices: fields.overrideChoices})
 	if err != nil {
 		return character.ImportResult{}, err
 	}
 	result := *preview.Character
 	result.ProjectID = projectID
+	// Same-name lore entries must not be replaced before the user reviews them:
+	// return the affected list and release the held plan instead of applying.
+	if !fields.confirmOverrides && len(plan.ImportDuplicates) > 0 {
+		result.PendingOverrides = make([]character.ImportDuplicatePreview, 0, len(plan.ImportDuplicates))
+		for _, dup := range plan.ImportDuplicates {
+			result.PendingOverrides = append(result.PendingOverrides, character.ImportDuplicatePreview(dup))
+		}
+		if err := exchange.DiscardPlan(plan.ID); err != nil {
+			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard pending plan", "plan_id", plan.ID, "error", err)
+		}
+		return result, nil
+	}
+	installed, err := h.app.ApplyResourcePlan(ctx, plan.ID)
+	if err != nil {
+		return character.ImportResult{}, err
+	}
 	result.Overridden = plan.ImportOverrides
 	result.Skipped = plan.ImportSkipped
 	for _, binding := range installed.Bindings {
