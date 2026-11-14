@@ -71,7 +71,7 @@ async function loadChoices(controller: ConversationConfigController, only?: Agen
       switch (kind) {
         case 'codex': return { kind, changes: { runtime: { kind, codex: { ...resolved, ...(preferences?.codex?.sandbox ? { sandbox: preferences.codex.sandbox } : {}) } } } }
         case 'claude': return { kind, changes: { runtime: { kind, claude: resolved } } }
-        case 'grok': return { kind, changes: { runtime: { kind, grok: resolved } } }
+        case 'grok': return { kind, changes: { runtime: { kind, grok: { ...resolved, ...(preferences?.grok?.context_window ? { context_window: preferences.grok.context_window } : {}) } } } }
         case 'antigravity': return { kind, changes: { runtime: { kind, antigravity: resolved } } }
       }
     } catch (cause) {

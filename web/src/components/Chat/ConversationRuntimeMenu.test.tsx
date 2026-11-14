@@ -62,6 +62,14 @@ describe('ConversationRuntimeMenu', () => {
       await waitFor(() => expect(config.patch).toHaveBeenCalledWith({ runtime: { kind: engine, [engine]: { model: 'saved-model' } } }))
     })
   }
+  it('preserves the saved Grok context window when switching from Native', async () => {
+    mocks.fetchProjectSettings.mockResolvedValue({ effective: { openai_model: 'native-model', agent_runtimes: { general: { grok: { model: 'saved-model', effort: 'high', context_window: 500000 } } } } })
+    const config = controller()
+    render(menu(config))
+    await openRuntime()
+    await user.click(await screen.findByRole('menuitem', { name: 'Grok Build CLI' }))
+    await waitFor(() => expect(config.patch).toHaveBeenCalledWith({ runtime: { kind: 'grok', grok: { model: 'saved-model', effort: 'high', context_window: 500000 } } }))
+  })
   for (const agent of ['ide', 'general', 'interactive_story'] as const) {
     it(`switches the bound ${agent} conversation and keeps the model menu open`, async () => {
       mocks.fetchProjectSettings.mockResolvedValue({ effective: { openai_model: 'native-model', agent_runtimes: { [agent]: { codex: { model: 'saved-model', effort: 'high' } } } } })
