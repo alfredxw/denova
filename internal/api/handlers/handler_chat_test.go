@@ -31,3 +31,17 @@ func TestChatPreparationPausedTurnIsLocalizedClientError(t *testing.T) {
 		})
 	}
 }
+
+func TestChatPreparationPausedTurnDefaultsToChineseWithoutLocale(t *testing.T) {
+	request := app.NewContext(0)
+	handler := &Handlers{}
+	handler.writeChatPreparationError(request, fmt.Errorf("suspend: %w", novaApp.ErrAgentOperationPaused))
+	var body agentRuntimeErrorResponse
+	if err := json.Unmarshal(request.Response.Body(), &body); err != nil {
+		t.Fatal(err)
+	}
+	want := "上一轮已暂停，请继续生成或放弃该轮后再发送"
+	if request.Response.StatusCode() != consts.StatusConflict || body.Code != "agent_runtime.operation_paused" || body.Error != want {
+		t.Fatalf("paused rejection status=%d body=%+v", request.Response.StatusCode(), request.Response.Body())
+	}
+}
