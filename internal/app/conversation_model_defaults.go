@@ -61,15 +61,15 @@ func (a *App) rememberConversationDefaults(binding ConversationConfigBinding, sn
 						retained.Codex = selection.Codex
 					}
 					if selection.Claude != nil {
-										retained.Claude = selection.Claude
-									}
-									if selection.Grok != nil {
-										retained.Grok = selection.Grok
-									}
-									if selection.Antigravity != nil {
-										retained.Antigravity = selection.Antigravity
-									}
-									preferences = retained
+						retained.Claude = selection.Claude
+					}
+					if selection.Grok != nil {
+						retained.Grok = selection.Grok
+					}
+					if selection.Antigravity != nil {
+						retained.Antigravity = selection.Antigravity
+					}
+					preferences = retained
 				}
 				agents[index].Runtime = &preferences
 				found = true

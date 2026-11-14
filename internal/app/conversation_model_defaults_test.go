@@ -7,6 +7,7 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
+	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/session"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
@@ -220,6 +221,109 @@ func TestGameRuntimeSwitchRemembersCompleteExternalSelection(t *testing.T) {
 			}
 			if nextStory.Engine().Kind != kind {
 				t.Fatalf("new story engine = %q, want %q", nextStory.Engine().Kind, kind)
+			}
+		})
+	}
+}
+
+func TestRememberCustomAgentRuntimeCompletesNewEngineAndKeepsInactive(t *testing.T) {
+	engines := map[config.RuntimeID]*config.RuntimeSelection{
+		config.RuntimeGrok:        {Kind: config.RuntimeGrok, Grok: &config.GrokRuntimeSettings{Model: "runtime-model", Effort: "high", ContextWindow: 48000}},
+		config.RuntimeAntigravity: {Kind: config.RuntimeAntigravity, Antigravity: &config.AntigravityRuntimeSettings{Model: "runtime-model", Effort: "high"}},
+	}
+	for kind, selection := range engines {
+		t.Run(string(kind), func(t *testing.T) {
+			application := newExecutionProfileTestApp(t)
+			if _, err := application.SettingsService().Patch(appsettings.Global(), config.SettingsLayerUser, []byte(`{
+				"custom_agents": [{"id":"agent-1","name":"Agent One","contract":"project.general.v1","runtime":{"selected":"claude","claude":{"model":"keep-claude"}}}]
+			}`), ""); err != nil {
+				t.Fatal(err)
+			}
+			snapshot := conversationconfig.Snapshot{Config: conversationconfig.Config{
+				AgentKind: config.AgentKindGeneral, CustomAgentID: "agent-1", Runtime: selection,
+			}}
+			binding := ConversationConfigBinding{Mode: ConversationModeWriting, ProjectID: application.ProjectID()}
+			if err := application.rememberConversationDefaults(binding, snapshot, conversationconfig.Patch{Runtime: selection}); err != nil {
+				t.Fatalf("remember switch to %s: %v", kind, err)
+			}
+			persisted, err := application.SettingsService().Snapshot(appsettings.Global())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved *config.RuntimePreferences
+			for index := range persisted.User.CustomAgents {
+				if persisted.User.CustomAgents[index].ID == "agent-1" {
+					saved = persisted.User.CustomAgents[index].Runtime
+					break
+				}
+			}
+			if saved == nil || saved.Selected != kind {
+				t.Fatalf("remembered custom agent runtime = %#v, want selected %q", saved, kind)
+			}
+			if saved.Claude == nil || saved.Claude.Model != "keep-claude" {
+				t.Fatalf("inactive Claude settings were dropped: %#v", saved.Claude)
+			}
+			switch kind {
+			case config.RuntimeGrok:
+				if saved.Grok == nil || saved.Grok.Model != "runtime-model" || saved.Grok.Effort != "high" || saved.Grok.ContextWindow != 48000 {
+					t.Fatalf("remembered custom agent Grok settings = %#v", saved.Grok)
+				}
+			case config.RuntimeAntigravity:
+				if saved.Antigravity == nil || saved.Antigravity.Model != "runtime-model" || saved.Antigravity.Effort != "high" {
+					t.Fatalf("remembered custom agent Antigravity settings = %#v", saved.Antigravity)
+				}
+			}
+		})
+	}
+}
+
+func TestProjectRuntimeSwitchRemembersCompleteExternalEngine(t *testing.T) {
+	engines := map[config.RuntimeID]*config.RuntimeSelection{
+		config.RuntimeGrok:        {Kind: config.RuntimeGrok, Grok: &config.GrokRuntimeSettings{Model: "runtime-model", Effort: "high", ContextWindow: 48000}},
+		config.RuntimeAntigravity: {Kind: config.RuntimeAntigravity, Antigravity: &config.AntigravityRuntimeSettings{Model: "runtime-model", Effort: "high"}},
+	}
+	for kind, selection := range engines {
+		t.Run(string(kind), func(t *testing.T) {
+			application := newExecutionProfileTestApp(t)
+			projectID := application.ProjectID()
+			// An explicit Project selector already resolves another engine, so the
+			// switch must update that scope instead of the user default.
+			if _, err := application.SettingsService().Patch(appsettings.Project(projectID), config.SettingsLayerWorkspace, []byte(`{
+				"agent_runtimes": {"interactive_story": {"selected":"codex","codex":{"model":"project-base"}}}
+			}`), ""); err != nil {
+				t.Fatal(err)
+			}
+			binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: projectID}
+			if _, err := application.PatchConversationConfig(t.Context(), binding, ConversationConfigPatch{Runtime: selection}, 0); err != nil {
+				t.Fatalf("switch to %s: %v", kind, err)
+			}
+			project, err := application.SettingsService().Snapshot(appsettings.Project(projectID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			preferences := project.Workspace.AgentRuntimes.ForAgent(config.AgentKindInteractiveStory)
+			if preferences.Selected != kind {
+				t.Fatalf("project remembered selection = %q, want %q", preferences.Selected, kind)
+			}
+			if preferences.Codex == nil || preferences.Codex.Model != "project-base" {
+				t.Fatalf("project switch dropped the inactive Codex branch: %#v", preferences.Codex)
+			}
+			switch kind {
+			case config.RuntimeGrok:
+				if preferences.Grok == nil || preferences.Grok.Model != "runtime-model" || preferences.Grok.Effort != "high" || preferences.Grok.ContextWindow != 48000 {
+					t.Fatalf("project remembered Grok settings = %#v", preferences.Grok)
+				}
+			case config.RuntimeAntigravity:
+				if preferences.Antigravity == nil || preferences.Antigravity.Model != "runtime-model" || preferences.Antigravity.Effort != "high" {
+					t.Fatalf("project remembered Antigravity settings = %#v", preferences.Antigravity)
+				}
+			}
+			user, err := application.SettingsService().Snapshot(appsettings.Global())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := user.User.AgentRuntimes.ForAgent(config.AgentKindInteractiveStory); got.Selected != "" {
+				t.Fatalf("project switch leaked into user layer: %#v", got)
 			}
 		})
 	}
