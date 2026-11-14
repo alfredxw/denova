@@ -443,10 +443,34 @@ func stateDeltaEventForCommittedTurn(turn TurnEvent) *StateDeltaEvent {
 }
 
 // syncStoryIndexProjectionLocked updates the rebuildable story catalog from
-// canonical JSONL state. A projection failure is logged but never turns an
-// already-durable event into a false-negative operation result.
+// canonical JSONL state. A projection failure is logged and kept as a
+// consumable diagnostic, but never turns an already-durable event into a
+// false-negative operation result.
 func (s *Store) syncStoryIndexProjectionLocked(storyID string) {
 	if _, err := s.publishStorySummaryLocked(storyID); err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] index projection write failed after canonical commit story_id=%s err=%v", storyID, err))
+		s.rememberStoryProjectionFailureLocked(storyID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] story index projection update failed after canonical commit story_id=%s err=%v", storyID, err))
+		return
 	}
+	delete(s.storyProjectionFailures, strings.TrimSpace(storyID))
+}
+
+// ConsumeStoryProjectionFailure returns and clears the most recent catalog
+// projection failure for one story. Product layers surface it as a non-fatal
+// diagnostic next to the already-committed result; the canonical journal stays
+// authoritative.
+func (s *Store) ConsumeStoryProjectionFailure(storyID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := strings.TrimSpace(storyID)
+	err := s.storyProjectionFailures[key]
+	delete(s.storyProjectionFailures, key)
+	return err
+}
+
+func (s *Store) rememberStoryProjectionFailureLocked(storyID string, err error) {
+	if s.storyProjectionFailures == nil {
+		s.storyProjectionFailures = make(map[string]error)
+	}
+	s.storyProjectionFailures[strings.TrimSpace(storyID)] = err
 }

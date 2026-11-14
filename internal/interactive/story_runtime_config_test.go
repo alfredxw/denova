@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"denova/config"
@@ -195,6 +196,14 @@ func TestBranchRuntimeConfigCommitSurvivesIndexProjectionFailure(t *testing.T) {
 	if !bytes.Equal(indexBefore, indexAfter) {
 		t.Fatal("index.json changed while its replacement was failing")
 	}
+	// The failed projection is kept as a consumable diagnostic and cleared on
+	// consumption so a later PATCH can surface it without duplication.
+	if got := store.ConsumeStoryProjectionFailure(story.ID); got == nil || !strings.Contains(got.Error(), "index replacement failed") {
+		t.Fatalf("projection failure was not recorded: %v", got)
+	}
+	if got := store.ConsumeStoryProjectionFailure(story.ID); got != nil {
+		t.Fatalf("projection failure was not cleared after consumption: %v", got)
+	}
 
 	// The canonical config lives in the Story journal: a cold reload sees the
 	// committed switch regardless of the stale catalog.
@@ -271,6 +280,10 @@ func TestBranchRuntimeConfigCommitSurvivesIndexProjectionFailure(t *testing.T) {
 	if !storyIndexed {
 		t.Fatal("story missing from refreshed catalog")
 	}
+	// A subsequent successful projection clears the stale diagnostic.
+	if got := store.ConsumeStoryProjectionFailure(story.ID); got != nil {
+		t.Fatalf("successful projection did not clear the recorded failure: %v", got)
+	}
 
 	// The initialization path (EnsureBranchRuntimeConfig) follows the same
 	// log-only semantics: a seeded branch commits at revision 1 even while the
@@ -294,5 +307,8 @@ func TestBranchRuntimeConfigCommitSurvivesIndexProjectionFailure(t *testing.T) {
 	seededReload, found, err := seededStore.BranchRuntimeConfig(seededStory.ID, "main")
 	if err != nil || !found || seededReload.Revision != 1 || seededReload.Config.Runtime.Claude.Model != "claude-primary" {
 		t.Fatalf("seeded reload mismatch: %+v found=%t err=%v", seededReload, found, err)
+	}
+	if got := seededStore.ConsumeStoryProjectionFailure(seededStory.ID); got == nil {
+		t.Fatal("seeded initialization did not record the projection failure")
 	}
 }
