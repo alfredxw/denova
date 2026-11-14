@@ -14,6 +14,7 @@ import (
 	"denova/internal/agents/conversationconfig"
 	agentrun "denova/internal/agents/run"
 	agentruntime "denova/internal/agents/runtime"
+	externaljournal "denova/internal/agents/runtime/external/journal"
 	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
 	"denova/internal/book"
@@ -127,5 +128,28 @@ func TestExternalRetryRestartsProviderThroughRecoveryEntry(t *testing.T) {
 	}
 	if userInputs != 1 {
 		t.Fatalf("original user input committed %d times, want 1", userInputs)
+	}
+	// Journal projection after the retry: the failed original operation and the
+	// recovery operation coexist, each closed once, linked by the original input.
+	failed, completed := 0, 0
+	err = sess.ReadExternal(t.Context(), func(state session.ExternalState) error {
+		for _, operation := range state.Projection.Operations {
+			if operation.CommandID != initial.CommandID && operation.InputCommandID != initial.CommandID {
+				continue
+			}
+			switch operation.Status {
+			case externaljournal.Failed:
+				failed++
+			case externaljournal.Completed:
+				completed++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed != 1 || completed != 1 {
+		t.Fatalf("retry journal projection failed=%d completed=%d, want 1 and 1", failed, completed)
 	}
 }
