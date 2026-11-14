@@ -134,7 +134,10 @@ func TestInstalledGrokImageTurn(t *testing.T) {
 	}
 	// The model request must carry the picture: the CLI read the image block from
 	// the .json prompt file and attached it to the vision-able API call as a
-	// session asset reference, never as an inline argument.
+	// session asset reference, never as an inline argument. The marker guess is
+	// about the installed CLI's request envelope (observed on 1.0.77); a CLI
+	// that switches to inline base64 would only need the markers relaxed, not
+	// the prompt-file channel.
 	if len(visionPayload) == 0 {
 		t.Fatal("model server received no vision request")
 	}

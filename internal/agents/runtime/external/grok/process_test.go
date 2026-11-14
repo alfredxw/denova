@@ -24,9 +24,6 @@ func TestVerifyCommandLineAcceptsNormalArgs(t *testing.T) {
 // oversized system prompt override. The Windows implementation rejects an
 // oversize command line; other platforms leave it to the OS.
 func TestVerifyCommandLineWindowsRejectsOversize(t *testing.T) {
-	if testing.Short() {
-		t.Skip("short mode")
-	}
 	args := []string{"--system-prompt-override", strings.Repeat("x", 40_000)}
 	err := verifyCommandLine("C:\\grok.exe", args)
 	if runtime.GOOS == "windows" && err == nil {

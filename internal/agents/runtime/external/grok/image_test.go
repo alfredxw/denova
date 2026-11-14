@@ -9,7 +9,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	stddraw "image/draw"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"testing"
@@ -92,10 +92,10 @@ func photoAttachment(t *testing.T, size int) agentschema.Attachment {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "photo.jpg")
 	source := image.NewRGBA(image.Rect(0, 0, size, size))
-	rng := rand.New(rand.NewSource(42))
+	rng := rand.New(rand.NewPCG(1, 42))
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
-			source.Set(x, y, color.RGBA{R: uint8(rng.Intn(256)), G: uint8(rng.Intn(256)), B: uint8(rng.Intn(256)), A: 255})
+			source.Set(x, y, color.RGBA{R: uint8(rng.IntN(256)), G: uint8(rng.IntN(256)), B: uint8(rng.IntN(256)), A: 255})
 		}
 	}
 	file, err := os.Create(path)
@@ -116,9 +116,10 @@ func photoAttachment(t *testing.T, size int) agentschema.Attachment {
 	return agentschema.Attachment{Name: "photo.jpg", Path: path, MediaType: "image/jpeg", Size: int64(len(raw)), SHA256: hex.EncodeToString(digest[:])}
 }
 
-// A realistic 512×512 photo cannot fit in the Windows command line (32767
-// UTF-16 code units) even after compression: inline transport is structurally
-// impossible there, which is why the payload must live in the prompt file.
+// A realistic 512×512 photo cannot fit in the Windows command line (max 32766
+// content UTF-16 code units, null terminator excluded) even after compression:
+// inline transport is structurally impossible there, which is why the payload
+// must live in the prompt file.
 func TestPromptContentPhotoExceedsWindowsLimit(t *testing.T) {
 	payload, err := promptContent("Describe this image.", []agentschema.Attachment{photoAttachment(t, 512)})
 	if err != nil {
@@ -127,7 +128,12 @@ func TestPromptContentPhotoExceedsWindowsLimit(t *testing.T) {
 	if len(payload) > maxPromptPayloadBytes {
 		t.Fatalf("payload exceeded its budget: %d", len(payload))
 	}
-	if len(payload) <= 32_767 {
+	// The payload is pure ASCII base64 JSON, so len(payload) equals its UTF-16
+	// code-unit count; adjust the comparison if the text block ever carries
+	// non-ASCII characters. The threshold also depends on the compression
+	// ladder's floor: shrinking photoAttachment below 512×512 or adding the
+	// next quality step would need this number revisited.
+	if len(payload) <= 32_766 {
 		t.Fatalf("photo payload unexpectedly fits a Windows command line: %d", len(payload))
 	}
 }
