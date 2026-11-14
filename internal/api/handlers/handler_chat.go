@@ -98,7 +98,7 @@ func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
 		return
 	}
 	if errors.Is(err, novaApp.ErrAgentOperationPaused) {
-		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.operation_paused", "上一轮已暂停，请继续生成或放弃该轮后再发送 / The previous turn is paused; resume or discard it before sending", nil)
+		writeErrorKey(c, consts.StatusConflict, "agent_runtime.operation_paused")
 		return
 	}
 	if errors.Is(err, novaApp.ErrAgentOperationActive) {
