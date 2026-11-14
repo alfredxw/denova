@@ -30,6 +30,11 @@ type ExternalCycleInput struct {
 	GoalID               string                  `json:"goal_id,omitempty"`
 	GoalRevision         uint64                  `json:"goal_revision,omitempty"`
 	RegenerateFromTurnID string                  `json:"regenerate_from_turn_id,omitempty"`
+	// BoundCommandID identifies the player input this cycle actually continues
+	// when Request.CommandID belongs to a newer resume command (engine switch).
+	// A stop receipt then binds the continued input rather than the resume
+	// request that started this cycle.
+	BoundCommandID agentrun.CommandID `json:"bound_command_id,omitempty"`
 }
 type ExternalCycle interface {
 	Wait(context.Context) agentrun.Outcome
@@ -149,12 +154,7 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 			interrupt = external.ErrSuspended
 		case agentexecution.CommandAbort:
 			// Bind the request to the input it stops before Current is cleared.
-			// Current, not state.CommandID, advances when a queued input starts
-			// running, so only Current identifies the input discarded here.
-			abortedInputCommandID = string(state.CommandID)
-			if state.Current != nil && strings.TrimSpace(state.Current.Request.CommandID) != "" {
-				abortedInputCommandID = state.Current.Request.CommandID
-			}
+			abortedInputCommandID = abortedInputBinding(state)
 			state.Phase, state.Current, state.Queue = agentrun.RunPhaseIdle, nil, nil
 			if err := state.setOutcome(string(state.CommandID), agentrun.OutcomeAborted); err != nil {
 				return err
@@ -302,10 +302,7 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 	err = control.update(ctx, func(current *externalControlState) error {
 		abortedInputCommandID := ""
 		if action.Kind == agentexecution.RuntimeRecoveryAbort {
-			abortedInputCommandID = string(current.CommandID)
-			if current.Current != nil && strings.TrimSpace(current.Current.Request.CommandID) != "" {
-				abortedInputCommandID = current.Current.Request.CommandID
-			}
+			abortedInputCommandID = abortedInputBinding(current)
 		}
 		current.receipts[key] = controlReceipt{Receipt: run.receipt, AbortedInputCommandID: abortedInputCommandID}
 		if action.Kind == agentexecution.RuntimeRecoveryAbort {
@@ -399,6 +396,28 @@ func (control *ExternalController) Receipt(ctx context.Context, commandID string
 	}
 	saved, found, err := state.receipt(commandID)
 	return saved.Receipt, found, err
+}
+
+// abortedInputBinding returns the command a stop request discards: the resumed
+// input's BoundCommandID when present, otherwise the running input's request
+// command, otherwise the accepted operation command. Current, not state,
+// advances when a queued input starts running, and a resumed input carries
+// BoundCommandID when its cycle continues the original player input under a
+// newer resume command (engine switch).
+func abortedInputBinding(state *externalControlState) string {
+	// Controller callbacks never pass nil; the guard keeps the helper total.
+	if state == nil {
+		return ""
+	}
+	if state.Current != nil {
+		if bound := strings.TrimSpace(string(state.Current.BoundCommandID)); bound != "" {
+			return bound
+		}
+		if current := strings.TrimSpace(state.Current.Request.CommandID); current != "" {
+			return current
+		}
+	}
+	return string(state.CommandID)
 }
 
 // AbortedInputCommandID reports the input a stop request actually discarded.
