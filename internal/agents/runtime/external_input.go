@@ -10,6 +10,9 @@ import (
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
+// externalInputFingerprint excludes BoundCommandID deliberately: the binding is
+// application-resolved at accept time and must not change the request semantic,
+// so receipts persisted before this field existed stay replayable.
 func externalInputFingerprint(input ExternalCycleInput) string {
 	return agentexecution.RequestSemanticFingerprint(input.Request) + ":" + input.RegenerateFromTurnID
 }
@@ -30,6 +33,7 @@ type durableExternalInput struct {
 	GoalID               string                   `json:"goal_id,omitempty"`
 	GoalRevision         uint64                   `json:"goal_revision,omitempty"`
 	RegenerateFromTurnID string                   `json:"regenerate_from_turn_id,omitempty"`
+	BoundCommandID       agentrun.CommandID       `json:"bound_command_id,omitempty"`
 }
 
 func storeExternalRequest(request agentchat.ChatRequest) durableExternalRequest {
@@ -41,7 +45,7 @@ func (stored durableExternalRequest) restore() (agentchat.ChatRequest, error) {
 	return agentchat.CaptureChatRequestCallerInput(request), nil
 }
 func (input ExternalCycleInput) MarshalJSON() ([]byte, error) {
-	stored := durableExternalInput{Request: storeExternalRequest(input.Request), Delivery: input.Delivery, Resume: input.Resume, GoalID: input.GoalID, GoalRevision: input.GoalRevision, RegenerateFromTurnID: input.RegenerateFromTurnID}
+	stored := durableExternalInput{Request: storeExternalRequest(input.Request), Delivery: input.Delivery, Resume: input.Resume, GoalID: input.GoalID, GoalRevision: input.GoalRevision, RegenerateFromTurnID: input.RegenerateFromTurnID, BoundCommandID: input.BoundCommandID}
 	for _, request := range input.Guidance {
 		stored.Guidance = append(stored.Guidance, storeExternalRequest(request))
 	}
@@ -56,7 +60,7 @@ func (input *ExternalCycleInput) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*input = ExternalCycleInput{Request: request, Delivery: stored.Delivery, Resume: stored.Resume, GoalID: stored.GoalID, GoalRevision: stored.GoalRevision, RegenerateFromTurnID: stored.RegenerateFromTurnID}
+	*input = ExternalCycleInput{Request: request, Delivery: stored.Delivery, Resume: stored.Resume, GoalID: stored.GoalID, GoalRevision: stored.GoalRevision, RegenerateFromTurnID: stored.RegenerateFromTurnID, BoundCommandID: stored.BoundCommandID}
 	for _, source := range stored.Guidance {
 		request, err := source.restore()
 		if err != nil {

@@ -92,6 +92,6 @@ func loreEnabledPtr(enabled bool) *bool {
 	return &enabled
 }
 
-func loreItemsRelPath(workspace string) string {
+func loreItemsRelPath(_ string) string {
 	return lore.ItemsRelativePath
 }

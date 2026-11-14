@@ -12,7 +12,7 @@ import (
 	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
 
-func (run *Run) commitCanonical(ctx context.Context, update agentengine.CanonicalUpdate, commit func(agentcanonical.CanonicalCheckpoint) error) error {
+func (run *Run) commitCanonical(_ context.Context, update agentengine.CanonicalUpdate, commit func(agentcanonical.CanonicalCheckpoint) error) error {
 	if !run.session.canonicalMessages {
 		return commit(nil)
 	}

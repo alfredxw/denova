@@ -4,15 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"sync"
+	"time"
 
 	"denova/config"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/runtime/external"
+	"denova/internal/agents/runtime/external/antigravity"
 	"denova/internal/agents/runtime/external/claude"
 	"denova/internal/agents/runtime/external/codex"
+	"denova/internal/agents/runtime/external/grok"
 	"denova/internal/hostruntime"
 )
 
@@ -31,6 +35,10 @@ func VersionUnsupportedReasonKey(err error) string {
 		return "agentRuntime.incompatibleVersion"
 	case errors.Is(err, claude.ErrVersionUnsupported):
 		return "agentRuntime.claudeIncompatibleVersion"
+	case errors.Is(err, antigravity.ErrVersionUnsupported):
+		return "agentRuntime.antigravityIncompatibleVersion"
+	case errors.Is(err, grok.ErrVersionUnsupported):
+		return "agentRuntime.grokIncompatibleVersion"
 	default:
 		return ""
 	}
@@ -53,20 +61,56 @@ type Engines struct {
 	apiFactory     func(context.Context, config.RuntimeID, config.ResolvedModelSettings) (external.Connection, error)
 }
 
+// engineEntry holds one host-local engine's connection and its last known
+// readiness. probeMu serializes connection replacement and every probe, so
+// concurrent menu reads and admissions share one CLI invocation. mu only guards
+// the fields below, so listing engines or reading status never waits for a
+// process to start.
 type engineEntry struct {
-	mu         sync.Mutex
-	id         config.RuntimeID
-	factory    func(context.Context) (external.Connection, error)
-	connection external.Connection
-	state      external.ConnectionState
-	users      int
-	closed     bool
+	probeMu      sync.Mutex
+	mu           sync.Mutex
+	id           config.RuntimeID
+	factory      func(context.Context) (external.Connection, error)
+	connection   external.Connection
+	state        external.ConnectionState
+	models       external.Models
+	modelsExpiry time.Time
+	retryAfter   time.Time
+	users        int
+	closed       bool
 }
+
+// engineModelsTTL bounds repeated CLI model discovery across menu opens and
+// admissions. Only an explicit check bypasses it.
+const engineModelsTTL = 5 * time.Minute
+
+// engineRetryDelay bounds retries after a negative probe. Containers restart
+// often and the model menu is reopened constantly; without a backoff a missing
+// or signed-out CLI is spawned again on every read.
+const engineRetryDelay = 30 * time.Second
 
 func NewEngines() *Engines {
 	return &Engines{apiConnections: make(map[external.Connection]struct{}), apiFactory: connectRuntimeAPI, entries: map[config.RuntimeID]*engineEntry{config.RuntimeCodex: {
 		id: config.RuntimeCodex, state: external.ConnectionState{Status: "unchecked"}, factory: connectCodex,
-	}, config.RuntimeClaude: {id: config.RuntimeClaude, state: external.ConnectionState{Status: "unchecked"}, factory: connectClaude}}}
+	}, config.RuntimeClaude: {id: config.RuntimeClaude, state: external.ConnectionState{Status: "unchecked"}, factory: connectClaude},
+		config.RuntimeGrok:        {id: config.RuntimeGrok, state: external.ConnectionState{Status: "unchecked"}, factory: connectGrok},
+		config.RuntimeAntigravity: {id: config.RuntimeAntigravity, state: external.ConnectionState{Status: "unchecked"}, factory: connectAntigravity}}}
+}
+
+func connectGrok(ctx context.Context) (external.Connection, error) {
+	executable := hostruntime.DiscoverGrok(os.Environ())
+	if executable == "" {
+		return nil, ErrEngineNotInstalled
+	}
+	return grok.Connect(ctx, grok.ProcessOptions{Executable: executable})
+}
+
+func connectAntigravity(ctx context.Context) (external.Connection, error) {
+	executable := hostruntime.DiscoverAntigravity(os.Environ())
+	if executable == "" {
+		return nil, ErrEngineNotInstalled
+	}
+	return antigravity.Connect(ctx, antigravity.ProcessOptions{Executable: executable})
 }
 
 func connectClaude(ctx context.Context) (external.Connection, error) {
@@ -91,23 +135,32 @@ func connectCodex(ctx context.Context) (external.Connection, error) {
 
 func (engines *Engines) Catalog() []EngineDescriptor {
 	items := []EngineDescriptor{engineDescriptor(config.RuntimeNative)}
-	for _, id := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude} {
+	for _, id := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude, config.RuntimeGrok, config.RuntimeAntigravity} {
 		entry := engines.entries[id]
-		entry.mu.Lock()
 		items = append(items, entry.descriptor())
-		entry.mu.Unlock()
 	}
 	return items
 }
 
 func (entry *engineEntry) descriptor() EngineDescriptor {
+	_, state := entry.status()
 	item := engineDescriptor(entry.id)
-	state := entry.state
-	if entry.connection != nil {
-		state = entry.connection.Status()
-	}
 	item.Status, item.ReasonKey = state.Status, state.ReasonKey
 	return item
+}
+
+// status reports readiness together with the connection it was read from. A live
+// connection owns the current state; the cached state only covers the interval
+// before the first connection exists.
+func (entry *engineEntry) status() (external.Connection, external.ConnectionState) {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	connection := entry.connection
+	state := entry.state
+	if connection != nil {
+		state = connection.Status()
+	}
+	return connection, state
 }
 
 func (engines *Engines) entry(id config.RuntimeID) (*engineEntry, error) {
@@ -121,38 +174,9 @@ func (engines *Engines) entry(id config.RuntimeID) (*engineEntry, error) {
 	return entry, nil
 }
 
-func (entry *engineEntry) connect(ctx context.Context) error {
-	if entry.closed {
-		return ErrEngineNotReady
-	}
-	if entry.connection != nil && entry.connection.Status().Status != "unavailable" {
-		return nil
-	}
-	if entry.users != 0 {
-		return ErrOperationActive
-	}
-	if entry.connection != nil {
-		_ = entry.connection.Close()
-		entry.connection = nil
-	}
-	connection, err := entry.factory(ctx)
-	if err != nil {
-		entry.state = external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.connectionFailed"}
-		if errors.Is(err, ErrEngineNotInstalled) {
-			entry.state = external.ConnectionState{Status: "not_installed", ReasonKey: "agentRuntime.notInstalled"}
-		}
-		if key := VersionUnsupportedReasonKey(err); key != "" {
-			entry.state = external.ConnectionState{Status: "incompatible", ReasonKey: key}
-		}
-		if entry.id == config.RuntimeClaude && entry.state.Status == "not_installed" {
-			entry.state.ReasonKey = "agentRuntime.claudeNotInstalled"
-		}
-		return err
-	}
-	entry.connection = connection
-	return nil
-}
-
+// Check is the only path that bypasses the catalog TTL and the retry backoff.
+// It reloads CLI credentials and configuration, and reports the outcome through
+// the descriptor instead of an error so the UI can render a status.
 func (engines *Engines) Check(ctx context.Context, id config.RuntimeID) (EngineDescriptor, error) {
 	if id == config.RuntimeNative {
 		return engineDescriptor(id), nil
@@ -161,49 +185,207 @@ func (engines *Engines) Check(ctx context.Context, id config.RuntimeID) (EngineD
 	if err != nil {
 		return EngineDescriptor{}, err
 	}
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
-	// CLI login and configuration changes happen outside this process. An
-	// explicit idle check reloads them; accepted operations retain their lease.
-	if entry.connection != nil && entry.users == 0 {
-		_ = entry.connection.Close()
-		entry.connection = nil
-	}
-	if err := entry.connect(ctx); err != nil {
-		return entry.descriptor(), nil
-	}
-	state, err := entry.connection.Check(ctx)
-	if err != nil {
-		state = external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.connectionFailed"}
-	}
-	entry.state = state
-	item := engineDescriptor(id)
-	item.Status, item.ReasonKey = state.Status, state.ReasonKey
-	return item, nil
+	entry.probeMu.Lock()
+	_, _ = entry.catalog(ctx, true)
+	entry.probeMu.Unlock()
+	return entry.descriptor(), nil
 }
 
+// Models reports the engine catalog from cache and probes only when the cached
+// readiness or catalog is stale. This is what the model menu reads.
 func (engines *Engines) Models(ctx context.Context, id config.RuntimeID) (external.Models, error) {
 	entry, err := engines.entry(id)
 	if err != nil {
 		return external.Models{}, err
 	}
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
-	if err := entry.connect(ctx); err != nil {
-		return external.Models{}, err
-	}
-	state, err := entry.connection.Check(ctx)
-	if err != nil {
-		return external.Models{}, err
-	}
-	if state.Status != "ready" {
-		return external.Models{}, ErrEngineNotReady
-	}
-	return entry.connection.Models(ctx)
+	entry.probeMu.Lock()
+	defer entry.probeMu.Unlock()
+	return entry.catalog(ctx, false)
 }
 
-// Acquire pins the connection from preflight through durable settlement. The
-// caller releases on acceptance failure or after Wait, including cancellation.
+// ValidateSelection admits a selection against the cached catalog. It starts a
+// CLI process only when the catalog is cold, so changing model or effort inside a
+// ready engine costs nothing.
+func (engines *Engines) ValidateSelection(ctx context.Context, selection config.RuntimeSelection) error {
+	entry, err := engines.entry(selection.Kind)
+	if err != nil {
+		return err
+	}
+	if err := selection.Validate(config.AgentKindGeneral); err != nil {
+		return err
+	}
+	if selection.ModelProfileID() != "" {
+		// API profiles resolve from settings; no CLI catalog is involved.
+		return nil
+	}
+	entry.probeMu.Lock()
+	defer entry.probeMu.Unlock()
+	models, err := entry.catalog(ctx, false)
+	if err != nil {
+		return err
+	}
+	return validateEngineModel(models, selection)
+}
+
+// catalog resolves readiness and the model catalog. It is the only place that
+// starts an engine process. Callers hold probeMu.
+func (entry *engineEntry) catalog(ctx context.Context, force bool) (external.Models, error) {
+	connection, state := entry.status()
+	entry.mu.Lock()
+	closed, users := entry.closed, entry.users
+	expiry, cached, retryAfter := entry.modelsExpiry, entry.models, entry.retryAfter
+	entry.mu.Unlock()
+	if closed {
+		return external.Models{}, ErrEngineNotReady
+	}
+	if !force {
+		if state.Status == "ready" && time.Now().Before(expiry) {
+			return cached, nil
+		}
+		if time.Now().Before(retryAfter) {
+			// A ready engine that only failed a catalog read keeps serving its
+			// last known list instead of failing the menu.
+			if state.Status == "ready" && len(cached.Items) > 0 {
+				return cached, nil
+			}
+			return external.Models{}, ErrEngineNotReady
+		}
+	}
+	// Replacing a connection is only safe while nothing holds a lease on it.
+	if connection != nil && ((force && users == 0) || state.Status == "unavailable") {
+		if users != 0 {
+			return external.Models{}, ErrOperationActive
+		}
+		_ = connection.Close()
+		connection = nil
+		entry.mu.Lock()
+		entry.connection = nil
+		entry.models, entry.modelsExpiry = external.Models{}, time.Time{}
+		entry.mu.Unlock()
+	}
+	if connection == nil {
+		created, err := entry.factory(ctx)
+		if err != nil {
+			entry.record(engineFailureState(entry.id, err), nil)
+			return external.Models{}, err
+		}
+		connection = created
+		entry.mu.Lock()
+		entry.connection = created
+		entry.mu.Unlock()
+	}
+	// A new connection is unchecked, so the first read also establishes
+	// readiness. A ready connection is never re-probed: that spawned a CLI
+	// process on every menu open and let one transient failure turn a working
+	// runtime into an unavailable one.
+	state = connection.Status()
+	var probed *external.Models
+	if state.Status == "unchecked" || (force && users != 0) {
+		state, probed = probeReadiness(ctx, connection)
+	}
+	if state.Status != "ready" {
+		entry.record(state, probed)
+		return external.Models{}, ErrEngineNotReady
+	}
+	if probed != nil {
+		// The probe already answered both questions, so its catalog is the
+		// cached one. Without this the next read would run the same CLI command
+		// again, and a transient failure there surfaced as a broken connection
+		// right after a successful check.
+		entry.record(state, probed)
+		return *probed, nil
+	}
+	models, err := connection.Models(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "[agent-runtime] catalog read failed", "runtime", entry.id, "error", err)
+		// A failed catalog read does not prove the engine signed out. Keep the
+		// last known readiness and only delay the next attempt.
+		entry.backoff()
+		if state.Status == "ready" && len(cached.Items) > 0 {
+			return cached, nil
+		}
+		return external.Models{}, err
+	}
+	entry.record(external.ConnectionState{Status: "ready"}, &models)
+	return models, nil
+}
+
+// probeReadiness reads readiness once. Adapters whose readiness check is itself a
+// catalog read return both, so Grok and Antigravity are not asked twice.
+func probeReadiness(ctx context.Context, connection external.Connection) (external.ConnectionState, *external.Models) {
+	if probe, ok := connection.(external.CatalogProbe); ok {
+		state, models, err := probe.Probe(ctx)
+		state = probeState(state, err)
+		if state.Status != "ready" {
+			return state, nil
+		}
+		return state, &models
+	}
+	state, err := connection.Check(ctx)
+	return probeState(state, err), nil
+}
+
+func probeState(state external.ConnectionState, err error) external.ConnectionState {
+	if state.Status == "" {
+		state = external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.connectionFailed"}
+	}
+	if key := VersionUnsupportedReasonKey(err); key != "" {
+		state = external.ConnectionState{Status: "incompatible", ReasonKey: key}
+	}
+	return state
+}
+
+// record stores one probe outcome. Negative results are remembered for a short
+// backoff so repeated reads do not respawn a missing or signed-out CLI.
+func (entry *engineEntry) record(state external.ConnectionState, models *external.Models) {
+	if state.Status == "" {
+		state = external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.connectionFailed"}
+	}
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	entry.state = state
+	if state.Status != "ready" {
+		entry.models, entry.modelsExpiry = external.Models{}, time.Time{}
+		entry.retryAfter = time.Now().Add(engineRetryDelay)
+		return
+	}
+	if models != nil {
+		entry.models = *models
+	}
+	entry.modelsExpiry, entry.retryAfter = time.Now().Add(engineModelsTTL), time.Time{}
+}
+
+func (entry *engineEntry) backoff() {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	entry.retryAfter = time.Now().Add(engineRetryDelay)
+}
+
+func engineFailureState(id config.RuntimeID, err error) external.ConnectionState {
+	state := external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.connectionFailed"}
+	if errors.Is(err, ErrEngineNotInstalled) {
+		state = external.ConnectionState{Status: "not_installed", ReasonKey: "agentRuntime.notInstalled"}
+	}
+	if key := VersionUnsupportedReasonKey(err); key != "" {
+		state = external.ConnectionState{Status: "incompatible", ReasonKey: key}
+	}
+	if state.Status == "not_installed" {
+		switch id {
+		case config.RuntimeClaude:
+			state.ReasonKey = "agentRuntime.claudeNotInstalled"
+		case config.RuntimeGrok:
+			state.ReasonKey = "agentRuntime.grokNotInstalled"
+		case config.RuntimeAntigravity:
+			state.ReasonKey = "agentRuntime.antigravityNotInstalled"
+		}
+	}
+	return state
+}
+
+// Acquire pins the connection from preflight through durable settlement. It
+// validates against the cached catalog and only probes a cold engine, so
+// switching model or effort inside a ready engine does not start a process.
+// The caller releases on acceptance failure or after Wait, including cancellation.
 func (engines *Engines) Acquire(ctx context.Context, selection config.RuntimeSelection, cfg config.Config) (external.Adapter, func(), error) {
 	entry, err := engines.entry(selection.Kind)
 	if err != nil {
@@ -215,44 +397,54 @@ func (engines *Engines) Acquire(ctx context.Context, selection config.RuntimeSel
 	if selection.ModelProfileID() != "" {
 		return engines.acquireAPI(ctx, selection, cfg)
 	}
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
-	if err := entry.connect(ctx); err != nil {
-		return nil, nil, err
-	}
-	state, err := entry.connection.Check(ctx)
+	// Hold probeMu until the lease is pinned so an explicit check cannot replace
+	// the connection between validation and the first turn.
+	entry.probeMu.Lock()
+	models, err := entry.catalog(ctx, false)
 	if err != nil {
+		entry.probeMu.Unlock()
 		return nil, nil, err
 	}
-	if state.Status != "ready" {
+	if err := validateEngineModel(models, selection); err != nil {
+		entry.probeMu.Unlock()
+		return nil, nil, err
+	}
+	entry.mu.Lock()
+	connection := entry.connection
+	if connection == nil {
+		entry.mu.Unlock()
+		entry.probeMu.Unlock()
 		return nil, nil, ErrEngineNotReady
 	}
-	models, err := entry.connection.Models(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
+	entry.users++
+	entry.mu.Unlock()
+	entry.probeMu.Unlock()
+	var once sync.Once
+	return connection, func() { once.Do(func() { entry.mu.Lock(); entry.users--; entry.mu.Unlock() }) }, nil
+}
+
+// validateEngineModel reports whether the selection is served by the catalog the
+// engine actually reports, including effort support.
+func validateEngineModel(models external.Models, selection config.RuntimeSelection) error {
 	var modelID, effort string
 	switch selection.Kind {
 	case config.RuntimeCodex:
 		modelID, effort = selection.Codex.Model, selection.Codex.Effort
 	case config.RuntimeClaude:
 		modelID, effort = selection.Claude.Model, selection.Claude.Effort
+	case config.RuntimeGrok:
+		modelID, effort = selection.Grok.Model, selection.Grok.Effort
+	case config.RuntimeAntigravity:
+		modelID, effort = selection.Antigravity.Model, selection.Antigravity.Effort
 	default:
-		return nil, nil, ErrEngineNotFound
+		return ErrEngineNotFound
 	}
-	valid := false
 	for _, model := range models.Items {
 		if model.ID == modelID && (effort == "" || slices.Contains(model.Efforts, effort)) {
-			valid = true
-			break
+			return nil
 		}
 	}
-	if !valid {
-		return nil, nil, ErrEngineModelUnavailable
-	}
-	entry.users++
-	var once sync.Once
-	return entry.connection, func() { once.Do(func() { entry.mu.Lock(); entry.users--; entry.mu.Unlock() }) }, nil
+	return ErrEngineModelUnavailable
 }
 
 func (engines *Engines) Close() error {
@@ -265,14 +457,21 @@ func (engines *Engines) Close() error {
 	}
 	engines.apiMu.Unlock()
 	for _, entry := range engines.entries {
+		entry.probeMu.Lock()
 		entry.mu.Lock()
 		entry.closed = true
-		if entry.connection != nil {
-			if err := entry.connection.Close(); err != nil {
+		entry.models, entry.modelsExpiry = external.Models{}, time.Time{}
+		connection := entry.connection
+		entry.mu.Unlock()
+		if connection != nil {
+			if err := connection.Close(); err != nil {
 				failures = append(failures, fmt.Errorf("close %s: %w", entry.id, err))
 			}
+			entry.mu.Lock()
+			entry.state = external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.connectionLost"}
+			entry.mu.Unlock()
 		}
-		entry.mu.Unlock()
+		entry.probeMu.Unlock()
 	}
 	return errors.Join(failures...)
 }

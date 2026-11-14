@@ -28,7 +28,7 @@ func canonicalMessageCheckpoint(state engineTranscript) (PersistedMessageCheckpo
 			break
 		}
 	}
-	hash, err := agentschema.HashCanonical(state.Messages[:committed])
+	hash, err := agentschema.HashCanonicalMessages(state.Messages[:committed])
 	if err != nil {
 		return PersistedMessageCheckpoint{}, err
 	}
@@ -38,5 +38,31 @@ func canonicalMessageCheckpoint(state engineTranscript) (PersistedMessageCheckpo
 	if err != nil {
 		return PersistedMessageCheckpoint{}, err
 	}
-	return PersistedMessageCheckpoint{Hash: hash, MessageCount: state.Archive.Raw(committed), Archive: state.Archive, Metadata: metadata, Pending: pending}, nil
+	return PersistedMessageCheckpoint{
+		Version:      messageCheckpointCanonicalHashVersion,
+		Hash:         hash,
+		MessageCount: state.Archive.Raw(committed),
+		Archive:      state.Archive,
+		Metadata:     metadata,
+		Pending:      pending,
+	}, nil
+}
+
+func checkpointHashMatches(checkpoint PersistedMessageCheckpoint, messages []*agentschema.Message) (bool, error) {
+	switch checkpoint.Version {
+	case messageCheckpointLegacyHashVersion:
+		hash, err := agentschema.HashCanonical(messages)
+		if err != nil {
+			return false, err
+		}
+		return checkpoint.Hash == hash, nil
+	case messageCheckpointCanonicalHashVersion:
+		hash, err := agentschema.HashCanonicalMessages(messages)
+		if err != nil {
+			return false, err
+		}
+		return checkpoint.Hash == hash, nil
+	default:
+		return false, nil
+	}
 }

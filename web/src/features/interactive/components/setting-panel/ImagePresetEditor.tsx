@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FileText, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -51,6 +52,15 @@ export function ImagePresetEditor({
 
   const updateSlotById = (slotId: string, patch: Partial<ImagePresetSlot>) => {
     setSlots(slots.map((slot) => (slot.id === slotId ? { ...slot, ...patch } : slot)))
+  }
+
+  const setSlotEnabled = (slotId: string, enabled: boolean) => {
+    const nextSlots = slots.map((slot) => (slot.id === slotId ? { ...slot, enabled } : slot))
+    if (!nextSlots.some(hasUsableRuleContent)) {
+      toast.error(t('settingPanel.imagePreset.keepEnabledRule'))
+      return
+    }
+    setSlots(nextSlots)
   }
 
   const addSlot = () => {
@@ -112,7 +122,7 @@ export function ImagePresetEditor({
                   </button>
                   <Switch
                     checked={slot.enabled}
-                    onCheckedChange={(enabled) => updateSlotById(slot.id, { enabled })}
+                    onCheckedChange={(enabled) => setSlotEnabled(slot.id, enabled)}
                     aria-label={slot.enabled ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')}
                   />
                 </div>
@@ -215,6 +225,22 @@ export function normalizedImagePresetSlots(preset: Partial<ImagePreset> | null |
 
 export function enabledImagePresetSlotCount(preset: Partial<ImagePreset>) {
   return normalizedImagePresetSlots(preset).filter((slot) => slot.enabled).length
+}
+
+/**
+ * Mirrors the server rule for image presets: a name and at least one enabled,
+ * non-empty rule. Autosave stays blocked instead of sending a request the
+ * backend would reject with 400.
+ */
+export function imagePresetDraftIsValid(preset: ImagePreset | null): boolean {
+  if (!preset) return true
+  if (!(preset.name || '').trim()) return false
+  return normalizedImagePresetSlots(preset).some(hasUsableRuleContent)
+}
+
+/** A rule only contributes to the generated prompt when it is enabled and non-empty. */
+function hasUsableRuleContent(slot: ImagePresetSlot) {
+  return slot.enabled && slot.content.trim() !== ''
 }
 
 function imagePresetPromptForTarget(slots: ImagePresetSlot[], target: ImagePresetTarget) {

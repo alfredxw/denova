@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveRuntimePreferences, runtimeModelKey, runtimeModelFromKey, type RuntimePreferences } from './types'
+import { resolveRuntimePreferences, runtimeModel, runtimeModelKey, runtimeModelFromKey, type RuntimePreferences } from './types'
 
 describe('runtime configuration inheritance', () => {
   it('inherits selectors independently and retains inactive engine settings', () => {
@@ -18,6 +18,16 @@ describe('runtime configuration inheritance', () => {
     expect(resolveRuntimePreferences(parent, draft)).toEqual(parent)
     expect(parent.codex?.effort).toBe('high')
   })
+  for (const engine of ['grok', 'antigravity'] as const) {
+    it(`inherits and replaces the ${engine} model without merging dormant effort`, () => {
+      const parent: RuntimePreferences = { selected: engine, [engine]: { model: 'parent-model', effort: 'high' }, codex: { model: 'codex-model' } }
+      const effective = resolveRuntimePreferences(parent, { [engine]: { model: 'child-model' } })
+      expect(effective).toEqual({ ...parent, [engine]: { model: 'child-model' } })
+      const selection = engine === 'grok' ? { kind: engine, grok: effective.grok! } : { kind: engine, antigravity: effective.antigravity! }
+      expect(runtimeModel(selection)).toEqual({ model: 'child-model' })
+      expect(parent[engine]).toEqual({ model: 'parent-model', effort: 'high' })
+    })
+  }
 })
 
 it('replaces CLI effort with an API profile and keeps model IDs distinct from profile IDs', () => {

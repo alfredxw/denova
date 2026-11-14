@@ -99,7 +99,7 @@ func (bound *Session) Submit(ctx context.Context, command Command, emit func(age
 }
 
 func (bound *Session) Goal(ctx context.Context) (agentgoal.GoalState, bool, error) {
-	if !supportsGoal(bound.options.AgentKind) {
+	if !supportsGoal(bound.options.AgentKind) || bound.selection.Kind == config.RuntimeGrok || bound.selection.Kind == config.RuntimeAntigravity {
 		return agentgoal.GoalState{}, false, conversationconfig.ErrRuntimeCapabilityUnsupported
 	}
 	if bound.control != nil {
@@ -109,7 +109,7 @@ func (bound *Session) Goal(ctx context.Context) (agentgoal.GoalState, bool, erro
 }
 
 func (bound *Session) UpdateGoal(ctx context.Context, mutation agentschema.GoalMutation) (agentgoal.GoalState, error) {
-	if !supportsGoal(bound.options.AgentKind) {
+	if !supportsGoal(bound.options.AgentKind) || bound.selection.Kind == config.RuntimeGrok || bound.selection.Kind == config.RuntimeAntigravity {
 		return agentgoal.GoalState{}, conversationconfig.ErrRuntimeCapabilityUnsupported
 	}
 	// Goal mutations share the same configuration fence as turn admission.

@@ -3,13 +3,21 @@ package app
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"denova/config"
+	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
+	agentexecution "denova/internal/agents/execution"
+	agentrun "denova/internal/agents/run"
 	agentruntime "denova/internal/agents/runtime"
+	"denova/internal/agents/runtime/external"
 	"denova/internal/agents/session"
+	appsettings "denova/internal/app/settings"
 	apptask "denova/internal/app/task"
 	"denova/internal/interactive"
 )
@@ -405,5 +413,348 @@ func TestInteractiveStoryCreationPersistsOpeningRuntimeSelection(t *testing.T) {
 	}
 	if snapshot.Revision != 1 || snapshot.ProfileID != "default" || snapshot.ThinkingLevel != "max" {
 		t.Fatalf("created story runtime config = %#v", snapshot)
+	}
+}
+
+func TestGameStaleRuntimeSwitchPreservesSuspendedControllerAndResumePath(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	if _, err := application.SettingsService().Patch(appsettings.Global(), config.SettingsLayerUser, []byte(`{
+		"model_endpoints": [{"id":"ep-1","provider":"anthropic","base_url":"http://127.0.0.1:1","api_key":"test-key"}],
+		"model_profiles": [
+			{"id":"primary","endpoint_id":"ep-1","model":"claude-primary"},
+			{"id":"alternate","endpoint_id":"ep-1","model":"claude-alternate"}
+		]
+	}`), ""); err != nil {
+		t.Fatal(err)
+	}
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Suspended stale switch", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: story.ID, BranchID: "main"}
+	initial, err := application.ConversationConfig(t.Context(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalConfig := initial.Config
+	externalConfig.Runtime = &config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{ProfileID: "primary"}}
+	saved, err := application.interactive.SetBranchRuntimeConfig(story.ID, "main", externalConfig, initial.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
+		CommandID: "interrupted-cmd", OperationID: "external-game-interrupted-cmd", Cycle: 1,
+	}, "main", "Open the gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := application.interactive.CommitPlayerInput(story.ID, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted, err := application.interactive.MarkTurnInterrupted(story.ID, "main", input.Event.ID, intent.Text, "The gate creaks.", "connection_lost")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, options, err := application.interactiveSessionRuntime(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, selected, err := application.externalController(options)
+	if err != nil || !selected {
+		t.Fatalf("externalController failed: selected=%t err=%v", selected, err)
+	}
+	startedRun, err := controller.Start(t.Context(), agentruntime.ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "interrupted-cmd", Message: "Open the gate"},
+	}, func(_ context.Context, _ agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		return nil, context.Canceled
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Submit(t.Context(), agentruntime.Command{
+		Kind: agentexecution.CommandSuspend, CommandID: "suspend-cmd", OperationID: startedRun.Receipt().OperationID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	startedRun.Wait(t.Context())
+
+	beforeView := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	if !beforeView.RuntimeProjectionOK || beforeView.Runtime.Phase != agentrun.RunPhaseSuspended || beforeView.PendingInterruptionID != interrupted.ID {
+		t.Fatalf("unexpected pre-switch active view: %+v", beforeView)
+	}
+
+	// Attempt to switch model settings with a stale revision.
+	stalePatch := ConversationConfigPatch{Claude: &config.ClaudeRuntimeSettings{ProfileID: "alternate"}}
+	if _, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, initial.Revision); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
+		t.Fatalf("expected revision conflict for stale switch, got %v", err)
+	}
+
+	// Simulate an underlying Story journal append failure with the valid
+	// revision. Making the canonical JSONL read-only fails the O_RDWR append
+	// open on every supported platform for non-root runners, unlike the former
+	// domain-lock-directory trick that macOS can still open and lock.
+	storyJournalPath := interactiveStoryJournalPath(t, application.interactive.Root(), story.ID)
+	beforeSize := mustStoryJournalSize(t, storyJournalPath)
+	makeStoryJournalReadOnly(t, storyJournalPath)
+	if _, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision); err == nil {
+		t.Fatal("expected write failure when the story journal is not writable")
+	}
+	restoreStoryJournalWritable(t, storyJournalPath)
+	if size := mustStoryJournalSize(t, storyJournalPath); size != beforeSize {
+		t.Fatalf("failed switch touched the canonical journal: before=%d after=%d", beforeSize, size)
+	}
+
+	// Branch config, paused controller state, and resume entrypoint must all remain intact.
+	currentCfg, err := application.ConversationConfig(t.Context(), binding)
+	if err != nil || currentCfg.Revision != saved.Revision || currentCfg.Engine().ModelProfileID() != "primary" {
+		t.Fatalf("failed switches mutated branch config: %+v err=%v", currentCfg, err)
+	}
+	afterFailView := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	if !afterFailView.RuntimeProjectionOK || afterFailView.Runtime.Phase != agentrun.RunPhaseSuspended ||
+		afterFailView.Runtime.ActiveCommandID != "interrupted-cmd" || afterFailView.PendingInterruptionID != interrupted.ID {
+		t.Fatalf("failed switches broke suspended runtime projection or resume view: %+v", afterFailView)
+	}
+	recoveryActions := agentexecution.RuntimeRecoveryActions(afterFailView.Runtime)
+	if len(recoveryActions) == 0 || recoveryActions[0].Kind != agentexecution.RuntimeRecoveryResume || recoveryActions[0].OperationID != startedRun.Receipt().OperationID {
+		t.Fatalf("failed switches broke suspended recovery actions: %+v", recoveryActions)
+	}
+	recoveryInput, err := controller.RecoveryInput(t.Context())
+	if err != nil || recoveryInput.Request.CommandID != "interrupted-cmd" {
+		t.Fatalf("failed switches cleared recovery input: %+v err=%v", recoveryInput, err)
+	}
+
+	// Same-process retry is still rejected: the in-process journal handle is
+	// deliberately poisoned after an unknown append failure until reopened.
+	_, err = application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision)
+	requireReopenJournalError(t, err)
+	// Reopen the Story journal over the untouched canonical file: rebuilding
+	// the product runtime drops the poisoned handle and replays the unchanged
+	// journal. All following assertions run against the reopened runtime.
+	application = reopenConversationTestApp(t, application)
+
+	// Confirm valid revision commits config + controller detach in one transaction while retaining the canonical interruption.
+	switched, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision)
+	if err != nil {
+		t.Fatalf("valid switch after failed switches: %v", err)
+	}
+	if switched.Revision != saved.Revision+1 || switched.Engine().ModelProfileID() != "alternate" {
+		t.Fatalf("unexpected switched config: %+v", switched)
+	}
+	afterSwitchView := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	if !afterSwitchView.RuntimeProjectionOK || afterSwitchView.Runtime.Phase != agentrun.RunPhaseIdle || afterSwitchView.PendingInterruptionID != interrupted.ID {
+		t.Fatalf("valid switch did not cleanly detach controller while retaining interruption: %+v", afterSwitchView)
+	}
+	if afterSwitchView.Runtime.Cursor != beforeView.Runtime.Cursor+1 {
+		t.Fatalf("config switch and controller detach did not commit cleanly in one step: before=%d after=%d", beforeView.Runtime.Cursor, afterSwitchView.Runtime.Cursor)
+	}
+}
+
+func TestGameFailedSwitchAllowsOriginalSuspendedTurnToResumeToCompletion(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	if _, err := application.SettingsService().Patch(appsettings.Global(), config.SettingsLayerUser, []byte(`{
+		"model_endpoints": [{"id":"ep-1","provider":"anthropic","base_url":"http://127.0.0.1:1","api_key":"test-key"}],
+		"model_profiles": [
+			{"id":"primary","endpoint_id":"ep-1","model":"claude-primary"},
+			{"id":"alternate","endpoint_id":"ep-1","model":"claude-alternate"}
+		]
+	}`), ""); err != nil {
+		t.Fatal(err)
+	}
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Resume after failed switch", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: story.ID, BranchID: "main"}
+	initial, err := application.ConversationConfig(t.Context(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalConfig := initial.Config
+	externalConfig.Runtime = &config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{ProfileID: "primary"}}
+	saved, err := application.interactive.SetBranchRuntimeConfig(story.ID, "main", externalConfig, initial.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, options, err := application.interactiveSessionRuntime(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, selected, err := application.externalController(options)
+	if err != nil || !selected {
+		t.Fatalf("externalController failed: selected=%t err=%v", selected, err)
+	}
+	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
+		CommandID: "interrupted-cmd", OperationID: "external-game-interrupted-cmd", Cycle: 1,
+	}, "main", "Open the gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := application.interactive.CommitPlayerInput(story.ID, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.interactive.MarkTurnInterrupted(story.ID, "main", input.Event.ID, intent.Text, "The gate creaks.", "connection_lost"); err != nil {
+		t.Fatal(err)
+	}
+
+	startedRun, err := controller.Start(t.Context(), agentruntime.ExternalCycleInput{
+		Request: agentchat.ChatRequest{CommandID: "interrupted-cmd", Message: "Open the gate"},
+	}, func(_ context.Context, _ agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		return nil, context.Canceled
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Submit(t.Context(), agentruntime.Command{
+		Kind: agentexecution.CommandSuspend, CommandID: "suspend-cmd", OperationID: startedRun.Receipt().OperationID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	startedRun.Wait(t.Context())
+
+	patch := ConversationConfigPatch{Claude: &config.ClaudeRuntimeSettings{ProfileID: "alternate"}}
+	if _, err := application.PatchConversationConfig(t.Context(), binding, patch, initial.Revision); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
+		t.Fatalf("expected revision conflict, got %v", err)
+	}
+	storyJournalPath := interactiveStoryJournalPath(t, application.interactive.Root(), story.ID)
+	beforeSize := mustStoryJournalSize(t, storyJournalPath)
+	makeStoryJournalReadOnly(t, storyJournalPath)
+	if _, err := application.PatchConversationConfig(t.Context(), binding, patch, saved.Revision); err == nil {
+		t.Fatal("expected write failure when the story journal is not writable")
+	}
+	restoreStoryJournalWritable(t, storyJournalPath)
+	if size := mustStoryJournalSize(t, storyJournalPath); size != beforeSize {
+		t.Fatalf("failed switch touched the canonical journal: before=%d after=%d", beforeSize, size)
+	}
+
+	// Resume the original suspended turn after both stale conflict and write failure.
+	view := application.InteractiveAgentActiveView(t.Context(), story.ID, "main")
+	actions := agentexecution.RuntimeRecoveryActions(view.Runtime)
+	if len(actions) == 0 || actions[0].Kind != agentexecution.RuntimeRecoveryResume {
+		t.Fatalf("missing resume action after failed switch: %+v", actions)
+	}
+	// Same-process resume is still rejected: the in-process journal handle is
+	// deliberately poisoned after an unknown append failure until reopened.
+	_, err = controller.Resume(t.Context(), actions[0], func(_ context.Context, cycleInput agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		return nil, context.Canceled
+	}, nil)
+	requireReopenJournalError(t, err)
+	// Reopen the Story journal over the untouched canonical file: rebuilding
+	// the product runtime drops the poisoned handle and replays the unchanged
+	// journal, then the recovered turn resumes on the reopened runtime.
+	application = reopenConversationTestApp(t, application)
+	_, options, err = application.interactiveSessionRuntime(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, selected, err = application.externalController(options)
+	if err != nil || !selected {
+		t.Fatalf("externalController after reopen failed: selected=%t err=%v", selected, err)
+	}
+	resumedCmd := ""
+	resumedRun, err := controller.Resume(t.Context(), actions[0], func(_ context.Context, cycleInput agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		resumedCmd = cycleInput.Request.CommandID
+		return testExternalCycleFunc(func(context.Context) agentrun.Outcome {
+			return agentrun.Outcome{Status: agentrun.OutcomeCompleted}
+		}), nil
+	}, nil)
+	if err != nil {
+		t.Fatalf("failed to resume original turn after failed config switch: %v", err)
+	}
+	if outcome := resumedRun.Wait(t.Context()); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("resumed turn did not complete: %+v", outcome)
+	}
+	if resumedCmd != "interrupted-cmd" {
+		t.Fatalf("resumed wrong command: %q", resumedCmd)
+	}
+}
+
+type testExternalCycleFunc func(context.Context) agentrun.Outcome
+
+func (fn testExternalCycleFunc) Wait(ctx context.Context) agentrun.Outcome { return fn(ctx) }
+
+// reopenConversationTestApp rebuilds the product runtime over the same data
+// directory. This is the way a poisoned Story journal handle is reopened: the
+// fresh Store replays the unchanged canonical file, dropping the deliberately
+// invalid in-process projection.
+func reopenConversationTestApp(t *testing.T, application *App) *App {
+	t.Helper()
+	application.mu.RLock()
+	workspace := application.workspace
+	application.mu.RUnlock()
+	// The reopened runtime must see the same settings layer, so it binds to
+	// the same isolated data directory regardless of the caller's env setup.
+	t.Setenv("DENOVA_DIR", workspace)
+	t.Setenv("NOVA_DIR", workspace)
+	reopened, err := New(t.Context(), &config.Config{
+		OpenAIModel: "test-model", NovaDir: workspace, Workspace: workspace,
+		OpenAIBaseURL: "http://127.0.0.1:1/v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(reopened.Close)
+	return reopened
+}
+
+// interactiveStoryJournalPath locates the canonical Story journal backing a
+// game, matching interactive.Store.storyPath without crossing the package
+// boundary.
+func interactiveStoryJournalPath(t *testing.T, interactiveRoot, storyID string) string {
+	t.Helper()
+	return filepath.Join(interactiveRoot, "interactive", "story", "story-"+storyID+".jsonl")
+}
+
+// mustStoryJournalSize returns the physical size of one canonical Story
+// journal, used to prove that a failed append changed nothing on disk.
+func mustStoryJournalSize(t *testing.T, path string) int64 {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Size()
+}
+
+// makeStoryJournalReadOnly marks one canonical Story journal read-only and
+// guarantees writability is restored when the test ends. os.Chmod(0444) maps
+// to the read-only attribute on Windows and to mode bits on POSIX, so the
+// O_RDWR append open fails for non-root test users on every supported
+// platform. When the injection cannot take effect (for example a root user on
+// POSIX), the test skips instead of failing on a misleading "expected write
+// failure" that looks like a product regression.
+func makeStoryJournalReadOnly(t *testing.T, path string) {
+	t.Helper()
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	probe, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0)
+	if err == nil {
+		_ = probe.Close()
+		t.Skip("cannot inject append failure: journal still writable under chmod 0444 (running as root?)")
+	}
+}
+
+// restoreStoryJournalWritable undoes makeStoryJournalReadOnly so subsequent
+// assertions run against a writable file.
+func restoreStoryJournalWritable(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// requireReopenJournalError asserts the deliberate poison contract of one
+// Story journal handle: after an actual append failure, every same-process
+// write is rejected until the journal is reopened.
+func requireReopenJournalError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "reopen the journal") {
+		t.Fatalf("operation after append failure must require reopening the journal: %v", err)
 	}
 }

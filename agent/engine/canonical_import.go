@@ -59,7 +59,7 @@ func PrepareCanonicalImport(ctx context.Context, request CanonicalImportRequest)
 		}
 		currentMessageCount = current.Archive.Count(current.Messages)
 		if currentMessageCount <= len(ordered) && (request.Head.Identity == "" || current.HistoryHead.Identity == "" || request.Head.Identity == current.HistoryHead.Identity) {
-			currentHash, hashErr := agentschema.HashCanonical(current.Messages)
+			currentHash, hashErr := agentschema.HashCanonicalMessages(current.Messages)
 			if hashErr != nil {
 				return CanonicalImport{}, hashErr
 			}
@@ -67,7 +67,7 @@ func PrepareCanonicalImport(ctx context.Context, request CanonicalImportRequest)
 			if selectErr != nil {
 				return CanonicalImport{}, selectErr
 			}
-			prefixHash, hashErr := agentschema.HashCanonical(prefix)
+			prefixHash, hashErr := agentschema.HashCanonicalMessages(prefix)
 			if hashErr != nil {
 				return CanonicalImport{}, hashErr
 			}
@@ -88,11 +88,11 @@ func PrepareCanonicalImport(ctx context.Context, request CanonicalImportRequest)
 		if selectErr != nil {
 			return CanonicalImport{}, selectErr
 		}
-		prefixHash, hashErr := agentschema.HashCanonical(prefix)
+		matched, hashErr := checkpointHashMatches(request.Checkpoint, prefix)
 		if hashErr != nil {
 			return CanonicalImport{}, hashErr
 		}
-		checkpointCompatible = request.Checkpoint.Hash == prefixHash
+		checkpointCompatible = matched
 	}
 	outputCommitted := request.OutputCommitted
 	if request.Active && hadCheckpoint && !checkpointCompatible && !outputCommitted {

@@ -46,15 +46,45 @@ export async function previewCharacterCard(file: File): Promise<CharacterCardPre
   })
 }
 
+export interface CharacterCardImportOptions {
+  targetMode: 'current' | 'new_book'
+  projectId?: string
+  bookTitle?: string
+  userCharacterName?: string
+  loreClassification?: 'heuristic' | 'semantic'
+  /** Acknowledges replacing existing same-name lore entries after review. */
+  confirmOverrides?: boolean
+  /** Held plan returned by the preview; required when confirming overrides. */
+  reviewPlanId?: string
+  /**
+   * Per-entry decisions over the reviewed duplicates, each echoing the local
+   * identity and version shown in the preview: { name, existing_id,
+   * existing_version, choice: 'override' | 'keep' }.
+   */
+  overrideReview?: ImportDuplicateReviewEntry[]
+}
+
+export interface ImportDuplicateReviewEntry {
+  name: string
+  existing_id?: string
+  existing_version?: string
+  choice: 'override' | 'keep'
+}
+
 export async function importCharacterCard(
   file: File,
-  options: { targetMode: 'current' | 'new_book'; projectId?: string; bookTitle?: string; userCharacterName?: string; loreClassification?: 'heuristic' | 'semantic' },
+  options: CharacterCardImportOptions,
 ): Promise<CharacterCardImportResult> {
   const form = new FormData()
   form.append('file', file)
   if (options.bookTitle) form.append('book_title', options.bookTitle)
   if (options.userCharacterName) form.append('user_character_name', options.userCharacterName)
   if (options.loreClassification) form.append('lore_classification', options.loreClassification)
+  if (options.confirmOverrides) form.append('confirm_overrides', '1')
+  // review_plan_id and override_review are always sent on a confirm so the
+  // server never falls back to detail-based automatic overrides.
+  if (options.reviewPlanId) form.append('review_plan_id', options.reviewPlanId)
+  form.append('override_review', JSON.stringify(options.overrideReview ?? []))
   const path = options.targetMode === 'new_book'
     ? '/api/books/import-character-card'
     : projectAPIPath(options.projectId || '', 'book/import-character-card')

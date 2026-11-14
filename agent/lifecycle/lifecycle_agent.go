@@ -133,13 +133,6 @@ func New(lifecycle context.Context, source agentengine.Source, options ...Option
 	return owner, nil
 }
 
-func normalizedProjectionTextMaxBytes(limit int) int {
-	if limit <= 0 {
-		return 1 << 20
-	}
-	return limit
-}
-
 func (agent *Agent) nextRunID(key agentsession.Key) (string, error) {
 	if agent.runIDs != nil {
 		return agent.runIDs(RunIDRequest{Session: key})

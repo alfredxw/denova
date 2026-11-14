@@ -42,6 +42,61 @@ func TestPublicSummaryAndTextStreamBeforeTurnCompletion(t *testing.T) {
 	}
 }
 
+// The effort override travels on turn/start, so a regression in its name or
+// placement would silently drop the user's selection on every turn.
+func TestTurnStartCarriesSelectedReasoningEffort(t *testing.T) {
+	fixture := newProtocolFixture(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if value := recover(); value != nil {
+				done <- fmt.Errorf("fixture run panic: %v", value)
+			}
+		}()
+		_, err := fixture.client.Run(ctx, external.Input{
+			Selection: config.RuntimeSelection{Kind: config.RuntimeCodex, Codex: &config.CodexRuntimeSettings{Model: "test-model", Effort: "high"}},
+			Text:      "Inspect the selected effort.",
+		}, &testHost{})
+		done <- err
+	}()
+	reply := func(method, result string) packet {
+		t.Helper()
+		request := fixture.receive(t)
+		if request.Method != method {
+			t.Fatalf("expected %s, got %s", method, request.Method)
+		}
+		if err := json.NewEncoder(fixture.server).Encode(packet{ID: request.ID, Result: json.RawMessage(result)}); err != nil {
+			t.Fatal(err)
+		}
+		return request
+	}
+	reply("thread/start", `{"thread":{"id":"thread"}}`)
+	start := fixture.receive(t)
+	var params struct {
+		Effort string `json:"effort"`
+	}
+	decodeErr := json.Unmarshal(start.Params, &params)
+	if start.Method != "turn/start" || decodeErr != nil || params.Effort != "high" {
+		t.Fatalf("turn/start did not carry the selected effort: %s %s %v", start.Method, start.Params, decodeErr)
+	}
+	cancel()
+	if err := json.NewEncoder(fixture.server).Encode(packet{ID: start.ID, Result: json.RawMessage(`{"turn":{"id":"accepted-turn","status":"inProgress"}}`)}); err != nil {
+		t.Fatal(err)
+	}
+	reply("turn/interrupt", `{}`)
+	reply("thread/unsubscribe", `{"status":"unsubscribed"}`)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("effort attempt did not cancel cleanly: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("effort attempt did not settle")
+	}
+}
+
 func TestReportedUsageReplacesCumulativeTotalsAndSurvivesFailure(t *testing.T) {
 	for _, status := range []string{"completed", "failed"} {
 		t.Run(status, func(t *testing.T) {

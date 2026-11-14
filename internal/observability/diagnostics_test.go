@@ -35,3 +35,24 @@ func TestDiagnosticTextBoundsAndRedactsPayloads(t *testing.T) {
 		t.Fatalf("unbounded diagnostic: %d", len([]rune(got)))
 	}
 }
+
+func TestDiagnosticTextKeepsCauseWhenMethodNameLooksLikePayloadKey(t *testing.T) {
+	// Provider failures are reported as "<runtime> <method>: <cause>". A method
+	// name sharing a payload key must keep the cause that follows it.
+	for _, value := range []string{
+		"Grok session/prompt: Grok ACP error -32000: model overloaded",
+		"Codex some/messages: request rejected",
+		"stream closed in Somebody: capability missing",
+	} {
+		got := DiagnosticText(value)
+		if !strings.Contains(got, "ACP error -32000: model overloaded") &&
+			!strings.Contains(got, "request rejected") && !strings.Contains(got, "capability missing") {
+			t.Fatalf("cause was dropped: %s", got)
+		}
+	}
+	for _, value := range []string{`prompt: private chapter`, `{"prompt":"private chapter"}`, `ok; body=private chapter`} {
+		if got := DiagnosticText(value); strings.Contains(got, "private chapter") {
+			t.Fatalf("payload leaked: %s", got)
+		}
+	}
+}

@@ -76,7 +76,18 @@ const importCard = {
   'importCard.chooseFileFirst': '请先选择酒馆角色卡文件',
   'importCard.noCurrentBookImportNew': '当前没有打开的书籍，请选择“导入成新书”',
   'importCard.importSuccess': '已导入酒馆角色卡「{{name}}」',
+  'importCard.overriddenList': '已用更详细的设定覆盖：{{names}}',
+  'importCard.skippedList': '保留现有设定（导入内容较简略）：{{names}}',
   'importCard.importFailed': '导入酒馆角色卡失败',
+  'importCard.overridesConfirmTitle': '同名条目确认',
+  'importCard.overridesConfirmHelp': '导入将替换以下同名条目。请逐条确认覆盖或保留；确认前不会写入任何内容。',
+  'importCard.overrideExisting': '现有',
+  'importCard.overrideIncoming': '导入',
+  'importCard.overrideChoiceOverride': '覆盖',
+  'importCard.overrideChoiceKeep': '保留',
+  'importCard.confirmOverridesImport': '覆盖并导入',
+  'importCard.reviewChangedNotice': '部分条目在预览后已变更，请重新确认后再导入',
+  'importCard.backToPreview': '返回',
 } as const
 
 export default importCard

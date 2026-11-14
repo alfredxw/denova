@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"log/slog"
 
 	agentrun "denova/internal/agents/run"
 	externaljournal "denova/internal/agents/runtime/external/journal"
@@ -59,6 +61,8 @@ type HistoryPreparation struct {
 	ProviderInputMaxBytes int
 	AddUsage              func(*agentschema.TokenUsage)
 	SaveCheckpoint        func(externaljournal.Checkpoint) error
+	// OnCheckpointSaved observes successful persistence of a new checkpoint.
+	OnCheckpointSaved func()
 	// LoadHistory is product-owned and bound to a fixed canonical source interval.
 	// Aligned provider sessions skip it, including during manual compaction.
 	LoadHistory func(context.Context) ([]Message, error)
@@ -88,7 +92,12 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 	}
 	raw := input.History
 	summary, covered := "", 0
-	if checkpoint := request.Checkpoint; checkpoint != nil && checkpoint.Version == checkpointVersion && len(raw) > 0 && checkpoint.SourceBoundary == input.HistoryBoundary {
+	// A summary is bound to the source records it covers, not to the provider
+	// boundary that happened to be current when it was written. Provider
+	// boundaries move on every committed turn (Game includes its revision), so
+	// requiring them here made every rebuild re-summarize the whole source.
+	// Identity stays exact through SourceStart/SourceEnd and the source hash.
+	if checkpoint := request.Checkpoint; checkpoint != nil && checkpoint.Version == checkpointVersion && len(raw) > 0 {
 		for covered < len(raw) && raw[covered].Cursor <= checkpoint.SourceEnd {
 			covered++
 		}
@@ -120,16 +129,61 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 		total.Bytes += cost.Bytes
 		total.Tokens += cost.Tokens
 	}
+	// A payload budget can be tighter than the product provider budget: the
+	// engine may carry the whole attempt (text plus encoded media) in one
+	// transportable payload, while images are encoded only after the product
+	// boundary. When such an adapter reports its payload and the rebuilt
+	// conversation will send images, the reconstruction text must stay inside
+	// the payload minus a media reserve, so an image-bearing turn that passed
+	// the product budget cannot be rejected by the engine transport. Without a
+	// budget report, or without media, the provider budget alone applies.
+	textCap := 0
+	if budgeter, ok := request.Adapter.(PayloadBudgeter); ok {
+		if payload, reserve, reported := budgeter.PayloadBudget(); reported && payload > reserve {
+			textCap = payload - reserve
+			if request.ProviderInputMaxBytes > 0 && textCap > request.ProviderInputMaxBytes {
+				textCap = request.ProviderInputMaxBytes
+			}
+		}
+	}
+	if !carriesImages(input) {
+		textCap = 0
+	}
 	var checkpoint *externaljournal.Checkpoint
-	if total.Bytes > historyBudget || total.Tokens > historyTokenBudget {
+	// total.Bytes already counts the existing summary; estimateReplayText takes
+	// the summary as its own argument, so pass the pure history bytes here and
+	// the current summary separately. With no summary both values drop out.
+	historyBytes := total.Bytes - len(summary)
+	summaryReserve := len(summary)
+	needsTrim := total.Bytes > historyBudget || total.Tokens > historyTokenBudget
+	if textCap > 0 && !needsTrim && len(input.History) > 0 &&
+		estimateReplayText(historyBytes, summaryReserve, len(input.Text), len(input.History)) > textCap {
+		// The sender budget is tighter than the semantic history budget: trim
+		// history records so the rendered replay also fits the media reserve.
+		needsTrim = true
+	}
+	if needsTrim && len(input.History) > 0 {
 		// Keep complete recent messages inside both budgets, including images.
 		// A transaction is atomic for durable source coverage.
+		// When a new summary will be produced, plan its bounded ceiling so the
+		// retained recent records plus the summary stay inside the trim budget.
+		if textCap > 0 {
+			summaryReserve = checkpointSummaryBytes
+		}
 		end, retained := len(input.History), (agentmodel.InputSize{})
 		for end > 0 {
 			cost := costs[end-1]
 			// Reserve conservatively for the bounded summary and its envelope.
 			if retained.Bytes+cost.Bytes > historyBudget/2 || retained.Tokens+cost.Tokens > historyTokenBudget-checkpointSummaryBytes {
 				break
+			}
+			if textCap > 0 {
+				kept := retained
+				kept.Bytes += cost.Bytes
+				kept.Tokens += cost.Tokens
+				if keptMessages := len(input.History) - (end - 1); estimateReplayText(kept.Bytes, summaryReserve, len(input.Text), keptMessages) > textCap {
+					break
+				}
 			}
 			end--
 			retained.Bytes += cost.Bytes
@@ -141,15 +195,25 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 		for end < len(input.History) && input.History[end-1].Cursor == input.History[end].Cursor {
 			end++
 		}
-		summary, err = request.summarize(ctx, input, input.History[:end], summary, estimator)
-		if err != nil {
-			return Input{}, err
+		next, summarizeErr := request.summarize(ctx, input, input.History[:end], summary, estimator)
+		if summarizeErr != nil && !errors.Is(summarizeErr, ErrSummaryUnavailable) {
+			return Input{}, summarizeErr
 		}
-		covered += end
-		checkpoint = &externaljournal.Checkpoint{Version: checkpointVersion, Summary: summary,
-			SourceStart: raw[0].Cursor, SourceEnd: raw[covered-1].Cursor, SourceHash: historyHash(raw[:covered]),
-			SourceBoundary: input.HistoryBoundary, Runtime: input.Selection.Kind, EngineVersion: request.Adapter.Version()}
-		input.History = input.History[end:]
+		if summarizeErr != nil {
+			// The provider refused the maintenance call (for example a policy
+			// rejection). A cache rebuild must never fail the turn, so the whole
+			// source interval is sent unreduced and coverage stays unacknowledged:
+			// nothing is published here, so the next rebuild retries.
+			slog.WarnContext(ctx, "External context summary unavailable; sending unreduced history",
+				"error", summarizeErr, "messages", len(input.History), "source_bytes", total.Bytes)
+		} else {
+			summary = next
+			covered += end
+			checkpoint = &externaljournal.Checkpoint{Version: checkpointVersion, Summary: summary,
+				SourceStart: raw[0].Cursor, SourceEnd: raw[covered-1].Cursor, SourceHash: historyHash(raw[:covered]),
+				SourceBoundary: input.HistoryBoundary, Runtime: input.Selection.Kind, EngineVersion: request.Adapter.Version()}
+			input.History = input.History[end:]
+		}
 	}
 	if summary != "" {
 		input.History = append([]Message{{Role: "user", Text: "Canonical conversation checkpoint:\n" + summary}}, input.History...)
@@ -165,6 +229,9 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 	if checkpoint != nil && request.SaveCheckpoint != nil {
 		if err := request.SaveCheckpoint(*checkpoint); err != nil {
 			return Input{}, err
+		}
+		if request.OnCheckpointSaved != nil {
+			request.OnCheckpointSaved()
 		}
 	}
 	return input, nil

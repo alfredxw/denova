@@ -179,19 +179,24 @@ func TestSessionAttachReplaysScrollback(t *testing.T) {
 		t.Fatal("timed out waiting for process exit")
 	}
 
-	// The process already exited: re-attaching must yield the history without blocking.
+	// Process exit can precede the final PTY bytes. Re-attach replays history,
+	// drains any remaining frames, then closes the output channel.
 	history, replayOut, replayDetach := session.Attach(16)
 	defer replayDetach()
 	if !strings.Contains(string(history), "replay-marker") {
 		t.Fatalf("expected scrollback to contain earlier output, got %q", string(history))
 	}
-	select {
-	case _, ok := <-replayOut:
-		if ok {
-			t.Fatal("expected closed output channel for exited session")
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case _, ok := <-replayOut:
+			if !ok {
+				return
+			}
+		case <-deadline.C:
+			t.Fatal("timed out waiting for final PTY output to drain")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("expected exited session to close the output channel immediately")
 	}
 }
 

@@ -210,7 +210,19 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 			var control *agentruntime.ExternalController
 			control, err = a.AgentEngines().ExternalControl(options, state)
 			if err == nil {
-				accepted, err = control.Start(acceptCtx, agentruntime.ExternalCycleInput{Request: cycle.request, RegenerateFromTurnID: identity.request.RegenerateFromTurnID}, s.externalGameFactory(cycle, task.ID()), task.Emit)
+				var boundCommandID agentrun.CommandID
+				// A replayed request is answered from its persisted receipt and
+				// needs no live binding; resolving one could reject a settled
+				// re-run whose continued input was already consumed.
+				_, receiptFound, receiptErr := control.Receipt(acceptCtx, cycle.request.CommandID)
+				if receiptErr != nil {
+					err = receiptErr
+				} else if !receiptFound {
+					boundCommandID, err = resolveGameResumeBinding(cycle.store, cycle.storyID, cycle.branchID, cycle.request.ResumeInterruptionID)
+				}
+				if err == nil {
+					accepted, err = control.Start(acceptCtx, agentruntime.ExternalCycleInput{Request: cycle.request, RegenerateFromTurnID: identity.request.RegenerateFromTurnID, BoundCommandID: boundCommandID}, s.externalGameFactory(cycle, task.ID()), task.Emit)
+				}
 			}
 		} else {
 			err = stateErr

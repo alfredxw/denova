@@ -31,3 +31,10 @@ type Connection interface {
 	Models(context.Context) (Models, error)
 	Close() error
 }
+
+// CatalogProbe is implemented by adapters whose readiness check is itself a
+// catalog read. One CLI invocation then answers both questions instead of
+// spawning the same command twice per probe.
+type CatalogProbe interface {
+	Probe(context.Context) (ConnectionState, Models, error)
+}

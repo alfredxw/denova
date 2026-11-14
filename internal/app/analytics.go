@@ -38,6 +38,10 @@ func analyticsEngine(cfg config.Config) analytics.Engine {
 		return analytics.Codex
 	case config.RuntimeClaude:
 		return analytics.Claude
+	case config.RuntimeGrok:
+		return analytics.Grok
+	case config.RuntimeAntigravity:
+		return analytics.Antigravity
 	}
 	slog.Error("analytics_runtime_unknown", "runtime", cfg.ActiveAgentRuntime.Kind)
 	return ""

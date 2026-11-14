@@ -20,6 +20,9 @@ var (
 	ErrNoWorkspace = appagentruntime.ErrNoWorkspace
 	// ErrOperationActive leaves delivery pending while the Project Agent is busy.
 	ErrOperationActive = agentruntime.ErrOperationActive
+	// ErrOperationPaused leaves delivery pending while a suspended Project turn
+	// still owns its conversation and awaits a manual resume or discard.
+	ErrOperationPaused = agentruntime.ErrOperationPaused
 	// ErrCommandIDRequired rejects commands that cannot be replayed safely.
 	ErrCommandIDRequired = apptask.ErrCommandIDRequired
 	// ErrCommandConflict reports reuse of a command identity for another intent.

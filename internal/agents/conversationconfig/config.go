@@ -47,8 +47,10 @@ type Patch struct {
 	Runtime       *config.RuntimeSelection  `json:"runtime,omitempty"`
 	// Codex replaces the current Codex model/effort together without switching
 	// engines or Agent identity. It also applies to an uncommitted conversation.
-	Codex  *config.CodexRuntimeSettings  `json:"codex,omitempty"`
-	Claude *config.ClaudeRuntimeSettings `json:"claude,omitempty"`
+	Codex       *config.CodexRuntimeSettings       `json:"codex,omitempty"`
+	Claude      *config.ClaudeRuntimeSettings      `json:"claude,omitempty"`
+	Grok        *config.GrokRuntimeSettings        `json:"grok,omitempty"`
+	Antigravity *config.AntigravityRuntimeSettings `json:"antigravity,omitempty"`
 }
 
 // UnmarshalJSON preserves the semantic difference between omitted and null.
@@ -87,6 +89,22 @@ func (patch *Patch) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("invalid conversation Claude model settings: %w", err)
 			}
 			next.Claude = &value
+		case "grok":
+			var value config.GrokRuntimeSettings
+			decoder := json.NewDecoder(bytes.NewReader(raw))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&value); err != nil {
+				return fmt.Errorf("invalid conversation Grok model settings: %w", err)
+			}
+			next.Grok = &value
+		case "antigravity":
+			var value config.AntigravityRuntimeSettings
+			decoder := json.NewDecoder(bytes.NewReader(raw))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&value); err != nil {
+				return fmt.Errorf("invalid conversation Antigravity model settings: %w", err)
+			}
+			next.Antigravity = &value
 		case "runtime":
 			var value config.RuntimeSelection
 			decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -183,6 +201,15 @@ func DefaultWithCustomAgent(runtime *config.Config, agentKind, customAgentID str
 // Merge returns a validated complete snapshot without mutating the base.
 func Merge(runtime *config.Config, base Config, patch Patch) (Config, error) {
 	next := base
+	modelPatches := 0
+	for _, present := range []bool{patch.Codex != nil, patch.Claude != nil, patch.Grok != nil, patch.Antigravity != nil} {
+		if present {
+			modelPatches++
+		}
+	}
+	if modelPatches > 1 || modelPatches != 0 && (patch.Runtime != nil || patch.CustomAgentID != nil) {
+		return Config{}, ErrRuntimeCapabilityUnsupported
+	}
 	if patch.Codex != nil {
 		if patch.Claude != nil || base.Engine().Kind != config.RuntimeCodex || patch.Runtime != nil || patch.CustomAgentID != nil {
 			return Config{}, ErrRuntimeCapabilityUnsupported
@@ -200,6 +227,20 @@ func Merge(runtime *config.Config, base Config, patch Patch) (Config, error) {
 	if patch.Runtime != nil {
 		value := cloneSelection(*patch.Runtime)
 		next.Runtime = &value
+	}
+	if patch.Grok != nil {
+		if base.Engine().Kind != config.RuntimeGrok {
+			return Config{}, ErrRuntimeCapabilityUnsupported
+		}
+		value := *patch.Grok
+		next.Runtime = &config.RuntimeSelection{Kind: config.RuntimeGrok, Grok: &value}
+	}
+	if patch.Antigravity != nil {
+		if base.Engine().Kind != config.RuntimeAntigravity {
+			return Config{}, ErrRuntimeCapabilityUnsupported
+		}
+		value := *patch.Antigravity
+		next.Runtime = &config.RuntimeSelection{Kind: config.RuntimeAntigravity, Antigravity: &value}
 	}
 	if next.Engine().Kind != config.RuntimeNative && (patch.ProfileID != nil || patch.ThinkingLevel != nil || patch.ApprovalMode != nil) {
 		return Config{}, ErrRuntimeCapabilityUnsupported

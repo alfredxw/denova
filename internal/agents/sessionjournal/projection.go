@@ -232,7 +232,10 @@ func validateEmbeddedRecord(record agentsession.Record) error {
 		if err := json.Unmarshal(record.Data, &value); err != nil {
 			return fmt.Errorf("decode Agent message checkpoint: %w", err)
 		}
-		if strings.TrimSpace(value.Hash) == "" || value.MessageCount < 0 {
+		// An empty hash marks a checkpoint with no retained canonical window
+		// (initial state or a repair-cleared checkpoint); recovery rebuilds it
+		// from the canonical source. Only a negative message count is invalid.
+		if value.MessageCount < 0 {
 			return fmt.Errorf("Agent message checkpoint is invalid")
 		}
 	case capabilitySetKind, capabilityDeleteKind:

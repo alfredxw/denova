@@ -13,7 +13,10 @@ import (
 var diagnosticRedactions = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(?:bearer|basic)\s+[^\s,;"']+`),
 	regexp.MustCompile(`(?i)(["']?(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|secret|cookie)["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;}]+)`),
-	regexp.MustCompile(`(?i)(["']?(?:prompt|messages|request_body|response_body|body)["']?\s*[:=]\s*)[\s\S]*`),
+	// A payload key only starts a value at a token boundary. Without it, an
+	// operation name such as "Grok session/prompt: ..." or the tail of any word
+	// ending in "body" matched the key and dropped the actual cause.
+	regexp.MustCompile(`(?i)(^|[\s{,;(\[{])(["']?(?:prompt|messages|request_body|response_body|body)["']?\s*[:=]\s*)[\s\S]*`),
 }
 var diagnosticURL = regexp.MustCompile(`https?://[^\s<>"']+`)
 var diagnosticPath = regexp.MustCompile(`(?:[A-Za-z]:\\|/(?:Users|home|private|var|tmp)/)[^\s"':;]+`)
@@ -30,8 +33,10 @@ func DiagnosticText(value string) string {
 		parsed.User, parsed.RawQuery, parsed.Fragment = nil, "", ""
 		return parsed.String()
 	})
+	// The payload rule captures its boundary separately; a missing group
+	// expands to nothing, so one template covers every pattern.
 	for _, pattern := range diagnosticRedactions {
-		value = pattern.ReplaceAllString(value, "${1}[redacted]")
+		value = pattern.ReplaceAllString(value, "${1}${2}[redacted]")
 	}
 	value = diagnosticPath.ReplaceAllString(value, "[local-path]")
 	runes := []rune(strings.TrimSpace(value))
