@@ -8,8 +8,8 @@ import { applyFontSettings, fontSettingsFromEffective } from '@/features/setting
 import { SoftwareUpdateMonitor } from '@/features/updates/SoftwareUpdateMonitor'
 import { AnalyticsNotice } from '@/features/analytics/AnalyticsPreferences'
 import { useAnalyticsActivity } from '@/features/analytics/use-analytics-activity'
-import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardImportResult, type CharacterCardPreview, type ImportDuplicatePreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
-import { withErrorLogID } from '@/lib/api-client'
+import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardImportResult, type CharacterCardPreview, type ImportDuplicatePreview, type ImportDuplicateReviewEntry, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { APIError, withErrorLogID } from '@/lib/api-client'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
@@ -110,6 +110,8 @@ function App() {
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
   const [characterCardPendingOverrides, setCharacterCardPendingOverrides] = useState<ImportDuplicatePreview[]>([])
+  const [characterCardReviewPlanId, setCharacterCardReviewPlanId] = useState('')
+  const [characterCardReviewNotice, setCharacterCardReviewNotice] = useState('')
   const [writingAgentConversation, setWritingAgentConversation] = useState<AgentChatConversationState>({
     sessionId: '',
     messages: [],
@@ -586,6 +588,8 @@ function App() {
     setCharacterCardImporting(false)
     setCharacterCardError('')
     setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
     if (characterCardInputRef.current) {
       characterCardInputRef.current.value = ''
     }
@@ -610,6 +614,8 @@ function App() {
     setCharacterCardUserName('')
     setCharacterCardError('')
     setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
     setCharacterCardPreviewing(true)
     try {
       const preview = await previewCharacterCard(file)
@@ -676,6 +682,8 @@ function App() {
       // Same-name entries would be replaced; hold the import for review.
       if (result.pending_overrides?.length) {
         setCharacterCardPendingOverrides(result.pending_overrides)
+        setCharacterCardReviewPlanId(result.review_plan_id || '')
+        setCharacterCardReviewNotice('')
         return
       }
       await completeCharacterCardImport(result)
@@ -693,6 +701,14 @@ function App() {
     setCharacterCardImporting(true)
     setCharacterCardError('')
     try {
+      // Each decision echoes the local identity and version shown in the
+      // preview, so a stale confirmation can never replace edited entries.
+      const overrideReview: ImportDuplicateReviewEntry[] = characterCardPendingOverrides.map((dup) => ({
+        name: dup.name,
+        existing_id: dup.existing_id,
+        existing_version: dup.existing_version,
+        choice: (choices[dup.name] ?? dup.suggested) as 'override' | 'keep',
+      }))
       const result = await importCharacterCard(characterCardFile, {
         targetMode: characterCardTargetMode,
         projectId: characterCardTargetMode === 'current' ? projectId : undefined,
@@ -700,27 +716,45 @@ function App() {
         userCharacterName: characterCardPreview?.user_placeholder_found ? characterCardUserName.trim() : undefined,
         loreClassification: characterCardSemanticClassification ? 'semantic' : 'heuristic',
         confirmOverrides: true,
-        overrideChoices: choices,
+        reviewPlanId: characterCardReviewPlanId,
+        overrideReview,
       })
-      // The confirmed request can still surface new same-name entries (e.g. the
-      // target Book changed concurrently); stay in review instead of closing.
+      // The target changed since the preview (entries edited, deleted or newly
+      // collided): nothing was written; stay in review on the fresh preview.
       if (result.pending_overrides?.length) {
         setCharacterCardPendingOverrides(result.pending_overrides)
+        setCharacterCardReviewPlanId(result.review_plan_id || '')
+        setCharacterCardReviewNotice(result.review_changed ? t('importCard.reviewChangedNotice') : '')
         return
       }
       await completeCharacterCardImport(result)
     } catch (e) {
+      // A held review that expired or targets another Book can never succeed:
+      // drop the pending review instead of trapping the user on a stale view.
+      if (e instanceof APIError && (e.code === 'api.characterCard.reviewExpired' || e.code === 'api.characterCard.reviewPlanRequired')) {
+        setCharacterCardPendingOverrides([])
+        setCharacterCardReviewPlanId('')
+        setCharacterCardReviewNotice('')
+      }
       const message = e instanceof Error ? e.message : t('importCard.importFailed')
       setCharacterCardError(message)
       toast.error(message)
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, completeCharacterCardImport, projectId, t])
+  }, [characterCardBookTitle, characterCardFile, characterCardPendingOverrides, characterCardPreview, characterCardReviewPlanId, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, completeCharacterCardImport, projectId, t])
+
+  const handleCharacterCardCancelOverrides = useCallback(() => {
+    setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
+  }, [])
 
   const handleCharacterCardTargetModeChange = useCallback((mode: CharacterCardTargetMode) => {
     setCharacterCardTargetMode(mode)
     setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
   }, [])
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
@@ -1071,8 +1105,9 @@ function App() {
         onSemanticClassificationChange={setCharacterCardSemanticClassification}
         onImport={handleCharacterCardImport}
         pendingOverrides={characterCardPendingOverrides}
+        notice={characterCardReviewNotice}
         onConfirmOverrides={handleConfirmCharacterCardOverrides}
-        onCancelOverrides={() => setCharacterCardPendingOverrides([])}
+        onCancelOverrides={handleCharacterCardCancelOverrides}
       />
       <SoftwareUpdateMonitor onCheckResult={applyUpdateCheckResult} />
       <OnboardingGuide

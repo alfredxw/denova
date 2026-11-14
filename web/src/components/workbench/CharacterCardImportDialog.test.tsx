@@ -40,6 +40,7 @@ const preview: CharacterCardPreview = {
 
 function renderDialog(overrides: {
   pendingOverrides?: ImportDuplicatePreview[]
+  notice?: string
   targetMode?: CharacterCardTargetMode
   onImport?: () => void
   onConfirmOverrides?: (choices: Record<string, string>) => void
@@ -73,6 +74,7 @@ function renderDialog(overrides: {
       onSemanticClassificationChange={vi.fn()}
       onImport={onImport}
       pendingOverrides={overrides.pendingOverrides ?? []}
+      notice={overrides.notice}
       onConfirmOverrides={onConfirmOverrides}
       onCancelOverrides={onCancelOverrides}
     />,
@@ -131,6 +133,17 @@ describe('CharacterCardImportDialog', () => {
     await user.click(screen.getByRole('button', { name: '返回' }))
     expect(onCancelOverrides).toHaveBeenCalledTimes(1)
     expect(onImport).not.toHaveBeenCalled()
+  })
+
+  it('shows a localized review-change notice when provided', () => {
+    renderDialog({ pendingOverrides, notice: '部分条目在预览后已变更，请重新确认后再导入' })
+    expect(screen.getByText('部分条目在预览后已变更，请重新确认后再导入')).toBeInTheDocument()
+  })
+
+  it('renders without a notice when unchanged', () => {
+    renderDialog({ pendingOverrides })
+    const block = screen.getByText('同名条目确认').closest('div')
+    expect(block?.textContent).not.toContain('已变更')
   })
 
   it('keeps the plain import button without pending overrides', async () => {

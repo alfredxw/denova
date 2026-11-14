@@ -86,6 +86,7 @@ const importCard = {
   'importCard.overrideChoiceOverride': 'Override',
   'importCard.overrideChoiceKeep': 'Keep',
   'importCard.confirmOverridesImport': 'Override and import',
+  'importCard.reviewChangedNotice': 'Some entries changed after the preview; review them again before importing',
   'importCard.backToPreview': 'Back',
 } as const
 

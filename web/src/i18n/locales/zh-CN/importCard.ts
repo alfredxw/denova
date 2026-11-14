@@ -86,6 +86,7 @@ const importCard = {
   'importCard.overrideChoiceOverride': '覆盖',
   'importCard.overrideChoiceKeep': '保留',
   'importCard.confirmOverridesImport': '覆盖并导入',
+  'importCard.reviewChangedNotice': '部分条目在预览后已变更，请重新确认后再导入',
   'importCard.backToPreview': '返回',
 } as const
 

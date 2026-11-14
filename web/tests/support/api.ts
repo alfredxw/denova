@@ -11,6 +11,19 @@ export interface E2EStory {
   id: string
 }
 
+export interface E2ELoreItem {
+  id: string
+  name: string
+  content: string
+  type: string
+  enabled: boolean
+  importance?: number
+  tags?: string[]
+  brief_description?: string
+  keywords?: string[]
+  load_mode?: string
+}
+
 export interface E2EStoryTurn {
   user?: string
   narrative?: string
@@ -111,11 +124,28 @@ export async function getCurrentWorkspace(
 export async function getProjectLoreItems(
   request: APIRequestContext,
   projectId: string,
-): Promise<Array<{ id: string; name: string; content: string }>> {
+): Promise<E2ELoreItem[]> {
   const response = await request.get(`/api/projects/${encodeURIComponent(projectId)}/book/lore/items`)
   await expectSuccessful(response)
-  const body = await response.json() as { items?: Array<{ id: string; name: string; content: string }> }
+  const body = await response.json() as { items?: E2ELoreItem[] }
   return body.items ?? []
+}
+
+export async function updateLoreItemContent(
+  request: APIRequestContext,
+  projectId: string,
+  itemId: string,
+  content: string,
+): Promise<void> {
+  // The lore update API requires the complete item payload; reuse the current
+  // entry and only replace the content, like saving an edit in the UI.
+  const items = await getProjectLoreItems(request, projectId)
+  const item = items.find((entry) => entry.id === itemId)
+  expect(item, `lore item ${itemId} not found`).toBeTruthy()
+  const response = await request.put(`/api/projects/${encodeURIComponent(projectId)}/book/lore/items/${encodeURIComponent(itemId)}`, {
+    data: { ...item, content },
+  })
+  await expectSuccessful(response)
 }
 
 export async function createStory(
