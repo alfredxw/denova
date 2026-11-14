@@ -55,25 +55,21 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
-	// Capture the canonical command before Abort clears the controller's
-	// Current input. A suspended, reattached task may not carry CommandID.
-	acceptedCommandID := ""
+	var control *agentruntime.ExternalController
 	if command.Kind == agentexecution.CommandAbort {
-		if control, selected, controlErr := s.app.externalController(options); controlErr != nil {
+		externalControl, selected, controlErr := s.app.externalController(options)
+		if controlErr != nil {
 			return agentrun.CommandReceipt{}, controlErr
-		} else if selected {
-			input, inputErr := control.RecoveryInput(ctx)
-			if inputErr != nil {
-				return agentrun.CommandReceipt{}, inputErr
-			}
-			acceptedCommandID = input.Request.CommandID
+		}
+		if selected {
+			control = externalControl
 		}
 	}
 	receipt, err := bound.Submit(ctx, agentruntime.Command{Kind: command.Kind, CommandID: command.CommandID, OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason, Input: command.Input}, emit)
-	if err != nil || command.Kind != agentexecution.CommandAbort || acceptedCommandID == "" {
+	if err != nil || control == nil {
 		return receipt, err
 	}
-	return receipt, settleAbortedExternalGameInput(s.store(), target.info.StoryID, target.info.BranchID, acceptedCommandID)
+	return receipt, settleBoundAbortedGameInput(ctx, control, s.store(), target.info.StoryID, target.info.BranchID, command.CommandID)
 }
 
 func interactiveAgentCommandOptions(target interactiveAgentCommandTarget) agentrun.Options {

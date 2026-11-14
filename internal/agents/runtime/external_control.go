@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	agentchat "denova/internal/agents/chat"
@@ -123,6 +124,7 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 	fingerprint := controlFingerprint(encoded)
 	var receipt agentrun.CommandReceipt
 	var interrupt error
+	var abortedInputCommandID string
 	err = control.update(ctx, func(state *externalControlState) error {
 		saved, found, err := state.receipt(command.CommandID)
 		if err != nil {
@@ -146,6 +148,13 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 			}
 			interrupt = external.ErrSuspended
 		case agentexecution.CommandAbort:
+			// Bind the request to the input it stops before Current is cleared.
+			// Current, not state.CommandID, advances when a queued input starts
+			// running, so only Current identifies the input discarded here.
+			abortedInputCommandID = string(state.CommandID)
+			if state.Current != nil && strings.TrimSpace(state.Current.Request.CommandID) != "" {
+				abortedInputCommandID = state.Current.Request.CommandID
+			}
 			state.Phase, state.Current, state.Queue = agentrun.RunPhaseIdle, nil, nil
 			if err := state.setOutcome(string(state.CommandID), agentrun.OutcomeAborted); err != nil {
 				return err
@@ -188,7 +197,7 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 			return fmt.Errorf("%w: external command %q", agentrun.ErrInvalidCommand, command.Kind)
 		}
 		receipt = agentrun.CommandReceipt{CommandID: agentrun.CommandID(command.CommandID), OperationID: state.OperationID, Cursor: agentrun.Cursor(state.Revision + 1)}
-		state.receipts[command.CommandID] = controlReceipt{Fingerprint: fingerprint, Receipt: receipt}
+		state.receipts[command.CommandID] = controlReceipt{Fingerprint: fingerprint, Receipt: receipt, AbortedInputCommandID: abortedInputCommandID}
 		return nil
 	})
 	if err == nil && control.active != nil && interrupt != nil && control.active.cancel != nil {
@@ -291,7 +300,14 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 	}
 	run := &ExternalRun{control: control, factory: factory, emit: emit, recoveryKey: key, receipt: agentrun.CommandReceipt{CommandID: state.CommandID, OperationID: state.OperationID, Cursor: agentrun.Cursor(state.Revision)}}
 	err = control.update(ctx, func(current *externalControlState) error {
-		current.receipts[key] = controlReceipt{Receipt: run.receipt}
+		abortedInputCommandID := ""
+		if action.Kind == agentexecution.RuntimeRecoveryAbort {
+			abortedInputCommandID = string(current.CommandID)
+			if current.Current != nil && strings.TrimSpace(current.Current.Request.CommandID) != "" {
+				abortedInputCommandID = current.Current.Request.CommandID
+			}
+		}
+		current.receipts[key] = controlReceipt{Receipt: run.receipt, AbortedInputCommandID: abortedInputCommandID}
 		if action.Kind == agentexecution.RuntimeRecoveryAbort {
 			current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
 			if err := current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted); err != nil {
@@ -383,6 +399,30 @@ func (control *ExternalController) Receipt(ctx context.Context, commandID string
 	}
 	saved, found, err := state.receipt(commandID)
 	return saved.Receipt, found, err
+}
+
+// AbortedInputCommandID reports the input a stop request actually discarded.
+// Replays read this binding instead of a current-input snapshot so that a newer
+// round is never settled by an older request. An empty result means the receipt
+// has no binding (it predates this field or stopped no input).
+func (control *ExternalController) AbortedInputCommandID(ctx context.Context, commandID string) (string, error) {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	state, err := control.read(ctx)
+	if err != nil {
+		return "", err
+	}
+	saved, found, err := state.receipt(commandID)
+	if err != nil || !found {
+		return "", err
+	}
+	return saved.AbortedInputCommandID, nil
+}
+
+// AbortedRecoveryInputCommandID reports the input a recovery abort discarded,
+// resolving the recovery receipt key for the caller.
+func (control *ExternalController) AbortedRecoveryInputCommandID(ctx context.Context, action agentexecution.RuntimeRecoveryAction) (string, error) {
+	return control.AbortedInputCommandID(ctx, "recovery:"+RecoveryActionKey(action))
 }
 
 // RecoveryInput supplies product routing and display metadata for an explicit

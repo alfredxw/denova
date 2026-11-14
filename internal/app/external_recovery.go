@@ -123,7 +123,7 @@ func (s *InteractiveAppService) recoverExternal(ctx context.Context, control *ag
 		return AgentRuntimeRecoveryResult{}, err
 	}
 	if action.Kind == agentexecution.RuntimeRecoveryAbort {
-		if err := settleAbortedExternalGameInput(cycle.store, options.StoryID, options.BranchID, input.Request.CommandID); err != nil {
+		if err := settleRecoveredAbortedGameInput(ctx, control, cycle.store, options.StoryID, options.BranchID, action); err != nil {
 			// Resume installed a controller run; retire it even on filesystem
 			// failure so the next recovery request can reconcile the journal.
 			run.Wait(context.WithoutCancel(ctx))

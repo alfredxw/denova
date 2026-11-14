@@ -21,6 +21,9 @@ type controlReceipt struct {
 	Fingerprint string                  `json:"fingerprint"`
 	Receipt     agentrun.CommandReceipt `json:"receipt"`
 	Outcome     agentrun.OutcomeStatus  `json:"outcome,omitempty"`
+	// AbortedInputCommandID binds a stop request to the input it discarded, so
+	// a replay settles that input instead of whichever input is current later.
+	AbortedInputCommandID string `json:"aborted_input_command_id,omitempty"`
 }
 
 // Only unfinished inputs belong to this snapshot. Historical receipts are
