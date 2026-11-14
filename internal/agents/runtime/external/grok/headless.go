@@ -31,7 +31,18 @@ import (
 // fallback ladder; it is a product budget, not an operating-system limit.
 // Images travel inside a .json prompt file, never in the process arguments,
 // which Windows limits to 32767 UTF-16 code units for the whole command line.
-const maxPromptPayloadBytes = 120 << 10
+// promptEnvelopeBytes reserves the .json block envelope and encoding rounding
+// above the prompt text; promptMediaFloorBytes is the smallest media space a
+// prompt may leave for pictures, below which the quality ladder cannot deliver.
+// PayloadBudget surfaces the same budget to the shared history preparation so a
+// rebuilt conversation trims its text before the images are encoded.
+const (
+	maxPromptPayloadBytes = 120 << 10
+	// promptEnvelopeBytes plus promptMediaFloorBytes is the media reserve
+	// PayloadBudget reports: text may use everything else of the payload.
+	promptEnvelopeBytes   = 1024
+	promptMediaFloorBytes = 8 << 10
+)
 
 // hostTools are the only built-in tools a product turn keeps. Everything that
 // can change the project must travel through use_tool to the host MCP server;
@@ -252,8 +263,8 @@ func (c *Client) startHeadless(ctx context.Context, input external.Input, host e
 // being dropped or failing the turn. `mimeType` is the field the installed CLI
 // requires; the ACP-spec `mime_type` spelling is rejected at parse time.
 func promptContent(prompt string, attachments []agentschema.Attachment) (string, error) {
-	available := maxPromptPayloadBytes - len(prompt) - 1024
-	if available < 8<<10 {
+	available := maxPromptPayloadBytes - len(prompt) - promptEnvelopeBytes
+	if available < promptMediaFloorBytes {
 		return "", external.MarkMediaUnsupported(errors.New("Grok headless prompt is too long to carry images"))
 	}
 	budget := available / len(attachments)

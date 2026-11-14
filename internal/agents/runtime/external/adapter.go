@@ -22,6 +22,19 @@ type Adapter interface {
 	Run(context.Context, Input, Host) (Result, error)
 }
 
+// PayloadBudgeter optionally reports the adapter's whole transportable payload
+// budget: encoded text plus media bytes for one attempt. Engines that carry
+// media through a separate channel (for example file references) leave it
+// unimplemented and keep the provider byte budget. HistoryPreparation uses it
+// to reserve media space before the payload is encoded, so a text that passed
+// the product budget cannot be rejected by the engine transport for the images.
+type PayloadBudgeter interface {
+	// PayloadBudget returns the maximum payload bytes and the media reserve
+	// that must stay available for encoded images. ok is false when the adapter
+	// has no transportable-payload budget to report.
+	PayloadBudget() (payload, mediaReserve int, ok bool)
+}
+
 // Input is prepared by the product boundary. Instructions contain only shared
 // role/context settings; Native permissions, compaction and delegation are not
 // part of this contract. History is rebuilt from the canonical product journal.

@@ -47,6 +47,14 @@ type Client struct {
 	state   external.ConnectionState
 }
 
+// PayloadBudget reports the headless channel's whole prompt payload budget and
+// the media reserve that stays available for encoded images. The shared history
+// preparation uses it to trim reconstructed text before pictures are encoded,
+// so a turn that passed the product budget cannot be rejected downstream.
+func (*Client) PayloadBudget() (payload, mediaReserve int, ok bool) {
+	return maxPromptPayloadBytes, promptEnvelopeBytes + promptMediaFloorBytes, true
+}
+
 func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	if !filepath.IsAbs(options.Executable) {
 		return nil, errors.New("Grok executable must be absolute")

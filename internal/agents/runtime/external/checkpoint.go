@@ -129,16 +129,61 @@ func (request HistoryPreparation) Prepare(ctx context.Context) (Input, error) {
 		total.Bytes += cost.Bytes
 		total.Tokens += cost.Tokens
 	}
+	// A payload budget can be tighter than the product provider budget: the
+	// engine may carry the whole attempt (text plus encoded media) in one
+	// transportable payload, while images are encoded only after the product
+	// boundary. When such an adapter reports its payload and the rebuilt
+	// conversation will send images, the reconstruction text must stay inside
+	// the payload minus a media reserve, so an image-bearing turn that passed
+	// the product budget cannot be rejected by the engine transport. Without a
+	// budget report, or without media, the provider budget alone applies.
+	textCap := 0
+	if budgeter, ok := request.Adapter.(PayloadBudgeter); ok {
+		if payload, reserve, reported := budgeter.PayloadBudget(); reported && payload > reserve {
+			textCap = payload - reserve
+			if request.ProviderInputMaxBytes > 0 && textCap > request.ProviderInputMaxBytes {
+				textCap = request.ProviderInputMaxBytes
+			}
+		}
+	}
+	if !carriesImages(input) {
+		textCap = 0
+	}
 	var checkpoint *externaljournal.Checkpoint
-	if total.Bytes > historyBudget || total.Tokens > historyTokenBudget {
+	// total.Bytes already counts the existing summary; estimateReplayText takes
+	// the summary as its own argument, so pass the pure history bytes here and
+	// the current summary separately. With no summary both values drop out.
+	historyBytes := total.Bytes - len(summary)
+	summaryReserve := len(summary)
+	needsTrim := total.Bytes > historyBudget || total.Tokens > historyTokenBudget
+	if textCap > 0 && !needsTrim && len(input.History) > 0 &&
+		estimateReplayText(historyBytes, summaryReserve, len(input.Text), len(input.History)) > textCap {
+		// The sender budget is tighter than the semantic history budget: trim
+		// history records so the rendered replay also fits the media reserve.
+		needsTrim = true
+	}
+	if needsTrim && len(input.History) > 0 {
 		// Keep complete recent messages inside both budgets, including images.
 		// A transaction is atomic for durable source coverage.
+		// When a new summary will be produced, plan its bounded ceiling so the
+		// retained recent records plus the summary stay inside the trim budget.
+		if textCap > 0 {
+			summaryReserve = checkpointSummaryBytes
+		}
 		end, retained := len(input.History), (agentmodel.InputSize{})
 		for end > 0 {
 			cost := costs[end-1]
 			// Reserve conservatively for the bounded summary and its envelope.
 			if retained.Bytes+cost.Bytes > historyBudget/2 || retained.Tokens+cost.Tokens > historyTokenBudget-checkpointSummaryBytes {
 				break
+			}
+			if textCap > 0 {
+				kept := retained
+				kept.Bytes += cost.Bytes
+				kept.Tokens += cost.Tokens
+				if keptMessages := len(input.History) - (end - 1); estimateReplayText(kept.Bytes, summaryReserve, len(input.Text), keptMessages) > textCap {
+					break
+				}
 			}
 			end--
 			retained.Bytes += cost.Bytes
