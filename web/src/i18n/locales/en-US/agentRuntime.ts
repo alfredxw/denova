@@ -75,6 +75,7 @@ const agentRuntime = {
   'agentRuntime.capabilityUnsupported': "This runtime does not support this operation.",
   'agentRuntime.operationFailed': "Execution failed. Confirmed content and changes have been retained.",
   'agentRuntime.contentPolicyRejected': "The upstream model rejected this request under its content safety policy. Revise the relevant wording and try again.",
+  'agentRuntime.historyMediaUnsupported': "The current engine cannot carry images from the conversation history, so they were not restored with the context. Reduce historical images or start a new conversation.",
   'agentRuntime.turnIncomplete': "The turn stopped making progress. The narrative has been preserved and this run ended; continue the turn to complete its state and choices.",
   'agentRuntime.interrupted': "Execution was interrupted. Resolve pending questions, then send a new message to continue.",
   'agentRuntime.configuration.otherRuntime': "This setting belongs to the other engine.",

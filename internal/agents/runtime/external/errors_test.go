@@ -23,3 +23,25 @@ func TestRetryableErrorClassification(t *testing.T) {
 		t.Fatalf("RetryableError(nil) = %v, want nil", got)
 	}
 }
+
+func TestMediaUnsupportedClassification(t *testing.T) {
+	if IsMediaUnsupported(nil) {
+		t.Fatal("nil error must not be media unsupported")
+	}
+	if IsMediaUnsupported(errors.New("plain failure")) {
+		t.Fatal("plain error must not be media unsupported")
+	}
+	marked := MarkMediaUnsupported(errors.New("argument budget exhausted"))
+	if !IsMediaUnsupported(marked) {
+		t.Fatalf("marked error not recognized: %v", marked)
+	}
+	if got := MarkMediaUnsupported(nil); got != nil {
+		t.Fatalf("MarkMediaUnsupported(nil) = %v, want nil", got)
+	}
+	if key := FailureKey(marked); key != "agentRuntime.historyMediaUnsupported" {
+		t.Fatalf("error key = %q", key)
+	}
+	if key := FailureKey(errors.Join(errors.New("context"), marked)); key != "agentRuntime.historyMediaUnsupported" {
+		t.Fatalf("joined error key = %q", key)
+	}
+}

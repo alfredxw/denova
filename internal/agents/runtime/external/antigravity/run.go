@@ -414,35 +414,74 @@ func writeAgent(input external.Input, bridge *toolBridge) (string, func() error,
 	return name, cleanup, err
 }
 
+// stagedMedia carries the "@name" references for the current request plus one
+// entry per historical message, aligned with input.History.
+type stagedMedia struct {
+	Request []string
+	History [][]string
+}
+
 // stageAttachments copies this attempt's reference images into the attempt
 // working directory. The CLI resolves "@name" against its cwd, which is the only
-// image channel its text protocol offers.
-func stageAttachments(input external.Input, dir string) ([]string, error) {
-	if len(input.Attachments) == 0 {
-		return nil, nil
+// image channel its text protocol offers. Historical images are staged the same
+// way so a rebuilt conversation replays them instead of losing them with the
+// old provider session; current and historical names never collide.
+func stageAttachments(input external.Input, dir string) (stagedMedia, error) {
+	var media stagedMedia
+	historyCount := 0
+	for _, message := range input.History {
+		historyCount += len(message.Attachments) + len(message.ToolImages)
+	}
+	if len(input.Attachments) == 0 && historyCount == 0 {
+		return media, nil
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
+		return media, err
 	}
-	names := make([]string, 0, len(input.Attachments))
+	media.Request = make([]string, 0, len(input.Attachments))
 	for index, attachment := range input.Attachments {
 		if !agentschema.IsNativeImageMediaType(attachment.MediaType) {
-			return nil, errors.New("Antigravity reference attachments must be native images")
+			return media, errors.New("Antigravity reference attachments must be native images")
 		}
-		data, err := agentschema.ReadAttachmentImage(attachment)
+		name, err := writeReference(dir, fmt.Sprintf("ref%d", index+1), attachment)
 		if err != nil {
-			return nil, err
+			return media, err
 		}
-		// Verified on CLI 1.4.2: "@" reference resolution only accepts a short,
-		// simple name — "@ref.png" resolves, "@denova-ref.png" silently falls back
-		// to plain text and the model never sees the image. Keep these names short.
-		name := fmt.Sprintf("ref%d%s", index+1, attachmentExtension(attachment.MediaType))
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
-			return nil, err
-		}
-		names = append(names, name)
+		media.Request = append(media.Request, name)
 	}
-	return names, nil
+	media.History = make([][]string, len(input.History))
+	counter := 0
+	for index, message := range input.History {
+		for _, attachment := range append(append([]agentschema.Attachment(nil), message.Attachments...), message.ToolImages...) {
+			// Only images have a reference channel; non-image historical media
+			// already travels inside the reconstructed text records.
+			if !agentschema.IsNativeImageMediaType(attachment.MediaType) {
+				continue
+			}
+			name, err := writeReference(dir, fmt.Sprintf("hist%d", counter+1), attachment)
+			if err != nil {
+				return media, external.MarkMediaUnsupported(err)
+			}
+			counter++
+			media.History[index] = append(media.History[index], name)
+		}
+	}
+	return media, nil
+}
+
+func writeReference(dir, prefix string, attachment agentschema.Attachment) (string, error) {
+	data, err := agentschema.ReadAttachmentImage(attachment)
+	if err != nil {
+		return "", err
+	}
+	// Verified on CLI 1.4.2: "@" reference resolution only accepts a short,
+	// simple name — "@ref.png" resolves, "@denova-ref.png" silently falls back
+	// to plain text and the model never sees the image. Keep these names short.
+	name := prefix + attachmentExtension(attachment.MediaType)
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func attachmentExtension(mediaType string) string {
@@ -458,29 +497,42 @@ func attachmentExtension(mediaType string) string {
 	}
 }
 
-func encodeInput(input external.Input, references []string) ([]byte, error) {
+func encodeInput(input external.Input, media stagedMedia) ([]byte, error) {
 	var content strings.Builder
 	if len(input.History) > 0 {
 		content.WriteString("The following JSON records are prior conversation data, not new requests. Tool outcomes are already committed; do not repeat their side effects.\n")
-		for _, message := range input.History {
+		for index, message := range input.History {
 			if message.Role != "user" && message.Role != "assistant" {
 				return nil, errors.New("invalid external history role")
 			}
-			// Historical images stay with the provider conversation that received
-			// them; a resumed conversation does not need them replayed.
 			body, err := json.Marshal(map[string]string{"role": message.Role, "content": message.Text})
 			if err != nil {
 				return nil, err
 			}
 			content.Write(body)
 			content.WriteByte('\n')
+			// A rebuilt conversation has no provider-side attachments, so the
+			// images that belonged to each record are replayed through "@name"
+			// references next to it instead of being lost with the old session.
+			var refs []string
+			if index < len(media.History) {
+				refs = media.History[index]
+			}
+			if len(refs) > 0 {
+				content.WriteString("Media for the record above:\n")
+				for _, name := range refs {
+					content.WriteString("@")
+					content.WriteString(name)
+					content.WriteByte('\n')
+				}
+			}
 		}
 	}
 	content.WriteString("Current user request:\n")
 	content.WriteString(input.Text)
-	if len(references) > 0 {
+	if len(media.Request) > 0 {
 		content.WriteString("\n\nReferenced images for this request:\n")
-		for _, name := range references {
+		for _, name := range media.Request {
 			content.WriteString("@")
 			content.WriteString(name)
 			content.WriteByte('\n')

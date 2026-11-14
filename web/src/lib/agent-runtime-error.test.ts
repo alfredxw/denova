@@ -25,6 +25,8 @@ describe('agent runtime error localization', () => {
       .toBe('agentRuntime.operationFailed')
     expect(localizeAgentRuntimeError({ error_key: 'agentRuntime.interrupted', message: 'internal' }, 'fallback', t))
       .toBe('agentRuntime.interrupted')
+    expect(localizeAgentRuntimeError({ error_key: 'agentRuntime.historyMediaUnsupported', message: 'internal' }, 'fallback', t))
+      .toBe('agentRuntime.historyMediaUnsupported')
   })
 
   it('localizes truncated model output from both live and recovered terminals', () => {

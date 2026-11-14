@@ -48,7 +48,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 		}
 		seen[tool.Name] = true
 	}
-	prompt, err := renderPrompt(input)
+	prompt, historyImages, err := renderPrompt(input)
 	if err != nil {
 		return result, err
 	}
@@ -56,7 +56,7 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 	if input.Mode == external.OperationSummarize {
 		instructions = ""
 	}
-	attempt, err := c.startHeadless(ctx, input, host, *settings, instructions, prompt)
+	attempt, err := c.startHeadless(ctx, input, host, *settings, instructions, prompt, historyImages)
 	if err != nil {
 		return result, err
 	}
@@ -95,26 +95,36 @@ func (c *Client) Run(ctx context.Context, input external.Input, host external.Ho
 
 // renderPrompt rebuilds the canonical conversation once, then appends the
 // current request. A resumed provider session already owns the prior turns, so
-// replaying them would duplicate the whole history on every turn.
-func renderPrompt(input external.Input) (string, error) {
+// replaying them would duplicate the whole history on every turn. Historical
+// images are collected in record order so a rebuilt conversation replays them
+// as media blocks instead of losing them with the old provider session; only
+// image media has a block channel, so non-image historical attachments stay in
+// the text records.
+func renderPrompt(input external.Input) (string, []agentschema.Attachment, error) {
 	var body strings.Builder
+	var historyImages []agentschema.Attachment
 	if input.SessionID == "" && len(input.History) > 0 {
-		body.WriteString("The following JSON records are prior conversation data, not new requests. Confirmed tool observations are already settled; use them as context and do not repeat their side effects. Images from earlier turns are not re-sent.\n")
+		body.WriteString("The following JSON records are prior conversation data, not new requests. Confirmed tool observations are already settled; use them as context and do not repeat their side effects. Historical images are attached as media blocks in record order.\n")
 		for _, message := range input.History {
 			if message.Role != "user" && message.Role != "assistant" {
-				return "", errors.New("invalid external history role")
+				return "", nil, errors.New("invalid external history role")
 			}
 			record, err := json.Marshal(map[string]string{"role": message.Role, "content": message.Text})
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
 			body.Write(record)
 			body.WriteByte('\n')
+			for _, attachment := range append(append([]agentschema.Attachment(nil), message.Attachments...), message.ToolImages...) {
+				if agentschema.IsNativeImageMediaType(attachment.MediaType) {
+					historyImages = append(historyImages, attachment)
+				}
+			}
 		}
 	}
 	body.WriteString("Current user request:\n")
 	body.WriteString(input.Text)
-	return body.String(), nil
+	return body.String(), historyImages, nil
 }
 
 type headlessTurn struct {

@@ -59,11 +59,32 @@ func IsContentPolicyRejected(err error) bool {
 // the product ends the turn instead of prompting the engine forever.
 var ErrTurnNotConverged = errors.New("game turn made no progress")
 
+// ErrMediaUnsupported marks an attempt whose media (for example historical
+// images) cannot travel through the engine channel, so the product shows a
+// localized explanation instead of silently dropping the images.
+var ErrMediaUnsupported = errors.New("engine channel cannot carry the request media")
+
+// MarkMediaUnsupported wraps err so callers can surface a localized message. A
+// nil err returns nil.
+func MarkMediaUnsupported(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", ErrMediaUnsupported, err)
+}
+
+// IsMediaUnsupported reports whether err carries an unsupported-media failure.
+func IsMediaUnsupported(err error) bool {
+	return errors.Is(err, ErrMediaUnsupported)
+}
+
 // FailureKey selects the product error key for a failed external operation.
 func FailureKey(err error) string {
 	switch {
 	case IsContentPolicyRejected(err):
 		return "agentRuntime.contentPolicyRejected"
+	case IsMediaUnsupported(err):
+		return "agentRuntime.historyMediaUnsupported"
 	case errors.Is(err, ErrTurnNotConverged):
 		return "agentRuntime.turnIncomplete"
 	}

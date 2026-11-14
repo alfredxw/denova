@@ -258,24 +258,91 @@ func TestRejectsUnsupportedInputAndOperations(t *testing.T) {
 			t.Fatalf("unsupported operation %q accepted", mode)
 		}
 	}
-	// Historical images belong to the provider conversation that received them;
-	// replaying the text without them must not fail the turn.
-	for _, history := range []external.Input{
-		{History: []external.Message{{Role: "user", Attachments: []agentschema.Attachment{{MediaType: "image/png"}}}}},
-		{History: []external.Message{{Role: "assistant", ToolImages: []agentschema.Attachment{{MediaType: "image/png"}}}}},
-	} {
-		if _, err := encodeInput(history, nil); err != nil {
-			t.Fatalf("historical image rejected: %v", err)
-		}
+	// A historical image that cannot be read must surface a media failure
+	// instead of being silently dropped from the rebuilt context.
+	unreadable := external.Input{History: []external.Message{{Role: "user", Attachments: []agentschema.Attachment{{Name: "missing.png", MediaType: "image/png"}}}}}
+	if _, err := stageAttachments(unreadable, t.TempDir()); !external.IsMediaUnsupported(err) {
+		t.Fatalf("unreadable historical image was not marked: %v", err)
 	}
 	input := external.Input{History: []external.Message{{Role: "user", Text: "Historical request"}}, Text: "Current request"}
-	body, err := encodeInput(input, []string{"ref1.png"})
+	body, err := encodeInput(input, stagedMedia{Request: []string{"ref1.png"}})
 	var event struct {
 		Event   string                   `json:"event"`
 		Message struct{ Content string } `json:"message"`
 	}
 	if err != nil || json.Unmarshal(body, &event) != nil || event.Event != "user" || !strings.Contains(event.Message.Content, "prior conversation data") || !strings.Contains(event.Message.Content, "Current request") || !strings.Contains(event.Message.Content, "@ref1.png") {
 		t.Fatalf("encoded input: %s %v", body, err)
+	}
+}
+
+// A rebuilt conversation has no provider-side attachments, so historical user
+// and tool images must be replayed through "@name" references beside their own
+// records instead of being lost with the old provider session.
+func TestEncodeRebuiltHistoryCarriesImageReferences(t *testing.T) {
+	image := referenceAttachment(t)
+	dir := t.TempDir()
+	media, err := stageAttachments(external.Input{
+		History: []external.Message{
+			{Role: "user", Text: "Use this reference", Attachments: []agentschema.Attachment{image}, ToolImages: []agentschema.Attachment{image}},
+			{Role: "assistant", Text: "Done."},
+		},
+	}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(media.History) != 2 || !slices.Equal(media.History[0], []string{"hist1.png", "hist2.png"}) || len(media.History[1]) != 0 {
+		t.Fatalf("history references: %#v", media.History)
+	}
+	if !strings.Contains(media.History[0][0], "hist") {
+		t.Fatal("historical files must use short hist names for @ resolution")
+	}
+	input := external.Input{History: []external.Message{
+		{Role: "user", Text: "Use this reference"},
+		{Role: "assistant", Text: "Done."},
+	}, Text: "Continue"}
+	body, err := encodeInput(input, media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event struct {
+		Event   string                   `json:"event"`
+		Message struct{ Content string } `json:"message"`
+	}
+	if err := json.Unmarshal(body, &event); err != nil {
+		t.Fatal(err)
+	}
+	content := event.Message.Content
+	if !strings.Contains(content, "@hist1.png") || !strings.Contains(content, "@hist2.png") {
+		t.Fatalf("historical references missing: %s", content)
+	}
+	if strings.Count(content, "Media for the record above") != 1 {
+		t.Fatalf("media lines must sit beside the record that owns them: %s", content)
+	}
+}
+
+// The CLI payload for a rebuilt conversation must carry the staged historical
+// images: the fixture process verifies both the NDJSON references and the file.
+func TestRunRebuildCarriesHistoryImagesToCLI(t *testing.T) {
+	image := referenceAttachment(t)
+	input := fixtureInput(t)
+	input.History = []external.Message{{Role: "user", Text: "Earlier reference", Attachments: []agentschema.Attachment{image}}}
+	result, err := fixtureClient(t, "media").Run(t.Context(), input, &testHost{})
+	if err != nil || !result.Settled {
+		t.Fatalf("result: %#v %v", result, err)
+	}
+}
+
+// A summarize attempt is a fresh disposable conversation, but the checkpoint
+// relies on seeing the historical images to preserve visual details: the
+// fixture verifies the summary payload still carries their references.
+func TestRunSummarizeCarriesHistoryImagesToCLI(t *testing.T) {
+	image := referenceAttachment(t)
+	input := fixtureInput(t)
+	input.Mode = external.OperationSummarize
+	input.History = []external.Message{{Role: "user", Text: "Earlier reference", Attachments: []agentschema.Attachment{image}}}
+	result, err := fixtureClient(t, "summary-media").Run(t.Context(), input, &testHost{})
+	if err != nil || !result.Settled {
+		t.Fatalf("summary: %#v %v", result, err)
 	}
 }
 
@@ -355,6 +422,19 @@ func TestAntigravityFixtureProcess(t *testing.T) {
 	if !scanner.Scan() || !json.Valid(scanner.Bytes()) || !strings.Contains(string(scanner.Bytes()), `"event":"user"`) {
 		panic("expected one native NDJSON user event")
 	}
+	if mode == "media" {
+		stdin := string(scanner.Bytes())
+		if !strings.Contains(stdin, "@hist1.png") || !strings.Contains(stdin, "Media for the record above") {
+			panic("historical image references missing from the CLI payload")
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		if _, err := os.Stat(filepath.Join(cwd, "hist1.png")); err != nil {
+			panic("staged historical image missing: " + err.Error())
+		}
+	}
 	agentIndex := slices.Index(args, "--agent")
 	if agentIndex < 0 || agentIndex+1 >= len(args) || !strings.HasPrefix(args[agentIndex+1], "denova-") {
 		panic("missing transient agent identity")
@@ -385,6 +465,17 @@ func TestAntigravityFixtureProcess(t *testing.T) {
 	if mode == "summary" {
 		if len(agent.Tools) != 0 || len(agent.MCPServers) != 0 || slices.Contains(args, "--conversation") || len(parsedSettings.Permissions.Allow) != 0 || !slices.Contains(parsedSettings.Permissions.Deny, "mcp(*)") {
 			panic("summary reused provider conversation or tools")
+		}
+		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[],"permission_mode":"request-review"}}`)
+	} else if mode == "summary-media" {
+		if len(agent.Tools) != 0 || len(agent.MCPServers) != 0 || slices.Contains(args, "--conversation") || len(parsedSettings.Permissions.Allow) != 0 || !slices.Contains(parsedSettings.Permissions.Deny, "mcp(*)") {
+			panic("summary reused provider conversation or tools")
+		}
+		// The checkpoint instruction inspects supplied images, so a summarize
+		// attempt must receive the historical references even though it is a
+		// fresh disposable conversation.
+		if !strings.Contains(string(scanner.Bytes()), "@hist1.png") {
+			panic("summary lost its historical image references")
 		}
 		fmt.Println(`{"event":"init","conversation_id":"conversation-1","init":{"tools":[],"permission_mode":"request-review"}}`)
 	} else if len(agent.Tools) != 0 || len(agent.MCPServers) != 1 || !slices.Equal(parsedSettings.Permissions.Allow, []string{"mcp(denova/*)"}) {
