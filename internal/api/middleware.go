@@ -76,14 +76,26 @@ func platformManagementLocalHostMiddleware(ctx context.Context, c *app.RequestCo
 
 // platformManagementHostOnly classifies management actions that must run on the
 // Denova host. Classify new actions here when they start host runtimes, install
-// or preview host packages, or resolve host file paths.
+// or preview host packages, or resolve host file paths. Classify by operation,
+// never by method alone: read verbs do not grant LAN access when the read
+// mutates host state.
 func platformManagementHostOnly(path, method string) bool {
-	if method == "GET" || method == "HEAD" || method == "OPTIONS" {
+	if method == "OPTIONS" {
 		return false
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(path, "/api/platform/manage"), "/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
 		return true
+	}
+	if method == "GET" || method == "HEAD" {
+		// Reads that mutate host state stay loopback-bound: exporting a game
+		// instance stops its runtime, checking a development source
+		// materializes a package candidate, and checking an update rewrites
+		// installation records and downloads upstream sources. New management
+		// reads with host side effects must be classified here as well.
+		return len(parts) == 3 && parts[0] == "instances" && parts[2] == "export" ||
+			len(parts) == 3 && parts[0] == "development" && parts[2] == "check" ||
+			len(parts) == 4 && parts[0] == "packages" && parts[3] == "update"
 	}
 	// Only known non-host writes are allowed from an authenticated LAN
 	// browser. New mutating routes require an explicit policy decision.

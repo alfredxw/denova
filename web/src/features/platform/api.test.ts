@@ -52,6 +52,7 @@ describe('host-bound management actions', () => {
       ['/runtimes', 'GET'],
       ['/catalog', 'GET'],
       ['/development', 'GET'],
+      ['/development/dev1/build', 'GET'],
       ['/packages/plugin', 'GET'],
       ['/instances/one', 'PATCH'],
       ['/instances/one', 'DELETE'],
@@ -66,9 +67,13 @@ describe('host-bound management actions', () => {
     }
   })
 
-  it('marks runtime starts and package installation as host-bound', () => {
+  it('marks runtime starts, package installation and side-effectful reads as host-bound', () => {
     for (const [path, method] of [
       ['/', 'POST'],
+      ['', 'GET'],
+      ['/instances/one/export', 'GET'],
+      ['/development/dev1/check', 'GET'],
+      ['/packages/plugin/example/update', 'GET'],
       ['/new-action', 'POST'],
       ['/runtimes/plugin/extra', 'POST'],
       ['/projects/p1/extensions/extra', 'PUT'],
