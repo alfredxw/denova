@@ -364,3 +364,126 @@ func TestCharacterCardInvalidOverrideChoice(t *testing.T) {
 		t.Fatal("expected invalid override choice to fail validation")
 	}
 }
+
+func TestCharacterCardPendingPlanLeavesLocalUntouched(t *testing.T) {
+	s := testService(t)
+	dir := filepath.Join(s.root, "projects", "pending")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	record, err := s.registry.Add(dir, project.TypeBook, "Pending")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := lore.NewStore(dir)
+	if _, err := store.Create(lore.ItemInput{ID: "hero", Name: "Hero", Type: "character", Content: "Short"}); err != nil {
+		t.Fatal(err)
+	}
+	incoming := portableCollection[json.RawMessage]{
+		Version: 1,
+		Items: []json.RawMessage{jsonBytes(t, map[string]any{
+			"id":            "hero",
+			"name":          "Hero",
+			"type":          "character",
+			"content":       "A much longer and more detailed description of the hero.",
+			"detail_fields": 5,
+		})},
+	}
+	plan, err := planOverrideFixture(t, s, record.ID, incoming, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ImportDuplicates) == 0 {
+		t.Fatal("expected a held duplicate conflict")
+	}
+	// The handler returns a pending review without applying; local content must
+	// stay exactly as written until the user confirms.
+	items, err := store.ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Content != "Short" {
+		t.Fatalf("local entry changed before confirmation: %+v", items)
+	}
+}
+
+func TestDiscardPlanRemovesPersistedPlan(t *testing.T) {
+	ctx := context.Background()
+	s := testService(t)
+	dir := filepath.Join(s.root, "projects", "discard")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	record, err := s.registry.Add(dir, project.TypeBook, "Discard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := lore.NewStore(dir)
+	if _, err := store.Create(lore.ItemInput{ID: "hero", Name: "Hero", Type: "character", Content: "Short"}); err != nil {
+		t.Fatal(err)
+	}
+	incoming := portableCollection[json.RawMessage]{
+		Version: 1,
+		Items: []json.RawMessage{jsonBytes(t, map[string]any{
+			"id":            "hero",
+			"name":          "Hero",
+			"type":          "character",
+			"content":       "A much longer and more detailed description of the hero.",
+			"detail_fields": 5,
+		})},
+	}
+	plan, err := planOverrideFixture(t, s, record.ID, incoming, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadPlan(ctx, plan.ID); err != nil {
+		t.Fatalf("plan should be persisted before discard: %v", err)
+	}
+	if err := s.DiscardPlan(plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadPlan(ctx, plan.ID); err == nil {
+		t.Fatal("expected plan to be gone after DiscardPlan")
+	}
+	// Discarding again is idempotent.
+	if err := s.DiscardPlan(plan.ID); err != nil {
+		t.Fatalf("discarding a missing plan should succeed, got %v", err)
+	}
+}
+
+func TestCharacterCardLongerLocalBodyStillSuggestsOverrideByFields(t *testing.T) {
+	s := testService(t)
+	dir := filepath.Join(s.root, "projects", "field-rule")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	record, err := s.registry.Add(dir, project.TypeBook, "FieldRule")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := lore.NewStore(dir)
+	// Longer hand-written body with no detail fields falls back to one field.
+	if _, err := store.Create(lore.ItemInput{ID: "hero", Name: "Hero", Type: "character", Content: "A very long hand-written description... it keeps going and going."}); err != nil {
+		t.Fatal(err)
+	}
+	incoming := portableCollection[json.RawMessage]{
+		Version: 1,
+		Items: []json.RawMessage{jsonBytes(t, map[string]any{
+			"id":            "hero",
+			"name":          "Hero",
+			"type":          "character",
+			"content":       "Short",
+			"detail_fields": 3,
+		})},
+	}
+	plan, err := planOverrideFixture(t, s, record.ID, incoming, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ImportDuplicates) != 1 || plan.ImportDuplicates[0].Suggested != "override" {
+		t.Fatalf("expected field count to win over body length, got %+v", plan.ImportDuplicates)
+	}
+	if len(plan.ImportOverrides) != 1 || plan.ImportOverrides[0] != "Hero" {
+		t.Fatalf("expected automatic override, got %+v", plan.ImportOverrides)
+	}
+}

@@ -702,6 +702,12 @@ function App() {
         confirmOverrides: true,
         overrideChoices: choices,
       })
+      // The confirmed request can still surface new same-name entries (e.g. the
+      // target Book changed concurrently); stay in review instead of closing.
+      if (result.pending_overrides?.length) {
+        setCharacterCardPendingOverrides(result.pending_overrides)
+        return
+      }
       await completeCharacterCardImport(result)
     } catch (e) {
       const message = e instanceof Error ? e.message : t('importCard.importFailed')

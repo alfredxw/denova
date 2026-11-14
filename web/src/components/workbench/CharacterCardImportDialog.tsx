@@ -139,8 +139,8 @@ export function CharacterCardImportDialog({
                   <div className="mt-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('importCard.overridesConfirmHelp')}</div>
                 </div>
                 <ul className="space-y-2">
-                  {pendingOverrides.map((dup) => (
-                    <li key={dup.name} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
+                  {pendingOverrides.map((dup, index) => (
+                    <li key={`${dup.name}-${index}`} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
                       <div className="truncate text-xs font-medium text-[var(--nova-text)]">{dup.name}</div>
                       <div className="mt-1 grid grid-cols-2 gap-3 text-[11px] leading-4 text-[var(--nova-text-faint)]">
                         <div className="min-w-0">
@@ -155,6 +155,7 @@ export function CharacterCardImportDialog({
                       <div className="mt-2 flex gap-1.5">
                         <button
                           type="button"
+                          aria-pressed={overrideChoices[dup.name] === 'override'}
                           className={`nova-nav-item h-7 flex-1 px-2 text-[11px] ${overrideChoices[dup.name] === 'override' ? 'is-active' : ''}`}
                           onClick={() => setOverrideChoices((current) => ({ ...current, [dup.name]: 'override' }))}
                           disabled={importing}
@@ -163,6 +164,7 @@ export function CharacterCardImportDialog({
                         </button>
                         <button
                           type="button"
+                          aria-pressed={overrideChoices[dup.name] === 'keep'}
                           className={`nova-nav-item h-7 flex-1 px-2 text-[11px] ${overrideChoices[dup.name] === 'keep' ? 'is-active' : ''}`}
                           onClick={() => setOverrideChoices((current) => ({ ...current, [dup.name]: 'keep' }))}
                           disabled={importing}

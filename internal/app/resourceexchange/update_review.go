@@ -77,7 +77,7 @@ func (r *updateReview) validate() error {
 		}
 	}
 	for name, choice := range r.overrideChoices {
-		if choice != "" && choice != "keep" && choice != "override" {
+		if choice != "keep" && choice != "override" {
 			return fmt.Errorf("invalid override choice for %s", name)
 		}
 	}
