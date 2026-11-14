@@ -86,6 +86,11 @@ func (s *Store) writeIndexLocked(index Index) error {
 	if index.Stories == nil {
 		index.Stories = []StorySummary{}
 	}
+	if s.writeIndex != nil {
+		// Unexported injection hook for tests to deterministically simulate a
+		// readable-but-unreplaceable catalog file.
+		return s.writeIndex(index)
+	}
 	data, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
 		return err
