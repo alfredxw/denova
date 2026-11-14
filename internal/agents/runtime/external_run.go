@@ -153,6 +153,13 @@ func (run *ExternalRun) drain(ctx context.Context) agentrun.Outcome {
 			run.attempted, run.attempts = key, 0
 		}
 		input := *state.Current
+		// A retry re-enters the product recovery entry instead of the fresh-start
+		// path: the first attempt already persisted its input, tool receipts and
+		// failure, so starting the same CommandID again would only replay the
+		// saved failure without invoking the provider.
+		if run.attempts > 0 {
+			input.Resume = true
+		}
 		run.goalEvaluated = false
 		run.guidance = len(input.Guidance)
 		input.OperationID = state.OperationID
