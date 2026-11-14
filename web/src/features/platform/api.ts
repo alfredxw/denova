@@ -143,13 +143,23 @@ export const managementBase = '/api/platform/manage'
  * Host-bound management actions mirror the backend classification in
  * internal/api/middleware.go: runtimes listen on loopback, package installation
  * runs extension code on the Denova host, and previews resolve host paths.
- * Remote browsers fail fast with a clear reason instead of a generic 403.
+ * Side-effectful reads stay host-bound too. Remote browsers fail fast with a
+ * clear reason instead of a generic 403; the backend remains the authority.
  */
 export function hostOnlyManagement(path: string, method = 'GET'): boolean {
   const normalized = method.toUpperCase()
-  if (normalized === 'GET' || normalized === 'HEAD' || normalized === 'OPTIONS') return false
+  if (normalized === 'OPTIONS') return false
   const parts = path.split('?')[0].split('/').filter(Boolean)
+  // A bare management root has no read surface; mirror the backend's fail-closed default.
+  if (parts.length === 0) return true
   const [section, , third, , fifth] = parts
+  if (normalized === 'GET' || normalized === 'HEAD') {
+    // Reads with host side effects: exporting a game stops its runtime,
+    // checking a development source materializes a candidate, and checking an
+    // update rewrites installation records. All must run on the host.
+    return parts.length === 3 && ((section === 'instances' && third === 'export') || (section === 'development' && third === 'check'))
+      || parts.length === 4 && section === 'packages' && parts[3] === 'update'
+  }
   switch (section) {
     case 'game-preferences':
       return !(parts.length === 1 && normalized === 'PATCH')

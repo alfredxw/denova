@@ -100,6 +100,15 @@ func TestPlatformManagementHostOnlyClassification(t *testing.T) {
 		{"/api/platform/manage/packages/plugin/example/impact", http.MethodGet, false},
 		{"/api/platform/manage/development", http.MethodGet, false},
 		{"/api/platform/manage/projects/p1/extensions", http.MethodGet, false},
+		{"/api/platform/manage/instances/one/export", http.MethodGet, true},
+		{"/api/platform/manage/instances/one/export", http.MethodHead, true},
+		{"/api/platform/manage/development/dev1/check", http.MethodGet, true},
+		{"/api/platform/manage/development/dev1/check", http.MethodHead, true},
+		{"/api/platform/manage/development/dev1/build", http.MethodGet, false},
+		{"/api/platform/manage/development/dev1/build", http.MethodHead, false},
+		{"/api/platform/manage/packages/plugin/example/update", http.MethodGet, true},
+		{"/api/platform/manage/packages/plugin/example/update", http.MethodHead, true},
+		{"/api/platform/manage/packages/game/example/update", http.MethodGet, true},
 		{"/api/platform/manage/instances/one", http.MethodPatch, false},
 		{"/api/platform/manage/instances/one", http.MethodDelete, false},
 		{"/api/platform/manage/runtimes/one/consumers/two", http.MethodDelete, false},
@@ -174,5 +183,20 @@ func TestPlatformManagementReadsServeAuthenticatedLANClients(t *testing.T) {
 	local := ut.PerformRequest(server.engine.Engine, http.MethodPost, "/api/platform/manage/instances/one/open", &ut.Body{Body: bytes.NewBufferString(`{}`), Len: 2}, ut.Header{Key: "Content-Type", Value: "application/json"})
 	if local.Code == http.StatusForbidden {
 		t.Fatalf("local host action rejected: %d %s", local.Code, local.Body.String())
+	}
+	for _, sideEffect := range []struct{ method, path string }{
+		{http.MethodGet, "/api/platform/manage/instances/one/export"},
+		{http.MethodGet, "/api/platform/manage/development/dev1/check"},
+		{http.MethodGet, "/api/platform/manage/packages/plugin/example/update"},
+		{http.MethodHead, "/api/platform/manage/instances/one/export"},
+	} {
+		blocked := ut.PerformRequest(server.engine.Engine, sideEffect.method, sideEffect.path, nil, remote...)
+		if blocked.Code != http.StatusForbidden || !strings.Contains(blocked.Body.String(), "LOCAL_HOST_ONLY") {
+			t.Fatalf("remote side-effect read %s %s: %d %s", sideEffect.method, sideEffect.path, blocked.Code, blocked.Body.String())
+		}
+	}
+	write := ut.PerformRequest(server.engine.Engine, http.MethodPatch, "/api/platform/manage/instances/one", &ut.Body{Body: bytes.NewBufferString(`{"title":"moved"}`), Len: len(`{"title":"moved"}`)}, append(remote, ut.Header{Key: "Content-Type", Value: "application/json"})...)
+	if write.Code == http.StatusForbidden {
+		t.Fatalf("remote authorized write rejected: %d %s", write.Code, write.Body.String())
 	}
 }

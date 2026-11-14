@@ -53,7 +53,10 @@ export function InstalledGameStory({ instance, item, active, picker, onRefresh }
   const storyControls = <div className="flex flex-wrap items-center gap-2">
       <StoryPicker {...picker} />
       <Badge variant="outline" className="max-w-full truncate">{gameName}{release ? ' · ' + release.manifest.version : ''}</Badge>
-      <Button size="sm" variant="ghost" asChild><a href={`${managementBase}/instances/${instance.instanceId}/export`}>{t('platform.exportSave')}</a></Button>
+      <Button size="sm" variant="ghost" onClick={() => {
+        if (!hostLocal) { setError(t('platform.errors.LOCAL_HOST_ONLY')); return }
+        window.location.href = `${managementBase}/instances/${instance.instanceId}/export`
+      }}>{t('platform.exportSave')}</Button>
       {item && item.currentRelease !== instance.releaseId && <Button size="sm" variant="outline" disabled={busy || !hostLocal || !item.enabled || item.removed || !!item.unavailableReason} onClick={() => { setError(''); setUpgrade(item.currentRelease) }}>{t('platform.github.useInstalledUpdate')}</Button>}
     </div>
   return <div className="flex min-h-0 flex-1 flex-col bg-background">
