@@ -87,6 +87,22 @@ func TestHeadlessTurnSettlesWithPlanAndUsage(t *testing.T) {
 
 // Product tools must reach Host over the private MCP server; a native tool call
 // mirror must never settle them.
+// An image turn must reach the CLI as a .json prompt file, never as a
+// --prompt-json argument: base64 in the argument list overflows the Windows
+// command-line limit before the CLI can read it. The fixture asserts the
+// channel shape and block fields.
+func TestHeadlessImageTravelsAsPromptFile(t *testing.T) {
+	input := fixtureInput(t)
+	input.Attachments = []agentschema.Attachment{fixtureAttachment(t, 512, 512)}
+	result, err := fixtureClient(t, "image").Run(t.Context(), input, &recordingHost{})
+	if err != nil || !result.Settled {
+		t.Fatalf("image turn result: %+v %v", result, err)
+	}
+	if result.Text != "Story saved." {
+		t.Fatalf("image turn payload: %+v", result)
+	}
+}
+
 func TestHeadlessRoutesHostToolThroughMCP(t *testing.T) {
 	host := &recordingHost{}
 	result, err := fixtureClient(t, "tool").Run(t.Context(), fixtureInput(t), host)
@@ -114,8 +130,8 @@ func TestHeadlessResumeSkipsHistoryReplay(t *testing.T) {
 }
 
 // A rebuilt conversation with no provider session must replay historical
-// images as media blocks: the fixture process verifies the --prompt-json
-// payload carries both the user image and the tool image.
+// images as media blocks: the fixture process verifies the .json prompt-file
+// carries both the user image and the tool image.
 func TestHeadlessRebuildCarriesHistoryImages(t *testing.T) {
 	image := fixtureAttachment(t, 64, 64)
 	input := fixtureInput(t)
@@ -262,6 +278,24 @@ func TestGrokHeadlessFixture(t *testing.T) {
 	os.Exit(0)
 }
 
+// runFixture must see the image turn as a --prompt-file whose .json body is a
+// legal ACP block list: the fix keeps base64 out of the process arguments.
+func verifyImagePromptFixture(prompt []byte) {
+	var blocks []map[string]any
+	if err := json.Unmarshal(prompt, &blocks); err != nil {
+		fmt.Fprintln(os.Stderr, "fixture could not parse image prompt:", err)
+		os.Exit(10)
+	}
+	if len(blocks) != 2 || blocks[0]["type"] != "text" || blocks[1]["type"] != "image" {
+		fmt.Fprintln(os.Stderr, "fixture expected text+image blocks:", blocks)
+		os.Exit(11)
+	}
+	if blocks[1]["mimeType"] == nil {
+		fmt.Fprintln(os.Stderr, "fixture expected mimeType on the image block:", blocks[1])
+		os.Exit(12)
+	}
+}
+
 func runFixture(mode string) {
 	promptFile := ""
 	promptJSON := ""
@@ -276,6 +310,10 @@ func runFixture(mode string) {
 		if arg == "-r" && index+1 < len(os.Args) {
 			resumed = os.Args[index+1] != ""
 		}
+		if arg == "--prompt-json" {
+			fmt.Fprintln(os.Stderr, "fixture must not receive --prompt-json")
+			os.Exit(9)
+		}
 	}
 	prompt := []byte(promptJSON)
 	if promptJSON == "" {
@@ -286,6 +324,14 @@ func runFixture(mode string) {
 		}
 		prompt = reader
 	}
+	switch mode {
+	case "image":
+		if filepath.Ext(promptFile) != ".json" {
+			fmt.Fprintln(os.Stderr, "fixture expected a .json prompt file:", promptFile)
+			os.Exit(13)
+		}
+		verifyImagePromptFixture(prompt)
+	}
 	if mode == "resume" {
 		if !resumed {
 			os.Exit(5)
@@ -295,7 +341,11 @@ func runFixture(mode string) {
 		}
 	}
 	if mode == "media" {
-		verifyMediaPrompt(promptJSON)
+		if filepath.Ext(promptFile) != ".json" {
+			fmt.Fprintln(os.Stderr, "fixture expected a .json prompt file:", promptFile)
+			os.Exit(13)
+		}
+		verifyMediaPrompt(prompt)
 	}
 	emit := func(value any) {
 		body, _ := json.Marshal(value)
@@ -319,15 +369,11 @@ func runFixture(mode string) {
 	emit(map[string]any{"type": "end", "stopReason": "end_turn", "sessionId": "session-1", "usage": map[string]int{"input_tokens": 120, "output_tokens": 25, "cache_read_input_tokens": 40, "reasoning_tokens": 5, "total_tokens": 145}})
 }
 
-// verifyMediaPrompt checks a rebuilt conversation's --prompt-json payload: the
-// historical images must be present as media blocks after the reconstruction
-// text, and the stale "not re-sent" copy must be gone.
-func verifyMediaPrompt(argument string) {
-	if argument == "" {
-		fmt.Fprintln(os.Stderr, "media turn did not use --prompt-json")
-		os.Exit(12)
-	}
-	if strings.Contains(argument, "not re-sent") {
+// verifyMediaPrompt checks a rebuilt conversation's .json prompt-file payload:
+// the historical images must be present as media blocks after the
+// reconstruction text, and the stale "not re-sent" copy must be gone.
+func verifyMediaPrompt(argument []byte) {
+	if strings.Contains(string(argument), "not re-sent") {
 		fmt.Fprintln(os.Stderr, "stale no-media copy left in the prompt")
 		os.Exit(13)
 	}

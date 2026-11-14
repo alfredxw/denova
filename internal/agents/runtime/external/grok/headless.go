@@ -26,10 +26,12 @@ import (
 	_ "image/png"
 )
 
-// maxPromptArgumentBytes keeps the JSON prompt inside the kernel's per-argument
-// limit (128 KiB on Linux), which is the only channel that carries images: the
-// CLI has no stdin input format on this channel.
-const maxPromptArgumentBytes = 120 << 10
+// maxPromptPayloadBytes budgets one prompt payload (text plus any encoded
+// images). It bounds the attempt prompt file's size and the picture quality
+// fallback ladder; it is a product budget, not an operating-system limit.
+// Images travel inside a .json prompt file, never in the process arguments,
+// which Windows limits to 32767 UTF-16 code units for the whole command line.
+const maxPromptPayloadBytes = 120 << 10
 
 // hostTools are the only built-in tools a product turn keeps. Everything that
 // can change the project must travel through use_tool to the host MCP server;
@@ -178,26 +180,30 @@ func (c *Client) startHeadless(ctx context.Context, input external.Input, host e
 	if err := os.WriteFile(filepath.Join(attempt.home, "config.toml"), body, 0o600); err != nil {
 		return nil, err
 	}
-	// An image-bearing turn must travel as one JSON argument: this channel has no
-	// stdin input format. Historical images follow the text records and precede
-	// this turn's attachments, so a rebuilt conversation keeps its media without
-	// breaking record order. A text-only turn keeps the prompt out of the process
-	// arguments entirely.
+// Both channels write the prompt to a file; the process arguments only ever
+	// carry short flags and paths. An image-bearing turn writes ACP content
+	// blocks as a .json file, which the CLI parses as blocks; a text-only turn
+	// uses a plain .txt file. Historical images follow the text records and
+	// precede this turn's attachments, so a rebuilt conversation keeps its media
+	// without breaking record order. Keeping encoded images out of the argument
+	// list matters on Windows, where CreateProcessW rejects a command line over
+	// 32767 UTF-16 code units well before the CLI could ever read it.
 	attachments := append(append([]agentschema.Attachment(nil), historyImages...), input.Attachments...)
 	args := append([]string{}, c.options.Args...)
+	attempt.promptPath = filepath.Join(attempt.home, "prompt.txt")
+	promptBody := prompt
 	if len(attachments) > 0 {
-		encoded, err := promptArgument(prompt, attachments)
+		attempt.promptPath = filepath.Join(attempt.home, "prompt.json")
+		imagePrompt, err := promptContent(prompt, attachments)
 		if err != nil {
 			return nil, err
 		}
-		args = append(args, "--prompt-json", encoded)
-	} else {
-		attempt.promptPath = filepath.Join(attempt.home, "prompt.txt")
-		if err := os.WriteFile(attempt.promptPath, []byte(prompt), 0o600); err != nil {
-			return nil, err
-		}
-		args = append(args, "--prompt-file", attempt.promptPath)
+		promptBody = imagePrompt
 	}
+	if err := os.WriteFile(attempt.promptPath, []byte(promptBody), 0o600); err != nil {
+		return nil, err
+	}
+	args = append(args, "--prompt-file", attempt.promptPath)
 	args = append(args,
 		"--output-format", "streaming-json",
 		"--model", settings.Model,
@@ -230,18 +236,23 @@ func (c *Client) startHeadless(ctx context.Context, input external.Input, host e
 		return nil, err
 	}
 	attempt.out, attempt.cmd = out, cmd
+	if err := verifyCommandLine(c.options.Executable, args); err != nil {
+		return nil, err
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start Grok headless attempt: %w", err)
 	}
 	return attempt, nil
 }
 
-// promptArgument encodes the turn for --prompt-json. The headless channel has no
-// stdin input format, so images travel as one JSON argument; each one is
-// re-encoded to fit the per-argument limit instead of being dropped or failing
-// the turn.
-func promptArgument(prompt string, attachments []agentschema.Attachment) (string, error) {
-	available := maxPromptArgumentBytes - len(prompt) - 1024
+// promptContent encodes the turn as ACP content blocks for the .json prompt
+// file: one text block plus one image block per attachment. The headless
+// channel has no stdin input format, and images stay out of the process
+// arguments, so each picture is re-encoded to fit the payload budget instead of
+// being dropped or failing the turn. `mimeType` is the field the installed CLI
+// requires; the ACP-spec `mime_type` spelling is rejected at parse time.
+func promptContent(prompt string, attachments []agentschema.Attachment) (string, error) {
+	available := maxPromptPayloadBytes - len(prompt) - 1024
 	if available < 8<<10 {
 		return "", external.MarkMediaUnsupported(errors.New("Grok headless prompt is too long to carry images"))
 	}
@@ -262,8 +273,8 @@ func promptArgument(prompt string, attachments []agentschema.Attachment) (string
 	if err != nil {
 		return "", err
 	}
-	if len(body) > maxPromptArgumentBytes {
-		return "", external.MarkMediaUnsupported(errors.New("Grok headless prompt exceeded its argument limit"))
+	if len(body) > maxPromptPayloadBytes {
+		return "", external.MarkMediaUnsupported(errors.New("Grok headless prompt exceeded its payload limit"))
 	}
 	return string(body), nil
 }
