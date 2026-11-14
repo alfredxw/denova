@@ -51,6 +51,33 @@ describe('ModelProfileSwitcher', () => {
       expect(settingsMocks.fetchEngineModels).toHaveBeenCalledWith(engine)
     })
   }
+  it('preserves the saved Grok context window when switching models', async () => {
+    settingsMocks.fetchEngineModels.mockResolvedValue({ items: [
+      { id: 'external-model', display_name: 'External model', efforts: [] },
+      { id: 'second-model', display_name: 'Second model', efforts: [] },
+    ] })
+    const patch = vi.fn().mockResolvedValue(true)
+    const controller: ConversationConfigController = {
+      snapshot: { agent_kind: 'general', profile_id: 'removed', thinking_level: 'medium', approval_mode: 'write', revision: 1, runtime: { kind: 'grok', grok: { model: 'external-model', context_window: 500000 } } },
+      initialized: true, loading: false, saving: false, error: null, patch, reload: vi.fn(),
+    }
+    render(<ModelProfileSwitcher agentKey="general" conversationConfig={controller} />)
+    await userEvent.click(screen.getByRole('button', { name: /切换模型/ }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Second model' }))
+    expect(patch).toHaveBeenLastCalledWith({ grok: { model: 'second-model', context_window: 500000 } })
+  })
+  it('preserves the saved Grok context window when changing reasoning effort', async () => {
+    settingsMocks.fetchEngineModels.mockResolvedValue({ items: [{ id: 'grok-model', display_name: 'Grok model', efforts: ['high'] }] })
+    const patch = vi.fn().mockResolvedValue(true)
+    const controller: ConversationConfigController = {
+      snapshot: { agent_kind: 'general', profile_id: 'removed', thinking_level: 'medium', approval_mode: 'write', revision: 1, runtime: { kind: 'grok', grok: { model: 'grok-model', context_window: 500000 } } },
+      initialized: true, loading: false, saving: false, error: null, patch, reload: vi.fn(),
+    }
+    render(<ModelProfileSwitcher agentKey="general" conversationConfig={controller} />)
+    await userEvent.click(screen.getByRole('button', { name: /切换模型/ }))
+    await userEvent.click(await screen.findByRole('button', { name: '高' }))
+    expect(patch).toHaveBeenLastCalledWith({ grok: { model: 'grok-model', effort: 'high', context_window: 500000 } })
+  })
   it('keeps configuration and retry accessible after the conversation fails to load', async () => {
     settingsMocks.fetchSettings.mockResolvedValue({ effective: { openai_model: 'test-model' } })
     const open = vi.fn()
