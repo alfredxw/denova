@@ -172,6 +172,19 @@ type PlanRequest struct {
 	// precedence over detail-aware resolution and are never set by package or
 	// extension imports.
 	OverrideChoices map[string]string `json:"override_choices,omitempty"`
+	// ConfirmReview binds a confirmed import to the duplicate entries the user
+	// reviewed at preview time. Its Duplicates carry the local identity and
+	// version captured then; the confirm request must match them or the
+	// affected entries are reported as changed/unreviewed and kept local.
+	ConfirmReview *ConfirmReview `json:"confirm_review,omitempty"`
+}
+
+// ConfirmReview is the confirmation payload of a character card import: the
+// reviewed duplicates (with preview-time local ID and version) and the
+// per-name decisions the user made about them.
+type ConfirmReview struct {
+	Duplicates []ImportDuplicate `json:"duplicates"`
+	Choices    map[string]string `json:"choices"`
 }
 
 type PlanItem struct {
@@ -207,7 +220,16 @@ type Plan struct {
 	// ImportDuplicates lists same-name lore entries detected during a character
 	// card import, with content digests and the automatic resolution suggestion,
 	// so the UI can ask for confirmation before any replacement is applied.
+	// Each duplicate also carries the local entry identity and version at plan
+	// time, so a later confirmation can validate that nothing changed meanwhile.
 	ImportDuplicates []ImportDuplicate `json:"import_duplicates,omitempty"`
+
+	// ImportChanged and ImportUnreviewed report duplicates that a confirmed
+	// import must not replace: the local entry was edited or deleted since the
+	// reviewed preview (ImportChanged), or a same-name entry appeared that the
+	// user never reviewed (ImportUnreviewed). Both keep local content untouched.
+	ImportChanged   []string `json:"import_changed,omitempty"`
+	ImportUnreviewed []string `json:"import_unreviewed,omitempty"`
 
 	// Unavailable selections keep the review visible but prevent application
 	// until resources are resolved or the user deselects those defaults.
@@ -216,12 +238,16 @@ type Plan struct {
 
 // ImportDuplicate reports a same-name lore entry detected during a character
 // card import: the existing local entry against the incoming entry, with the
-// backend's automatic resolution suggestion ("override" or "keep").
+// backend's automatic resolution suggestion ("override" or "keep"). ExistingID
+// and ExistingVersion bind the review to the exact local entry the user saw:
+// confirmation only replaces an entry whose identity and digest still match.
 type ImportDuplicate struct {
 	Name            string `json:"name"`
 	ExistingPreview string `json:"existing_preview"`
 	IncomingPreview string `json:"incoming_preview"`
 	Suggested       string `json:"suggested"`
+	ExistingID      string `json:"existing_id"`
+	ExistingVersion string `json:"existing_version"`
 }
 
 // PublicPlan excludes staged bytes and filesystem locations from API responses.

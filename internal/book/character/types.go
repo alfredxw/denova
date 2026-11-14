@@ -41,15 +41,27 @@ type ImportResult struct {
 	// replace; present only while user confirmation is still required. After
 	// confirmation the import returns Overridden/Skipped instead.
 	PendingOverrides []ImportDuplicatePreview `json:"pending_overrides,omitempty"`
+	// ReviewPlanID identifies the held plan backing PendingOverrides: the
+	// confirm request must reuse it so the frozen preview and reviewed
+	// duplicate versions stay the ones the user saw.
+	ReviewPlanID string `json:"review_plan_id,omitempty"`
+	// ReviewChanged indicates the confirmed preview no longer matches the
+	// target Book (entries edited, deleted or newly collided since review); the
+	// returned PendingOverrides must be shown again before any replacement.
+	ReviewChanged bool `json:"review_changed,omitempty"`
 }
 
 // ImportDuplicatePreview is a same-name lore entry detected during import, with
 // the backend's automatic resolution suggestion, shown before any replacement.
+// ExistingID and ExistingVersion bind the review to the exact local entry the
+// user saw; a confirmed import validates them before replacing.
 type ImportDuplicatePreview struct {
 	Name            string `json:"name"`
 	ExistingPreview string `json:"existing_preview"`
 	IncomingPreview string `json:"incoming_preview"`
 	Suggested       string `json:"suggested"`
+	ExistingID      string `json:"existing_id"`
+	ExistingVersion string `json:"existing_version"`
 }
 
 // Preview 描述酒馆角色卡预览信息，解析但不写入 workspace。

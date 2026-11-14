@@ -33,6 +33,8 @@ interface CharacterCardImportDialogProps {
   onSemanticClassificationChange: (enabled: boolean) => void
   onImport: () => void | Promise<void>
   pendingOverrides: ImportDuplicatePreview[]
+  /** Localized notice shown above the review, e.g. that entries changed since the preview. */
+  notice?: string
   onConfirmOverrides: (choices: Record<string, string>) => void | Promise<void>
   onCancelOverrides: () => void
 }
@@ -60,6 +62,7 @@ export function CharacterCardImportDialog({
   onSemanticClassificationChange,
   onImport,
   pendingOverrides,
+  notice,
   onConfirmOverrides,
   onCancelOverrides,
 }: CharacterCardImportDialogProps) {
@@ -137,6 +140,7 @@ export function CharacterCardImportDialog({
                 <div>
                   <div className="text-xs font-medium text-[var(--nova-text)]">{t('importCard.overridesConfirmTitle')}</div>
                   <div className="mt-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('importCard.overridesConfirmHelp')}</div>
+                  {notice && <div className="mt-1 text-[11px] leading-4 text-[var(--nova-warning)]">{notice}</div>}
                 </div>
                 <ul className="space-y-2">
                   {pendingOverrides.map((dup, index) => (

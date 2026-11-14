@@ -17,6 +17,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// ReadPreview returns a frozen preview, so a confirmed character card import
+// replans against the exact converted data (including frozen classification)
+// that the user reviewed instead of reparsing the uploaded card.
+func (s *Service) ReadPreview(ctx context.Context, id string) (Preview, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	preview, _, err := s.loadPreview(id)
+	return preview, err
+}
+
 func (s *Service) ReadPlan(ctx context.Context, id string) (Plan, error) {
 	if _, err := uuid.Parse(id); err != nil {
 		return Plan{}, err

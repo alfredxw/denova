@@ -54,8 +54,21 @@ export interface CharacterCardImportOptions {
   loreClassification?: 'heuristic' | 'semantic'
   /** Acknowledges replacing existing same-name lore entries after review. */
   confirmOverrides?: boolean
-  /** Per-entry duplicate decisions, keyed by lore entry name: 'override' | 'keep'. */
-  overrideChoices?: Record<string, string>
+  /** Held plan returned by the preview; required when confirming overrides. */
+  reviewPlanId?: string
+  /**
+   * Per-entry decisions over the reviewed duplicates, each echoing the local
+   * identity and version shown in the preview: { name, existing_id,
+   * existing_version, choice: 'override' | 'keep' }.
+   */
+  overrideReview?: ImportDuplicateReviewEntry[]
+}
+
+export interface ImportDuplicateReviewEntry {
+  name: string
+  existing_id?: string
+  existing_version?: string
+  choice: 'override' | 'keep'
 }
 
 export async function importCharacterCard(
@@ -68,9 +81,10 @@ export async function importCharacterCard(
   if (options.userCharacterName) form.append('user_character_name', options.userCharacterName)
   if (options.loreClassification) form.append('lore_classification', options.loreClassification)
   if (options.confirmOverrides) form.append('confirm_overrides', '1')
-  if (options.overrideChoices && Object.keys(options.overrideChoices).length > 0) {
-    form.append('override_choices', JSON.stringify(options.overrideChoices))
-  }
+  // review_plan_id and override_review are always sent on a confirm so the
+  // server never falls back to detail-based automatic overrides.
+  if (options.reviewPlanId) form.append('review_plan_id', options.reviewPlanId)
+  form.append('override_review', JSON.stringify(options.overrideReview ?? []))
   const path = options.targetMode === 'new_book'
     ? '/api/books/import-character-card'
     : projectAPIPath(options.projectId || '', 'book/import-character-card')
