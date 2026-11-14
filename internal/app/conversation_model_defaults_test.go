@@ -166,3 +166,61 @@ func TestWritingDraftRemembersSelectionAcrossBookProjects(t *testing.T) {
 		t.Fatalf("rejected selection changed model defaults: %#v", got)
 	}
 }
+
+func TestGameRuntimeSwitchRemembersCompleteExternalSelection(t *testing.T) {
+	engines := map[config.RuntimeID]*config.RuntimeSelection{
+		config.RuntimeGrok:        {Kind: config.RuntimeGrok, Grok: &config.GrokRuntimeSettings{Model: "runtime-model", Effort: "high", ContextWindow: 48000}},
+		config.RuntimeAntigravity: {Kind: config.RuntimeAntigravity, Antigravity: &config.AntigravityRuntimeSettings{Model: "runtime-model", Effort: "high"}},
+	}
+	for kind, selection := range engines {
+		t.Run(string(kind), func(t *testing.T) {
+			application := newExecutionProfileTestApp(t)
+			binding := ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID()}
+			saved, err := application.PatchConversationConfig(t.Context(), binding, ConversationConfigPatch{Runtime: selection}, 0)
+			if err != nil {
+				t.Fatalf("switch to %s: %v", kind, err)
+			}
+			if saved.Engine().Kind != kind {
+				t.Fatalf("switch engine = %q, want %q", saved.Engine().Kind, kind)
+			}
+			layered, err := application.SettingsService().Snapshot(appsettings.Global())
+			if err != nil {
+				t.Fatal(err)
+			}
+			preferences := layered.User.AgentRuntimes.ForAgent(config.AgentKindInteractiveStory)
+			if preferences.Selected != kind {
+				t.Fatalf("remembered selection = %q, want %q", preferences.Selected, kind)
+			}
+			switch kind {
+			case config.RuntimeGrok:
+				if preferences.Grok == nil || preferences.Grok.Model != "runtime-model" || preferences.Grok.Effort != "high" || preferences.Grok.ContextWindow != 48000 {
+					t.Fatalf("remembered Grok settings = %#v", preferences.Grok)
+				}
+			case config.RuntimeAntigravity:
+				if preferences.Antigravity == nil || preferences.Antigravity.Model != "runtime-model" || preferences.Antigravity.Effort != "high" {
+					t.Fatalf("remembered Antigravity settings = %#v", preferences.Antigravity)
+				}
+			}
+			// A new Game draft must resolve the remembered engine without error.
+			draft, err := application.ConversationConfig(t.Context(), binding)
+			if err != nil {
+				t.Fatalf("new Game draft failed to parse remembered default: %v", err)
+			}
+			if draft.Engine().Kind != kind {
+				t.Fatalf("new draft engine = %q, want %q", draft.Engine().Kind, kind)
+			}
+			// Creating another story must also resolve the remembered engine.
+			second, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Second story", StoryTellerID: "classic"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			nextStory, err := application.ConversationConfig(t.Context(), ConversationConfigBinding{Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: second.ID, BranchID: "main"})
+			if err != nil {
+				t.Fatalf("new story failed to parse remembered default: %v", err)
+			}
+			if nextStory.Engine().Kind != kind {
+				t.Fatalf("new story engine = %q, want %q", nextStory.Engine().Kind, kind)
+			}
+		})
+	}
+}
