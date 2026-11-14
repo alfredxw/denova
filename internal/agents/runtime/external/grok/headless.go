@@ -136,7 +136,7 @@ func (a *headlessAttempt) close() error {
 // startHeadless launches one product turn on the headless channel. The agent
 // stdio channel exposes only the model set its built-in profile knows, while
 // this channel resolves the chat proxy catalog where newer models live.
-func (c *Client) startHeadless(ctx context.Context, input external.Input, host external.Host, settings config.GrokRuntimeSettings, instructions, prompt string) (_ *headlessAttempt, err error) {
+func (c *Client) startHeadless(ctx context.Context, input external.Input, host external.Host, settings config.GrokRuntimeSettings, instructions, prompt string, historyImages []agentschema.Attachment) (_ *headlessAttempt, err error) {
 	dir := input.Directory
 	if dir == "" {
 		dir, err = os.MkdirTemp("", "denova-grok-headless-")
@@ -179,11 +179,14 @@ func (c *Client) startHeadless(ctx context.Context, input external.Input, host e
 		return nil, err
 	}
 	// An image-bearing turn must travel as one JSON argument: this channel has no
-	// stdin input format. A text-only turn keeps the prompt out of the process
+	// stdin input format. Historical images follow the text records and precede
+	// this turn's attachments, so a rebuilt conversation keeps its media without
+	// breaking record order. A text-only turn keeps the prompt out of the process
 	// arguments entirely.
+	attachments := append(append([]agentschema.Attachment(nil), historyImages...), input.Attachments...)
 	args := append([]string{}, c.options.Args...)
-	if len(input.Attachments) > 0 {
-		encoded, err := promptArgument(prompt, input.Attachments)
+	if len(attachments) > 0 {
+		encoded, err := promptArgument(prompt, attachments)
 		if err != nil {
 			return nil, err
 		}
@@ -240,7 +243,7 @@ func (c *Client) startHeadless(ctx context.Context, input external.Input, host e
 func promptArgument(prompt string, attachments []agentschema.Attachment) (string, error) {
 	available := maxPromptArgumentBytes - len(prompt) - 1024
 	if available < 8<<10 {
-		return "", errors.New("Grok headless prompt is too long to carry images")
+		return "", external.MarkMediaUnsupported(errors.New("Grok headless prompt is too long to carry images"))
 	}
 	budget := available / len(attachments)
 	blocks := make([]map[string]any, 0, len(attachments)+1)
@@ -251,7 +254,7 @@ func promptArgument(prompt string, attachments []agentschema.Attachment) (string
 		}
 		data, err := encodeAttachment(attachment, budget)
 		if err != nil {
-			return "", err
+			return "", external.MarkMediaUnsupported(err)
 		}
 		blocks = append(blocks, map[string]any{"type": "image", "data": data, "mimeType": "image/jpeg"})
 	}
@@ -260,7 +263,7 @@ func promptArgument(prompt string, attachments []agentschema.Attachment) (string
 		return "", err
 	}
 	if len(body) > maxPromptArgumentBytes {
-		return "", errors.New("Grok headless prompt exceeded its argument limit")
+		return "", external.MarkMediaUnsupported(errors.New("Grok headless prompt exceeded its argument limit"))
 	}
 	return string(body), nil
 }

@@ -9,6 +9,7 @@ import (
 	stddraw "image/draw"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"denova/internal/agents/runtime/external"
@@ -40,24 +41,51 @@ func referenceAttachment(t *testing.T) agentschema.Attachment {
 }
 
 // The CLI resolves "@name" against its cwd, so the immutable copy must be staged
-// there before the turn starts.
+// there before the turn starts. Current and historical images share the staging
+// step but keep disjoint short-name prefixes.
 func TestStageAttachmentsCopiesReferencesIntoWorkdir(t *testing.T) {
 	dir := t.TempDir()
-	names, err := stageAttachments(external.Input{Attachments: []agentschema.Attachment{referenceAttachment(t)}}, dir)
+	image := referenceAttachment(t)
+	media, err := stageAttachments(external.Input{
+		Attachments: []agentschema.Attachment{image},
+		History: []external.Message{
+			{Role: "user", Attachments: []agentschema.Attachment{image}},
+			{Role: "assistant", ToolImages: []agentschema.Attachment{image}},
+		},
+	}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(names) != 1 || names[0] != "ref1.png" {
-		t.Fatalf("names: %#v", names)
+	if len(media.Request) != 1 || media.Request[0] != "ref1.png" {
+		t.Fatalf("request names: %#v", media.Request)
 	}
-	info, err := os.Stat(filepath.Join(dir, names[0]))
-	if err != nil || info.Size() == 0 {
-		t.Fatalf("staged reference: %v %v", info, err)
+	if len(media.History) != 2 || !slices.Equal(media.History[0], []string{"hist1.png"}) || !slices.Equal(media.History[1], []string{"hist2.png"}) {
+		t.Fatalf("history names: %#v", media.History)
+	}
+	for _, name := range append(append([]string{}, media.Request...), media.History[0]...) {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil || info.Size() == 0 {
+			t.Fatalf("staged reference: %v %v", info, err)
+		}
 	}
 }
 
 func TestStageAttachmentsRejectsNonImage(t *testing.T) {
 	if _, err := stageAttachments(external.Input{Attachments: []agentschema.Attachment{{Name: "notes.txt", MediaType: "text/plain"}}}, t.TempDir()); err == nil {
 		t.Fatal("non-image reference was accepted")
+	}
+}
+
+// Non-image historical media has no reference channel; only images are staged.
+func TestStageAttachmentsSkipsNonImageHistory(t *testing.T) {
+	image := referenceAttachment(t)
+	media, err := stageAttachments(external.Input{History: []external.Message{
+		{Role: "user", Attachments: []agentschema.Attachment{{Name: "notes.txt", MediaType: "text/plain"}, image}},
+	}}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(media.History[0], []string{"hist1.png"}) {
+		t.Fatalf("history names: %#v", media.History)
 	}
 }

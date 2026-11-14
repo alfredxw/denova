@@ -73,6 +73,7 @@ const agentRuntime = {
   'agentRuntime.capabilityUnsupported': "此运行时不支持该操作。",
   'agentRuntime.operationFailed': "执行失败，已确认的内容和变更已保留。",
   'agentRuntime.contentPolicyRejected': "上游模型的内容安全策略拒绝了本次请求。请调整相关描述后重试。",
+  'agentRuntime.historyMediaUnsupported': "当前引擎无法携带会话历史中的图片，历史图片未随上下文恢复。请减少历史图片或新建会话后重试。",
   'agentRuntime.turnIncomplete': "回合长时间没有取得进展，已保留正文并结束本次执行。可继续本回合补齐状态与选项。",
   'agentRuntime.interrupted': "执行已中断。处理待答问题后可发送新消息继续。",
   'agentRuntime.configuration.otherRuntime': "该配置只对原引擎生效。",

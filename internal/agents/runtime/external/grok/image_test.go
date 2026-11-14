@@ -10,7 +10,10 @@ import (
 	stddraw "image/draw"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"denova/internal/agents/runtime/external"
 
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
@@ -75,5 +78,15 @@ func TestPromptArgumentSharesBudgetAcrossImages(t *testing.T) {
 	}
 	if len(argument) > maxPromptArgumentBytes {
 		t.Fatalf("argument exceeded its limit: %d", len(argument))
+	}
+}
+
+// Images that cannot travel through the single-argument channel surface a
+// media failure the product can localize, instead of failing with a bare
+// generic error or silently dropping the images.
+func TestPromptArgumentMarksUnacceptableBudget(t *testing.T) {
+	_, err := promptArgument(strings.Repeat("x", maxPromptArgumentBytes), []agentschema.Attachment{fixtureAttachment(t, 64, 64)})
+	if !external.IsMediaUnsupported(err) {
+		t.Fatalf("budget failure was not marked as media unsupported: %v", err)
 	}
 }

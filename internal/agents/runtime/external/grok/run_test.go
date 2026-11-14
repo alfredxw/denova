@@ -17,6 +17,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
 
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -109,6 +110,50 @@ func TestHeadlessResumeSkipsHistoryReplay(t *testing.T) {
 	result, err := fixtureClient(t, "resume").Run(t.Context(), input, &recordingHost{})
 	if err != nil || !result.Settled || result.SessionID != "session-1" {
 		t.Fatalf("resume: %+v %v", result, err)
+	}
+}
+
+// A rebuilt conversation with no provider session must replay historical
+// images as media blocks: the fixture process verifies the --prompt-json
+// payload carries both the user image and the tool image.
+func TestHeadlessRebuildCarriesHistoryImages(t *testing.T) {
+	image := fixtureAttachment(t, 64, 64)
+	input := fixtureInput(t)
+	input.History = []external.Message{
+		{Role: "user", Text: "Earlier reference", Attachments: []agentschema.Attachment{image}},
+		{Role: "assistant", Text: "Confirmed.", ToolImages: []agentschema.Attachment{image}},
+	}
+	result, err := fixtureClient(t, "media").Run(t.Context(), input, &recordingHost{})
+	if err != nil || !result.Settled {
+		t.Fatalf("rebuild with images: %+v %v", result, err)
+	}
+}
+
+// Rebuilding the canonical conversation collects historical images in record
+// order; a resumed provider session keeps its own media and replays nothing.
+func TestRenderPromptReplaysHistoryImages(t *testing.T) {
+	image := fixtureAttachment(t, 64, 64)
+	prompt, images, err := renderPrompt(external.Input{History: []external.Message{
+		{Role: "user", Text: "Use this", Attachments: []agentschema.Attachment{image}},
+		{Role: "assistant", Text: "Done.", ToolImages: []agentschema.Attachment{image}},
+	}, Text: "Continue"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(images) != 2 {
+		t.Fatalf("historical images: %d", len(images))
+	}
+	if strings.Contains(prompt, "not re-sent") {
+		t.Fatal("stale no-media copy left in the reconstruction prompt")
+	}
+	prompt, images, err = renderPrompt(external.Input{SessionID: "session-1", History: []external.Message{
+		{Role: "user", Text: "Old", Attachments: []agentschema.Attachment{image}},
+	}, Text: "Go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(images) != 0 || strings.Contains(prompt, "prior conversation data") {
+		t.Fatalf("resume replayed history: images=%d prompt=%q", len(images), prompt)
 	}
 }
 
@@ -219,19 +264,27 @@ func TestGrokHeadlessFixture(t *testing.T) {
 
 func runFixture(mode string) {
 	promptFile := ""
+	promptJSON := ""
 	resumed := false
 	for index, arg := range os.Args {
 		if arg == "--prompt-file" && index+1 < len(os.Args) {
 			promptFile = os.Args[index+1]
 		}
+		if arg == "--prompt-json" && index+1 < len(os.Args) {
+			promptJSON = os.Args[index+1]
+		}
 		if arg == "-r" && index+1 < len(os.Args) {
 			resumed = os.Args[index+1] != ""
 		}
 	}
-	prompt, err := os.ReadFile(promptFile)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "fixture could not read prompt:", err)
-		os.Exit(2)
+	prompt := []byte(promptJSON)
+	if promptJSON == "" {
+		reader, err := os.ReadFile(promptFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "fixture could not read prompt:", err)
+			os.Exit(2)
+		}
+		prompt = reader
 	}
 	if mode == "resume" {
 		if !resumed {
@@ -240,6 +293,9 @@ func runFixture(mode string) {
 		if strings.Contains(string(prompt), "prior conversation") {
 			os.Exit(6)
 		}
+	}
+	if mode == "media" {
+		verifyMediaPrompt(promptJSON)
 	}
 	emit := func(value any) {
 		body, _ := json.Marshal(value)
@@ -261,6 +317,49 @@ func runFixture(mode string) {
 	emit(map[string]any{"type": "plan", "entries": []map[string]string{{"content": "Save story", "status": "completed", "priority": "medium"}}})
 	emit(map[string]any{"type": "usage", "usage": map[string]int{"input_tokens": 100, "output_tokens": 20, "cache_read_input_tokens": 40, "reasoning_tokens": 5}})
 	emit(map[string]any{"type": "end", "stopReason": "end_turn", "sessionId": "session-1", "usage": map[string]int{"input_tokens": 120, "output_tokens": 25, "cache_read_input_tokens": 40, "reasoning_tokens": 5, "total_tokens": 145}})
+}
+
+// verifyMediaPrompt checks a rebuilt conversation's --prompt-json payload: the
+// historical images must be present as media blocks after the reconstruction
+// text, and the stale "not re-sent" copy must be gone.
+func verifyMediaPrompt(argument string) {
+	if argument == "" {
+		fmt.Fprintln(os.Stderr, "media turn did not use --prompt-json")
+		os.Exit(12)
+	}
+	if strings.Contains(argument, "not re-sent") {
+		fmt.Fprintln(os.Stderr, "stale no-media copy left in the prompt")
+		os.Exit(13)
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(argument), &blocks); err != nil {
+		fmt.Fprintln(os.Stderr, "fixture could not parse prompt blocks:", err)
+		os.Exit(14)
+	}
+	text := ""
+	images := 0
+	for _, block := range blocks {
+		switch block.Type {
+		case "text":
+			text += block.Text
+		case "image":
+			if block.Data != "" {
+				images++
+			}
+		}
+	}
+	if images != 2 {
+		fmt.Fprintf(os.Stderr, "media turn carried %d images, want 2\n", images)
+		os.Exit(15)
+	}
+	if !strings.Contains(text, "prior conversation data") || !strings.Contains(text, "Current user request") {
+		fmt.Fprintln(os.Stderr, "reconstruction text missing from the media prompt")
+		os.Exit(16)
+	}
 }
 
 type bearerTransport struct{ token string }
