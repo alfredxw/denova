@@ -263,3 +263,204 @@ func TestAbortBindingSurvivesRestart(t *testing.T) {
 		t.Fatalf("binding after restart = %q, %v", binding, err)
 	}
 }
+
+// The engine-switch binding must survive a cold restart: the resumed input was
+// accepted with BoundCommandID, and a recovery abort after reopening the
+// journal must still settle the continued input.
+func TestAbortBindingSurvivesRestartAfterEngineSwitchResume(t *testing.T) {
+	store, _, state, options, dir := controlFixture(t)
+	engines := NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstStarted := make(chan struct{})
+	first, err := control.Start(t.Context(), ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "round-1", Message: "Round one"}}, abortWaitCycle(firstStarted), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstOutcome := make(chan agentrun.Outcome, 1)
+	go func() { firstOutcome <- first.Wait(t.Context()) }()
+	awaitSignal(t, firstStarted, "round one did not start")
+	if _, err := control.Submit(t.Context(), Command{Kind: agentexecution.CommandSuspend, CommandID: "pause-1", OperationID: first.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	if outcome := <-firstOutcome; outcome.Status != agentrun.OutcomeSuspended {
+		t.Fatalf("round one outcome: %+v", outcome)
+	}
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "round-1"); err != nil {
+		t.Fatal(err)
+	}
+	resumedStarted := make(chan struct{})
+	resumed, err := control.Start(t.Context(), ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "resume-round", Message: "Round one"}, BoundCommandID: "round-1"}, abortWaitCycle(resumedStarted), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumedOutcome := make(chan agentrun.Outcome, 1)
+	go func() { resumedOutcome <- resumed.Wait(t.Context()) }()
+	awaitSignal(t, resumedStarted, "resumed round did not start")
+	if _, err := control.Submit(t.Context(), Command{Kind: agentexecution.CommandSuspend, CommandID: "pause-2", OperationID: resumed.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	if outcome := <-resumedOutcome; outcome.Status != agentrun.OutcomeSuspended {
+		t.Fatalf("resumed round outcome: %+v", outcome)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "control.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := t.TempDir()
+	if err := os.WriteFile(filepath.Join(moved, "control.jsonl"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := session.NewStore(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	sess, err := reopened.Get("control")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := SessionState(options, sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewEngines()
+	defer restarted.Close()
+	control, err = restarted.ExternalControl(options, restored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := control.Status(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var abortAction agentexecution.RuntimeRecoveryAction
+	for _, action := range agentexecution.RuntimeRecoveryActions(status) {
+		if action.Kind == agentexecution.RuntimeRecoveryAbort {
+			abortAction = action
+			break
+		}
+	}
+	if abortAction.Kind == "" {
+		t.Fatalf("no recovery abort action in %+v", status)
+	}
+	aborted, err := control.Resume(t.Context(), abortAction, abortWaitCycle(make(chan struct{})), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome := aborted.Wait(t.Context()); outcome.Status != agentrun.OutcomeAborted {
+		t.Fatalf("restarted recovery abort outcome: %+v", outcome)
+	}
+	if binding, err := control.AbortedRecoveryInputCommandID(t.Context(), abortAction); err != nil || binding != "round-1" {
+		t.Fatalf("binding after restart = %q, %v; want the continued round-1 input", binding, err)
+	}
+}
+
+// After an engine switch the resume request carries a new CommandID while its
+// cycle continues the original input (BoundCommandID). A later stop on the
+// resumed round must bind the continued input, not the resume request itself.
+func TestAbortBindsInputResumedAfterEngineSwitch(t *testing.T) {
+	_, _, state, options, _ := controlFixture(t)
+	engines := NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstStarted := make(chan struct{})
+	first, err := control.Start(t.Context(), ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "round-1", Message: "Round one"}}, abortWaitCycle(firstStarted), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstOutcome := make(chan agentrun.Outcome, 1)
+	go func() { firstOutcome <- first.Wait(t.Context()) }()
+	awaitSignal(t, firstStarted, "round one did not start")
+	if _, err := control.Submit(t.Context(), Command{Kind: agentexecution.CommandSuspend, CommandID: "pause-1", OperationID: first.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	if outcome := <-firstOutcome; outcome.Status != agentrun.OutcomeSuspended {
+		t.Fatalf("round one outcome: %+v", outcome)
+	}
+
+	// Engine switch detaches the paused controller; the journal keeps the input.
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "round-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The resume request continues the original input: new CommandID, bound
+	// to the player input it actually continues.
+	resumedStarted := make(chan struct{})
+	resumed, err := control.Start(t.Context(), ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "resume-round", Message: "Round one"}, BoundCommandID: "round-1"}, abortWaitCycle(resumedStarted), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumedOutcome := make(chan agentrun.Outcome, 1)
+	go func() { resumedOutcome <- resumed.Wait(t.Context()) }()
+	awaitSignal(t, resumedStarted, "resumed round did not start")
+	if _, err := control.Submit(t.Context(), Command{Kind: agentexecution.CommandSuspend, CommandID: "pause-2", OperationID: resumed.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	if outcome := <-resumedOutcome; outcome.Status != agentrun.OutcomeSuspended {
+		t.Fatalf("resumed round outcome: %+v", outcome)
+	}
+
+	// Stopping the resumed round must bind the continued input, not the
+	// resume request that started this cycle.
+	if _, err := control.Submit(t.Context(), Command{Kind: agentexecution.CommandAbort, CommandID: "stop-2", OperationID: resumed.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	if binding, err := control.AbortedInputCommandID(t.Context(), "stop-2"); err != nil || binding != "round-1" {
+		t.Fatalf("binding after abort = %q, %v; want the continued round-1 input", binding, err)
+	}
+}
+
+// The recovery abort path must keep the engine-switch binding: the resume
+// input was accepted with BoundCommandID and the recovery receipt must bind
+// the continued input, never the resume request itself.
+func TestRecoveryAbortBindsResumedInputAfterEngineSwitch(t *testing.T) {
+	_, _, state, options, _ := controlFixture(t)
+	engines := NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := control.Start(t.Context(), ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "resume-round", Message: "Round one"}, BoundCommandID: "round-1"}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Process loss: the durable input is running but has no live runner.
+	control.mu.Lock()
+	control.active = nil
+	control.mu.Unlock()
+	status, err := control.Status(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var abortAction agentexecution.RuntimeRecoveryAction
+	for _, action := range agentexecution.RuntimeRecoveryActions(status) {
+		if action.Kind == agentexecution.RuntimeRecoveryAbort {
+			abortAction = action
+			break
+		}
+	}
+	if abortAction.Kind == "" {
+		t.Fatalf("no recovery abort action in %+v", status)
+	}
+	aborted, err := control.Resume(t.Context(), abortAction, abortWaitCycle(make(chan struct{})), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome := aborted.Wait(t.Context()); outcome.Status != agentrun.OutcomeAborted {
+		t.Fatalf("recovery abort outcome: %+v", outcome)
+	}
+	if binding, err := control.AbortedRecoveryInputCommandID(t.Context(), abortAction); err != nil || binding != "round-1" {
+		t.Fatalf("recovery binding = %q, %v; want the continued round-1 input", binding, err)
+	}
+}

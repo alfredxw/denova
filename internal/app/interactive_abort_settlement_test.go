@@ -21,31 +21,45 @@ func TestAbortSettlementIsLimitedToExactGameCommand(t *testing.T) {
 	store := interactive.NewStore(root)
 	defer store.Close()
 	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "Parallel accepted inputs"})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	before, err := store.Snapshot(story.ID, "main")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	makeInput := func(command string) string {
 		t.Helper()
 		digest := sha256.Sum256([]byte(command))
 		identity := interactive.DomainCommitIdentity{
-			CommandID: command,
+			CommandID:   command,
 			OperationID: "external-game-" + hex.EncodeToString(digest[:16]),
-			Cycle: 1,
+			Cycle:       1,
 		}
 		intent, err := interactive.NewPlayerInputIntent(identity, "main", "Input for "+command)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		accepted, err := store.CommitPlayerInput(story.ID, intent)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		return accepted.Event.ID
 	}
 	first := makeInput("first")
 	second := makeInput("second")
-	if err := settleAbortedExternalGameInput(store, story.ID, "main", "first"); err != nil { t.Fatal(err) }
-	if err := settleAbortedExternalGameInput(store, story.ID, "main", "first"); err != nil { t.Fatalf("retry: %v", err) }
+	if err := settleAbortedExternalGameInput(store, story.ID, "main", "first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := settleAbortedExternalGameInput(store, story.ID, "main", "first"); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
 	cold := interactive.NewStore(root)
 	defer cold.Close()
 	after, err := cold.Snapshot(story.ID, "main")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if after.TurnCount != before.TurnCount || !reflect.DeepEqual(after.State, before.State) {
 		t.Fatal("aborting a command changed committed story state")
 	}
@@ -306,5 +320,98 @@ func TestRecoveryAbortReplayKeepsNextPausedGameRoundInput(t *testing.T) {
 	}
 	if status.Phase != agentrun.RunPhaseSuspended || status.ActiveCommandID != "round-2" {
 		t.Fatalf("replayed recovery abort changed the paused round: %+v", status)
+	}
+}
+
+// TestAbortSettlementAfterEngineSwitchResumeClearsOriginalInput covers the full
+// engine-switch chain: round one paused and detached, a resume request on the
+// new engine bound to the original input, the resumed round paused again, then
+// stopped. The stop receipt must settle the original pending input so nothing
+// is left behind.
+func TestAbortSettlementAfterEngineSwitchResumeClearsOriginalInput(t *testing.T) {
+	root := t.TempDir()
+	store := interactive.NewStore(root)
+	defer store.Close()
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "Engine switch resume abort"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitExternalGameInput(t, store, story.ID, "round-1")
+	options := agentrun.Options{ProjectID: "stable-project", AgentKind: agentrun.AgentKindInteractiveStory, StoryID: story.ID, BranchID: "main", Mode: "interactive"}
+	state, err := agentruntime.GameState(options, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engines := agentruntime.NewEngines()
+	defer engines.Close()
+	control, err := engines.ExternalControl(options, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstStarted := make(chan struct{})
+	first, err := control.Start(t.Context(), agentruntime.ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "round-1", Message: "Round one"}}, gameAbortWaitFactory(firstStarted), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstOutcome := make(chan agentrun.Outcome, 1)
+	go func() { firstOutcome <- first.Wait(t.Context()) }()
+	awaitGameStart(t, firstStarted)
+	if _, err := control.Submit(t.Context(), agentruntime.Command{Kind: agentexecution.CommandSuspend, CommandID: "pause-1", OperationID: first.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	if outcome := <-firstOutcome; outcome.Status != agentrun.OutcomeSuspended {
+		t.Fatalf("round one outcome: %+v", outcome)
+	}
+	// Engine switch detaches the paused controller; the journal keeps the input.
+	if err := control.DetachSuspendedGameForEngineSwitch(t.Context(), "round-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The resume request continues round-1: new request CommandID, bound to
+	// the original input's AgentCommandID (what the application layer resolves).
+	resumedStarted := make(chan struct{})
+	resumed, err := control.Start(t.Context(), agentruntime.ExternalCycleInput{Request: agentchat.ChatRequest{CommandID: "resume-round", Message: "Continue."}, BoundCommandID: "round-1"}, gameAbortWaitFactory(resumedStarted), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumedOutcome := make(chan agentrun.Outcome, 1)
+	go func() { resumedOutcome <- resumed.Wait(t.Context()) }()
+	awaitGameStart(t, resumedStarted)
+	if _, err := control.Submit(t.Context(), agentruntime.Command{Kind: agentexecution.CommandSuspend, CommandID: "pause-2", OperationID: resumed.Receipt().OperationID}); err != nil {
+		t.Fatal(err)
+	}
+	if outcome := <-resumedOutcome; outcome.Status != agentrun.OutcomeSuspended {
+		t.Fatalf("resumed round outcome: %+v", outcome)
+	}
+
+	// Stopping the resumed round must settle the original pending input.
+	stop := agentruntime.Command{Kind: agentexecution.CommandAbort, CommandID: "stop-2", OperationID: resumed.Receipt().OperationID}
+	if _, err := control.Submit(t.Context(), stop); err != nil {
+		t.Fatal(err)
+	}
+	binding, err := control.AbortedInputCommandID(t.Context(), "stop-2")
+	if err != nil || binding != "round-1" {
+		t.Fatalf("aborted input binding = %q, %v; want round-1", binding, err)
+	}
+	if err := settleBoundAbortedGameInput(t.Context(), control, store, story.ID, "main", "stop-2"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.PendingPlayerInputs) != 0 {
+		t.Fatalf("pending inputs left after stop: %+v", snapshot.PendingPlayerInputs)
+	}
+	if _, err := store.PendingTurnInterruption(story.ID, "main"); err != nil {
+		t.Fatal(err)
+	}
+	status, err := control.Status(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Phase != agentrun.RunPhaseIdle {
+		t.Fatalf("controller phase after stop = %+v, want idle", status)
 	}
 }
