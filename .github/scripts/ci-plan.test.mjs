@@ -152,3 +152,74 @@ test('a docs push still verifies product changes from a cancelled preceding push
     rmSync(directory, { recursive: true, force: true })
   }
 })
+
+test('explicit manual smoke wins over workflow path inference', () => {
+  const plan = planCI(['.github/workflows/ci.yml'], false, true)
+  assert.equal(plan.code, true)
+  assert.equal(plan.unit, true)
+  assert.equal(plan.updater, true)
+  assert.deepEqual(plan.go_modules, ['.', 'agent'])
+  assert.equal(plan.browser_full, false)
+  assert.deepEqual(plan.browser_shards, [1])
+  assert.equal(plan.shard_count, 1)
+})
+
+test('explicit manual full keeps every browser shard', () => {
+  const plan = planCI(['docs/guide.md'], true, true)
+  assert.equal(plan.browser_full, true)
+  assert.deepEqual(plan.browser_shards, [1, 2, 3])
+  assert.equal(plan.shard_count, 3)
+})
+
+test('explicit smoke dispatch without a base stays a single shard', () => {
+  const { directory, git, commit } = createGitFixture('denova-ci-smoke-')
+  try {
+    git('init', '-q')
+    writeFileSync(path.join(directory, 'README.md'), 'Fixture\n')
+    commit()
+    const output = path.join(directory, 'output')
+    execFileSync(process.execPath, [fileURLToPath(new URL('./ci-plan.mjs', import.meta.url))], {
+      cwd: directory,
+      env: { ...process.env, GITHUB_EVENT_NAME: 'workflow_dispatch', CI_SUITE: 'smoke', BASE: '', GITHUB_OUTPUT: output },
+    })
+    const plan = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => {
+      const separator = line.indexOf('=')
+      return [line.slice(0, separator), JSON.parse(line.slice(separator + 1))]
+    }))
+    assert.equal(plan.code, true)
+    assert.deepEqual(plan.go_modules, ['.', 'agent'])
+    assert.equal(plan.unit, true)
+    assert.equal(plan.updater, true)
+    assert.equal(plan.browser_full, false)
+    assert.deepEqual(plan.browser_shards, [1])
+    assert.equal(plan.shard_count, 1)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('explicit full dispatch without a base keeps every browser shard', () => {
+  const { directory, git, commit } = createGitFixture('denova-ci-full-')
+  try {
+    git('init', '-q')
+    writeFileSync(path.join(directory, 'README.md'), 'Fixture\n')
+    commit()
+    const output = path.join(directory, 'output')
+    execFileSync(process.execPath, [fileURLToPath(new URL('./ci-plan.mjs', import.meta.url))], {
+      cwd: directory,
+      env: { ...process.env, GITHUB_EVENT_NAME: 'workflow_dispatch', CI_SUITE: 'full', BASE: '', GITHUB_OUTPUT: output },
+    })
+    const plan = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => {
+      const separator = line.indexOf('=')
+      return [line.slice(0, separator), JSON.parse(line.slice(separator + 1))]
+    }))
+    assert.equal(plan.browser_full, true)
+    assert.deepEqual(plan.browser_shards, [1, 2, 3])
+    assert.equal(plan.shard_count, 3)
+    assert.equal(plan.code, true)
+    assert.deepEqual(plan.go_modules, ['.', 'agent'])
+    assert.equal(plan.manifests, true)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
