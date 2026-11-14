@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"denova/config"
@@ -491,18 +492,19 @@ func TestGameStaleRuntimeSwitchPreservesSuspendedControllerAndResumePath(t *test
 		t.Fatalf("expected revision conflict for stale switch, got %v", err)
 	}
 
-	// Simulate an underlying Story journal write failure with the valid revision.
-	domainLockPath := filepath.Join(application.interactive.Root(), "interactive", "story", "story-"+story.ID+".jsonl.domain.lock")
-	_ = os.Remove(domainLockPath)
-	if err := os.MkdirAll(domainLockPath, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(domainLockPath) })
+	// Simulate an underlying Story journal append failure with the valid
+	// revision. Making the canonical JSONL read-only fails the O_RDWR append
+	// open on every supported platform for non-root runners, unlike the former
+	// domain-lock-directory trick that macOS can still open and lock.
+	storyJournalPath := interactiveStoryJournalPath(t, application.interactive.Root(), story.ID)
+	beforeSize := mustStoryJournalSize(t, storyJournalPath)
+	makeStoryJournalReadOnly(t, storyJournalPath)
 	if _, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision); err == nil {
-		t.Fatal("expected write failure when story domain lock path is blocked")
+		t.Fatal("expected write failure when the story journal is not writable")
 	}
-	if err := os.Remove(domainLockPath); err != nil {
-		t.Fatal(err)
+	restoreStoryJournalWritable(t, storyJournalPath)
+	if size := mustStoryJournalSize(t, storyJournalPath); size != beforeSize {
+		t.Fatalf("failed switch touched the canonical journal: before=%d after=%d", beforeSize, size)
 	}
 
 	// Branch config, paused controller state, and resume entrypoint must all remain intact.
@@ -523,6 +525,15 @@ func TestGameStaleRuntimeSwitchPreservesSuspendedControllerAndResumePath(t *test
 	if err != nil || recoveryInput.Request.CommandID != "interrupted-cmd" {
 		t.Fatalf("failed switches cleared recovery input: %+v err=%v", recoveryInput, err)
 	}
+
+	// Same-process retry is still rejected: the in-process journal handle is
+	// deliberately poisoned after an unknown append failure until reopened.
+	_, err = application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision)
+	requireReopenJournalError(t, err)
+	// Reopen the Story journal over the untouched canonical file: rebuilding
+	// the product runtime drops the poisoned handle and replays the unchanged
+	// journal. All following assertions run against the reopened runtime.
+	application = reopenConversationTestApp(t, application)
 
 	// Confirm valid revision commits config + controller detach in one transaction while retaining the canonical interruption.
 	switched, err := application.PatchConversationConfig(t.Context(), binding, stalePatch, saved.Revision)
@@ -609,17 +620,15 @@ func TestGameFailedSwitchAllowsOriginalSuspendedTurnToResumeToCompletion(t *test
 	if _, err := application.PatchConversationConfig(t.Context(), binding, patch, initial.Revision); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
 		t.Fatalf("expected revision conflict, got %v", err)
 	}
-	domainLockPath := filepath.Join(application.interactive.Root(), "interactive", "story", "story-"+story.ID+".jsonl.domain.lock")
-	_ = os.Remove(domainLockPath)
-	if err := os.MkdirAll(domainLockPath, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	storyJournalPath := interactiveStoryJournalPath(t, application.interactive.Root(), story.ID)
+	beforeSize := mustStoryJournalSize(t, storyJournalPath)
+	makeStoryJournalReadOnly(t, storyJournalPath)
 	if _, err := application.PatchConversationConfig(t.Context(), binding, patch, saved.Revision); err == nil {
-		_ = os.RemoveAll(domainLockPath)
-		t.Fatal("expected write failure when domain lock path is blocked")
+		t.Fatal("expected write failure when the story journal is not writable")
 	}
-	if err := os.Remove(domainLockPath); err != nil {
-		t.Fatal(err)
+	restoreStoryJournalWritable(t, storyJournalPath)
+	if size := mustStoryJournalSize(t, storyJournalPath); size != beforeSize {
+		t.Fatalf("failed switch touched the canonical journal: before=%d after=%d", beforeSize, size)
 	}
 
 	// Resume the original suspended turn after both stale conflict and write failure.
@@ -627,6 +636,24 @@ func TestGameFailedSwitchAllowsOriginalSuspendedTurnToResumeToCompletion(t *test
 	actions := agentexecution.RuntimeRecoveryActions(view.Runtime)
 	if len(actions) == 0 || actions[0].Kind != agentexecution.RuntimeRecoveryResume {
 		t.Fatalf("missing resume action after failed switch: %+v", actions)
+	}
+	// Same-process resume is still rejected: the in-process journal handle is
+	// deliberately poisoned after an unknown append failure until reopened.
+	_, err = controller.Resume(t.Context(), actions[0], func(_ context.Context, cycleInput agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
+		return nil, context.Canceled
+	}, nil)
+	requireReopenJournalError(t, err)
+	// Reopen the Story journal over the untouched canonical file: rebuilding
+	// the product runtime drops the poisoned handle and replays the unchanged
+	// journal, then the recovered turn resumes on the reopened runtime.
+	application = reopenConversationTestApp(t, application)
+	_, options, err = application.interactiveSessionRuntime(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, selected, err = application.externalController(options)
+	if err != nil || !selected {
+		t.Fatalf("externalController after reopen failed: selected=%t err=%v", selected, err)
 	}
 	resumedCmd := ""
 	resumedRun, err := controller.Resume(t.Context(), actions[0], func(_ context.Context, cycleInput agentruntime.ExternalCycleInput, _ func(agentrun.Event), _ func(context.Context, *external.RuntimeSession) error) (agentruntime.ExternalCycle, error) {
@@ -649,3 +676,85 @@ func TestGameFailedSwitchAllowsOriginalSuspendedTurnToResumeToCompletion(t *test
 type testExternalCycleFunc func(context.Context) agentrun.Outcome
 
 func (fn testExternalCycleFunc) Wait(ctx context.Context) agentrun.Outcome { return fn(ctx) }
+
+// reopenConversationTestApp rebuilds the product runtime over the same data
+// directory. This is the way a poisoned Story journal handle is reopened: the
+// fresh Store replays the unchanged canonical file, dropping the deliberately
+// invalid in-process projection.
+func reopenConversationTestApp(t *testing.T, application *App) *App {
+	t.Helper()
+	application.mu.RLock()
+	workspace := application.workspace
+	application.mu.RUnlock()
+	// The reopened runtime must see the same settings layer, so it binds to
+	// the same isolated data directory regardless of the caller's env setup.
+	t.Setenv("DENOVA_DIR", workspace)
+	t.Setenv("NOVA_DIR", workspace)
+	reopened, err := New(t.Context(), &config.Config{
+		OpenAIModel: "test-model", NovaDir: workspace, Workspace: workspace,
+		OpenAIBaseURL: "http://127.0.0.1:1/v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(reopened.Close)
+	return reopened
+}
+
+// interactiveStoryJournalPath locates the canonical Story journal backing a
+// game, matching interactive.Store.storyPath without crossing the package
+// boundary.
+func interactiveStoryJournalPath(t *testing.T, interactiveRoot, storyID string) string {
+	t.Helper()
+	return filepath.Join(interactiveRoot, "interactive", "story", "story-"+storyID+".jsonl")
+}
+
+// mustStoryJournalSize returns the physical size of one canonical Story
+// journal, used to prove that a failed append changed nothing on disk.
+func mustStoryJournalSize(t *testing.T, path string) int64 {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Size()
+}
+
+// makeStoryJournalReadOnly marks one canonical Story journal read-only and
+// guarantees writability is restored when the test ends. os.Chmod(0444) maps
+// to the read-only attribute on Windows and to mode bits on POSIX, so the
+// O_RDWR append open fails for non-root test users on every supported
+// platform. When the injection cannot take effect (for example a root user on
+// POSIX), the test skips instead of failing on a misleading "expected write
+// failure" that looks like a product regression.
+func makeStoryJournalReadOnly(t *testing.T, path string) {
+	t.Helper()
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	probe, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0)
+	if err == nil {
+		_ = probe.Close()
+		t.Skip("cannot inject append failure: journal still writable under chmod 0444 (running as root?)")
+	}
+}
+
+// restoreStoryJournalWritable undoes makeStoryJournalReadOnly so subsequent
+// assertions run against a writable file.
+func restoreStoryJournalWritable(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// requireReopenJournalError asserts the deliberate poison contract of one
+// Story journal handle: after an actual append failure, every same-process
+// write is rejected until the journal is reopened.
+func requireReopenJournalError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "reopen the journal") {
+		t.Fatalf("operation after append failure must require reopening the journal: %v", err)
+	}
+}

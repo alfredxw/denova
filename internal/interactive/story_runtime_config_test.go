@@ -75,24 +75,36 @@ func TestSetBranchRuntimeConfigWithCapabilitiesIsAtomicSingleTransaction(t *test
 		t.Fatalf("stale revision must fail before capability callback: err=%v called=%t", err, updateCalled)
 	}
 
-	// 2. Simulated physical journal write failure must leave both config and capability intact.
-	domainLockPath := store.storyPath(story.ID) + ".domain.lock"
-	_ = os.Remove(domainLockPath)
-	if err := os.MkdirAll(domainLockPath, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	// 2. A genuine Story journal append failure must leave both config and
+	// capability intact. Making the canonical JSONL read-only fails the O_RDWR
+	// append open on every supported platform for non-root runners (EACCES on
+	// POSIX, the read-only attribute on Windows), unlike the former
+	// domain-lock-directory trick that macOS can still open and lock.
+	storyJournal := store.storyPath(story.ID)
+	beforeSize := mustStoryJournalSize(t, storyJournal)
+	makeStoryJournalReadOnly(t, storyJournal)
 	if _, err := store.SetBranchRuntimeConfigWithCapabilities(
 		story.ID, "main", nextCfg, saved.Revision, key,
 		func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error) {
 			return map[string]json.RawMessage{capabilityName: json.RawMessage(`{"phase":"idle"}`)}, nil
 		},
 	); err == nil {
-		_ = os.Remove(domainLockPath)
-		t.Fatal("expected write failure when domain lock path is blocked")
+		t.Fatal("expected write failure when the story journal is not writable")
 	}
-	if err := os.Remove(domainLockPath); err != nil {
-		t.Fatal(err)
+	restoreStoryJournalWritable(t, storyJournal)
+	if size := mustStoryJournalSize(t, storyJournal); size != beforeSize {
+		t.Fatalf("failed append touched the canonical journal: before=%d after=%d", beforeSize, size)
 	}
+	// The in-process handle stays deliberately poisoned until the journal is
+	// reopened: a same-process retry on the restored file must demand that
+	// instead of silently succeeding on an untrusted projection.
+	_, retryErr := store.SetBranchRuntimeConfigWithCapabilities(
+		story.ID, "main", nextCfg, saved.Revision, key,
+		func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error) {
+			return map[string]json.RawMessage{capabilityName: json.RawMessage(`{"phase":"idle"}`)}, nil
+		},
+	)
+	requireReopenJournalError(t, retryErr)
 
 	coldAfterFail := NewStore(root)
 	defer coldAfterFail.Close()
@@ -105,19 +117,21 @@ func TestSetBranchRuntimeConfigWithCapabilitiesIsAtomicSingleTransaction(t *test
 		t.Fatalf("write failure mutated capability: %s found=%t err=%v", capAfterFail, capFound, err)
 	}
 
-	// 3. Successful call must commit both config and capability in a single journal transaction.
-	committed, err := store.SetBranchRuntimeConfigWithCapabilities(
+	// 3. Reopening the journal (a fresh Store replays the untouched canonical
+	// file) must again commit both config and capability in a single journal
+	// transaction.
+	committed, err := coldAfterFail.SetBranchRuntimeConfigWithCapabilities(
 		story.ID, "main", nextCfg, saved.Revision, key,
 		func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error) {
 			return map[string]json.RawMessage{capabilityName: json.RawMessage(`{"phase":"idle"}`)}, nil
 		},
 	)
 	if err != nil {
-		t.Fatalf("atomic commit failed: %v", err)
+		t.Fatalf("atomic commit after reopen failed: %v", err)
 	}
-	store.mu.Lock()
-	cursorAfter := store.storyJournals[story.ID].journal.Head().Cursor
-	store.mu.Unlock()
+	coldAfterFail.mu.Lock()
+	cursorAfter := coldAfterFail.storyJournals[story.ID].journal.Head().Cursor
+	coldAfterFail.mu.Unlock()
 	if cursorAfter != cursorBefore+1 {
 		t.Fatalf("config and capability were not committed in one transaction: before=%d after=%d", cursorBefore, cursorAfter)
 	}
@@ -310,5 +324,55 @@ func TestBranchRuntimeConfigCommitSurvivesIndexProjectionFailure(t *testing.T) {
 	}
 	if got := seededStore.ConsumeStoryProjectionFailure(seededStory.ID); got == nil {
 		t.Fatal("seeded initialization did not record the projection failure")
+	}
+}
+
+// mustStoryJournalSize returns the physical size of one canonical Story
+// journal, used to prove that a failed append changed nothing on disk.
+func mustStoryJournalSize(t *testing.T, path string) int64 {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Size()
+}
+
+// makeStoryJournalReadOnly marks one canonical Story journal read-only and
+// guarantees writability is restored when the test ends. os.Chmod(0444) maps
+// to the read-only attribute on Windows and to mode bits on POSIX, so the
+// O_RDWR append open fails for non-root test users on every supported
+// platform. When the injection cannot take effect (for example a root user on
+// POSIX), the test skips instead of failing on a misleading "expected write
+// failure" that looks like a product regression.
+func makeStoryJournalReadOnly(t *testing.T, path string) {
+	t.Helper()
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	probe, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0)
+	if err == nil {
+		_ = probe.Close()
+		t.Skip("cannot inject append failure: journal still writable under chmod 0444 (running as root?)")
+	}
+}
+
+// requireReopenJournalError asserts the deliberate poison contract of one
+// Story journal handle: after an actual append failure, every same-process
+// write is rejected until the journal is reopened.
+func requireReopenJournalError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "reopen the journal") {
+		t.Fatalf("operation after append failure must require reopening the journal: %v", err)
+	}
+}
+
+// restoreStoryJournalWritable undoes makeStoryJournalReadOnly so subsequent
+// assertions run against a writable file.
+func restoreStoryJournalWritable(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
