@@ -13,6 +13,16 @@ import (
 	"denova/internal/observability"
 )
 
+const errorDiagnosticsKey = "denova.error_diagnostics"
+
+// errorDiagnostics carries the parsed error envelope from the inner middleware
+// to the completion log record.
+type errorDiagnostics struct {
+	message string
+	code    string
+	detail  string
+}
+
 // requestObservabilityMiddleware gives every HTTP request a server-owned ID,
 // propagates it through context, and emits one completion record. Keeping the
 // ID server-owned avoids collisions and untrusted values in logs.
@@ -29,7 +39,11 @@ func requestObservabilityMiddleware(ctx context.Context, c *app.RequestContext) 
 	c.Next(ctx)
 
 	status := c.Response.StatusCode()
-	errorMessage, errorCode, errorDetail := enrichJSONErrorResponse(c, requestID, status)
+	errorMessage, errorCode, errorDetail := carriedErrorDiagnostics(c)
+	if errorMessage == "" && errorCode == "" && errorDetail == "" {
+		// Fallback for responses that never reached the envelope middleware.
+		errorMessage, errorCode, errorDetail = enrichJSONErrorResponse(c, requestID, status)
+	}
 	route := c.FullPath()
 	if strings.TrimSpace(route) == "" {
 		route = string(c.Request.Path())
@@ -56,6 +70,32 @@ func requestObservabilityMiddleware(ctx context.Context, c *app.RequestContext) 
 		attrs = append(attrs, slog.String("error_detail", errorDetail))
 	}
 	slog.LogAttrs(ctx, level, "http_request_completed", attrs...)
+}
+
+// errorEnvelopeMiddleware runs inside the gzip middleware so JSON error bodies
+// are still plaintext when they get correlated. Browsers always send
+// Accept-Encoding: gzip, and gzip replaces the body with a compressed stream, so
+// parsing at the outermost layer silently lost every error message from the log.
+func errorEnvelopeMiddleware(ctx context.Context, c *app.RequestContext) {
+	c.Next(ctx)
+
+	message, code, detail := enrichJSONErrorResponse(c, observability.RequestID(ctx), c.Response.StatusCode())
+	if message == "" && code == "" && detail == "" {
+		return
+	}
+	c.Set(errorDiagnosticsKey, errorDiagnostics{message: message, code: code, detail: detail})
+}
+
+func carriedErrorDiagnostics(c *app.RequestContext) (message, code, detail string) {
+	value, ok := c.Get(errorDiagnosticsKey)
+	if !ok {
+		return "", "", ""
+	}
+	diagnostics, ok := value.(errorDiagnostics)
+	if !ok {
+		return "", "", ""
+	}
+	return diagnostics.message, diagnostics.code, diagnostics.detail
 }
 
 // enrichJSONErrorResponse guarantees the correlation contract at the HTTP

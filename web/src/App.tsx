@@ -8,8 +8,8 @@ import { applyFontSettings, fontSettingsFromEffective } from '@/features/setting
 import { SoftwareUpdateMonitor } from '@/features/updates/SoftwareUpdateMonitor'
 import { AnalyticsNotice } from '@/features/analytics/AnalyticsPreferences'
 import { useAnalyticsActivity } from '@/features/analytics/use-analytics-activity'
-import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
-import { withErrorLogID } from '@/lib/api-client'
+import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardImportResult, type CharacterCardPreview, type ImportDuplicatePreview, type ImportDuplicateReviewEntry, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { APIError, withErrorLogID } from '@/lib/api-client'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
@@ -109,6 +109,9 @@ function App() {
   const [characterCardPreviewing, setCharacterCardPreviewing] = useState(false)
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
+  const [characterCardPendingOverrides, setCharacterCardPendingOverrides] = useState<ImportDuplicatePreview[]>([])
+  const [characterCardReviewPlanId, setCharacterCardReviewPlanId] = useState('')
+  const [characterCardReviewNotice, setCharacterCardReviewNotice] = useState('')
   const [writingAgentConversation, setWritingAgentConversation] = useState<AgentChatConversationState>({
     sessionId: '',
     messages: [],
@@ -584,6 +587,9 @@ function App() {
     setCharacterCardPreviewing(false)
     setCharacterCardImporting(false)
     setCharacterCardError('')
+    setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
     if (characterCardInputRef.current) {
       characterCardInputRef.current.value = ''
     }
@@ -607,6 +613,9 @@ function App() {
     setCharacterCardBookTitle('')
     setCharacterCardUserName('')
     setCharacterCardError('')
+    setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
     setCharacterCardPreviewing(true)
     try {
       const preview = await previewCharacterCard(file)
@@ -623,6 +632,33 @@ function App() {
     }
   }, [t])
 
+  const completeCharacterCardImport = useCallback(async (result: CharacterCardImportResult) => {
+    toast.success(result.message || t('importCard.importSuccess', { name: result.name }))
+    if (result.overridden?.length) {
+      toast.success(t('importCard.overriddenList', { names: result.overridden.join('、') }))
+    }
+    if (result.skipped?.length) {
+      toast.info(t('importCard.skippedList', { names: result.skipped.join('、') }))
+    }
+    if (characterCardTargetMode === 'new_book') {
+      await refreshAll()
+    } else {
+      await refresh()
+    }
+    setMode('lore')
+    window.setTimeout(() => {
+      notifyLoreUpdated({
+        projectId: result.project_id || projectId,
+        ids: result.item_ids,
+        source: 'character-card-import',
+      })
+    }, 0)
+    notifyVersionChange()
+    notifyProjectStructureChange()
+    setCharacterCardDialogOpen(false)
+    resetCharacterCardImport()
+  }, [characterCardTargetMode, notifyProjectStructureChange, notifyVersionChange, projectId, refresh, refreshAll, resetCharacterCardImport, setMode, t])
+
   const handleCharacterCardImport = useCallback(async () => {
     if (!characterCardFile) {
       setCharacterCardError(t('importCard.chooseFileFirst'))
@@ -632,6 +668,7 @@ function App() {
       setCharacterCardError(t('importCard.noCurrentBookImportNew'))
       return
     }
+    if (characterCardPendingOverrides.length > 0) return
     setCharacterCardImporting(true)
     setCharacterCardError('')
     try {
@@ -642,24 +679,14 @@ function App() {
         userCharacterName: characterCardPreview?.user_placeholder_found ? characterCardUserName.trim() : undefined,
         loreClassification: characterCardSemanticClassification ? 'semantic' : 'heuristic',
       })
-      toast.success(result.message || t('importCard.importSuccess', { name: result.name }))
-      if (characterCardTargetMode === 'new_book') {
-        await refreshAll()
-      } else {
-        await refresh()
+      // Same-name entries would be replaced; hold the import for review.
+      if (result.pending_overrides?.length) {
+        setCharacterCardPendingOverrides(result.pending_overrides)
+        setCharacterCardReviewPlanId(result.review_plan_id || '')
+        setCharacterCardReviewNotice('')
+        return
       }
-      setMode('lore')
-      window.setTimeout(() => {
-        notifyLoreUpdated({
-          projectId: result.project_id || projectId,
-          ids: result.item_ids,
-          source: 'character-card-import',
-        })
-      }, 0)
-      notifyVersionChange()
-      notifyProjectStructureChange()
-      setCharacterCardDialogOpen(false)
-      resetCharacterCardImport()
+      await completeCharacterCardImport(result)
     } catch (e) {
       const message = e instanceof Error ? e.message : t('importCard.importFailed')
       setCharacterCardError(message)
@@ -667,7 +694,68 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyProjectStructureChange, notifyVersionChange, projectId, refresh, refreshAll, resetCharacterCardImport, setMode, t])
+  }, [characterCardBookTitle, characterCardFile, characterCardPendingOverrides, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, completeCharacterCardImport, projectId, t])
+
+  const handleConfirmCharacterCardOverrides = useCallback(async (choices: Record<string, string>) => {
+    if (!characterCardFile) return
+    setCharacterCardImporting(true)
+    setCharacterCardError('')
+    try {
+      // Each decision echoes the local identity and version shown in the
+      // preview, so a stale confirmation can never replace edited entries.
+      const overrideReview: ImportDuplicateReviewEntry[] = characterCardPendingOverrides.map((dup) => ({
+        name: dup.name,
+        existing_id: dup.existing_id,
+        existing_version: dup.existing_version,
+        choice: (choices[dup.name] ?? dup.suggested) as 'override' | 'keep',
+      }))
+      const result = await importCharacterCard(characterCardFile, {
+        targetMode: characterCardTargetMode,
+        projectId: characterCardTargetMode === 'current' ? projectId : undefined,
+        bookTitle: characterCardTargetMode === 'new_book' ? characterCardBookTitle.trim() : undefined,
+        userCharacterName: characterCardPreview?.user_placeholder_found ? characterCardUserName.trim() : undefined,
+        loreClassification: characterCardSemanticClassification ? 'semantic' : 'heuristic',
+        confirmOverrides: true,
+        reviewPlanId: characterCardReviewPlanId,
+        overrideReview,
+      })
+      // The target changed since the preview (entries edited, deleted or newly
+      // collided): nothing was written; stay in review on the fresh preview.
+      if (result.pending_overrides?.length) {
+        setCharacterCardPendingOverrides(result.pending_overrides)
+        setCharacterCardReviewPlanId(result.review_plan_id || '')
+        setCharacterCardReviewNotice(result.review_changed ? t('importCard.reviewChangedNotice') : '')
+        return
+      }
+      await completeCharacterCardImport(result)
+    } catch (e) {
+      // A held review that expired or targets another Book can never succeed:
+      // drop the pending review instead of trapping the user on a stale view.
+      if (e instanceof APIError && (e.code === 'api.characterCard.reviewExpired' || e.code === 'api.characterCard.reviewPlanRequired')) {
+        setCharacterCardPendingOverrides([])
+        setCharacterCardReviewPlanId('')
+        setCharacterCardReviewNotice('')
+      }
+      const message = e instanceof Error ? e.message : t('importCard.importFailed')
+      setCharacterCardError(message)
+      toast.error(message)
+    } finally {
+      setCharacterCardImporting(false)
+    }
+  }, [characterCardBookTitle, characterCardFile, characterCardPendingOverrides, characterCardPreview, characterCardReviewPlanId, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, completeCharacterCardImport, projectId, t])
+
+  const handleCharacterCardCancelOverrides = useCallback(() => {
+    setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
+  }, [])
+
+  const handleCharacterCardTargetModeChange = useCallback((mode: CharacterCardTargetMode) => {
+    setCharacterCardTargetMode(mode)
+    setCharacterCardPendingOverrides([])
+    setCharacterCardReviewPlanId('')
+    setCharacterCardReviewNotice('')
+  }, [])
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
@@ -1011,11 +1099,15 @@ function App() {
         fileInputRef={characterCardInputRef}
         onOpenChange={handleCharacterCardDialogOpenChange}
         onFileSelected={handleCharacterCardSelected}
-        onTargetModeChange={setCharacterCardTargetMode}
+        onTargetModeChange={handleCharacterCardTargetModeChange}
         onBookTitleChange={setCharacterCardBookTitle}
         onUserCharacterNameChange={setCharacterCardUserName}
         onSemanticClassificationChange={setCharacterCardSemanticClassification}
         onImport={handleCharacterCardImport}
+        pendingOverrides={characterCardPendingOverrides}
+        notice={characterCardReviewNotice}
+        onConfirmOverrides={handleConfirmCharacterCardOverrides}
+        onCancelOverrides={handleCharacterCardCancelOverrides}
       />
       <SoftwareUpdateMonitor onCheckResult={applyUpdateCheckResult} />
       <OnboardingGuide

@@ -50,8 +50,17 @@ func CompactionDisplay(event agentrun.Event) (session.DisplayEvent, bool) {
 	} else {
 		status = "error"
 	}
+	// Provider-managed compaction is the default; product-side checkpoint
+	// maintenance reports itself explicitly so the card does not claim the engine
+	// compacted a conversation it cannot compact.
+	runtimeManaged := true
+	if data, ok := event.Data.(map[string]any); ok {
+		if value, found := data["runtime_managed"].(bool); found {
+			runtimeManaged = value
+		}
+	}
 	return session.DisplayEvent{ID: event.DataString("id"), Role: "context_compaction", Status: status,
-		Content: event.DataString("summary"), Phase: event.DataString("phase"), RuntimeManaged: true, CreatedAt: time.Now().UTC()}, true
+		Content: event.DataString("summary"), Phase: event.DataString("phase"), RuntimeManaged: runtimeManaged, CreatedAt: time.Now().UTC()}, true
 }
 
 // UsageDisplay carries aggregate provider totals without inventing a call count.

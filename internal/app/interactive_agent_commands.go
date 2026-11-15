@@ -55,7 +55,21 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
-	return bound.Submit(ctx, agentruntime.Command{Kind: command.Kind, CommandID: command.CommandID, OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason, Input: command.Input}, emit)
+	var control *agentruntime.ExternalController
+	if command.Kind == agentexecution.CommandAbort {
+		externalControl, selected, controlErr := s.app.externalController(options)
+		if controlErr != nil {
+			return agentrun.CommandReceipt{}, controlErr
+		}
+		if selected {
+			control = externalControl
+		}
+	}
+	receipt, err := bound.Submit(ctx, agentruntime.Command{Kind: command.Kind, CommandID: command.CommandID, OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason, Input: command.Input}, emit)
+	if err != nil || control == nil {
+		return receipt, err
+	}
+	return receipt, settleBoundAbortedGameInput(ctx, control, s.store(), target.info.StoryID, target.info.BranchID, command.CommandID)
 }
 
 func interactiveAgentCommandOptions(target interactiveAgentCommandTarget) agentrun.Options {

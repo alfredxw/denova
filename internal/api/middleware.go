@@ -55,6 +55,66 @@ func localHostEffectMiddleware(ctx context.Context, c *app.RequestContext) {
 	c.Next(ctx)
 }
 
+// platformManagementLocalHostMiddleware keeps only host-bound management
+// actions on loopback. Extension runtimes listen on 127.0.0.1, package
+// installation executes extension code here, and development previews resolve
+// host paths, so authenticated LAN browsers cannot use them. Management reads
+// and Project-scoped configuration stay available after login; a blanket gate
+// would also reject the read-only polling that renders the workbench.
+func platformManagementLocalHostMiddleware(ctx context.Context, c *app.RequestContext) {
+	if platformManagementHostOnly(string(c.Path()), string(c.Method())) && !isLocalClientIP(requestClientIP(c)) {
+		message := i18n.FromHeader(localeHeader(c)).T("api.access.localHostEffect")
+		c.AbortWithStatusJSON(consts.StatusForbidden, map[string]string{
+			"error":      message,
+			"code":       "LOCAL_HOST_ONLY",
+			"messageKey": "platform.errors.LOCAL_HOST_ONLY",
+		})
+		return
+	}
+	c.Next(ctx)
+}
+
+// platformManagementHostOnly classifies management actions that must run on the
+// Denova host. Classify new actions here when they start host runtimes, install
+// or preview host packages, or resolve host file paths. Classify by operation,
+// never by method alone: read verbs do not grant LAN access when the read
+// mutates host state.
+func platformManagementHostOnly(path, method string) bool {
+	if method == "OPTIONS" {
+		return false
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(path, "/api/platform/manage"), "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return true
+	}
+	if method == "GET" || method == "HEAD" {
+		// Reads that mutate host state stay loopback-bound: exporting a game
+		// instance stops its runtime, checking a development source
+		// materializes a package candidate, and checking an update rewrites
+		// installation records and downloads upstream sources. New management
+		// reads with host side effects must be classified here as well.
+		return len(parts) == 3 && parts[0] == "instances" && parts[2] == "export" ||
+			len(parts) == 3 && parts[0] == "development" && parts[2] == "check" ||
+			len(parts) == 4 && parts[0] == "packages" && parts[3] == "update"
+	}
+	// Only known non-host writes are allowed from an authenticated LAN
+	// browser. New mutating routes require an explicit policy decision.
+	switch parts[0] {
+	case "game-preferences":
+		return !(len(parts) == 1 && method == "PATCH")
+	case "instances":
+		return !((len(parts) == 2 && (method == "PATCH" || method == "DELETE")) ||
+			(len(parts) == 3 && parts[2] == "stop" && method == "POST"))
+	case "runtimes":
+		return !((len(parts) == 3 && parts[2] == "stop" && method == "POST") ||
+			(len(parts) == 4 && parts[2] == "consumers" && method == "DELETE"))
+	case "projects":
+		return !((len(parts) == 3 && parts[2] == "extensions" && method == "PUT") ||
+			(len(parts) == 5 && parts[2] == "plugins" && parts[4] == "content" && method == "POST"))
+	}
+	return true
+}
+
 func abortWithLocalizedError(c *app.RequestContext, status int, key string) {
 	message := i18n.FromHeader(localeHeader(c)).T(key)
 	c.AbortWithStatusJSON(status, map[string]string{"error": message, "code": key})

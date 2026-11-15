@@ -70,3 +70,63 @@ func prepareInput(input Input, limit int) (Input, error) {
 	}
 	return input, nil
 }
+
+// carriesImages reports whether the rebuilt conversation will send media to the
+// engine: historical user/tool attachments or the current request's files.
+// Only image media has an engine block channel, so non-image attachments are
+// plain text and never consume the media reserve.
+func carriesImages(input Input) bool {
+	image := func(files []agentschema.Attachment) bool {
+		for _, file := range files {
+			if agentschema.IsNativeImageMediaType(file.MediaType) {
+				return true
+			}
+		}
+		return false
+	}
+	if image(input.Attachments) {
+		return true
+	}
+	for _, message := range input.History {
+		if image(message.Attachments) || image(message.ToolImages) {
+			return true
+		}
+	}
+	return false
+}
+
+// The replay estimate mirrors the adapter's cold-rebuild renderer so history
+// preparation reserves the media space before images are encoded. For typical
+// text every value stays conservative (over) against the real renderer: JSONL
+// escaping and the .json block envelope add several percent over semantic
+// bytes. Attachment description blocks carry a small fixed overhead that the
+// escape margin covers; an underestimation would hand the transport a prompt
+// that still exceeds its payload once images are added.
+const (
+	// replayEscapePercent applies to all semantic text: quotes, backslashes and
+	// newlines can inflate serialized records well past raw byte counts.
+	replayEscapePercent = 115
+	// replayMessageEnvelopeBytes is the fixed JSONL wrapper around one record
+	// ({"content":"...","role":"..."}\n) minus the role bytes already counted
+	// by messageBytes. replayPrefixBytes and replayRequestPrefixBytes mirror the
+	// renderer's fixed leading text and the current-request separator.
+	// replayCheckpointLabelBytes precedes a checkpoint summary record.
+	replayMessageEnvelopeBytes = 15
+	replayPrefixBytes          = 260
+	replayRequestPrefixBytes   = 22
+	replayCheckpointLabelBytes = 31
+)
+
+// estimateReplayText estimates the bytes a cold rebuild will render for the
+// engine prompt: semantic history, the checkpoint summary, the current request
+// and their serialization overhead. summaryBytes is the reserve to plan for
+// (the bounded summary ceiling during trimming, the actual summary otherwise).
+// historyMessages is the number of history records that will be rendered.
+func estimateReplayText(historyBytes, summaryBytes, requestBytes, historyMessages int) int {
+	text := historyBytes + replayMessageEnvelopeBytes*historyMessages + replayPrefixBytes
+	if summaryBytes > 0 {
+		text += replayCheckpointLabelBytes + replayMessageEnvelopeBytes + summaryBytes
+	}
+	text += replayRequestPrefixBytes + requestBytes
+	return text * replayEscapePercent / 100
+}

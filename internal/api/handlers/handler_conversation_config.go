@@ -24,7 +24,7 @@ func (h *Handlers) HandleConversationConfigGet(ctx context.Context, c *app.Reque
 		writeConversationConfigError(c, err)
 		return
 	}
-	h.writeConversationConfigSnapshot(c, snapshot)
+	h.writeConversationConfigSnapshot(c, snapshot, "")
 }
 
 func (h *Handlers) HandleConversationConfigPatch(ctx context.Context, c *app.RequestContext) {
@@ -45,23 +45,28 @@ func (h *Handlers) HandleConversationConfigPatch(ctx context.Context, c *app.Req
 		writeConversationConfigError(c, err)
 		return
 	}
-	h.writeConversationConfigSnapshot(c, snapshot)
+	// The patch is durable; a failed rebuildable-catalog projection is surfaced
+	// as a non-fatal diagnostic rather than a false-negative save error.
+	h.writeConversationConfigSnapshot(c, snapshot, h.app.ConversationProjectionWarning(ctx, body.Binding))
 }
 
 // Runtime health and capabilities are read-only host projections. They never
 // enter the durable configuration or trigger an external process on GET.
-func (h *Handlers) writeConversationConfigSnapshot(c *app.RequestContext, snapshot conversationconfig.Snapshot) {
+func (h *Handlers) writeConversationConfigSnapshot(c *app.RequestContext, snapshot conversationconfig.Snapshot, projectionWarning string) {
 	selection := snapshot.Engine()
 	snapshot.Runtime = &selection
 	for _, descriptor := range h.app.AgentEngines().Catalog() {
 		if descriptor.ID != selection.Kind {
 			continue
 		}
+		// projectionWarning is a diagnostic attached to the committed result;
+		// it is not rendered by the client as a failure.
 		writeJSON(c, consts.StatusOK, struct {
 			conversationconfig.Snapshot
-			Capabilities agentruntime.EngineCapabilities `json:"runtime_capabilities"`
-			Status       string                          `json:"runtime_status"`
-		}{snapshot, descriptor.ForAgent(snapshot.AgentKind), descriptor.Status})
+			Capabilities      agentruntime.EngineCapabilities `json:"runtime_capabilities"`
+			Status            string                          `json:"runtime_status"`
+			ProjectionWarning string                          `json:"projection_warning,omitempty"`
+		}{snapshot, descriptor.ForAgent(snapshot.AgentKind), descriptor.Status, projectionWarning})
 		return
 	}
 	writeErrorKey(c, consts.StatusNotFound, "agentRuntime.notFound")

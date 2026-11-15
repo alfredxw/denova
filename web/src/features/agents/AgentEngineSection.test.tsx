@@ -45,4 +45,23 @@ describe('AgentEngineSection model source', () => {
     expect(onChange).not.toHaveBeenCalled()
     await screen.findByText('需要登录')
   })
+
+  for (const engine of ['grok', 'antigravity'] as const) {
+    it(`selects ${engine} CLI models without offering API profiles or unsupported effort`, async () => {
+      mocks.fetchAgentEngines.mockResolvedValue({ items: [{ id: engine, name_key: `agentRuntime.${engine}`, status: 'ready' }] })
+      mocks.fetchEngineModels.mockResolvedValue({ items: [
+        { id: 'cli-model', display_name: 'CLI model', efforts: [] },
+        { id: 'second-model', display_name: 'Second CLI model', efforts: [] },
+      ] })
+      mocks.profiles = [{ id: 'profile:gateway', label: 'Gateway', modelLabel: 'Gateway' }]
+      const onChange = vi.fn()
+      render(<Harness engine={engine} onChange={onChange} />)
+      await waitFor(() => expect(screen.getByRole('combobox', { name: '引擎模型' })).toBeEnabled())
+      expect(screen.queryByRole('radio', { name: 'Denova 模型' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('combobox', { name: '推理强度' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('combobox', { name: '引擎模型' }))
+      await userEvent.click(await screen.findByRole('option', { name: 'Second CLI model' }))
+      expect(onChange).toHaveBeenLastCalledWith({ selected: engine, [engine]: { model: 'second-model' } })
+    })
+  }
 })

@@ -186,7 +186,17 @@ func TestExternalSummaryFailureNeverAcknowledgesCoverage(t *testing.T) {
 				preparation.ProviderInputMaxBytes = 8192
 				preparation.Input.Text = strings.Repeat("x", 10000)
 			}
-			if _, err := preparation.Prepare(ctx); err == nil || saved != 0 {
+			prepared, err := preparation.Prepare(ctx)
+			if failure == "later_batch" {
+				// A refused maintenance call degrades to unreduced source: the turn
+				// continues, but nothing may acknowledge the missing coverage.
+				if err != nil || saved != 0 {
+					t.Fatalf("degraded preparation failed: saved=%d err=%v", saved, err)
+				}
+				if prepared.History == nil {
+					t.Fatal("degraded preparation dropped the unreduced history")
+				}
+			} else if err == nil || saved != 0 {
 				t.Fatalf("failed preparation published coverage: saved=%d err=%v", saved, err)
 			}
 			if failure == "later_batch" && (calls != 2 || usage != 14) {

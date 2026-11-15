@@ -74,6 +74,23 @@ func NewProjectInstructionsContextSource(cfg *config.Config, agentKind string, s
 	}, nil
 }
 
+// StandingProjectInstructions reports whether the fragment is one of the root
+// AGENTS.md or CREATOR.md files. They are author-owned rules for the whole
+// session, not turn context, so an engine that owns a system-instruction channel
+// receives them outside the per-turn text. Every other fragment keeps its
+// existing placement.
+func StandingProjectInstructions(fragment agentschema.ContextFragment) bool {
+	if fragment.Stability != agentschema.ContextStablePrefix || fragment.Placement != agentschema.ContextLeadingMessage {
+		return false
+	}
+	switch fragment.Resource {
+	case book.AgentInstructionsFileName, book.CreatorFileName:
+		return true
+	default:
+		return false
+	}
+}
+
 type projectInstructionsContextSource struct {
 	files    *book.Service
 	limit    int

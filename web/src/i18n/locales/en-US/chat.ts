@@ -144,6 +144,7 @@ const chat = {
   'chat.runtime.operationUnavailable': 'The displayed run is not ready for commands. Wait for it to reconnect.',
   'chat.runtime.queueConflict': 'This queue action conflicts with the current state. Please try again.',
   'chat.runtime.busy': 'The Agent is busy. Please try again after its state updates.',
+  'chat.runtime.pausedTurn': 'The previous turn is paused. Resume or discard it before sending.',
   'chat.runtime.invalidCommand': 'This instruction is no longer valid for the displayed run.',
   'chat.runtime.commandFailed': 'Failed to submit the Agent instruction.',
   'chat.runtime.abortPending': 'The Agent is already stopping. Wait for the run to settle.',

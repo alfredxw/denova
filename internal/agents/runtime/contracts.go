@@ -15,6 +15,11 @@ import (
 
 var ErrOperationActive = errors.New("agent operation is already active")
 
+// ErrOperationPaused reports a durable operation that is suspended rather than
+// running. Its accepted input still owns the conversation, so a new root start
+// cannot replace it: callers must resume or discard that exact operation.
+var ErrOperationPaused = errors.New("agent operation is paused")
+
 // Command is shared by every conversation surface. Binding identity and native
 // delivery semantics belong to the selected Session implementation.
 type Command struct {

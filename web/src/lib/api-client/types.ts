@@ -628,6 +628,25 @@ export interface CharacterCardImportResult {
   classification_mode: LoreClassificationMode
   classification_counts: Partial<Record<LoreItem['type'], number>>
   uncertain_type_count: number
+  overridden?: string[]
+  skipped?: string[]
+  /** Same-name lore entries the import would replace; present when confirmation is still required. */
+  pending_overrides?: ImportDuplicatePreview[]
+  /** Held plan backing pending_overrides; the confirm request must reuse it. */
+  review_plan_id?: string
+  /** The confirmed preview no longer matches the target; review again before any replacement. */
+  review_changed?: boolean
+}
+
+export interface ImportDuplicatePreview {
+  name: string
+  existing_preview: string
+  incoming_preview: string
+  suggested: 'override' | 'keep'
+  /** Local lore entry identity the review is bound to. */
+  existing_id?: string
+  /** Local lore entry version at preview time; a confirmed override must match it. */
+  existing_version?: string
 }
 
 export interface CharacterCardPreview {

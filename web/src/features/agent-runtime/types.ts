@@ -1,11 +1,16 @@
-export type AgentEngineID = 'native' | 'codex' | 'claude'
+export const AGENT_ENGINE_IDS = ['native', 'codex', 'claude', 'grok', 'antigravity'] as const
+export type AgentEngineID = typeof AGENT_ENGINE_IDS[number]
+export type CLIModelSettings = { model: string; effort?: string; profile_id?: never }
 /** API profiles and CLI models are exclusive sources; secrets remain in endpoints. */
-export type RuntimeModelSettings = { model: string; effort?: string; profile_id?: never } | { profile_id: string; model?: never; effort?: never }
+export type RuntimeModelSettings = CLIModelSettings | { profile_id: string; model?: never; effort?: never }
 export type CodexSandbox = 'read-only' | 'workspace-write' | 'danger-full-access'
 export type CodexRuntimeSettings = RuntimeModelSettings & { sandbox?: CodexSandbox }
 export type ClaudeRuntimeSettings = RuntimeModelSettings
-export interface RuntimePreferences { selected?: AgentEngineID; codex?: CodexRuntimeSettings; claude?: ClaudeRuntimeSettings }
+export type GrokRuntimeSettings = CLIModelSettings & { context_window?: number }
+export type AntigravityRuntimeSettings = CLIModelSettings
+export interface RuntimePreferences { selected?: AgentEngineID; codex?: CodexRuntimeSettings; claude?: ClaudeRuntimeSettings; grok?: GrokRuntimeSettings; antigravity?: AntigravityRuntimeSettings }
 export type RuntimeSelection = { kind: 'native' } | { kind: 'codex'; codex: CodexRuntimeSettings } | { kind: 'claude'; claude: ClaudeRuntimeSettings }
+  | { kind: 'grok'; grok: GrokRuntimeSettings } | { kind: 'antigravity'; antigravity: AntigravityRuntimeSettings }
 export interface EngineCapabilities {
   ask_user: boolean
   cancel: boolean
@@ -19,6 +24,7 @@ export interface EngineCapabilities {
 export type ConfigurationSectionID = 'shared.instructions' | 'shared.skills' | 'shared.context_sources' | 'shared.input_budget'
   | 'native.model' | 'native.permissions' | 'native.context_policy' | 'native.checkpoint' | 'native.subagents'
   | 'codex.model' | 'codex.execution_policy' | 'claude.model' | 'claude.execution_policy'
+  | 'grok.model' | 'grok.execution_policy' | 'antigravity.model' | 'antigravity.execution_policy'
 export interface ConfigurationSection {
   id: ConfigurationSectionID
   owner: 'shared' | AgentEngineID
@@ -39,12 +45,18 @@ export interface EngineModels { items: EngineModel[]; default_id?: string }
 
 /** Selectors inherit independently; model/effort is one atomic engine branch. */
 export function resolveRuntimePreferences(parent?: RuntimePreferences, own?: RuntimePreferences): RuntimePreferences {
-  return { selected: own?.selected ?? parent?.selected ?? 'native', codex: own?.codex ?? parent?.codex, claude: own?.claude ?? parent?.claude }
+  return { selected: own?.selected ?? parent?.selected ?? 'native', codex: own?.codex ?? parent?.codex, claude: own?.claude ?? parent?.claude,
+    grok: own?.grok ?? parent?.grok, antigravity: own?.antigravity ?? parent?.antigravity }
 }
 
 export function runtimeModel(selection?: RuntimeSelection) {
   if (!selection || selection.kind === 'native') return undefined
-  return selection.kind === 'codex' ? selection.codex : selection.claude
+  switch (selection.kind) {
+    case 'codex': return selection.codex
+    case 'claude': return selection.claude
+    case 'grok': return selection.grok
+    case 'antigravity': return selection.antigravity
+  }
 }
 
 export function runtimeModelKey(settings?: RuntimeModelSettings): string {

@@ -1,7 +1,10 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from '@/lib/query-client'
+import { remoteAccessQuery } from '@/features/remote-access/api'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { ModeRouter } from './ModeRouter'
@@ -28,7 +31,7 @@ const writingChangeReviewMock = vi.hoisted(() => ({
 }))
 
 function withAppProviders(ui: ReactNode) {
-  return <TooltipProvider>{ui}</TooltipProvider>
+  return <QueryClientProvider client={queryClient}><TooltipProvider>{ui}</TooltipProvider></QueryClientProvider>
 }
 
 vi.mock('@/lib/toast', () => ({ toast: toastMock }))
@@ -241,7 +244,10 @@ vi.mock('./WorkbenchShell', () => ({
 }))
 
 describe('ModeRouter autosave navigation policy', () => {
+  afterEach(() => queryClient.clear())
   beforeEach(() => {
+    queryClient.clear()
+    queryClient.setQueryData(remoteAccessQuery.queryKey, { local: true, authenticated: true })
     toastMock.warning.mockReset()
     useDocumentReviewMock.mockReset()
     loreLibraryFlushMock.mockReset()

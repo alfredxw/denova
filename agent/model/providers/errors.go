@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -41,6 +42,71 @@ func (err *APIError) Retryable() bool {
 	}
 	return err.StatusCode == http.StatusRequestTimeout || err.StatusCode == http.StatusConflict ||
 		err.StatusCode == http.StatusTooManyRequests || err.StatusCode >= http.StatusInternalServerError
+}
+
+// streamErrorKind is the classification used when an accepted stream fails
+// without a provider-supplied code or type. A 2xx stream only aborts on a
+// server-side failure, so keeping it retryable is safer than losing the run;
+// explicit non-retryable provider classes still opt out through Retryable.
+const streamErrorKind = "server_error"
+
+// NewStreamAPIError promotes an error event delivered inside a successful
+// response stream into the protocol-neutral APIError. The HTTP status is no
+// longer available at that point, so retry classification depends on the
+// payload's code and type instead. Providers only send such an event after the
+// request was accepted, which is why an unclassified payload stays retryable.
+func NewStreamAPIError(cause error, payload []byte) *APIError {
+	apiError := &APIError{Cause: cause}
+	if cause != nil {
+		apiError.Message = strings.TrimSpace(cause.Error())
+	}
+	var envelope struct {
+		Error struct {
+			Code    json.RawMessage `json:"code"`
+			Type    json.RawMessage `json:"type"`
+			Message json.RawMessage `json:"message"`
+		} `json:"error"`
+	}
+	if len(payload) != 0 && json.Unmarshal(payload, &envelope) == nil {
+		apiError.Code = jsonScalarText(envelope.Error.Code)
+		apiError.Kind = jsonScalarText(envelope.Error.Type)
+		if message := jsonScalarText(envelope.Error.Message); message != "" {
+			apiError.Message = message
+		}
+	}
+	// Some relays repeat the upstream HTTP status in the code field.
+	if status, err := strconv.Atoi(apiError.Code); err == nil && status >= 100 && status <= 599 {
+		apiError.StatusCode = status
+		apiError.Code = ""
+	}
+	if apiError.Code == "" && apiError.Kind == "" && apiError.StatusCode == 0 {
+		apiError.Kind = streamErrorKind
+	}
+	return apiError
+}
+
+// jsonScalarText reads the string, number, or boolean form providers use for
+// error codes. Nested payloads are ignored because they carry no classification.
+func jsonScalarText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return strings.TrimSpace(text)
+	}
+	var scalar any
+	if err := json.Unmarshal(raw, &scalar); err != nil {
+		return ""
+	}
+	switch value := scalar.(type) {
+	case float64:
+		return strconv.FormatFloat(value, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(value)
+	default:
+		return ""
+	}
 }
 
 func (err *APIError) RetryDelay() time.Duration {

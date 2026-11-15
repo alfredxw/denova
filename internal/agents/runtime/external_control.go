@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/runtime/external"
+	"denova/internal/agents/sessionjournal"
 )
 
 const externalControlCapability = "denova.external.control.v1"
@@ -27,6 +30,11 @@ type ExternalCycleInput struct {
 	GoalID               string                  `json:"goal_id,omitempty"`
 	GoalRevision         uint64                  `json:"goal_revision,omitempty"`
 	RegenerateFromTurnID string                  `json:"regenerate_from_turn_id,omitempty"`
+	// BoundCommandID identifies the player input this cycle actually continues
+	// when Request.CommandID belongs to a newer resume command (engine switch).
+	// A stop receipt then binds the continued input rather than the resume
+	// request that started this cycle.
+	BoundCommandID agentrun.CommandID `json:"bound_command_id,omitempty"`
 }
 type ExternalCycle interface {
 	Wait(context.Context) agentrun.Outcome
@@ -121,6 +129,7 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 	fingerprint := controlFingerprint(encoded)
 	var receipt agentrun.CommandReceipt
 	var interrupt error
+	var abortedInputCommandID string
 	err = control.update(ctx, func(state *externalControlState) error {
 		saved, found, err := state.receipt(command.CommandID)
 		if err != nil {
@@ -144,6 +153,8 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 			}
 			interrupt = external.ErrSuspended
 		case agentexecution.CommandAbort:
+			// Bind the request to the input it stops before Current is cleared.
+			abortedInputCommandID = abortedInputBinding(state)
 			state.Phase, state.Current, state.Queue = agentrun.RunPhaseIdle, nil, nil
 			if err := state.setOutcome(string(state.CommandID), agentrun.OutcomeAborted); err != nil {
 				return err
@@ -186,7 +197,7 @@ func (control *ExternalController) Submit(ctx context.Context, command Command) 
 			return fmt.Errorf("%w: external command %q", agentrun.ErrInvalidCommand, command.Kind)
 		}
 		receipt = agentrun.CommandReceipt{CommandID: agentrun.CommandID(command.CommandID), OperationID: state.OperationID, Cursor: agentrun.Cursor(state.Revision + 1)}
-		state.receipts[command.CommandID] = controlReceipt{Fingerprint: fingerprint, Receipt: receipt}
+		state.receipts[command.CommandID] = controlReceipt{Fingerprint: fingerprint, Receipt: receipt, AbortedInputCommandID: abortedInputCommandID}
 		return nil
 	})
 	if err == nil && control.active != nil && interrupt != nil && control.active.cancel != nil {
@@ -225,7 +236,9 @@ func (control *ExternalController) Start(ctx context.Context, input ExternalCycl
 		if saved.Outcome != "" {
 			return &ExternalRun{control: control, emit: emit, receipt: saved.Receipt, replayed: true, outcome: agentrun.Outcome{Status: saved.Outcome}}, nil
 		}
-		return nil, ErrOperationActive
+		// The command was accepted but has no outcome and no live runner, so its
+		// input is suspended. Only resume or discard may settle it.
+		return nil, ErrOperationPaused
 	}
 	if control.active != nil {
 		return nil, ErrOperationActive
@@ -233,7 +246,7 @@ func (control *ExternalController) Start(ctx context.Context, input ExternalCycl
 	run := &ExternalRun{control: control, factory: factory, emit: emit}
 	err = control.update(ctx, func(state *externalControlState) error {
 		if state.Phase != agentrun.RunPhaseIdle {
-			return ErrOperationActive
+			return ErrOperationPaused
 		}
 		if _, found, err := state.receipt(request.CommandID); err != nil {
 			return err
@@ -287,7 +300,11 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 	}
 	run := &ExternalRun{control: control, factory: factory, emit: emit, recoveryKey: key, receipt: agentrun.CommandReceipt{CommandID: state.CommandID, OperationID: state.OperationID, Cursor: agentrun.Cursor(state.Revision)}}
 	err = control.update(ctx, func(current *externalControlState) error {
-		current.receipts[key] = controlReceipt{Receipt: run.receipt}
+		abortedInputCommandID := ""
+		if action.Kind == agentexecution.RuntimeRecoveryAbort {
+			abortedInputCommandID = abortedInputBinding(current)
+		}
+		current.receipts[key] = controlReceipt{Receipt: run.receipt, AbortedInputCommandID: abortedInputCommandID}
 		if action.Kind == agentexecution.RuntimeRecoveryAbort {
 			current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
 			if err := current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted); err != nil {
@@ -308,6 +325,66 @@ func (control *ExternalController) Resume(ctx context.Context, action agentexecu
 	return run, nil
 }
 
+// DetachSuspendedGameForEngineSwitch relinquishes only the old provider
+// controller. The Game journal retains its accepted input, draft and dice so
+// a newly selected CLI can resume the same canonical turn. This operation is
+// only permitted for one quiescent suspended cycle with no queued work.
+func (control *ExternalController) DetachSuspendedGameForEngineSwitch(ctx context.Context, commandID string) error {
+	return control.DetachSuspendedGameInTransaction(ctx, commandID, func(update func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error {
+		return control.store.Transact(ctx, controlReceiptUpgrade, update)
+	})
+}
+
+// DetachSuspendedGameInTransaction verifies under the controller lock that only
+// the matching quiescent suspended cycle exists and passes a pure capability
+// mutation callback to commit, so the caller can persist configuration and
+// controller detachment in one store transaction.
+func (control *ExternalController) DetachSuspendedGameInTransaction(
+	ctx context.Context,
+	commandID string,
+	commit func(func(sessionjournal.CapabilityReader) (map[string]json.RawMessage, error)) error,
+) error {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	state, err := control.read(ctx)
+	if err != nil {
+		return err
+	}
+	if err := control.validateDetachSuspendedGame(state, commandID); err != nil {
+		return err
+	}
+	if commit == nil {
+		return errors.New("external control transaction commit callback is required")
+	}
+	return commit(func(read sessionjournal.CapabilityReader) (map[string]json.RawMessage, error) {
+		return externalControlChanges(read, func(current *externalControlState) error {
+			if err := control.validateDetachSuspendedGame(*current, commandID); err != nil {
+				return err
+			}
+			if current.Phase == agentrun.RunPhaseIdle {
+				return nil
+			}
+			current.Phase, current.Current, current.Queue = agentrun.RunPhaseIdle, nil, nil
+			return current.setOutcome(string(current.CommandID), agentrun.OutcomeAborted)
+		})
+	})
+}
+
+func (control *ExternalController) validateDetachSuspendedGame(state externalControlState, commandID string) error {
+	if control.active != nil {
+		return ErrOperationActive
+	}
+	if state.Phase == agentrun.RunPhaseIdle {
+		return nil
+	}
+	if state.Phase != agentrun.RunPhaseSuspended || state.Current == nil ||
+		state.Current.Request.CommandID != commandID || len(state.Queue) != 0 ||
+		len(state.Current.Guidance) != 0 {
+		return ErrOperationActive
+	}
+	return nil
+}
+
 // Receipt reads the logical product task receipt, independently of the shorter
 // provider attempts that materialize its inputs and outputs.
 func (control *ExternalController) Receipt(ctx context.Context, commandID string) (agentrun.CommandReceipt, bool, error) {
@@ -319,6 +396,52 @@ func (control *ExternalController) Receipt(ctx context.Context, commandID string
 	}
 	saved, found, err := state.receipt(commandID)
 	return saved.Receipt, found, err
+}
+
+// abortedInputBinding returns the command a stop request discards: the resumed
+// input's BoundCommandID when present, otherwise the running input's request
+// command, otherwise the accepted operation command. Current, not state,
+// advances when a queued input starts running, and a resumed input carries
+// BoundCommandID when its cycle continues the original player input under a
+// newer resume command (engine switch).
+func abortedInputBinding(state *externalControlState) string {
+	// Controller callbacks never pass nil; the guard keeps the helper total.
+	if state == nil {
+		return ""
+	}
+	if state.Current != nil {
+		if bound := strings.TrimSpace(string(state.Current.BoundCommandID)); bound != "" {
+			return bound
+		}
+		if current := strings.TrimSpace(state.Current.Request.CommandID); current != "" {
+			return current
+		}
+	}
+	return string(state.CommandID)
+}
+
+// AbortedInputCommandID reports the input a stop request actually discarded.
+// Replays read this binding instead of a current-input snapshot so that a newer
+// round is never settled by an older request. An empty result means the receipt
+// has no binding (it predates this field or stopped no input).
+func (control *ExternalController) AbortedInputCommandID(ctx context.Context, commandID string) (string, error) {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	state, err := control.read(ctx)
+	if err != nil {
+		return "", err
+	}
+	saved, found, err := state.receipt(commandID)
+	if err != nil || !found {
+		return "", err
+	}
+	return saved.AbortedInputCommandID, nil
+}
+
+// AbortedRecoveryInputCommandID reports the input a recovery abort discarded,
+// resolving the recovery receipt key for the caller.
+func (control *ExternalController) AbortedRecoveryInputCommandID(ctx context.Context, action agentexecution.RuntimeRecoveryAction) (string, error) {
+	return control.AbortedInputCommandID(ctx, "recovery:"+RecoveryActionKey(action))
 }
 
 // RecoveryInput supplies product routing and display metadata for an explicit

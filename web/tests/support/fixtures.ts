@@ -21,7 +21,9 @@ interface E2EFixtures {
 }
 
 interface BrowserDiagnostic {
-  kind: 'console.error' | 'pageerror' | 'http.5xx' | 'network.external'
+  // `http.untyped409` reports a conflict that reused a stream 409 without the
+  // typed rehydration code the tolerant path expects.
+  kind: 'console.error' | 'pageerror' | 'http.5xx' | 'http.untyped409' | 'network.external'
   text: string
   url?: string
 }
@@ -98,20 +100,34 @@ export const test = base.extend<E2EFixtures>({
       diagnostics.push({ kind: 'pageerror', text: error.stack || error.message })
     }
     const recordServerError = (response: Response) => {
+      const url = response.url()
+      const pathname = new URL(url).pathname
       // A display task may settle between the active projection and attachment.
-      // Only the typed rehydration response is expected; unrelated 409s and
-      // failures to recover still fail diagnostics or the journey assertions.
+      // The console error is recorded synchronously while the typed body arrives
+      // asynchronously, so the expected 409 is accepted here and rejected again
+      // once the body proves it is not a typed rehydration request. Deciding from
+      // the body alone raced the console diagnostic and failed correct journeys.
       if (response.status() === 409 && response.request().method() === 'GET'
-        && /^\/api\/(?:projects\/[^/]+\/agent-chat\/chat|chat|interactive\/chat)\/stream$/.test(new URL(response.url()).pathname)) {
+        && /^\/api\/(?:projects\/[^/]+\/agent-chat\/chat|chat|interactive\/chat)\/stream$/.test(pathname)) {
+        staleStreamURLs.set(url, true)
         responseChecks.push(response.json().then((body) => {
-          staleStreamURLs.set(response.url(), staleStreamURLs.get(response.url()) !== false
-            && body?.code === 'agent_runtime.rehydrate_required')
-        }).catch(() => { staleStreamURLs.set(response.url(), false) }))
+          if (body?.code !== 'agent_runtime.rehydrate_required') {
+            staleStreamURLs.set(url, false)
+            diagnostics.push({
+              kind: 'http.untyped409',
+              text: `GET ${url} returned 409 without agent_runtime.rehydrate_required`,
+            })
+          }
+        }).catch(() => {
+          // An aborted fetch can lose its body before teardown reads it. The
+          // journey assertions still cover recovery, so keep the expected 409
+          // instead of failing on the missing body itself.
+        }))
       }
       // Index and item edits share a file revision. A typed conflict is expected
       // only when a later successful index write confirms that recovery finished.
       if (response.request().method() === 'PUT'
-        && /^\/api\/projects\/[^/]+\/book\/lore\/index$/.test(new URL(response.url()).pathname)) {
+        && /^\/api\/projects\/[^/]+\/book\/lore\/index$/.test(pathname)) {
         if (response.status() === 409) {
           const conflict = { typed: false, recovered: false }
           const conflicts = indexConflicts.get(response.url()) ?? []
@@ -138,10 +154,15 @@ export const test = base.extend<E2EFixtures>({
     // Finish in-flight mock callbacks before Playwright closes the page and
     // its request context. Rapid navigation can leave a settings fetch pending.
     await page.unrouteAll({ behavior: 'wait' })
+    // Reading a response body can register further checks, so drain until a full
+    // pass adds nothing instead of waiting for one snapshot of the array.
+    for (let seen = -1; seen !== responseChecks.length;) {
+      seen = responseChecks.length
+      await Promise.allSettled(responseChecks)
+    }
     page.off('console', recordConsoleError)
     page.off('pageerror', recordPageError)
     page.off('response', recordServerError)
-    await Promise.all(responseChecks)
     if (testInfo.status !== testInfo.expectedStatus || diagnostics.length > 0) {
       await testInfo.attach('browser-diagnostics', {
         body: JSON.stringify(diagnostics, null, 2), contentType: 'application/json',

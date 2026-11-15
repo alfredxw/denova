@@ -43,6 +43,7 @@ import {
 import { PRESET_RESOURCE_SCOPE, type PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
+import { imagePresetDraftIsValid } from './ImagePresetEditor'
 import { PresetDirectorySidebar } from './PresetDirectorySidebar'
 import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
 import { applyResourceDirectoryOrder, useResourceDirectoryOrder } from '@/components/resource-directory/use-resource-directory-order'
@@ -227,10 +228,13 @@ export function PresetSettingsPanel({
     },
   })
 
+  const imagePresetDraftValid = imagePresetDraftIsValid(imagePresetDraft)
+
   const imagePresetAutosave = usePresetResourceAutosave<ImagePreset, Partial<ImagePreset>, ImagePreset>({
     draft: imagePresetDraft,
     scopeKey: PRESET_RESOURCE_SCOPE,
     active: presetResourceKind === 'image',
+    valid: imagePresetDraftValid,
     makePayload: makeImagePresetPayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
@@ -340,9 +344,24 @@ export function PresetSettingsPanel({
     })
   }
 
-  const canLeavePresetResource = () => {
-    if (isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current) {
+  const presetDraftNeedsFix = () => presetResourceKind === 'image'
+    ? !imagePresetDraftValid
+    : isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current
+
+  const showInvalidPresetDraftNotice = () => {
+    if (presetResourceKind !== 'image') {
       showInvalidPresetConfigNotice()
+      return
+    }
+    toast.error(t('settingPanel.imagePreset.invalidTitle'), {
+      id: PRESET_CONFIG_INVALID_TOAST_ID,
+      description: t('settingPanel.imagePreset.invalidDescription'),
+    })
+  }
+
+  const canLeavePresetResource = () => {
+    if (presetDraftNeedsFix()) {
+      showInvalidPresetDraftNotice()
       return false
     }
     return true
@@ -583,8 +602,8 @@ export function PresetSettingsPanel({
   }
 
   const flushActivePresetAutosave = async () => {
-    if (isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current) {
-      showInvalidPresetConfigNotice()
+    if (presetDraftNeedsFix()) {
+      showInvalidPresetDraftNotice()
       return
     }
     await runPresetMutation('[preset-settings] Failed to save preset', t('editor.saveFailed'), async () => {

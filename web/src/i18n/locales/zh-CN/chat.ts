@@ -144,6 +144,7 @@ const chat = {
   'chat.runtime.operationUnavailable': '画面中的运行尚未准备好接收指令，请等待重新连接',
   'chat.runtime.queueConflict': '这条队列操作与当前状态冲突，请稍后重试',
   'chat.runtime.busy': 'Agent 正忙，请等待运行状态更新后重试',
+  'chat.runtime.pausedTurn': '上一轮已暂停，请点击继续生成或放弃该轮后再发送',
   'chat.runtime.invalidCommand': '这条指令已不适用于画面中的运行',
   'chat.runtime.commandFailed': 'Agent 指令提交失败',
   'chat.runtime.abortPending': 'Agent 正在中断，请等待当前运行结算',

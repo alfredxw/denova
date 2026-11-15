@@ -42,9 +42,10 @@ func TestLoreCollectionLifecycle(t *testing.T) {
 	collection.IndexGuide.ItemOrder = map[string][]string{"custom:source-section": {"item-2", "item-1", "item-0"}}
 	for i := 0; i < 300; i++ {
 		name := fmt.Sprintf("Item %d", i)
-		if i == 1 {
+		switch i {
+		case 1:
 			name = "Item+0" // Different display names can share the same ID base.
-		} else if i == 2 {
+		case 2:
 			name = "沈凝"
 		}
 		collection.Items = append(collection.Items, jsonBytes(t, map[string]any{"id": fmt.Sprintf("item-%d", i), "name": name, "type": "ability-category", "content": fmt.Sprintf("Setting %d", i), "index_memberships": []lore.IndexMembership{{GroupID: "source-section", Detail: lore.IndexDetailInherit}}}))

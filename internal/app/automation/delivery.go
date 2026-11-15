@@ -58,7 +58,7 @@ func (s *Service) deliverRun(ctx context.Context, snap *automationWorkspaceSnaps
 		AutomationTaskID: task.ID, RunID: run.ID,
 	})
 	if err != nil {
-		if errors.Is(err, ErrOperationActive) {
+		if errors.Is(err, ErrOperationActive) || errors.Is(err, ErrOperationPaused) {
 			slog.InfoContext(ctx, "[automation] trigger waits for Project Agent availability", "task_id", task.ID, "run_id", run.ID)
 			return nil, s.projectRun(ctx, snap, task, run), nil
 		}

@@ -17,6 +17,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// ReadPreview returns a frozen preview, so a confirmed character card import
+// replans against the exact converted data (including frozen classification)
+// that the user reviewed instead of reparsing the uploaded card.
+func (s *Service) ReadPreview(ctx context.Context, id string) (Preview, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	preview, _, err := s.loadPreview(id)
+	return preview, err
+}
+
 func (s *Service) ReadPlan(ctx context.Context, id string) (Plan, error) {
 	if _, err := uuid.Parse(id); err != nil {
 		return Plan{}, err
@@ -37,6 +47,25 @@ func (s *Service) ReadPlan(ctx context.Context, id string) (Plan, error) {
 		return Plan{}, fmt.Errorf("invalid plan identity")
 	}
 	return plan, nil
+}
+
+// DiscardPlan removes a persisted plan that will never be applied, e.g. a
+// character card import held for duplicate confirmation. It is idempotent:
+// removing an already vanished plan succeeds.
+func (s *Service) DiscardPlan(id string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	file, err := resolveTarget(s.root, nil, FileTarget{Path: "resource-exchange/plans/" + id + ".json"})
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // Apply commits only server-persisted plan data. The application must hold the

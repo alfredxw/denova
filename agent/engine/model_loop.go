@@ -365,11 +365,11 @@ func removeRetryFeedbackIndexes(messages []*agentschema.Message, indexes []int) 
 }
 
 func canonicalMessagesEqual(left, right *agentschema.Message) (bool, error) {
-	leftHash, err := agentschema.HashCanonical(left)
+	leftHash, err := agentschema.HashCanonical(agentschema.CanonicalMessage(left))
 	if err != nil {
 		return false, err
 	}
-	rightHash, err := agentschema.HashCanonical(right)
+	rightHash, err := agentschema.HashCanonical(agentschema.CanonicalMessage(right))
 	if err != nil {
 		return false, err
 	}

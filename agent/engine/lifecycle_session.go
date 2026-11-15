@@ -18,7 +18,19 @@ type inputEnvelope struct {
 	HostData    *agentschema.HostData         `json:"host_data,omitempty"`
 }
 
+const (
+	// messageCheckpointLegacyHashVersion identifies released checkpoints written
+	// without a version field; their Hash covers raw canonical messages including
+	// provider telemetry in Extra.
+	messageCheckpointLegacyHashVersion uint16 = 0
+	// messageCheckpointCanonicalHashVersion hashes messages after stripping
+	// provider telemetry so live transcripts and reconstructed canonical windows
+	// produce matching fingerprints.
+	messageCheckpointCanonicalHashVersion uint16 = 1
+)
+
 type PersistedMessageCheckpoint struct {
+	Version      uint16                       `json:"version,omitempty"`
 	Archive      *agenthistory.HistoryArchive `json:"archive,omitempty"`
 	Hash         string                       `json:"hash"`
 	MessageCount int                          `json:"message_count"`

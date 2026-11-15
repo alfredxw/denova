@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -344,8 +343,11 @@ func TestExternalControlFailedBackupDoesNotAcceptCommand(t *testing.T) {
 				t.Fatalf("cold abort retry: %+v %v", got, err)
 			}
 			got, err := control.Start(t.Context(), input, nil, nil)
-			if err != nil || !reflect.DeepEqual(got.Wait(t.Context()), agentrun.Outcome{Status: agentrun.OutcomeAborted}) {
-				t.Fatalf("aborted root retry: %v", err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if outcome := got.Wait(t.Context()); outcome.Status != agentrun.OutcomeAborted || outcome.Error != nil {
+				t.Fatalf("aborted root retry: %+v", outcome)
 			}
 		})
 	}

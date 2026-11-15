@@ -46,6 +46,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, userCharac
 				Keywords:         cardKeywords,
 				LoadMode:         lore.LoadModeResident,
 				Content:          cardContent,
+				DetailFields:     tavernCardDetailFieldCount(card),
 				Provenance:       tavernLoreProvenance("tavern_character_card", source, "character", card),
 			},
 		},
@@ -67,6 +68,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, userCharac
 				Keywords:         tavernCardTags("{{user}}", card.Name),
 				LoadMode:         lore.LoadModeResident,
 				Content:          content,
+				DetailFields:     1,
 				Provenance:       tavernLoreProvenance("tavern_character_card", source, "user", card),
 			},
 		})
@@ -121,6 +123,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, userCharac
 				BriefDescription: tavernLoreSearchBrief(itemType, title, keywords),
 				LoadMode:         loadMode,
 				Content:          content,
+				DetailFields:     1,
 				Provenance:       tavernLoreProvenance("tavern_worldbook_entry", source, tavernEntryRecordID(entry, i), entry),
 			},
 		})
@@ -142,17 +145,44 @@ func tavernLoreSearchBrief(itemType, name string, keywords []string) string {
 	return truncateCardRunes(subject+"；搜索关键词："+strings.Join(keywords, "、")+"。", 240)
 }
 
+// tavernCardDetailField is one detail section of the character lore body. Keeping
+// the field list in one place keeps rendering and detail counting in sync.
+type tavernCardDetailField struct {
+	title string
+	value string
+}
+
+func tavernCardDetailFields(card normalizedTavernCard) []tavernCardDetailField {
+	return []tavernCardDetailField{
+		{title: "角色描述", value: sanitizeTavernNaturalLanguage(card.Description)},
+		{title: "性格", value: sanitizeTavernNaturalLanguage(card.Personality)},
+		{title: "场景", value: sanitizeTavernNaturalLanguage(card.Scenario)},
+		{title: "对话示例", value: sanitizeTavernNaturalLanguage(card.MesExample)},
+		{title: "作者备注", value: sanitizeTavernRuntimeProneField(card.CreatorNotes)},
+		{title: "创建者备注", value: sanitizeTavernRuntimeProneField(card.CreatorComment)},
+		{title: "系统提示", value: sanitizeTavernRuntimeProneField(card.SystemPrompt)},
+		{title: "历史后置提示", value: sanitizeTavernRuntimeProneField(card.PostHistoryInstructions)},
+	}
+}
+
+// tavernCardDetailFieldCount reports how many of the card's detail fields carry
+// content after sanitization. It is the detail measure used by duplicate
+// resolution: more populated fields means a richer setting.
+func tavernCardDetailFieldCount(card normalizedTavernCard) int {
+	count := 0
+	for _, field := range tavernCardDetailFields(card) {
+		if normalizeCardText(field.value) != "" {
+			count++
+		}
+	}
+	return count
+}
+
 func renderTavernCardLoreContent(card normalizedTavernCard) string {
 	var sb strings.Builder
-
-	writeMarkdownSection(&sb, "角色描述", sanitizeTavernNaturalLanguage(card.Description))
-	writeMarkdownSection(&sb, "性格", sanitizeTavernNaturalLanguage(card.Personality))
-	writeMarkdownSection(&sb, "场景", sanitizeTavernNaturalLanguage(card.Scenario))
-	writeMarkdownSection(&sb, "对话示例", sanitizeTavernNaturalLanguage(card.MesExample))
-	writeMarkdownSection(&sb, "作者备注", sanitizeTavernRuntimeProneField(card.CreatorNotes))
-	writeMarkdownSection(&sb, "创建者备注", sanitizeTavernRuntimeProneField(card.CreatorComment))
-	writeMarkdownSection(&sb, "系统提示", sanitizeTavernRuntimeProneField(card.SystemPrompt))
-	writeMarkdownSection(&sb, "历史后置提示", sanitizeTavernRuntimeProneField(card.PostHistoryInstructions))
+	for _, field := range tavernCardDetailFields(card) {
+		writeMarkdownSection(&sb, field.title, field.value)
+	}
 	return strings.TrimSpace(sb.String())
 }
 

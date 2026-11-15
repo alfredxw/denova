@@ -318,9 +318,10 @@ func TestGameDraftPauseAndColdResumeThroughCanonicalRuntime(t *testing.T) {
 				t.Fatal("cold continuation changed or reran the locked rule")
 			}
 			wantSubmissions, wantRequests := int32(2), 1
-			if scenario == "accepted-output" {
+			switch scenario {
+			case "accepted-output":
 				wantSubmissions, wantRequests = 1, 0
-			} else if scenario == "prose-only" {
+			case "prose-only":
 				wantRequests = 2
 			}
 			if submissions.Load() != wantSubmissions || model.count() != wantRequests {

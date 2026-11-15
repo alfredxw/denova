@@ -40,7 +40,7 @@ func (a *App) rememberConversationDefaults(binding ConversationConfigBinding, sn
 	baseRevision := ""
 	if patch.Runtime != nil {
 		selection := snapshot.Engine()
-		preferences := config.RuntimePreferences{Selected: selection.Kind, Codex: selection.Codex, Claude: selection.Claude}
+		preferences := config.RuntimePreferences{Selected: selection.Kind, Codex: selection.Codex, Claude: selection.Claude, Grok: selection.Grok, Antigravity: selection.Antigravity}
 		if snapshot.CustomAgentID != "" {
 			// Preserve the current definition and inactive engine settings. CAS
 			// protects other Agent edits because custom_agents is an array patch.
@@ -62,6 +62,12 @@ func (a *App) rememberConversationDefaults(binding ConversationConfigBinding, sn
 					}
 					if selection.Claude != nil {
 						retained.Claude = selection.Claude
+					}
+					if selection.Grok != nil {
+						retained.Grok = selection.Grok
+					}
+					if selection.Antigravity != nil {
+						retained.Antigravity = selection.Antigravity
 					}
 					preferences = retained
 				}

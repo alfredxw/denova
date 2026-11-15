@@ -1,11 +1,12 @@
 import { Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import type { CharacterCardPreview } from '@/lib/api'
+import type { CharacterCardPreview, ImportDuplicatePreview } from '@/lib/api'
 
 export type CharacterCardTargetMode = 'current' | 'new_book'
 
@@ -31,6 +32,11 @@ interface CharacterCardImportDialogProps {
   onUserCharacterNameChange: (name: string) => void
   onSemanticClassificationChange: (enabled: boolean) => void
   onImport: () => void | Promise<void>
+  pendingOverrides: ImportDuplicatePreview[]
+  /** Localized notice shown above the review, e.g. that entries changed since the preview. */
+  notice?: string
+  onConfirmOverrides: (choices: Record<string, string>) => void | Promise<void>
+  onCancelOverrides: () => void
 }
 
 export function CharacterCardImportDialog({
@@ -55,9 +61,18 @@ export function CharacterCardImportDialog({
   onUserCharacterNameChange,
   onSemanticClassificationChange,
   onImport,
+  pendingOverrides,
+  notice,
+  onConfirmOverrides,
+  onCancelOverrides,
 }: CharacterCardImportDialogProps) {
   const { t } = useTranslation()
   const hasSelectedFile = Boolean(file)
+  const hasPendingOverrides = pendingOverrides.length > 0
+  const [overrideChoices, setOverrideChoices] = useState<Record<string, string>>({})
+  useEffect(() => {
+    setOverrideChoices(Object.fromEntries(pendingOverrides.map((dup) => [dup.name, dup.suggested])))
+  }, [pendingOverrides])
 
   return (
     <>
@@ -117,6 +132,53 @@ export function CharacterCardImportDialog({
                   ))}
                 </div>
                 <CompatibilityReport preview={preview} />
+              </div>
+            )}
+
+            {preview && hasPendingOverrides && (
+              <div className="space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2">
+                <div>
+                  <div className="text-xs font-medium text-[var(--nova-text)]">{t('importCard.overridesConfirmTitle')}</div>
+                  <div className="mt-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('importCard.overridesConfirmHelp')}</div>
+                  {notice && <div className="mt-1 text-[11px] leading-4 text-[var(--nova-warning)]">{notice}</div>}
+                </div>
+                <ul className="space-y-2">
+                  {pendingOverrides.map((dup, index) => (
+                    <li key={`${dup.name}-${index}`} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
+                      <div className="truncate text-xs font-medium text-[var(--nova-text)]">{dup.name}</div>
+                      <div className="mt-1 grid grid-cols-2 gap-3 text-[11px] leading-4 text-[var(--nova-text-faint)]">
+                        <div className="min-w-0">
+                          <div className="text-[var(--nova-text-muted)]">{t('importCard.overrideExisting')}</div>
+                          <div className="break-words">{dup.existing_preview}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[var(--nova-text-muted)]">{t('importCard.overrideIncoming')}</div>
+                          <div className="break-words">{dup.incoming_preview}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex gap-1.5">
+                        <button
+                          type="button"
+                          aria-pressed={overrideChoices[dup.name] === 'override'}
+                          className={`nova-nav-item h-7 flex-1 px-2 text-[11px] ${overrideChoices[dup.name] === 'override' ? 'is-active' : ''}`}
+                          onClick={() => setOverrideChoices((current) => ({ ...current, [dup.name]: 'override' }))}
+                          disabled={importing}
+                        >
+                          {t('importCard.overrideChoiceOverride')}
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={overrideChoices[dup.name] === 'keep'}
+                          className={`nova-nav-item h-7 flex-1 px-2 text-[11px] ${overrideChoices[dup.name] === 'keep' ? 'is-active' : ''}`}
+                          onClick={() => setOverrideChoices((current) => ({ ...current, [dup.name]: 'keep' }))}
+                          disabled={importing}
+                        >
+                          {t('importCard.overrideChoiceKeep')}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -211,19 +273,19 @@ export function CharacterCardImportDialog({
               size="xs"
               variant="ghost"
               className="nova-nav-item border border-transparent text-[var(--nova-text-muted)]"
-              onClick={() => onOpenChange(false)}
+              onClick={() => (hasPendingOverrides ? onCancelOverrides() : onOpenChange(false))}
               disabled={importing}
             >
-              {t('common.cancel')}
+              {t(hasPendingOverrides ? 'importCard.backToPreview' : 'common.cancel')}
             </Button>
             <Button
               type="button"
               size="xs"
               className="border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]"
-              onClick={onImport}
+              onClick={() => (hasPendingOverrides ? onConfirmOverrides(overrideChoices) : onImport())}
               disabled={!file || !preview || previewing || importing}
             >
-              {importing ? t('importCard.importing') : t('importCard.import')}
+              {importing ? t('importCard.importing') : hasPendingOverrides ? t('importCard.confirmOverridesImport') : t('importCard.import')}
             </Button>
           </div>
         </DialogContent>

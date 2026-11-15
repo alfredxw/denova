@@ -35,13 +35,15 @@ const (
 
 // Store manages interactive story data inside a workspace.
 type Store struct {
-	root                   string
-	novaDir                string
-	mu                     sync.Mutex
-	rewriteJSONL           func(string, []any) error
-	lastStoryReplayByStory map[string]StoryJournalReplayStats
-	heldStoryLeases        map[string]int
-	storyJournals          map[string]*storyJournalHandle
+	root                    string
+	novaDir                 string
+	mu                      sync.Mutex
+	rewriteJSONL            func(string, []any) error
+	writeIndex              func(Index) error
+	lastStoryReplayByStory  map[string]StoryJournalReplayStats
+	storyProjectionFailures map[string]error
+	heldStoryLeases         map[string]int
+	storyJournals           map[string]*storyJournalHandle
 }
 
 type storyJournalHandle struct {

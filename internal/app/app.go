@@ -332,6 +332,10 @@ var ErrNoWorkspaceOpen = settingsapp.ErrProjectRequired
 // root operation.
 var ErrAgentOperationActive = agentruntime.ErrOperationActive
 
+// ErrAgentOperationPaused rejects a new root start while a suspended operation
+// still owns the conversation. Callers must resume or discard that operation.
+var ErrAgentOperationPaused = agentruntime.ErrOperationPaused
+
 // ErrWorkspaceTransition prevents a task from binding half to an old
 // workspace and half to a newly constructed runtime.
 var ErrWorkspaceTransition = appagentruntime.ErrWorkspaceTransition
@@ -403,6 +407,23 @@ func (a *App) AgentChat() *agentchatapp.Service {
 func (a *App) AgentEngines() *agentruntime.Engines {
 	a.ensureServices()
 	return a.agentEngines
+}
+
+// WarmUpAgentRuntimes resolves every external engine once after startup so the
+// model menu opens with a real status instead of "not checked". Probes are
+// serialized per engine and cached, so this is the only boot cost: a missing or
+// signed-out CLI is remembered with a backoff instead of being retried by every
+// later menu read. Native takes no part; it has no host process to probe.
+func (a *App) WarmUpAgentRuntimes(ctx context.Context) {
+	engines := a.AgentEngines()
+	for _, id := range []config.RuntimeID{config.RuntimeCodex, config.RuntimeClaude, config.RuntimeGrok, config.RuntimeAntigravity} {
+		if ctx.Err() != nil {
+			return
+		}
+		if _, err := engines.Models(ctx, id); err != nil {
+			slog.InfoContext(ctx, "[agent-runtime] startup probe incomplete", "runtime", id, "error", err)
+		}
+	}
 }
 
 // ProjectBook exposes Book resources through stable Project identity without

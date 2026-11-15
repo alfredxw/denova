@@ -5,6 +5,19 @@ import type { ConversationConfigController } from '@/features/conversation-confi
 import { AgentApprovalModeMenu } from './AgentApprovalModeMenu'
 
 describe('AgentApprovalModeMenu', () => {
+  for (const engine of ['claude', 'grok', 'antigravity'] as const) {
+    it(`does not offer Native permissions for the ${engine} runtime`, () => {
+      const runtime = engine === 'claude' ? { kind: engine, claude: { model: 'model' } }
+        : engine === 'grok' ? { kind: engine, grok: { model: 'model' } } : { kind: engine, antigravity: { model: 'model' } }
+      const controller: ConversationConfigController = {
+        snapshot: { agent_kind: 'ide', profile_id: 'unused', thinking_level: 'medium', approval_mode: 'ask', revision: 1, runtime },
+        initialized: true, loading: false, saving: false, error: null, patch: vi.fn(), reload: vi.fn(),
+      }
+      render(<AgentApprovalModeMenu runActive={false} conversationConfig={controller} />)
+      expect(screen.queryByRole('button')).not.toBeInTheDocument()
+      expect(controller.patch).not.toHaveBeenCalled()
+    })
+  }
   for (const active of [false, true]) {
     it(`shows Codex permissions and ${active ? 'locks the running selection' : 'saves the complete engine selection'}`, async () => {
       const user = userEvent.setup()

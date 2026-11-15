@@ -214,54 +214,8 @@ func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.Model
 	}
 }
 
-func interactiveToolCallsFromSchema(calls []agents.ToolCall) []interactive.ModelContextToolCall {
-	if len(calls) == 0 {
-		return nil
-	}
-	result := make([]interactive.ModelContextToolCall, 0, len(calls))
-	for _, call := range calls {
-		if strings.TrimSpace(call.Function.Name) == "" {
-			continue
-		}
-		result = append(result, interactive.ModelContextToolCall{
-			Index: call.Index,
-			ID:    call.ID,
-			Type:  call.Type,
-			Function: interactive.ModelContextFunctionCall{
-				Name:      call.Function.Name,
-				Arguments: call.Function.Arguments,
-			},
-			Extra: call.Extra,
-		})
-	}
-	return result
-}
-
 func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*agents.Message {
 	return interactive.AgentMessagesFromModelContext(messages)
-}
-
-func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []agents.ToolCall {
-	if len(calls) == 0 {
-		return nil
-	}
-	result := make([]agents.ToolCall, 0, len(calls))
-	for _, call := range calls {
-		if strings.TrimSpace(call.Function.Name) == "" {
-			continue
-		}
-		result = append(result, agents.ToolCall{
-			Index: call.Index,
-			ID:    call.ID,
-			Type:  call.Type,
-			Function: agents.FunctionCall{
-				Name:      call.Function.Name,
-				Arguments: call.Function.Arguments,
-			},
-			Extra: call.Extra,
-		})
-	}
-	return result
 }
 
 func (c *Conversation) AppendAssistant(content string) error {

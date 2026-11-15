@@ -26,6 +26,14 @@ func cloneSelection(selection config.RuntimeSelection) config.RuntimeSelection {
 		value := *selection.Claude
 		selection.Claude = &value
 	}
+	if selection.Grok != nil {
+		value := *selection.Grok
+		selection.Grok = &value
+	}
+	if selection.Antigravity != nil {
+		value := *selection.Antigravity
+		selection.Antigravity = &value
+	}
 	return selection
 }
 

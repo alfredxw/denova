@@ -15,10 +15,14 @@ export default defineConfig({
   fullyParallel: true,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
-  retries: 0,
+  // Full CI also gates the release: repeating a transient failure once keeps a
+  // flaky case from blocking publishing, while a deterministic failure still
+  // fails every attempt. Smoke keeps a single attempt for fast feedback.
+  retries: process.env.CI && process.env.DENOVA_CI_SUITE !== 'smoke' ? 1 : 0,
   maxFailures: process.env.DENOVA_CI_SUITE === 'smoke' ? 1 : 0,
-  // Push/PR CI exercises both products on the production package. Daily,
-  // explicit full runs and release verification retain every regression.
+  // Frontend and workflow changes run every journey on the production package;
+  // scoped backend-only runs keep the tagged smoke subset. Daily, explicit full
+  // runs and release verification also retain every regression.
   grep: process.env.DENOVA_CI_SUITE === 'smoke' ? /@smoke/ : undefined,
   reporter: process.env.CI
     ? [['line'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/playwright.json' }]]

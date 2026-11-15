@@ -68,7 +68,15 @@ type ExternalTurn struct {
 	runtimeSession  *external.RuntimeSession
 	sourceBoundary  string
 	providerSettled bool
+	// toolCalls counts successful host tool invocations for this turn. It is the
+	// progress signal for the repair loop: native engine tools never reach it.
+	toolCalls int
 }
+
+// maxStalledRounds bounds how many consecutive attempts may pass without a host
+// tool call or new narrative before the turn is ended. Repair rounds are
+// expected, an unbounded prompt loop is not.
+const maxStalledRounds = 3
 
 func StartExternalTurn(ctx context.Context, cfg ExternalTurnConfig) (*ExternalTurn, error) {
 	c := cfg.Conversation
@@ -205,7 +213,10 @@ func (turn *ExternalTurn) run(ctx context.Context) (outcome agentrun.Outcome) {
 			err = c.MarkInterrupted(c.user, text, "external_runtime_interrupted")
 		}
 		outcome.Error = errors.Join(outcome.Error, err)
-		if turn.providerSettled && turn.runtimeSession != nil && (errors.Is(context.Cause(ctx), external.ErrSuspended) || errors.Is(context.Cause(ctx), external.ErrSteered)) && err == nil {
+		// A settled provider turn stays reusable even when the product turn fails or
+		// is cancelled: refusing it only forces the next turn to replay the whole
+		// canonical source into a fresh provider conversation.
+		if turn.providerSettled && turn.runtimeSession != nil && err == nil {
 			snapshot, readErr := c.store.Snapshot(c.storyID, c.branchID)
 			if readErr == nil {
 				readErr = turn.runtimeSession.Accept(context.WithoutCancel(ctx), gameRuntimeBoundary(snapshot))
@@ -219,7 +230,8 @@ func (turn *ExternalTurn) run(ctx context.Context) (outcome agentrun.Outcome) {
 			outcome.Status = agentrun.OutcomeAborted
 			turn.send(agentrun.NewAbortedEvent(agentrun.AbortReasonUserRequested))
 		} else {
-			turn.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": "agentRuntime.operationFailed", "message": i18n.New(turn.config.Config.Language).T("agentRuntime.operationFailed"), "details": map[string]any{"detail": observability.ErrorCause(outcome.Error)}, "run_id": string(turn.identity.OperationID)}})
+			key := external.FailureKey(outcome.Error)
+			turn.send(agentrun.Event{Type: "error", Data: map[string]any{"error_key": key, "message": i18n.New(turn.config.Config.Language).T(key), "details": map[string]any{"detail": observability.ErrorCause(outcome.Error)}, "run_id": string(turn.identity.OperationID)}})
 		}
 	}()
 	turn.send(agentrun.Event{Type: "agent_cycle_started", Data: map[string]any{
@@ -245,6 +257,8 @@ func (turn *ExternalTurn) run(ctx context.Context) (outcome agentrun.Outcome) {
 	} else if c.InteractiveNarrativeReady() && narrative != "" {
 		return turn.commit(ctx, narrative)
 	}
+	stalled := 0
+	lastCalls, lastNarrative := 0, ""
 	for {
 		if err := turn.ctx.Err(); err != nil {
 			return agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: err}
@@ -297,6 +311,22 @@ func (turn *ExternalTurn) run(ctx context.Context) (outcome agentrun.Outcome) {
 		}
 		if runErr != nil {
 			return agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: runErr}
+		}
+		// Repair rounds are expected; an engine that keeps producing neither a host
+		// tool call nor new narrative is looping. End the turn so the retained prose
+		// stays available for a resume instead of prompting forever.
+		if turn.toolCalls == lastCalls && narrative == lastNarrative {
+			stalled++
+		} else {
+			stalled = 0
+		}
+		lastCalls, lastNarrative = turn.toolCalls, narrative
+		slog.InfoContext(ctx, "[external-game] attempt outcome", "operation_id", turn.identity.OperationID,
+			"ready", c.InteractiveNarrativeReady(), "tool_calls", turn.toolCalls,
+			"narrative_bytes", len(narrative), "stalled_rounds", stalled)
+		if stalled >= maxStalledRounds {
+			return agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: fmt.Errorf("%w: %d consecutive rounds without a host tool call or new narrative",
+				external.ErrTurnNotConverged, stalled)}
 		}
 		// Continue with the same product draft. The locked prose is never
 		// regenerated; only missing submission modules may be repaired.

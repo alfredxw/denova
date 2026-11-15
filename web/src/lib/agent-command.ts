@@ -33,12 +33,16 @@ export function isKnownAgentCommandOutcome(error: unknown) {
   return Number.isFinite(status) && status >= 400 && status < 500
 }
 
-/** Map stable runtime error codes to the active UI locale. */
-export function agentCommandErrorMessage(error: unknown, t: TFunction) {
-  const code = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
+/** Stable runtime error code carried by a rejected Agent request, if any. */
+export function agentCommandErrorCode(error: unknown) {
+  return error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
     ? (error as { code: string }).code
     : ''
-  switch (code) {
+}
+
+/** Map stable runtime error codes to the active UI locale. */
+export function agentCommandErrorMessage(error: unknown, t: TFunction) {
+  switch (agentCommandErrorCode(error)) {
     case 'agent_runtime.capability_unsupported':
       return withErrorLogID(t('agentRuntime.capabilityUnsupported'), error)
     case 'agent_runtime.target_operation_mismatch':
@@ -49,6 +53,8 @@ export function agentCommandErrorMessage(error: unknown, t: TFunction) {
       return withErrorLogID(t('chat.runtime.operationUnavailable'), error)
     case 'agent_runtime.busy':
       return withErrorLogID(t('chat.runtime.busy'), error)
+    case 'agent_runtime.operation_paused':
+      return withErrorLogID(t('chat.runtime.pausedTurn'), error)
     case 'agent_runtime.invalid_command':
     case 'agent_runtime.command_conflict':
       return withErrorLogID(t('chat.runtime.invalidCommand'), error)

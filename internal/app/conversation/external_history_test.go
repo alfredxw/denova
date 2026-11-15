@@ -127,9 +127,10 @@ func TestExternalPreparationDefersCanonicalHistory(t *testing.T) {
 						t.Fatalf("turn %d failed: %+v", turn, outcome)
 					}
 					wantAttempts, wantLoads := 1, 1
-					if turn == 1 {
+					switch turn {
+					case 1:
 						wantLoads = 0
-					} else if turn == 2 {
+					case 2:
 						wantAttempts = 2
 					}
 					if attempts != wantAttempts || loads != wantLoads {

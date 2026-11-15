@@ -445,6 +445,20 @@ export function submitInteractiveAgentCommand(command: InteractiveAgentCommand):
   })
 }
 
+/** Discard only the matching suspended Game input after its CLI is idle. */
+export function abandonInteractivePendingTurn(storyId: string, branchId: string, interruptionID: string): Promise<{ ok: boolean }> {
+  return requestJSON('/api/interactive/chat/commands', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      type: 'abandon_pending',
+      story_id: storyId,
+      branch_id: branchId,
+      resume_interruption_id: interruptionID,
+    }),
+  })
+}
+
 export function getActiveInteractiveChat(storyId: string, branchId?: string): Promise<ActiveInteractiveChat> {
   return requestJSON(`/api/interactive/chat/active?${interactiveChatQuery(storyId, branchId)}`)
 }

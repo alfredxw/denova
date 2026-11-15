@@ -395,22 +395,6 @@ func renderBoundedLoreNameIndex(entries []loreIndexEntry, matchedTotal, libraryT
 	return strings.TrimSpace(truncateStringBytes(out, maxBytes))
 }
 
-func formatLoreItemIndexMarkdown(item Item) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "- id: %s\n  name: %s\n  type: %s\n  importance: %s\n  load_mode: %s\n", item.ID, item.Name, item.Type, item.Importance, item.LoadMode)
-	if len(item.Tags) > 0 {
-		fmt.Fprintf(&sb, "  tags: %s\n", strings.Join(item.Tags, ", "))
-	}
-	if item.BriefDescription != "" {
-		fmt.Fprintf(&sb, "  brief: %s\n", item.BriefDescription)
-	}
-	if len(item.Keywords) > 0 {
-		fmt.Fprintf(&sb, "  keywords: %s\n", strings.Join(item.Keywords, ", "))
-	}
-	sb.WriteString("\n")
-	return sb.String()
-}
-
 func appendLoreContextPart(sb *strings.Builder, text string, maxBytes int) bool {
 	if text == "" {
 		return true
@@ -479,15 +463,4 @@ func loreItemMatchSources(item Item, query string) []string {
 	addSource("brief", item.BriefDescription)
 	addSource("content", item.Content)
 	return sources
-}
-
-func loreImportanceLabel(v string) string {
-	switch normalizeLoreImportance(v) {
-	case "major":
-		return "主要"
-	case "important":
-		return "重要"
-	default:
-		return "次要"
-	}
 }

@@ -32,9 +32,11 @@ func (f Feature) Valid() bool {
 type Engine string
 
 const (
-	Native Engine = "native"
-	Codex  Engine = "codex"
-	Claude Engine = "claude"
+	Native      Engine = "native"
+	Codex       Engine = "codex"
+	Claude      Engine = "claude"
+	Grok        Engine = "grok"
+	Antigravity Engine = "antigravity"
 )
 
 type Trigger string

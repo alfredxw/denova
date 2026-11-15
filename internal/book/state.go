@@ -126,7 +126,7 @@ func (s *State) ensureIdeasFile() error {
 	ideasPath := filepath.Join(s.workspace, IdeasFileName)
 	if _, err := os.Stat(ideasPath); err == nil {
 		return nil
-	} else if err != nil && !os.IsNotExist(err) {
+	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("检查 %s 失败: %w", IdeasFileName, err)
 	}
 
@@ -136,7 +136,7 @@ func (s *State) ensureIdeasFile() error {
 			return fmt.Errorf("迁移 %s 到 %s 失败: %w", LegacyBrainstormFileName, IdeasFileName, renameErr)
 		}
 		return nil
-	} else if err != nil && !os.IsNotExist(err) {
+	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("检查 %s 失败: %w", LegacyBrainstormFileName, err)
 	}
 
