@@ -63,9 +63,8 @@ type Engines struct {
 
 // engineEntry holds one host-local engine's connection and its last known
 // readiness. probeMu serializes connection replacement and every probe, so
-// concurrent menu reads and admissions share one CLI invocation. mu only guards
-// the fields below, so listing engines or reading status never waits for a
-// process to start.
+// admissions share one CLI invocation. mu only guards the fields below, so
+// reading the cached status or catalog never waits for a process to start.
 type engineEntry struct {
 	probeMu      sync.Mutex
 	mu           sync.Mutex
@@ -80,13 +79,11 @@ type engineEntry struct {
 	closed       bool
 }
 
-// engineModelsTTL bounds repeated CLI model discovery across menu opens and
-// admissions. Only an explicit check bypasses it.
+// engineModelsTTL bounds repeated CLI model discovery during admissions. An
+// explicit check refreshes immediately; menu reads ignore the TTL.
 const engineModelsTTL = 5 * time.Minute
 
-// engineRetryDelay bounds retries after a negative probe. Containers restart
-// often and the model menu is reopened constantly; without a backoff a missing
-// or signed-out CLI is spawned again on every read.
+// engineRetryDelay bounds admission retries after a negative probe.
 const engineRetryDelay = 30 * time.Second
 
 func NewEngines() *Engines {
@@ -191,21 +188,22 @@ func (engines *Engines) Check(ctx context.Context, id config.RuntimeID) (EngineD
 	return entry.descriptor(), nil
 }
 
-// Models reports the engine catalog from cache and probes only when the cached
-// readiness or catalog is stale. This is what the model menu reads.
-func (engines *Engines) Models(ctx context.Context, id config.RuntimeID) (external.Models, error) {
+// Models reads the last known catalog of a ready engine without probing it.
+func (engines *Engines) Models(_ context.Context, id config.RuntimeID) (external.Models, error) {
 	entry, err := engines.entry(id)
 	if err != nil {
 		return external.Models{}, err
 	}
-	entry.probeMu.Lock()
-	defer entry.probeMu.Unlock()
-	return entry.catalog(ctx, false)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.closed || entry.connection == nil || entry.modelsExpiry.IsZero() || entry.connection.Status().Status != "ready" {
+		return external.Models{}, ErrEngineNotReady
+	}
+	return entry.models, nil
 }
 
 // ValidateSelection admits a selection against the cached catalog. It starts a
-// CLI process only when the catalog is cold, so changing model or effort inside a
-// ready engine costs nothing.
+// CLI process only when the catalog is missing or expired.
 func (engines *Engines) ValidateSelection(ctx context.Context, selection config.RuntimeSelection) error {
 	entry, err := engines.entry(selection.Kind)
 	if err != nil {
@@ -243,8 +241,8 @@ func (entry *engineEntry) catalog(ctx context.Context, force bool) (external.Mod
 			return cached, nil
 		}
 		if time.Now().Before(retryAfter) {
-			// A ready engine that only failed a catalog read keeps serving its
-			// last known list instead of failing the menu.
+			// A ready engine that failed to refresh its catalog can still use
+			// the last known list.
 			if state.Status == "ready" && len(cached.Items) > 0 {
 				return cached, nil
 			}
@@ -274,10 +272,8 @@ func (entry *engineEntry) catalog(ctx context.Context, force bool) (external.Mod
 		entry.connection = created
 		entry.mu.Unlock()
 	}
-	// A new connection is unchecked, so the first read also establishes
-	// readiness. A ready connection is never re-probed: that spawned a CLI
-	// process on every menu open and let one transient failure turn a working
-	// runtime into an unavailable one.
+	// A new connection establishes readiness before model discovery. An
+	// explicit check can refresh readiness on a leased connection.
 	state = connection.Status()
 	var probed *external.Models
 	if state.Status == "unchecked" || (force && users != 0) {
@@ -336,7 +332,7 @@ func probeState(state external.ConnectionState, err error) external.ConnectionSt
 }
 
 // record stores one probe outcome. Negative results are remembered for a short
-// backoff so repeated reads do not respawn a missing or signed-out CLI.
+// backoff so repeated admissions do not respawn a missing or signed-out CLI.
 func (entry *engineEntry) record(state external.ConnectionState, models *external.Models) {
 	if state.Status == "" {
 		state = external.ConnectionState{Status: "unavailable", ReasonKey: "agentRuntime.connectionFailed"}

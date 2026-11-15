@@ -31,6 +31,9 @@ func TestCatalogProbeAnswersReadinessAndCatalogOnce(t *testing.T) {
 	connection := &catalogProbeConnection{testConnection: testConnection{state: external.ConnectionState{Status: "unchecked"}}}
 	entry := engines.entries[config.RuntimeGrok]
 	entry.factory = func(context.Context) (external.Connection, error) { return connection, nil }
+	if checked, err := engines.Check(t.Context(), config.RuntimeGrok); err != nil || checked.Status != "ready" {
+		t.Fatalf("expected ready engine: status=%s err=%v", checked.Status, err)
+	}
 	models, err := engines.Models(t.Context(), config.RuntimeGrok)
 	if err != nil || len(models.Items) != 1 || connection.probes != 1 {
 		t.Fatalf("probe did not answer both questions: probes=%d models=%#v err=%v", connection.probes, models, err)
@@ -72,6 +75,10 @@ func TestFailedCatalogRefreshServesLastKnownModels(t *testing.T) {
 	connection := &flakyCatalogConnection{testConnection: testConnection{state: external.ConnectionState{Status: "ready"}}}
 	entry := engines.entries[config.RuntimeClaude]
 	entry.factory = func(context.Context) (external.Connection, error) { return connection, nil }
+	selection := config.RuntimeSelection{Kind: config.RuntimeClaude, Claude: &config.ClaudeRuntimeSettings{Model: "runtime-model"}}
+	if err := engines.ValidateSelection(t.Context(), selection); err != nil {
+		t.Fatal(err)
+	}
 	first, err := engines.Models(t.Context(), config.RuntimeClaude)
 	if err != nil || len(first.Items) != 1 {
 		t.Fatalf("initial catalog: %#v %v", first, err)
@@ -80,6 +87,14 @@ func TestFailedCatalogRefreshServesLastKnownModels(t *testing.T) {
 	entry.modelsExpiry = time.Unix(1, 0)
 	entry.mu.Unlock()
 	connection.fail = true
+	for range 2 {
+		if err := engines.ValidateSelection(t.Context(), selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if connection.models != 2 {
+		t.Fatalf("failed refresh was not backed off: catalog calls=%d", connection.models)
+	}
 	// A ready engine that cannot answer right now keeps its last catalog instead
 	// of turning into a connection error in the model menu.
 	for range 2 {
@@ -135,24 +150,42 @@ func TestSignedOutEngineIsNotProbedOnEveryRead(t *testing.T) {
 		starts++
 		return connection, nil
 	}
+	if _, err := engines.Models(t.Context(), config.RuntimeGrok); !errors.Is(err, ErrEngineNotReady) || starts != 0 {
+		t.Fatalf("cold model read started the engine: starts=%d err=%v", starts, err)
+	}
+	checked, err := engines.Check(t.Context(), config.RuntimeGrok)
+	if err != nil || checked.Status != "auth_required" || starts != 1 {
+		t.Fatalf("check did not observe missing authentication: starts=%d status=%s err=%v", starts, checked.Status, err)
+	}
 	for range 3 {
 		if _, err := engines.Models(t.Context(), config.RuntimeGrok); !errors.Is(err, ErrEngineNotReady) {
 			t.Fatalf("signed-out engine served models: %v", err)
 		}
 	}
-	// The negative result is remembered, so repeated menu reads reuse it.
+	selection := config.RuntimeSelection{Kind: config.RuntimeGrok, Grok: &config.GrokRuntimeSettings{Model: "runtime-model"}}
+	if err := engines.ValidateSelection(t.Context(), selection); !errors.Is(err, ErrEngineNotReady) {
+		t.Fatalf("signed-out engine accepted a selection: %v", err)
+	}
 	if starts != 1 {
 		t.Fatalf("negative probe repeated: starts=%d", starts)
+	}
+	entry := engines.entries[config.RuntimeGrok]
+	entry.factory = func(context.Context) (external.Connection, error) {
+		starts++
+		return &testConnection{state: external.ConnectionState{Status: "auth_required"}}, nil
 	}
 	if _, err := engines.Check(t.Context(), config.RuntimeGrok); err != nil || starts != 2 {
 		t.Fatalf("explicit check did not bypass the backoff: starts=%d err=%v", starts, err)
 	}
 }
 
-func TestModelCacheExpiresAndCannotOutliveEngineClose(t *testing.T) {
+func TestModelReadsServeExpiredCacheUntilRefreshOrClose(t *testing.T) {
 	engines := NewEngines()
 	connection := &testConnection{state: external.ConnectionState{Status: "ready"}}
 	engines.entries[config.RuntimeGrok].factory = func(context.Context) (external.Connection, error) { return connection, nil }
+	if _, err := engines.Check(t.Context(), config.RuntimeGrok); err != nil {
+		t.Fatal(err)
+	}
 	for range 2 {
 		if _, err := engines.Models(t.Context(), config.RuntimeGrok); err != nil {
 			t.Fatal(err)
@@ -162,8 +195,8 @@ func TestModelCacheExpiresAndCannotOutliveEngineClose(t *testing.T) {
 		t.Fatalf("cached catalog reprobed: models=%d probes=%d", connection.models, connection.probes)
 	}
 	engines.entries[config.RuntimeGrok].modelsExpiry = time.Unix(1, 0)
-	if _, err := engines.Models(t.Context(), config.RuntimeGrok); err != nil || connection.models != 2 {
-		t.Fatalf("expired catalog was not refreshed: models=%d err=%v", connection.models, err)
+	if cached, err := engines.Models(t.Context(), config.RuntimeGrok); err != nil || len(cached.Items) != 1 || connection.models != 1 {
+		t.Fatalf("read refreshed an expired catalog: models=%d cached=%#v err=%v", connection.models, cached, err)
 	}
 	if err := engines.Close(); err != nil {
 		t.Fatal(err)
@@ -179,7 +212,7 @@ func TestExplicitCheckInvalidatesModelsWithoutReplacingLeasedConnection(t *testi
 	connection := &testConnection{state: external.ConnectionState{Status: "ready"}}
 	entry := engines.entries[config.RuntimeGrok]
 	entry.factory = func(context.Context) (external.Connection, error) { return connection, nil }
-	if _, err := engines.Models(t.Context(), config.RuntimeGrok); err != nil {
+	if _, err := engines.Check(t.Context(), config.RuntimeGrok); err != nil {
 		t.Fatal(err)
 	}
 	entry.users = 1
