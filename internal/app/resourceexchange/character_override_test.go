@@ -39,8 +39,7 @@ func TestLoreDetailScoring(t *testing.T) {
 	}
 }
 
-func TestCharacterCardOverrideByDetail(t *testing.T) {
-	ctx := context.Background()
+func TestCharacterCardSuggestsOverrideByDetail(t *testing.T) {
 	s := testService(t)
 	dir := filepath.Join(s.root, "projects", "override")
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -69,26 +68,12 @@ func TestCharacterCardOverrideByDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.ImportOverrides) != 1 || plan.ImportOverrides[0] != "Hero" {
-		t.Fatalf("expected one override, got %+v", plan.ImportOverrides)
-	}
-	if len(plan.ImportSkipped) != 0 {
-		t.Fatalf("unexpected skips: %+v", plan.ImportSkipped)
-	}
-	if _, err := s.Apply(ctx, plan.ID); err != nil {
-		t.Fatal(err)
-	}
-	items, err := store.ListAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].Content != "A much longer and more detailed description of the hero." {
-		t.Fatalf("override not applied: %+v", items)
+	if len(plan.ImportDuplicates) != 1 || plan.ImportDuplicates[0].Suggested != "override" || len(plan.ImportOverrides) != 0 {
+		t.Fatalf("expected an override suggestion without a staged override: duplicates=%+v overrides=%v", plan.ImportDuplicates, plan.ImportOverrides)
 	}
 }
 
-func TestCharacterCardKeepLessDetailed(t *testing.T) {
-	ctx := context.Background()
+func TestCharacterCardSuggestsKeepingMoreDetailedLocal(t *testing.T) {
 	s := testService(t)
 	dir := filepath.Join(s.root, "projects", "keep")
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -117,21 +102,8 @@ func TestCharacterCardKeepLessDetailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.ImportSkipped) != 1 || plan.ImportSkipped[0] != "Hero" {
-		t.Fatalf("expected one skip, got %+v", plan.ImportSkipped)
-	}
-	if len(plan.ImportOverrides) != 0 {
-		t.Fatalf("unexpected overrides: %+v", plan.ImportOverrides)
-	}
-	if _, err := s.Apply(ctx, plan.ID); err != nil {
-		t.Fatal(err)
-	}
-	items, err := store.ListAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].Content != "An existing richly detailed hero description." {
-		t.Fatalf("existing entry was not kept: %+v", items)
+	if len(plan.ImportDuplicates) != 1 || plan.ImportDuplicates[0].Suggested != "keep" {
+		t.Fatalf("expected a keep suggestion, got %+v", plan.ImportDuplicates)
 	}
 }
 
@@ -169,13 +141,6 @@ func TestCharacterCardWithoutOverrideKeepsNameConflict(t *testing.T) {
 // against the given Project, toggling detail-aware override resolution.
 func planOverrideFixture(t *testing.T, s *Service, projectID string, incoming portableCollection[json.RawMessage], overrideByDetail bool) (Plan, error) {
 	t.Helper()
-	return planOverrideFixtureWithChoices(t, s, projectID, incoming, overrideByDetail, nil)
-}
-
-// planOverrideFixtureWithChoices additionally supplies explicit per-name
-// duplicate choices, as a confirmed character card import would.
-func planOverrideFixtureWithChoices(t *testing.T, s *Service, projectID string, incoming portableCollection[json.RawMessage], overrideByDetail bool, choices map[string]string) (Plan, error) {
-	t.Helper()
 	ctx := context.Background()
 	manifest := Manifest{Format: "denova.resource-pack", SchemaVersion: 1, Package: PackageInfo{ID: "card", Name: "Card"}, Resources: []Resource{{ID: "lore", Kind: "lore.collection", Path: "lore.json"}}}
 	preview, err := s.previewFiles(ctx, Source{Kind: "file", Filename: "card.zip"}, map[string][]byte{
@@ -185,7 +150,7 @@ func planOverrideFixtureWithChoices(t *testing.T, s *Service, projectID string, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s.Plan(ctx, PlanRequest{PreviewID: preview.ID, CandidateID: preview.Candidates[0].ID, Resources: []string{"lore"}, ProjectID: projectID, OverrideByDetail: overrideByDetail, OverrideChoices: choices})
+	return s.Plan(ctx, PlanRequest{PreviewID: preview.ID, CandidateID: preview.Candidates[0].ID, Resources: []string{"lore"}, ProjectID: projectID, OverrideByDetail: overrideByDetail})
 }
 
 func TestCharacterCardHandWrittenDuplicateReportsOverride(t *testing.T) {
@@ -228,9 +193,6 @@ func TestCharacterCardHandWrittenDuplicateReportsOverride(t *testing.T) {
 	if dup.ExistingPreview == "" || dup.IncomingPreview == "" {
 		t.Fatalf("expected preview digests on both sides, got %+v", dup)
 	}
-	if len(plan.ImportOverrides) != 1 || plan.ImportOverrides[0] != "Hero" {
-		t.Fatalf("expected one override, got %+v", plan.ImportOverrides)
-	}
 }
 
 func TestCharacterCardDuplicateKeepChoiceRetainsLocal(t *testing.T) {
@@ -260,12 +222,16 @@ func TestCharacterCardDuplicateKeepChoiceRetainsLocal(t *testing.T) {
 		})},
 	}
 	// The automatic suggestion is override, but the user keeps the local entry.
-	plan, err := planOverrideFixtureWithChoices(t, s, record.ID, incoming, true, map[string]string{"Hero": "keep"})
+	preview, err := planOverrideFixture(t, s, record.ID, incoming, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.ImportDuplicates) != 1 || plan.ImportDuplicates[0].Suggested != "override" {
-		t.Fatalf("expected the collision listed with override suggestion, got %+v", plan.ImportDuplicates)
+	if len(preview.ImportDuplicates) != 1 || preview.ImportDuplicates[0].Suggested != "override" {
+		t.Fatalf("expected the collision listed with override suggestion, got %+v", preview.ImportDuplicates)
+	}
+	plan, err := planOverrideFixtureWithConfirm(t, s, preview, map[string]string{"Hero": "keep"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	if len(plan.ImportSkipped) != 1 || plan.ImportSkipped[0] != "Hero" {
 		t.Fatalf("expected one skip, got %+v", plan.ImportSkipped)
@@ -307,9 +273,12 @@ func TestCharacterCardMixedOverrideChoices(t *testing.T) {
 			jsonBytes(t, map[string]any{"id": "beta", "name": "Beta", "type": "character", "content": "A much longer and more detailed description of Beta.", "detail_fields": 5}),
 		},
 	}
-	// Only Alpha is explicitly overridden; Beta is omitted and must stay: a
-	// confirmed import never replaces entries the user did not choose.
-	plan, err := planOverrideFixtureWithChoices(t, s, record.ID, incoming, true, map[string]string{"Alpha": "override"})
+	// Override Alpha and retain Beta in the same review.
+	preview, err := planOverrideFixture(t, s, record.ID, incoming, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := planOverrideFixtureWithConfirm(t, s, preview, map[string]string{"Alpha": "override", "Beta": "keep"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +333,11 @@ func TestCharacterCardApplyRejectsConcurrentEdit(t *testing.T) {
 			"detail_fields": 5,
 		})},
 	}
-	plan, err := planOverrideFixture(t, s, record.ID, incoming, true)
+	preview, err := planOverrideFixture(t, s, record.ID, incoming, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := planOverrideFixtureWithConfirm(t, s, preview, map[string]string{"Hero": "override"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +393,7 @@ func TestCharacterCardChoiceOutsideReviewedDuplicatesRejected(t *testing.T) {
 	if len(previewPlan.ImportDuplicates) != 0 {
 		t.Fatalf("expected no collision at preview time, got %+v", previewPlan.ImportDuplicates)
 	}
-	if _, err := planOverrideFixtureWithConfirm(t, s, record.ID, incoming, nil, map[string]string{"Ghost": "override"}); err == nil {
+	if _, err := planOverrideFixtureWithConfirm(t, s, previewPlan, map[string]string{"Ghost": "override"}); err == nil {
 		t.Fatal("expected a choice outside the reviewed duplicates to fail validation")
 	}
 }
@@ -448,7 +421,11 @@ func TestCharacterCardInvalidOverrideChoice(t *testing.T) {
 			"content": "A much longer and more detailed description of the hero.",
 		})},
 	}
-	if _, err := planOverrideFixtureWithChoices(t, s, record.ID, incoming, true, map[string]string{"Hero": "replace"}); err == nil {
+	preview, err := planOverrideFixture(t, s, record.ID, incoming, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := planOverrideFixtureWithConfirm(t, s, preview, map[string]string{"Hero": "replace"}); err == nil {
 		t.Fatal("expected invalid override choice to fail validation")
 	}
 }
@@ -484,8 +461,10 @@ func TestCharacterCardPendingPlanLeavesLocalUntouched(t *testing.T) {
 	if len(plan.ImportDuplicates) == 0 {
 		t.Fatal("expected a held duplicate conflict")
 	}
-	// The handler returns a pending review without applying; local content must
-	// stay exactly as written until the user confirms.
+	// Pending reviews cannot modify the collection through the apply path.
+	if _, err := s.Apply(t.Context(), plan.ID); !errors.Is(err, ErrImportReviewRequired) {
+		t.Fatalf("pending import should require review, got %v", err)
+	}
 	items, err := store.ListAll()
 	if err != nil {
 		t.Fatal(err)
@@ -571,37 +550,24 @@ func TestCharacterCardLongerLocalBodyStillSuggestsOverrideByFields(t *testing.T)
 	if len(plan.ImportDuplicates) != 1 || plan.ImportDuplicates[0].Suggested != "override" {
 		t.Fatalf("expected field count to win over body length, got %+v", plan.ImportDuplicates)
 	}
-	if len(plan.ImportOverrides) != 1 || plan.ImportOverrides[0] != "Hero" {
-		t.Fatalf("expected automatic override, got %+v", plan.ImportOverrides)
-	}
 }
 
 // planOverrideFixtureWithConfirm plans an override with the review binding a
 // confirmed character card import carries: the duplicates the user reviewed at
 // preview time plus the per-name decisions, exactly as the handler sends them.
-func planOverrideFixtureWithConfirm(t *testing.T, s *Service, projectID string, incoming portableCollection[json.RawMessage], duplicates []ImportDuplicate, choices map[string]string) (Plan, error) {
+func planOverrideFixtureWithConfirm(t *testing.T, s *Service, held Plan, choices map[string]string) (Plan, error) {
 	t.Helper()
-	ctx := context.Background()
-	manifest := Manifest{Format: "denova.resource-pack", SchemaVersion: 1, Package: PackageInfo{ID: "card", Name: "Card"}, Resources: []Resource{{ID: "lore", Kind: "lore.collection", Path: "lore.json"}}}
-	preview, err := s.previewFiles(ctx, Source{Kind: "file", Filename: "card.zip"}, map[string][]byte{
-		"denova-pack.json": jsonBytes(t, manifest),
-		"lore.json":        jsonBytes(t, incoming),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s.Plan(ctx, PlanRequest{
-		PreviewID:        preview.ID,
-		CandidateID:      preview.Candidates[0].ID,
+	return s.Plan(t.Context(), PlanRequest{
+		PreviewID:        held.PreviewID,
+		CandidateID:      held.CandidateID,
 		Resources:        []string{"lore"},
-		ProjectID:        projectID,
+		ProjectID:        held.Installation.ProjectID,
 		OverrideByDetail: true,
-		OverrideChoices:  choices,
-		ConfirmReview:    &ConfirmReview{Duplicates: duplicates, Choices: choices},
+		ConfirmReview:    &ConfirmReview{Duplicates: held.ImportDuplicates, Choices: choices},
 	})
 }
 
-func TestCharacterCardConfirmRejectsEditedLocalEntry(t *testing.T) {
+func TestCharacterCardConfirmRejectsEditedOrDeletedLocalEntry(t *testing.T) {
 	ctx := context.Background()
 	s := testService(t)
 	dir := filepath.Join(s.root, "projects", "edited")
@@ -643,7 +609,7 @@ func TestCharacterCardConfirmRejectsEditedLocalEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirming the stale preview must not replace the edited entry.
-	plan, err := planOverrideFixtureWithConfirm(t, s, record.ID, incoming, []ImportDuplicate{dup}, map[string]string{"Hero": "override"})
+	plan, err := planOverrideFixtureWithConfirm(t, s, previewPlan, map[string]string{"Hero": "override"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,8 +619,8 @@ func TestCharacterCardConfirmRejectsEditedLocalEntry(t *testing.T) {
 	if len(plan.ImportOverrides) != 0 {
 		t.Fatalf("stale confirmation must not override, got %+v", plan.ImportOverrides)
 	}
-	if _, err := s.Apply(ctx, plan.ID); err != nil {
-		t.Fatal(err)
+	if _, err := s.Apply(ctx, plan.ID); !errors.Is(err, ErrImportReviewRequired) {
+		t.Fatalf("changed import should require a fresh review, got %v", err)
 	}
 	items, err := store.ListAll()
 	if err != nil {
@@ -663,9 +629,26 @@ func TestCharacterCardConfirmRejectsEditedLocalEntry(t *testing.T) {
 	if len(items) != 1 || items[0].Content != "Fresh edit saved after preview" {
 		t.Fatalf("edited local entry was overwritten: %+v", items)
 	}
+
+	if err := store.Delete("hero"); err != nil {
+		t.Fatal(err)
+	}
+	afterDeletion, err := planOverrideFixtureWithConfirm(t, s, previewPlan, map[string]string{"Hero": "override"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(afterDeletion.ImportChanged) != 1 || afterDeletion.ImportChanged[0] != "Hero" || len(afterDeletion.ImportDuplicates) != 0 {
+		t.Fatalf("expected the reviewed entry to be reported removed: changed=%v duplicates=%v", afterDeletion.ImportChanged, afterDeletion.ImportDuplicates)
+	}
+	if _, err := s.Apply(ctx, afterDeletion.ID); !errors.Is(err, ErrImportReviewRequired) {
+		t.Fatalf("deleted entry requires a fresh import, got %v", err)
+	}
+	if items, err := store.ListAll(); err != nil || len(items) != 0 {
+		t.Fatalf("deleted entry was recreated: items=%v err=%v", items, err)
+	}
 }
 
-func TestCharacterCardConfirmEmptyChoicesKeepsLocal(t *testing.T) {
+func TestCharacterCardConfirmEmptyChoicesStaysInReview(t *testing.T) {
 	ctx := context.Background()
 	s := testService(t)
 	dir := filepath.Join(s.root, "projects", "empty-choice")
@@ -697,20 +680,19 @@ func TestCharacterCardConfirmEmptyChoicesKeepsLocal(t *testing.T) {
 	if len(previewPlan.ImportDuplicates) != 1 {
 		t.Fatalf("expected one preview duplicate, got %+v", previewPlan.ImportDuplicates)
 	}
-	// Confirming without any per-entry choice keeps every local entry: an empty
-	// choice map must never fall back to detail-aware automatic overrides.
-	plan, err := planOverrideFixtureWithConfirm(t, s, record.ID, incoming, previewPlan.ImportDuplicates, map[string]string{})
+	// The import remains pending until every collision has a decision.
+	plan, err := planOverrideFixtureWithConfirm(t, s, previewPlan, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.ImportOverrides) != 0 {
 		t.Fatalf("empty choices must not override anything, got %+v", plan.ImportOverrides)
 	}
-	if len(plan.ImportSkipped) != 1 || plan.ImportSkipped[0] != "Hero" {
-		t.Fatalf("expected Hero kept, got %+v", plan.ImportSkipped)
+	if len(plan.ImportUnreviewed) != 1 || plan.ImportUnreviewed[0] != "Hero" || len(plan.ImportDuplicates) != 1 {
+		t.Fatalf("expected Hero to stay in review: unreviewed=%v duplicates=%v", plan.ImportUnreviewed, plan.ImportDuplicates)
 	}
-	if _, err := s.Apply(ctx, plan.ID); err != nil {
-		t.Fatal(err)
+	if _, err := s.Apply(ctx, plan.ID); !errors.Is(err, ErrImportReviewRequired) {
+		t.Fatalf("expected explicit review, got %v", err)
 	}
 	items, err := store.ListAll()
 	if err != nil {
@@ -755,7 +737,7 @@ func TestCharacterCardConfirmUnreviewedSameNameEntryKept(t *testing.T) {
 	if _, err := store.Create(lore.ItemInput{ID: "hero", Name: "Hero", Type: "character", Content: "Short"}); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := planOverrideFixtureWithConfirm(t, s, record.ID, incoming, nil, map[string]string{})
+	plan, err := planOverrideFixtureWithConfirm(t, s, previewPlan, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -765,8 +747,8 @@ func TestCharacterCardConfirmUnreviewedSameNameEntryKept(t *testing.T) {
 	if len(plan.ImportOverrides) != 0 {
 		t.Fatalf("unreviewed entry must not be overridden, got %+v", plan.ImportOverrides)
 	}
-	if _, err := s.Apply(ctx, plan.ID); err != nil {
-		t.Fatal(err)
+	if _, err := s.Apply(ctx, plan.ID); !errors.Is(err, ErrImportReviewRequired) {
+		t.Fatalf("new collision should require a fresh review, got %v", err)
 	}
 	items, err := store.ListAll()
 	if err != nil {
@@ -811,7 +793,7 @@ func TestCharacterCardConfirmMatchingVersionAppliesOverride(t *testing.T) {
 	}
 	// The user confirms the untouched preview with an explicit override: the
 	// reviewed version still matches and the replacement applies.
-	plan, err := planOverrideFixtureWithConfirm(t, s, record.ID, incoming, previewPlan.ImportDuplicates, map[string]string{"Hero": "override"})
+	plan, err := planOverrideFixtureWithConfirm(t, s, previewPlan, map[string]string{"Hero": "override"})
 	if err != nil {
 		t.Fatal(err)
 	}

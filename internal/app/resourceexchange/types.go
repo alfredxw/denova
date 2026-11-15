@@ -161,22 +161,12 @@ type PlanRequest struct {
 	Grants             map[string][]string `json:"grants,omitempty"`
 	Names              map[string]string   `json:"names,omitempty"`
 	ReplaceModified    bool                `json:"replace_modified,omitempty"`
-	// OverrideByDetail enables detail-aware duplicate resolution for character
-	// card imports: a same-name existing lore item is replaced only when the
-	// incoming item is more detailed. Package and extension imports never set it,
-	// keeping receipt-identity update semantics.
-	OverrideByDetail bool `json:"override_by_detail,omitempty"`
-	// OverrideChoices are explicit duplicate resolutions for character card
-	// imports, keyed by the incoming lore entry name. "override" replaces the
-	// existing same-name entry; "keep" skips the incoming duplicate. They take
-	// precedence over detail-aware resolution and are never set by package or
-	// extension imports.
-	OverrideChoices map[string]string `json:"override_choices,omitempty"`
-	// ConfirmReview binds a confirmed import to the duplicate entries the user
-	// reviewed at preview time. Its Duplicates carry the local identity and
-	// version captured then; the confirm request must match them or the
-	// affected entries are reported as changed/unreviewed and kept local.
-	ConfirmReview *ConfirmReview `json:"confirm_review,omitempty"`
+	// OverrideByDetail enables character card duplicate review with suggestions
+	// based on detail. Only the character card handler sets it.
+	OverrideByDetail bool `json:"-"`
+	// ConfirmReview is assembled by the character card handler from the held
+	// server plan and the user's choices.
+	ConfirmReview *ConfirmReview `json:"-"`
 }
 
 // ConfirmReview is the confirmation payload of a character card import: the
@@ -211,23 +201,17 @@ type Plan struct {
 	PlatformState       string                       `json:"platform_state,omitempty"`
 	Changes             []fileChange                 `json:"changes,omitempty"`
 
-	// ImportOverrides and ImportSkipped report detail-aware duplicate resolution
-	// for character card imports: names that replaced a less-detailed existing
-	// entry and names kept over a less-detailed incoming duplicate.
+	// ImportOverrides and ImportSkipped report the decisions made for character
+	// card duplicates.
 	ImportOverrides []string `json:"import_overrides,omitempty"`
 	ImportSkipped   []string `json:"import_skipped,omitempty"`
 
-	// ImportDuplicates lists same-name lore entries detected during a character
-	// card import, with content digests and the automatic resolution suggestion,
-	// so the UI can ask for confirmation before any replacement is applied.
-	// Each duplicate also carries the local entry identity and version at plan
-	// time, so a later confirmation can validate that nothing changed meanwhile.
+	// ImportDuplicates lists same-name lore entries on a plan awaiting review,
+	// with suggested resolutions and the local identities and versions.
 	ImportDuplicates []ImportDuplicate `json:"import_duplicates,omitempty"`
 
-	// ImportChanged and ImportUnreviewed report duplicates that a confirmed
-	// import must not replace: the local entry was edited or deleted since the
-	// reviewed preview (ImportChanged), or a same-name entry appeared that the
-	// user never reviewed (ImportUnreviewed). Both keep local content untouched.
+	// ImportChanged reports edits or removals since review. ImportUnreviewed
+	// reports new collisions and duplicates without a decision.
 	ImportChanged    []string `json:"import_changed,omitempty"`
 	ImportUnreviewed []string `json:"import_unreviewed,omitempty"`
 
@@ -252,3 +236,8 @@ type ImportDuplicate struct {
 
 // PublicPlan excludes staged bytes and filesystem locations from API responses.
 func (p Plan) PublicPlan() Plan { p.Changes = nil; p.SkillGuards = nil; return p }
+
+// NeedsImportReview reports whether a character card plan is awaiting review.
+func (p Plan) NeedsImportReview() bool {
+	return len(p.ImportDuplicates) > 0 || len(p.ImportChanged) > 0 || len(p.ImportUnreviewed) > 0
+}

@@ -242,59 +242,37 @@ func (s *Service) stageLoreCollection(ctx context.Context, previewDir string, re
 		sourceID := incoming[i].ID
 		member, found := binding.Members[sourceID]
 		if !found {
+			reviewed, wasReviewed := review.confirmDuplicate(incoming[i].Name)
 			if existing, ok := existingByName[lore.NameKey(incoming[i].Name)]; ok && review.overrideByDetail {
-				// Collect every same-name collision with the local identity and
-				// version at plan time, so a later confirmation can validate that
-				// nothing changed since the user reviewed the preview. Suggested
-				// always reflects the automatic detail comparison so the UI
-				// defaults to it.
-				suggested := overrideResolution(moreDetailed(incoming[i], existing))
 				duplicate := ImportDuplicate{
 					Name:            incoming[i].Name,
 					ExistingPreview: duplicatePreview(existing),
 					IncomingPreview: duplicatePreview(incoming[i]),
-					Suggested:       suggested,
+					Suggested:       overrideResolution(moreDetailed(incoming[i], existing)),
 					ExistingID:      existing.ID,
 					ExistingVersion: loreDigest(existing),
 				}
 				review.duplicates = append(review.duplicates, duplicate)
-				if review.requireExplicit {
-					// Confirmed imports only replace entries the user explicitly
-					// chose, and only while the reviewed local identity and version
-					// still match. Edited, deleted or never-reviewed entries are
-					// kept local and reported back for a fresh preview.
-					if review.confirm != nil {
-						reviewed, reviewedOK := review.confirmDuplicate(incoming[i].Name)
-						switch {
-						case !reviewedOK:
-							review.unreviewed = append(review.unreviewed, incoming[i].Name)
-							review.skipped = append(review.skipped, incoming[i].Name)
-							continue
-						case reviewed.ExistingID != existing.ID || reviewed.ExistingVersion != loreDigest(existing):
-							review.changed = append(review.changed, incoming[i].Name)
-							review.skipped = append(review.skipped, incoming[i].Name)
-							continue
-						}
-					}
-					if review.overrideChoices[incoming[i].Name] != "override" {
-						review.skipped = append(review.skipped, incoming[i].Name)
-						continue
-					}
-					review.overrides = append(review.overrides, incoming[i].Name)
-					member.ID = existing.ID
-				} else {
-					// Preview stage: the automatic detail decision drives the
-					// staged content, but the plan is never applied until the user
-					// confirms with explicit choices.
-					override := suggested == "override"
-					if !override {
-						review.skipped = append(review.skipped, incoming[i].Name)
-						continue
-					}
-					review.overrides = append(review.overrides, incoming[i].Name)
-					member.ID = existing.ID
+				switch {
+				case review.confirm == nil:
+					continue
+				case !wasReviewed || review.confirm.Choices[incoming[i].Name] == "":
+					review.unreviewed = append(review.unreviewed, incoming[i].Name)
+					continue
+				case reviewed.ExistingID != duplicate.ExistingID || reviewed.ExistingVersion != duplicate.ExistingVersion:
+					review.changed = append(review.changed, incoming[i].Name)
+					continue
+				case review.confirm.Choices[incoming[i].Name] != "override":
+					review.skipped = append(review.skipped, incoming[i].Name)
+					continue
 				}
+				review.overrides = append(review.overrides, incoming[i].Name)
+				member.ID = existing.ID
 			} else {
+				if wasReviewed {
+					review.changed = append(review.changed, incoming[i].Name)
+					continue
+				}
 				member.ID, err = lore.NewItemID(reserved, incoming[i].Name)
 				if err != nil {
 					return err

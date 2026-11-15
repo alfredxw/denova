@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"slices"
 	"testing"
 
+	"denova/internal/app/resourceexchange"
 	"github.com/cloudwego/hertz/pkg/app"
 )
 
@@ -52,26 +55,31 @@ func TestParseOverrideReview(t *testing.T) {
 }
 
 func TestConfirmedReviewBinding(t *testing.T) {
+	held := resourceexchange.Plan{ImportDuplicates: []resourceexchange.ImportDuplicate{
+		{Name: "Hero", ExistingID: "id-1", ExistingVersion: "rev-1", Suggested: "keep"},
+		{Name: "Lily", ExistingID: "id-2", ExistingVersion: "rev-2", Suggested: "override"},
+		{Name: "Alex", ExistingID: "id-3", ExistingVersion: "rev-3", Suggested: "override"},
+	}}
 	fields := characterCardImportFields{overrideReview: []characterCardOverrideReview{
 		{Name: "Hero", ExistingID: "id-1", ExistingVersion: "rev-1", Choice: "override"},
 		{Name: "Lily", ExistingID: "id-2", ExistingVersion: "rev-2", Choice: "keep"},
 	}}
-	confirm := fields.confirmedReview()
-	if confirm == nil {
-		t.Fatal("expected a non-nil confirm binding")
+	confirm, err := fields.confirmedReview(held)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(confirm.Duplicates) != 2 || len(confirm.Choices) != 2 {
-		t.Fatalf("expected two bound duplicates and choices, got %+v / %v", confirm.Duplicates, confirm.Choices)
-	}
-	first := confirm.Duplicates[0]
-	if first.Name != "Hero" || first.ExistingID != "id-1" || first.ExistingVersion != "rev-1" {
-		t.Fatalf("duplicate binding lost review identity: %+v", first)
+	if !slices.Equal(confirm.Duplicates, held.ImportDuplicates) || len(confirm.Choices) != 2 {
+		t.Fatalf("expected the held snapshot and two choices, got %+v / %v", confirm.Duplicates, confirm.Choices)
 	}
 	if confirm.Choices["Lily"] != "keep" {
 		t.Fatalf("choices = %v, want Lily=keep", confirm.Choices)
 	}
 	if confirm.Choices["Hero"] != "override" {
 		t.Fatalf("choices = %v, want Hero=override", confirm.Choices)
+	}
+	fields.overrideReview[0].ExistingVersion = "different-version"
+	if _, err := fields.confirmedReview(held); !errors.Is(err, errCharacterCardReviewUnavailable) {
+		t.Fatalf("expected changed review binding to be rejected, got %v", err)
 	}
 }
 
@@ -80,9 +88,12 @@ func TestConfirmedReviewEmptyChoicesStillExplicit(t *testing.T) {
 	// (with empty choices) so the exchange never falls back to detail-based
 	// automatic overrides.
 	fields := characterCardImportFields{}
-	confirm := fields.confirmedReview()
-	if confirm == nil || len(confirm.Duplicates) != 0 || confirm.Choices == nil {
-		t.Fatalf("expected an explicit empty confirm binding, got %+v", confirm)
+	held := resourceexchange.Plan{ImportDuplicates: []resourceexchange.ImportDuplicate{
+		{Name: "Hero", ExistingID: "id-1", ExistingVersion: "rev-1", Suggested: "override"},
+	}}
+	confirm, err := fields.confirmedReview(held)
+	if err != nil || confirm == nil || !slices.Equal(confirm.Duplicates, held.ImportDuplicates) || len(confirm.Choices) != 0 {
+		t.Fatalf("expected held duplicate with no override choice: confirmation=%+v err=%v", confirm, err)
 	}
 }
 

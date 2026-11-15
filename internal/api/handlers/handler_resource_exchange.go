@@ -36,6 +36,8 @@ func exchangeError(ctx context.Context, c *app.RequestContext, err error) {
 		key = "api.lore.nameRequiredForID"
 	case errors.As(err, &conflict):
 		key, status = "api.resource.revisionConflict", 409
+	case errors.Is(err, resourceexchange.ErrImportReviewRequired):
+		key, status = "api.characterCard.reviewPlanRequired", 409
 	case errors.Is(err, resourceexchange.ErrCreatorInvalid):
 		key = "market.errors.creatorInvalid"
 	case errors.Is(err, resourceexchange.ErrLocalModified):

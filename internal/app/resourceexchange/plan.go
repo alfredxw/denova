@@ -72,11 +72,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	review := &updateReview{
 		choices:          request.Resolutions,
 		overrideByDetail: request.OverrideByDetail,
-		overrideChoices:  request.OverrideChoices,
 		confirm:          request.ConfirmReview,
-		// Explicit duplicate choices switch staging to confirmation semantics:
-		// only entries the user chose are replaced, never the detail heuristic.
-		requireExplicit: request.ConfirmReview != nil || len(request.OverrideChoices) > 0,
 	}
 	if err := review.validate(); err != nil {
 		return Plan{}, err
@@ -416,9 +412,11 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	plan.Updates = review.items
 	plan.ImportOverrides = review.overrides
 	plan.ImportSkipped = review.skipped
-	plan.ImportDuplicates = review.duplicates
 	plan.ImportChanged = review.changed
 	plan.ImportUnreviewed = review.unreviewed
+	if review.confirm == nil || len(review.changed) > 0 || len(review.unreviewed) > 0 {
+		plan.ImportDuplicates = review.duplicates
+	}
 	plan.Installation.ReviewedSource = reviewedSource(candidate)
 	// Automatic grants cannot acknowledge additions or dependency changes that
 	// require the user to review a broader resource selection.

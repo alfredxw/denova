@@ -100,8 +100,7 @@ type characterCardImportFields struct {
 }
 
 // characterCardOverrideReview is one entry of the override_review form field: a
-// reviewed duplicate with the user's decision. It echoes the preview-time local
-// binding so the server can reject entries that changed since the preview.
+// reviewed duplicate with the user's decision and the binding shown in review.
 type characterCardOverrideReview struct {
 	Name            string `json:"name"`
 	ExistingID      string `json:"existing_id"`
@@ -158,20 +157,18 @@ func parseOverrideReview(raw string) ([]characterCardOverrideReview, error) {
 	return review, nil
 }
 
-// confirmedReview converts the reviewed override decisions into the binding the
-// resource exchange expects. It is always present on a confirmed import so
-// explicit choices replace, never the detail heuristic.
-func (fields characterCardImportFields) confirmedReview() *resourceexchange.ConfirmReview {
-	confirm := &resourceexchange.ConfirmReview{Choices: map[string]string{}}
+// confirmedReview binds the submitted choices to the server's held review.
+func (fields characterCardImportFields) confirmedReview(held resourceexchange.Plan) (*resourceexchange.ConfirmReview, error) {
+	confirm := &resourceexchange.ConfirmReview{Duplicates: held.ImportDuplicates, Choices: map[string]string{}}
 	for _, entry := range fields.overrideReview {
-		confirm.Duplicates = append(confirm.Duplicates, resourceexchange.ImportDuplicate{
-			Name:            entry.Name,
-			ExistingID:      entry.ExistingID,
-			ExistingVersion: entry.ExistingVersion,
-		})
+		if !slices.ContainsFunc(held.ImportDuplicates, func(dup resourceexchange.ImportDuplicate) bool {
+			return dup.Name == entry.Name && dup.ExistingID == entry.ExistingID && dup.ExistingVersion == entry.ExistingVersion
+		}) {
+			return nil, errCharacterCardReviewUnavailable
+		}
 		confirm.Choices[entry.Name] = entry.Choice
 	}
-	return confirm
+	return confirm, nil
 }
 
 func (h *Handlers) characterCardImportOptions(ctx context.Context, projectID string, fields characterCardImportFields) character.ImportOptions {
@@ -366,7 +363,7 @@ func (h *Handlers) installCharacterResources(ctx context.Context, filename strin
 	// Same-name lore entries must not be replaced before the user reviews them:
 	// hold the plan and its frozen preview for the confirm request instead of
 	// applying or discarding them.
-	if len(plan.ImportDuplicates) > 0 {
+	if plan.NeedsImportReview() {
 		result.PendingOverrides = convertDuplicatePreviews(plan.ImportDuplicates)
 		result.ReviewPlanID = plan.ID
 		return result, nil
@@ -432,7 +429,7 @@ func (h *Handlers) confirmCharacterCardOverrides(ctx context.Context, projectID 
 	if err != nil {
 		return character.ImportResult{}, errCharacterCardReviewUnavailable
 	}
-	if held.Installation.ProjectID != projectID {
+	if held.Installation.ProjectID != projectID || len(held.ImportDuplicates) == 0 {
 		return character.ImportResult{}, errCharacterCardReviewUnavailable
 	}
 	if time.Now().After(held.ExpiresAt) {
@@ -445,108 +442,68 @@ func (h *Handlers) confirmCharacterCardOverrides(ctx context.Context, projectID 
 	if preview.Character == nil {
 		return character.ImportResult{}, errors.New("character card review preview has no character data")
 	}
-	confirm := fields.confirmedReview()
+	confirm, err := fields.confirmedReview(held)
+	if err != nil {
+		return character.ImportResult{}, err
+	}
 	resources := make([]string, 0, len(held.Items))
 	for _, item := range held.Items {
 		resources = append(resources, item.ResourceID)
 	}
-	plan, err := exchange.Plan(ctx, resourceexchange.PlanRequest{
+	request := resourceexchange.PlanRequest{
 		PreviewID: held.PreviewID, CandidateID: held.CandidateID, ProjectID: projectID,
-		Resources: resources, OverrideByDetail: true, OverrideChoices: confirm.Choices, ConfirmReview: confirm,
-	})
+		Resources: resources, OverrideByDetail: true, ConfirmReview: confirm,
+	}
+	plan, err := exchange.Plan(ctx, request)
 	if err != nil {
 		return character.ImportResult{}, err
 	}
 	result := *preview.Character
 	result.ProjectID = projectID
-	// The target changed since the user reviewed it: never write; hand back a
-	// fresh review bound to the current state instead.
-	if len(plan.ImportChanged) > 0 || len(plan.ImportUnreviewed) > 0 {
-		if err := exchange.DiscardPlan(fields.reviewPlanID); err != nil {
-			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard stale review plan", "plan_id", fields.reviewPlanID, "error", err)
-		}
-		result.PendingOverrides = convertDuplicatePreviews(plan.ImportDuplicates)
-		result.ReviewPlanID = plan.ID
-		result.ReviewChanged = true
-		return result, nil
-	}
-	installed, err := h.applyCharacterCardPlan(ctx, plan, held.PreviewID)
-	if err != nil {
-		var conflict *revisionfile.ConflictError
-		if !errors.As(err, &conflict) {
-			// Not a concurrent edit: the just-built plan has no other reference
-			// and can only reappear through a fresh import. Drop it so retries
-			// cannot accumulate orphaned plans; the held review stays for retry.
-			if discardErr := exchange.DiscardPlan(plan.ID); discardErr != nil {
-				slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard failed confirm plan", "plan_id", plan.ID, "error", discardErr)
+	if !plan.NeedsImportReview() {
+		installed, applyErr := h.applyCharacterCardPlan(ctx, plan, held.PreviewID)
+		if applyErr == nil {
+			result.Overridden = plan.ImportOverrides
+			result.Skipped = plan.ImportSkipped
+			for _, binding := range installed.Bindings {
+				if binding.Local.Kind == "lore.collection" {
+					for _, sourceID := range slices.Sorted(maps.Keys(binding.Members)) {
+						result.ItemIDs = append(result.ItemIDs, binding.Members[sourceID].ID)
+					}
+				}
 			}
+			if err := exchange.DiscardPlan(held.ID); err != nil {
+				slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard confirmed review plan", "plan_id", held.ID, "error", err)
+			}
+			return result, nil
+		}
+		if err := exchange.DiscardPlan(plan.ID); err != nil {
+			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard unapplied plan", "plan_id", plan.ID, "error", err)
+		}
+		var conflict *revisionfile.ConflictError
+		if !errors.As(applyErr, &conflict) {
+			return character.ImportResult{}, applyErr
+		}
+		// Rebuild the review without carrying choices across an apply conflict.
+		request.ConfirmReview = nil
+		plan, err = exchange.Plan(ctx, request)
+		if err != nil {
 			return character.ImportResult{}, err
 		}
-		// An Apply conflict means the target changed after this plan was built;
-		// restart the review so the user approves the current state. The held
-		// review is stale too: both plans are dropped, the frozen preview is
-		// reused by the restarted review.
-		if discardErr := exchange.DiscardPlan(plan.ID); discardErr != nil {
-			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard conflicted plan", "plan_id", plan.ID, "error", discardErr)
+	}
+	if err := exchange.DiscardPlan(held.ID); err != nil {
+		slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard stale review plan", "plan_id", held.ID, "error", err)
+	}
+	if len(plan.ImportDuplicates) == 0 {
+		// The previous review is stale and there is no duplicate left to show.
+		// Ask the user to start the import again so deletion is respected.
+		if err := errors.Join(exchange.DiscardPlan(plan.ID), exchange.DiscardPreview(held.PreviewID)); err != nil {
+			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard unusable review", "plan_id", plan.ID, "error", err)
 		}
-		if discardErr := exchange.DiscardPlan(fields.reviewPlanID); discardErr != nil {
-			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard conflicted review plan", "plan_id", fields.reviewPlanID, "error", discardErr)
-		}
-		return h.restartCharacterCardReview(ctx, exchange, held, projectID, confirm)
+		return character.ImportResult{}, errCharacterCardReviewUnavailable
 	}
-	result.Overridden = plan.ImportOverrides
-	result.Skipped = plan.ImportSkipped
-	for _, binding := range installed.Bindings {
-		if binding.Local.Kind == "lore.collection" {
-			for _, sourceID := range slices.Sorted(maps.Keys(binding.Members)) {
-				result.ItemIDs = append(result.ItemIDs, binding.Members[sourceID].ID)
-			}
-		}
-	}
-	if err := exchange.DiscardPlan(fields.reviewPlanID); err != nil {
-		slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard confirmed plan", "plan_id", fields.reviewPlanID, "error", err)
-	}
-	return result, nil
-}
-
-// restartCharacterCardReview replans the frozen preview and returns a fresh
-// pending review; used when the target changed after a previous plan was built.
-func (h *Handlers) restartCharacterCardReview(ctx context.Context, exchange *resourceexchange.Service, held resourceexchange.Plan, projectID string, confirm *resourceexchange.ConfirmReview) (character.ImportResult, error) {
-	resources := make([]string, 0, len(held.Items))
-	for _, item := range held.Items {
-		resources = append(resources, item.ResourceID)
-	}
-	retry, err := exchange.Plan(ctx, resourceexchange.PlanRequest{
-		PreviewID: held.PreviewID, CandidateID: held.CandidateID, ProjectID: projectID,
-		Resources: resources, OverrideByDetail: true, OverrideChoices: confirm.Choices, ConfirmReview: confirm,
-	})
-	if err != nil {
-		// Both plans were already dropped by the conflict path; the frozen
-		// preview is now unreferenced, so release it before surfacing the error.
-		if discardErr := exchange.DiscardPreview(held.PreviewID); discardErr != nil {
-			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard restarted review preview", "preview_id", held.PreviewID, "error", discardErr)
-		}
-		return character.ImportResult{}, err
-	}
-	preview, err := exchange.ReadPreview(ctx, held.PreviewID)
-	if err != nil {
-		// The pending review was already returned below on the success path;
-		// dropping the retry plan keeps the preview from being orphaned.
-		if discardErr := exchange.DiscardPlan(retry.ID); discardErr != nil {
-			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard unreadable review plan", "plan_id", retry.ID, "error", discardErr)
-		}
-		return character.ImportResult{}, err
-	}
-	if preview.Character == nil {
-		if discardErr := exchange.DiscardPlan(retry.ID); discardErr != nil {
-			slog.WarnContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to discard empty review plan", "plan_id", retry.ID, "error", discardErr)
-		}
-		return character.ImportResult{}, errors.New("character card review preview has no character data")
-	}
-	result := *preview.Character
-	result.ProjectID = projectID
-	result.PendingOverrides = convertDuplicatePreviews(retry.ImportDuplicates)
-	result.ReviewPlanID = retry.ID
+	result.PendingOverrides = convertDuplicatePreviews(plan.ImportDuplicates)
+	result.ReviewPlanID = plan.ID
 	result.ReviewChanged = true
 	return result, nil
 }

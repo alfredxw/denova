@@ -98,6 +98,9 @@ func (s *Service) Apply(ctx context.Context, id string) (Installation, error) {
 	if time.Now().After(plan.ExpiresAt) {
 		return Installation{}, fmt.Errorf("installation plan expired")
 	}
+	if plan.NeedsImportReview() {
+		return Installation{}, ErrImportReviewRequired
+	}
 	var preview Preview
 	var dir string
 	var at int

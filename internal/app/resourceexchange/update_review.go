@@ -24,9 +24,7 @@ type updateReview struct {
 	choices          map[string]map[string]string
 	items            []UpdateItem
 	overrideByDetail bool
-	overrideChoices  map[string]string
 	confirm          *ConfirmReview
-	requireExplicit  bool
 	duplicates       []ImportDuplicate
 	overrides        []string
 	skipped          []string
@@ -80,11 +78,11 @@ func (r *updateReview) validate() error {
 			}
 		}
 	}
-	for name, choice := range r.overrideChoices {
-		if choice != "keep" && choice != "override" {
-			return fmt.Errorf("invalid override choice for %s", name)
-		}
-		if r.confirm != nil {
+	if r.confirm != nil {
+		for name, choice := range r.confirm.Choices {
+			if choice != "keep" && choice != "override" {
+				return fmt.Errorf("invalid override choice for %s", name)
+			}
 			if _, ok := r.confirmDuplicate(name); !ok {
 				return fmt.Errorf("override choice for %s not present in the reviewed duplicates", name)
 			}
