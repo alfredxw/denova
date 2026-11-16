@@ -159,7 +159,7 @@ export interface TerminalCommandSettings {
   enabled: boolean
 }
 
-export type WebSearchProvider = 'builtin' | 'searxng' | 'deepseek' | 'perplexity' | 'tavily'
+export type WebSearchProvider = 'builtin' | 'searxng' | 'deepseek' | 'perplexity' | 'tavily' | 'keenable'
 
 export interface SearchServiceSettings {
   api_key?: string
@@ -172,6 +172,7 @@ export interface WebAccessSettings {
   deepseek?: SearchServiceSettings
   perplexity?: SearchServiceSettings
   tavily?: SearchServiceSettings
+  keenable?: SearchServiceSettings
   searxng_base_url?: string
   search_max_results?: number | null
   search_provider_timeout_seconds?: number | null
