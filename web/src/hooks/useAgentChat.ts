@@ -513,13 +513,19 @@ export function useAgentChat(options: ChatOptions = {}) {
               }),
             }
           })
-          if (runtimeProjection?.phase === 'suspended') setRuntimeProjection(await client.getActiveChatTask(targetSessionID))
           setReferences((current) => current.filter((item) => !prepared.composerReferences.includes(item)))
           setLoreReferences((current) => current.filter((item) => !prepared.composerLoreReferences.includes(item)))
           setStyleScenes((current) => current.filter((item) => !prepared.composerStyleScenes.includes(item)))
           setTextSelections((current) => current.filter((item) => !prepared.composerTextSelections.includes(item)))
           sendOptions.onSubmissionStart?.()
           sendOptions.onSubmissionAccepted?.()
+          if (runtimeProjection?.phase === 'suspended') {
+            try {
+              setRuntimeProjection(await client.getActiveChatTask(targetSessionID))
+            } catch (error) {
+              console.warn('[useAgentChat] Failed to refresh runtime after accepted follow-up', { targetSessionID, error })
+            }
+          }
           return true
         } catch (error) {
           if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)

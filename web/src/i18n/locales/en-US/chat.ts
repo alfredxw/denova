@@ -122,6 +122,8 @@ const chat = {
   'chat.input.actions': 'Input actions',
   'chat.input.changesApplyNextTurn': 'The model turn already in progress keeps its current configuration. Changes apply from the next model turn.',
   'chat.input.send': 'Send',
+  'chat.input.draftRestored': 'Draft restored',
+  'chat.input.draftSaveFailed': 'Could not save the draft on this device. Copy the text before reloading or quitting.',
   'chat.input.resume': 'Resume',
   'chat.input.stop': 'Stop AI execution',
   'chat.attachment.add': 'Add files',

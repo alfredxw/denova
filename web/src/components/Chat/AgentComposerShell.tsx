@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { PromptInputBody, PromptInputTools } from '@/components/ai-elements/prompt-input'
 
 interface AgentComposerShellProps {
+  draftStatus?: 'restored' | 'saveFailed'
   references?: ReactNode
   input: ReactNode
   toolbarStart?: ReactNode
@@ -15,6 +17,7 @@ interface AgentComposerShellProps {
 
 /** Shared shell for Agent message composers; slots keep feature-specific controls private to each caller. */
 export function AgentComposerShell({
+  draftStatus,
   references,
   input,
   toolbarStart,
@@ -24,6 +27,7 @@ export function AgentComposerShell({
   bodyClassName,
   toolbarClassName,
 }: AgentComposerShellProps) {
+  const { t } = useTranslation()
   return (
     <PromptInputBody className={cn('nova-agent-composer', className)}>
       {references ? <div className="nova-agent-composer-references">{references}</div> : null}
@@ -33,6 +37,9 @@ export function AgentComposerShell({
         </PromptInputTools>
         <div className={cn('nova-agent-composer-body', bodyClassName)} data-slot="agent-composer-input">
           {input}
+          {draftStatus && <div role="status" className="px-1 pb-1 text-xs text-[var(--nova-text-muted)]">
+            {t(draftStatus === 'restored' ? 'chat.input.draftRestored' : 'chat.input.draftSaveFailed')}
+          </div>}
         </div>
         <PromptInputTools className="nova-agent-composer-toolbar-end" data-slot="agent-composer-end">
           {toolbarEnd}

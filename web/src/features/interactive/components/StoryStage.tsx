@@ -5,6 +5,8 @@ import { StoryAmbientPlayback } from './story-stage/StoryAmbientPlayback'
 import { useGameStories } from '@/features/platform/game-story-context'
 import { GameStorySetup } from '@/features/platform/GameStorySetup'
 import { useStorySpeech } from '../use-story-speech'
+import { useComposerDraft } from '@/components/Chat/use-composer-draft'
+import type { InputAreaSendOptions } from '@/components/Chat/InputArea'
 import { useImageModelConfigured } from '@/features/settings/use-image-model-configured'
 import { SpeechPlayback } from '@/features/speech/SpeechPlayback'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -56,6 +58,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
+const EMPTY_STYLE_SCENES: string[] = []
 
 export function StoryStage({ active = true, projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], planningTemplates = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const navigation = useToolNavigation()
@@ -76,8 +79,9 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
   const approvalReady = conversationConfig.initialized && !conversationConfig.saving
   const isMobile = useIsMobile()
   const storyStateModel = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
-  const [input, setInput] = useState('')
-  const [styleScenes, setStyleScenes] = useState<string[]>([])
+  const draftKey = projectId && conversationBinding ? JSON.stringify(['game', projectId, storyId, conversationBinding.branch_id]) : undefined
+  const draft = useComposerDraft(draftKey, Boolean(draftKey))
+  const [styleSelection, setStyleSelection] = useState<{ stageKey: string; scenes: string[] }>()
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [showSkillCommands, setShowSkillCommands] = useState(false)
   const [skillCommandQuery, setSkillCommandQuery] = useState<string | null>(null)
@@ -93,6 +97,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
   })
   const snapshotKey = storyStageSnapshotKey(storyId, branchId, snapshot)
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
+  const styleScenes = styleSelection?.stageKey === stageKey ? styleSelection.scenes : EMPTY_STYLE_SCENES
   const { displaySnapshot, historyWindow, prependPage: prependHistoryPage, resetToLatest: resetHistoryToLatest, loadExecutionDetails } = useStoryHistoryWindow(stageKey, snapshot)
   const speech = useStorySpeech({ owner: stageKey, story, snapshot: displaySnapshot, active })
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -101,7 +106,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
   // read the live followLatest state instead of a render-closure snapshot.
   const followLatestRef = useRef(historyWindow.followLatest)
   followLatestRef.current = historyWindow.followLatest
-  useEffect(() => {
+  useLayoutEffect(() => {
     historyStageRef.current = stageKey
     setHistoryLoading(false)
   }, [stageKey])
@@ -119,10 +124,13 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
     initialContent: string
     expectedNarrative: string
   } | null>(null)
-  const [editingTurn, setEditingTurn] = useState<{
+  const [turnEdit, setEditingTurn] = useState<{
+    stageKey: string
     id: string
     content: string
   } | null>(null)
+  const editingTurn = turnEdit?.stageKey === stageKey ? turnEdit : null
+  const input = editingTurn?.content ?? draft.text
   const [switchingVersionTurnId, setSwitchingVersionTurnId] = useState<string | null>(null)
   const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
   const [pendingOpeningStoryId, setPendingOpeningStoryId] = useState('')
@@ -145,6 +153,12 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
 
   useEffect(() => {
     setReplyEditTarget(null)
+    setEditingTurn(null)
+    setStyleSelection(undefined)
+    setStyleSceneQuery(null)
+    setShowSkillCommands(false)
+    setSkillCommandQuery(null)
+    setActiveSkillCommandIndex(0)
   }, [stageKey])
   const previousSnapshotKeyRef = useRef(snapshotKey)
   const stagePreferences = useStagePreferences(projectId)
@@ -368,17 +382,6 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
     setHotChoicesExpanded(false)
   }, [snapshotKey])
 
-  function clearSubmittedComposer() {
-    speech.stop()
-    setInput('')
-    setEditingTurn(null)
-    setStyleScenes([])
-    setStyleSceneQuery(null)
-    setShowSkillCommands(false)
-    setSkillCommandQuery(null)
-    setActiveSkillCommandIndex(0)
-  }
-
   const { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, send, steerQueuedCommand, stop, suspend, resumeTask, abandonPendingTurn } = useStoryStageRuntime({
     stageKey,
     storyId,
@@ -401,7 +404,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
     setStreaming: setStageStreaming,
     setActivity: setStageActivityContent,
     setMessages: setStageLiveMessages,
-    clearComposer: clearSubmittedComposer,
+    onSubmissionAccepted: speech.stop,
     onTurnPersisted: (event, options) => {
       speech.onPersisted(event, options)
       const applied = onTurnPersisted(event, options)
@@ -412,6 +415,23 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
     },
     onDone,
   })
+
+  function submitComposer(options?: InputAreaSendOptions) {
+    return send({
+      attachments: options?.attachments,
+      onSubmissionAccepted: () => {
+        options?.onSubmissionAccepted?.()
+        if (editingTurn) setEditingTurn((current) => current === editingTurn ? null : current)
+        else if (!draft.accept()) return
+        if (historyStageRef.current !== stageKey) return
+        setStyleSelection((current) => current === styleSelection ? undefined : current)
+        setStyleSceneQuery(null)
+        setShowSkillCommands(false)
+        setSkillCommandQuery(null)
+        setActiveSkillCommandIndex(0)
+      },
+    })
+  }
 
   useEffect(() => {
     if (!pendingOpeningStoryId || pendingOpeningStoryId !== storyId) return
@@ -494,8 +514,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
     const turnId = view.metadata.turn_id
     if (!turnId || streaming) return
     const content = agentViewContent(view)
-    setEditingTurn({ id: turnId, content })
-    setInput(content)
+    setEditingTurn({ stageKey, id: turnId, content })
     setShowSkillCommands(false)
     setActiveSkillCommandIndex(0)
     window.requestAnimationFrame(() => {
@@ -564,15 +583,20 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
 
   const cancelEditing = () => {
     setEditingTurn(null)
-    setInput('')
     setStyleSceneQuery(null)
     setShowSkillCommands(false)
     setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
   }
 
-  const handleInputChange = (nextValue: string) => {
-    setInput(nextValue)
+  const handleInputChange = (nextValue: string, draftText: string) => {
+    if (editingTurn) {
+      setEditingTurn((current) => current?.stageKey === stageKey && current.id === editingTurn.id
+        ? { ...current, content: nextValue }
+        : current)
+    } else {
+      draft.setText(nextValue, draftText)
+    }
   }
 
   const handleInputTriggerChange = (trigger: ComposerTrigger | null) => {
@@ -603,13 +627,18 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
 
   const selectStyleScene = (scene: string) => {
     inputRef.current?.replaceActiveTriggerWithToken({ kind: 'style', value: scene, label: scene })
-    setStyleScenes((current) => Array.from(new Set([...current, scene])))
+    setStyleSelection((current) => ({
+      stageKey,
+      scenes: Array.from(new Set([...(current?.stageKey === stageKey ? current.scenes : []), scene])),
+    }))
     setStyleSceneQuery(null)
     inputRef.current?.focus()
   }
 
   const removeStyleScene = (scene: string) => {
-    setStyleScenes((current) => current.filter((item) => item !== scene))
+    setStyleSelection((current) => current?.stageKey === stageKey
+      ? { stageKey, scenes: current.scenes.filter((item) => item !== scene) }
+      : current)
   }
 
   const handleTokenRemove = (token: ComposerTokenSpec) => {
@@ -617,7 +646,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
   }
 
   const selectHotChoice = (choice: string) => {
-    setInput(choice)
+    draft.setText(choice)
     setShowSkillCommands(false)
     setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
@@ -831,7 +860,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
             <StoryStageComposer
               taskControls={<AgentTaskControls suspended={stageRun.runtime.phase === 'suspended'} pending={commandSubmitting || stageRun.runtime.abortPending} onResume={() => void resumeTask()} onAbort={() => void stop()} />}
               layout={{ projectId, creatingStory: storySetupVisible, isMobile, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
-              editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
+              editor={{ input, editingTurn, draftStatus: editingTurn ? undefined : draft.status, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
               story={{ storyId, branchTerminal, hotChoices, showHotChoices, canUseHotChoices }}
               runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, pendingInterruptionId: stageRun.runtime.pendingInterruptionId, phase: stageRun.runtime.phase, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID, onRuntimeChanged: async () => {
                   if (!storyId) return
@@ -839,7 +868,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                   interactiveAgentCommands.project(active, 'disconnected')
                 } }}
               dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
-              actions={{ abandonPendingTurn, cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openContextAnalysis, removeContextCompaction, send, steerQueuedCommand, deleteQueuedCommand, stop: stageRun.runtime.recoveryPaused || stageRun.runtime.connection !== 'connected' || !supportsRuntimeOperation(conversationConfig.snapshot, 'pause') ? stop : suspend }}
+              actions={{ abandonPendingTurn, cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openContextAnalysis, removeContextCompaction, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop: stageRun.runtime.recoveryPaused || stageRun.runtime.connection !== 'connected' || !supportsRuntimeOperation(conversationConfig.snapshot, 'pause') ? stop : suspend }}
             />
           </section>
         </div>

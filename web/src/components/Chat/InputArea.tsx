@@ -30,12 +30,13 @@ import type { ConversationGoal } from '@/features/agent-goal/types'
 import { ComposerModeChip } from './ComposerModeChip'
 import { ComposerAttachmentTray, useComposerAttachments } from './ComposerAttachments'
 import { ComposerMenuCheckboxItem, ComposerMenuItem, ComposerMenuShortcut } from './ComposerMenuRow'
+import { useComposerDraft } from './use-composer-draft'
 
 const MAX_TOKEN_USAGE_MENU_COUNT = 10
-const inputDrafts = new Map<string, string>()
 
 export interface InputAreaSendOptions {
   attachments?: File[]
+  onSubmissionAccepted?: () => void
 }
 
 export interface InputAreaPrefill {
@@ -79,6 +80,7 @@ interface InputAreaProps {
   onGoalPause?: () => void | Promise<void>
   onGoalClear?: () => void | Promise<void>
   draftKey?: string
+  persistDraft?: boolean
   inputPrefill?: InputAreaPrefill | null
   onInputPrefillConsumed?: () => void
   referencedFiles?: string[]
@@ -147,6 +149,7 @@ export function InputArea({
   onGoalPause,
   onGoalClear,
   draftKey,
+  persistDraft = false,
   inputPrefill,
   onInputPrefillConsumed,
   referencedFiles = [],
@@ -202,7 +205,8 @@ export function InputArea({
     ? conversationConfig.initialized && !conversationConfig.saving
     : defaultApproval.initialized && !defaultApproval.saving
   const isMobile = useIsMobile()
-  const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
+  const draft = useComposerDraft(draftKey, persistDraft)
+  const { text: value, setText: setValue } = draft
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
@@ -213,7 +217,7 @@ export function InputArea({
   const referencePickerRef = useRef<FileReferencePickerHandle>(null)
   const stylePickerRef = useRef<FileReferencePickerHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const submittingRef = useRef(false)
+  const submittingRef = useRef<symbol | null>(null)
   const attachments = useComposerAttachments(attachmentsEnabled && !disabled, draftKey ? `chat:${draftKey}` : undefined)
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
   const defaultPlaceholder = (skills.length > 0 || quickPrompts.some((prompt) => prompt.enabled)) && effectiveCommandScope !== 'none'
@@ -257,31 +261,16 @@ export function InputArea({
     [tokenUsageMessages],
   )
   useEffect(() => {
-    if (!draftKey) return
-    setValue(inputDrafts.get(draftKey) || '')
     setReferenceQuery(null)
     setStyleSceneQuery(null)
     setGoalMode(false)
+    submittingRef.current = null
+    setSubmitting(false)
   }, [draftKey])
 
   useEffect(() => {
     if (planMode) setGoalMode(false)
   }, [planMode])
-
-  useEffect(() => {
-    if (!draftKey) return
-    if (value) inputDrafts.set(draftKey, value)
-    else inputDrafts.delete(draftKey)
-  }, [draftKey, value])
-
-  // The initial AI SDK promise spans the response stream. Once generation is
-  // visibly active, release the request-level composer lock so operation-scoped
-  // Follow Up/Steer commands can be submitted independently.
-  useEffect(() => {
-    if (!generationActive || !submittingRef.current) return
-    submittingRef.current = false
-    setSubmitting(false)
-  }, [generationActive])
 
   useEffect(() => {
     if (!autoFocus || isMobile || disabled) return
@@ -299,7 +288,7 @@ export function InputArea({
     setStyleSceneQuery(null)
     window.requestAnimationFrame(() => inputRef.current?.focus())
     onInputPrefillConsumed?.()
-  }, [inputPrefill, onInputPrefillConsumed])
+  }, [inputPrefill, onInputPrefillConsumed, setValue])
 
   const syncHeight = useCallback(() => {
     const element = rootRef.current
@@ -325,10 +314,6 @@ export function InputArea({
   }, [onHeightChange, syncHeight])
 
   /** 处理输入变化 */
-  const handleChange = (nextValue: string) => {
-    setValue(nextValue)
-  }
-
   const handleTriggerChange = (trigger: ComposerTrigger | null) => {
     if (effectiveCommandScope !== 'none' && trigger?.kind === 'slash') {
       setCommandQuery(trigger.query)
@@ -449,59 +434,46 @@ export function InputArea({
   }
 
   /** 发送消息 */
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = value.trim()
     if ((!trimmed && !hasReviewFeedback && attachments.files.length === 0 && !canResume) || disabled || sendBlocked || !approvalReady || submittingRef.current) return
-    const submittedValue = value
     const submittedAttachments = attachments.files
-    submittingRef.current = true
+    const submission = Symbol()
+    submittingRef.current = submission
     setSubmitting(true)
-    let result: ReturnType<typeof onSend>
-    try {
-      if (goalMode && onGoalSubmit) {
-        result = submittedAttachments.length
-          ? onGoalSubmit(trimmed, { attachments: submittedAttachments })
-          : onGoalSubmit(trimmed)
-      } else {
-        result = submittedAttachments.length
-          ? onSend(trimmed, { attachments: submittedAttachments })
-          : onSend(trimmed)
-      }
-    } catch {
-      submittingRef.current = false
+    let accepted = false
+    const unlock = () => {
+      if (submittingRef.current !== submission) return
+      submittingRef.current = null
       setSubmitting(false)
-      return
     }
-    setValue('')
+    const onSubmissionAccepted = () => {
+      if (accepted) return
+      accepted = true
+      draft.accept()
+      if (submittingRef.current === submission) {
+        if (goalMode) setGoalMode(false)
+        setShowCommands(false)
+        setCommandQuery(null)
+        setActiveCommandIndex(0)
+        setReferenceQuery(null)
+        setStyleSceneQuery(null)
+      }
+      unlock()
+    }
     attachments.clear()
-    setShowCommands(false)
-    setCommandQuery(null)
-    setActiveCommandIndex(0)
-    setReferenceQuery(null)
-    setStyleSceneQuery(null)
-    if (result && typeof (result as PromiseLike<boolean | void>).then === 'function') {
-      void Promise.resolve(result).then((accepted) => {
-        if (accepted === false) {
-          setValue((current) => current || submittedValue)
-          attachments.addFiles(submittedAttachments)
-        }
-        else if (goalMode) setGoalMode(false)
-      }).catch(() => {
-        setValue((current) => current || submittedValue)
-        attachments.addFiles(submittedAttachments)
-      }).finally(() => {
-        submittingRef.current = false
-        setSubmitting(false)
+    try {
+      const send = goalMode && onGoalSubmit ? onGoalSubmit : onSend
+      const result = await send(trimmed, {
+        attachments: submittedAttachments.length ? submittedAttachments : undefined,
+        onSubmissionAccepted,
       })
-    } else if (result === false) {
-      setValue(submittedValue)
-      attachments.addFiles(submittedAttachments)
-      submittingRef.current = false
-      setSubmitting(false)
-    } else {
-      if (goalMode) setGoalMode(false)
-      submittingRef.current = false
-      setSubmitting(false)
+      if (result !== false) onSubmissionAccepted()
+    } catch {
+      // Submission errors are displayed by the owning conversation.
+    } finally {
+      if (!accepted && submittingRef.current === submission) attachments.addFiles(submittedAttachments)
+      unlock()
     }
   }
 
@@ -632,6 +604,7 @@ export function InputArea({
 
         <ConversationConfigError controller={conversationConfig} agentKey={agentKey} />
         <AgentComposerShell
+          draftStatus={draft.status}
           references={hasReferences ? (
             <>
               <ComposerAttachmentTray items={attachments.items} onRemove={attachments.remove} />
@@ -672,7 +645,7 @@ export function InputArea({
             <ComposerTokenInput
               ref={inputRef}
               value={value}
-              onChange={handleChange}
+              onChange={setValue}
               onTriggerChange={handleTriggerChange}
               onTokenRemove={handleTokenRemove}
               onEditorKeyDown={handleKeyDown}

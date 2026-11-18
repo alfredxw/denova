@@ -559,6 +559,7 @@ function AgentPanelComponent({
         : undefined,
       loreReferenceLabels,
       onSubmissionStart: handleSubmissionStart,
+      onSubmissionAccepted: inputOptions?.onSubmissionAccepted,
       onSubmissionError: handleSubmissionError,
     })
     if (feedbackSelection.length && accepted && !submissionStarted) handleSubmissionStart()
@@ -709,7 +710,8 @@ function AgentPanelComponent({
     onGoalSubmit: submitGoal,
     onGoalPause: pauseGoal,
     onGoalClear: clearGoal,
-    draftKey: `ide-agent:${workspace || 'global'}:${activeSessionId || 'current'}${composerDraftScope ? `:${composerDraftScope}` : ''}`,
+    draftKey: JSON.stringify(['chat', projectId, activeSessionId, composerDraftScope ?? '']),
+    persistDraft: Boolean(projectId && activeSessionId && !sessionDraft),
     inputPrefill,
     onInputPrefillConsumed: () => setInputPrefill(null),
     referencedFiles: references,

@@ -122,6 +122,8 @@ const chat = {
   'chat.input.actions': '输入动作',
   'chat.input.changesApplyNextTurn': '已开始的模型轮次保持当前配置；修改从下一模型轮次生效。',
   'chat.input.send': '发送',
+  'chat.input.draftRestored': '已恢复草稿',
+  'chat.input.draftSaveFailed': '草稿无法保存到本机。刷新或退出前请复制文字。',
   'chat.input.resume': '继续生成',
   'chat.input.stop': '中断 AI 执行',
   'chat.attachment.add': '添加文件',

@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from 'react'
+import { useId, useRef, useState, type ComponentProps, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
 import { Archive, BarChart3, ChevronDown, Compass, List, Paperclip, Pencil, RefreshCw, ScrollText, Sparkles, X } from 'lucide-react'
 import { AgentComposerControls } from '@/components/Chat/AgentComposerControls'
@@ -45,6 +45,7 @@ interface StoryStageComposerProps {
   }
   editor: {
     input: string
+    draftStatus?: ComponentProps<typeof AgentComposerShell>['draftStatus']
     editingTurn: { id: string; content: string } | null
     styleScenes: string[]
     styleSceneQuery: string | null
@@ -107,7 +108,7 @@ interface StoryStageComposerProps {
     selectHotChoice: (choice: string) => void
     selectStyleScene: (scene: string) => void
     selectSkillCommand: (name: string) => void
-    handleInputChange: (value: string) => void
+    handleInputChange: (value: string, draftText: string) => void
     handleInputTriggerChange: (trigger: ComposerTrigger | null) => void
     handleTokenRemove: (token: ComposerTokenSpec) => void
     toggleHotChoices: () => void
@@ -164,9 +165,10 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
   if (creatingStory) return null
   const submit = async () => {
     const files = attachments.files
+    let admitted = false
     attachments.clear()
-    const accepted = await send(files.length ? { attachments: files } : undefined)
-    if (!accepted) attachments.addFiles(files)
+    const accepted = await send({ attachments: files, onSubmissionAccepted: () => { admitted = true } })
+    if (!admitted && !accepted) attachments.addFiles(files)
     return accepted
   }
   return (
@@ -233,6 +235,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
           />
           <ConversationConfigError controller={conversationConfig} agentKey="interactive_story" />
           <AgentComposerShell
+            draftStatus={editor.draftStatus}
             className="nova-story-stage-composer"
             references={attachments.items.length ? <ComposerAttachmentTray items={attachments.items} onRemove={attachments.remove} /> : undefined}
             input={<ComposerTokenInput

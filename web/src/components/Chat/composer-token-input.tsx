@@ -38,7 +38,7 @@ export interface ComposerTokenInputHandle {
 
 interface ComposerTokenInputProps {
   value: string
-  onChange: (value: string) => void
+  onChange: (value: string, draftText: string) => void
   onTriggerChange?: (trigger: ComposerTrigger | null) => void
   onTokenRemove?: (token: ComposerTokenSpec) => void
   onEditorKeyDown?: (event: KeyboardEvent) => boolean
@@ -195,7 +195,7 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
     },
     onUpdate: ({ editor: nextEditor }) => {
       const nextValue = serializeComposerDoc(nextEditor.state.doc)
-      onChangeRef.current(nextValue)
+      onChangeRef.current(nextValue, serializeComposerDoc(nextEditor.state.doc, { omitReferences: true }))
       emitTrigger(nextEditor)
       syncEmptyAndTokens(nextEditor)
       scheduleHeightFrame()
@@ -205,7 +205,7 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
     },
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
 
@@ -258,7 +258,7 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
       return
     }
     if (value === '') {
-      editor.commands.clearContent()
+      editor.commands.clearContent(false)
     } else {
       editor.commands.setContent(textToComposerJSON(value, parseOptions), { emitUpdate: false })
     }
@@ -479,11 +479,12 @@ interface ComposerParseOptions {
   styleScenes: string[]
 }
 
-function serializeComposerDoc(doc: ProseMirrorNode): string {
+function serializeComposerDoc(doc: ProseMirrorNode, options?: { omitReferences: boolean }): string {
   const blocks: string[] = []
   doc.forEach((block) => {
     let text = ''
     block.forEach((child) => {
+      if (options?.omitReferences && child.type.name === 'composerToken' && child.attrs.kind !== 'skill') return
       text += serializeInlineNode(child)
     })
     blocks.push(text)

@@ -60,7 +60,7 @@ interface UseStoryStageRuntimeOptions {
   setStreaming: (value: boolean) => void
   setActivity: (content: string) => void
   setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
-  clearComposer: () => void
+  onSubmissionAccepted: () => void
   onTurnPersisted: (event: InteractiveTurnPersistedEvent, options?: { replayed: boolean }) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
 }
@@ -91,7 +91,7 @@ export function useStoryStageRuntime({
   setStreaming,
   setActivity,
   setMessages,
-  clearComposer,
+  onSubmissionAccepted,
   onTurnPersisted,
   onDone,
 }: UseStoryStageRuntimeOptions) {
@@ -138,7 +138,14 @@ export function useStoryStageRuntime({
       })),
   })
 
-  async function send(override?: { message?: string; rewindTurnId?: string; attachments?: File[]; startOpening?: boolean; resumeAfterSwitch?: boolean }) {
+  async function send(override?: {
+    message?: string
+    rewindTurnId?: string
+    attachments?: File[]
+    startOpening?: boolean
+    resumeAfterSwitch?: boolean
+    onSubmissionAccepted?: () => void
+  }) {
     const startOpening = override?.startOpening === true
     const resumeAfterSwitch = override?.resumeAfterSwitch === true
     const requestedMessage = (override?.message ?? input).trim()
@@ -149,6 +156,10 @@ export function useStoryStageRuntime({
     const message = resumeFromEmptyComposer ? 'Continue.' : requestedMessage
     const displayMessage = startOpening ? '' : resumeFromEmptyComposer ? t('chat.input.resume') : requestedMessage
     if ((!message && files.length === 0 && !startOpening) || !storyId || branchTerminal || (blocked && !resumeAfterSwitch) || commandSubmittingRef.current) return false
+    const accept = () => {
+      onSubmissionAccepted()
+      override?.onSubmissionAccepted?.()
+    }
     let attachmentUploads: ChatAttachmentUpload[] = []
     if (files.length) {
       try {
@@ -161,15 +172,15 @@ export function useStoryStageRuntime({
     if (!resumeAfterSwitch && (streaming || readStageRuntime().phase === 'suspended')) {
       const runtime = readStageRuntime()
       if (runtime.abortPending || !runtime.operationId || (runtime.phase !== 'suspended' && runtime.connection !== 'connected')) return false
-      return submitFollowUp(message, attachmentUploads)
+      return submitFollowUp(message, attachmentUploads, accept)
     }
     if (message === '/compact' && attachmentUploads.length === 0) {
-      await compactCurrentContext()
-      return true
+      const accepted = await compactCurrentContext()
+      if (accepted) accept()
+      return accepted
     }
     const inlineStyleScenes = startOpening ? [] : parseInlineStyleScenes(message)
     const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
-    clearComposer()
     commandSubmittingRef.current = true
     setCommandSubmitting(true)
     prepareLiveRun(displayMessage, rewindTurnId, attachmentDescriptors(files), startOpening)
@@ -197,6 +208,7 @@ export function useStoryStageRuntime({
         signal: abortController.signal,
       })
       initialStartCommandIDsRef.current.delete(retryKey)
+      accept()
       commandSubmittingRef.current = false
       setCommandSubmitting(false)
       const outcome = await observeStream(stream, abortController)
@@ -222,15 +234,15 @@ export function useStoryStageRuntime({
     }
   }
 
-  async function submitFollowUp(message: string, attachments: ChatAttachmentUpload[]) {
+  async function submitFollowUp(message: string, attachments: ChatAttachmentUpload[], accept: () => void) {
     const inlineStyleScenes = parseInlineStyleScenes(message)
     const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
     commandSubmittingRef.current = true
     setCommandSubmitting(true)
     try {
       await interactiveAgentCommands.followUp({ message, styleScenes: mergedStyleScenes, attachments })
+      accept()
       if (readStageRuntime().phase === 'suspended') interactiveAgentCommands.project(await getActiveInteractiveChat(storyId, branchId), 'disconnected')
-      clearComposer()
       return true
     } catch (error) {
       appendError(error)
@@ -293,8 +305,7 @@ export function useStoryStageRuntime({
   }
 
   async function compactCurrentContext() {
-    if (!storyId || streaming) return
-    clearComposer()
+    if (!storyId || streaming) return false
     setStreaming(true)
     setActivity(t('chat.contextCompaction.status.running'))
     liveAccumulator.resetCompaction()
@@ -304,10 +315,12 @@ export function useStoryStageRuntime({
       await onDone()
       // Completed maintenance is projected from the canonical Story journal.
       setMessages([])
+      return true
     } catch (error) {
       setMessages([
         errorMessage(error instanceof Error ? error.message : t('storyStage.contextCompaction.failed')),
       ])
+      return false
     } finally {
       setStreaming(false)
       liveAccumulator.resetCompaction()
