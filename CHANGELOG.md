@@ -12,6 +12,26 @@ Denova records major user-visible features, important compatibility or data chan
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-11-18
+
+### Brief / 简要说明
+
+#### 中文
+
+- 写作、通用对话和游戏可按会话选择 Grok Build 或 Antigravity CLI。外部模型列表加载更快，Codex App Server 兼容性也有改善。
+- 聊天和游戏按会话或分支保存未发送的文字，刷新页面或切回后可以继续编辑。
+- 导入角色卡时，可以逐项确认保留或覆盖同名资料。
+- 修复游戏切换回合版本后重新生成时丢失早期状态和规划的问题，并改善外部引擎中断后的回合恢复。
+- 改善 WebUI 自动更新的进程交接。局域网浏览时，需要在宿主机完成的管理操作会给出明确提示。
+
+#### English
+
+- Choose Grok Build or Antigravity CLI per conversation in Writing, General Chat, and Game. External model lists load faster, and Codex App Server compatibility has improved.
+- Unsent text in chat and Game is saved per conversation or branch. Reload the page or return to the conversation to keep editing.
+- When importing a character card, choose whether to keep or replace each Lore entry with the same name.
+- Game retains earlier state and plans when you regenerate after switching turn versions. Interrupted turns also recover more reliably with external engines.
+- WebUI update handoff is more reliable. When you browse over the LAN, Denova identifies management actions that require the host machine.
+
 ## [v0.7.3] - 2026-11-09
 
 ### Brief / 简要说明
