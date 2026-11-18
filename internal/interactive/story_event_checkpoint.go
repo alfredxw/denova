@@ -19,6 +19,41 @@ type storyEventCheckpoint struct {
 	Plan           *BranchPlan
 }
 
+// checkpointAtStoryEventLocked resolves an exact parent, including state and
+// plan edits between turns. The indexed links keep historical turn bodies out
+// of memory; the journal supplies the actual state and plan changes.
+func (s *Store) checkpointAtStoryEventLocked(handle *storyJournalHandle, eventID string) (storyEventCheckpoint, error) {
+	if eventID == "" {
+		return storyEventCheckpoint{State: initialStoryState()}, nil
+	}
+	checkpoint := storyEventCheckpoint{}
+	ancestorIDs := make(map[string]bool)
+	for id := eventID; id != ""; {
+		node, found := handle.projection.ModelNodes[id]
+		if !found || ancestorIDs[id] {
+			return storyEventCheckpoint{}, fmt.Errorf("story checkpoint ancestry is incomplete at %s", id)
+		}
+		ancestorIDs[id] = true
+		if node.TurnAt != "" {
+			checkpoint.Depth++
+			if checkpoint.LatestTurnID == "" {
+				checkpoint.LatestTurnID = id
+			}
+		}
+		id = node.Parent
+	}
+	var err error
+	checkpoint.State, err = s.stateForStoryAncestorsLocked(handle, ancestorIDs)
+	if err != nil {
+		return storyEventCheckpoint{}, err
+	}
+	checkpoint.Plan, err = s.planForStoryAncestorsLocked(handle, ancestorIDs)
+	if err != nil {
+		return storyEventCheckpoint{}, err
+	}
+	return checkpoint, nil
+}
+
 // checkpointAtTurnLocked resolves one historical turn without materializing
 // the story. The backwards pass retains only ancestor IDs; two forward
 // streaming passes then account for append-only state revisions and build the

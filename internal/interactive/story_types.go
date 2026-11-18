@@ -520,6 +520,10 @@ type TurnVersionSelectionEvent struct {
 	CurrentTurnID   string                  `json:"current_turn_id,omitempty"`
 	CurrentDepth    int                     `json:"current_depth,omitempty"`
 	CurrentPlan     *BranchPlan             `json:"current_plan,omitempty"`
+	// The versions share a parent. Store its checkpoint only if the previous
+	// head has no reusable one, such as after a rewind to an earlier turn.
+	ParentState map[string]any `json:"parent_state,omitempty"`
+	ParentPlan  *BranchPlan    `json:"parent_plan,omitempty"`
 }
 
 type BranchEvent struct {

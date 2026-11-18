@@ -2,7 +2,11 @@ package interactive
 
 import (
 	"errors"
+	"os"
 	"testing"
+
+	"denova/internal/agents/conversationjournal"
+	interactivestate "denova/internal/interactive/state"
 )
 
 func TestCommitDomainTurnRegenerateAtomicallyReplacesBranchHead(t *testing.T) {
@@ -166,5 +170,116 @@ func TestRegeneratePreservesCurrentBranchPlanWhenUpdateIsOmitted(t *testing.T) {
 	}
 	if snapshot.BranchPlan == nil || snapshot.BranchPlan.Markdown != currentPlan || snapshot.BranchPlan.UpdatedTurnID != replacement.ID {
 		t.Fatalf("replacement did not preserve the current plan: %#v", snapshot.BranchPlan)
+	}
+}
+
+func TestRegenerateSelectedTurnPreservesItsParentState(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		extraTurns int
+	}{
+		{name: "short story"},
+		{name: "state predates the recent history", extraTurns: maxStoryHistoryPageTurns},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			store := NewStore(root)
+			defer store.Close()
+			story, err := store.CreateStory(CreateStoryRequest{Title: "Selected version", PlanningMode: StoryPlanningModeEnabled})
+			if err != nil {
+				t.Fatal(err)
+			}
+			const branch = "main"
+			parentPlan := "## Direction\n\nLook for the observatory."
+			_, _, err = store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+				BranchID: branch, User: "Check on Lin", Narrative: "Lin rests before leaving.",
+				Ops:        []interactivestate.Op{{Op: "set", Path: "characters.Lin.hp", Value: 67}},
+				TurnResult: &TurnResult{Choices: testTurnChoices(), PlanUpdate: &parentPlan},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.extraTurns > 0 {
+				turns := make([]AppendTurnRequest, tt.extraTurns)
+				for i := range turns {
+					turns[i] = AppendTurnRequest{User: "Continue walking", Narrative: "The road winds through the hills."}
+				}
+				appendStoryTurns(t, store, story.ID, branch, turns)
+			}
+			selectedPlan := "## Direction\n\nExplore the garden."
+			selected, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+				BranchID: branch, User: "Open the gate", Narrative: "The gate opens into a garden.",
+				Ops:        []interactivestate.Op{{Op: "set", Path: "characters.Lin.location", Value: "garden"}},
+				TurnResult: &TurnResult{Choices: testTurnChoices(), PlanUpdate: &selectedPlan},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
+				BranchID: branch, ParentID: selected.ID,
+				Ops: []interactivestate.Op{{Op: "set", Path: "characters.Lin.location", Value: "garden path"}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			alternate, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+				BranchID: branch, ReplaceTurnID: selected.ID, User: "Open the gate", Narrative: "The gate opens into a vault.",
+				Ops: []interactivestate.Op{{Op: "set", Path: "characters.Lin.location", Value: "vault"}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
+				BranchID: branch, TurnID: alternate.ID, VersionTurnID: selected.ID,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			current, err := store.Snapshot(story.ID, branch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			turnCount := tt.extraTurns + 2
+			if hp, location := getPath(current.State, "characters.Lin.hp"), getPath(current.State, "characters.Lin.location"); hp != 67.0 || location != "garden path" || current.TurnCount != turnCount {
+				t.Errorf("selected state = hp:%v location:%v depth:%d, want hp:67 location:garden path depth:%d", hp, location, current.TurnCount, turnCount)
+			}
+			if current.BranchPlan == nil || current.BranchPlan.Markdown != selectedPlan {
+				t.Errorf("selected plan = %#v, want %q", current.BranchPlan, selectedPlan)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(conversationjournal.SidecarPath(store.storyPath(story.ID))); err != nil {
+				t.Fatal(err)
+			}
+			before, err := store.StoryContextAtTurnParent(story.ID, branch, selected.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hp, location := getPath(before.Snapshot.State, "characters.Lin.hp"), getPath(before.Snapshot.State, "characters.Lin.location"); hp != 67.0 || location != nil || before.Snapshot.TurnCount != turnCount-1 {
+				t.Errorf("regeneration parent = hp:%v location:%v depth:%d, want hp:67 no location depth:%d", hp, location, before.Snapshot.TurnCount, turnCount-1)
+			}
+			if before.Snapshot.BranchPlan == nil || before.Snapshot.BranchPlan.Markdown != parentPlan {
+				t.Errorf("regeneration parent plan = %#v, want %q", before.Snapshot.BranchPlan, parentPlan)
+			}
+			replacement, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+				BranchID: branch, ExpectedParentID: &selected.ID, ReplaceTurnID: selected.ID,
+				User: "Open the gate", Narrative: "A sentry waits behind the gate.",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, err := store.Snapshot(story.ID, branch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.CurrentTurn == nil || after.CurrentTurn.ID != replacement.ID || after.TurnCount != turnCount {
+				t.Fatalf("regenerated branch has depth %d, want depth %d and head %s", after.TurnCount, turnCount, replacement.ID)
+			}
+			if hp, location := getPath(after.State, "characters.Lin.hp"), getPath(after.State, "characters.Lin.location"); hp != 67.0 || location != nil {
+				t.Errorf("regenerated state = hp:%v location:%v, want hp:67 and no location", hp, location)
+			}
+		})
 	}
 }

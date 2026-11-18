@@ -1,9 +1,13 @@
 package interactive
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"denova/internal/agents/conversationjournal"
 )
 
 // SwitchTurnVersion selects an alternative turn without rewriting any
@@ -39,10 +43,6 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	if err := requireLatestLogicalTurn(meta, lines, branchID, turnID); err != nil {
 		return err
 	}
-	lines, err = projectStoryEventOverlays(lines)
-	if err != nil {
-		return err
-	}
 	events := eventsByID(lines)
 	path, pathSet := eventPath(branch.Head, events)
 	if !pathSet[turnID] {
@@ -62,7 +62,8 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	if target.Envelope.BranchID != branchID {
 		return fmt.Errorf("目标版本不属于当前分支: %s", versionTurnID)
 	}
-	if parentIDFromRaw(target.Raw) != parentIDFromRaw(current.Raw) {
+	parentID := parentIDFromRaw(target.Raw)
+	if parentID != parentIDFromRaw(current.Raw) {
 		return fmt.Errorf("只能在同一剧情位置切换版本")
 	}
 	if turnID == versionTurnID {
@@ -76,6 +77,14 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 		return err
 	}
 	newEvents := append([]any(nil), projectedEvents...)
+	handle, err := s.openStoryJournalLocked(storyID)
+	if err != nil {
+		return err
+	}
+	projection := handle.projection.Branches[branchID]
+	if projection == nil || projection.LatestTurnID != turnID {
+		return fmt.Errorf("%w: turn version selection does not match the branch projection", ErrStoryContextRevisionConflict)
+	}
 
 	selection := TurnVersionSelectionEvent{
 		V:               schemaVersion,
@@ -89,26 +98,23 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 		PreviousHeadID:  branch.Head,
 		ProjectedHeadID: projectedHead,
 		ProjectedEvents: projections,
+		CurrentTurnID:   versionTurnID,
+		CurrentDepth:    projection.Depth,
 	}
-	projectedRecords := make([]StoryEventRecord, 0, len(projectedEvents))
-	for _, projectedEvent := range projectedEvents {
-		record, recordErr := storyEventRecordForWrite(projectedEvent)
-		if recordErr != nil {
-			return recordErr
+	parentState := projection.StateBeforeLatest
+	parentPlan := projection.PlanBeforeLatest
+	if parentState == nil || projection.LatestTurnParentID != parentID {
+		checkpoint, err := s.checkpointAtStoryEventLocked(handle, parentID)
+		if err != nil {
+			return err
 		}
-		projectedRecords = append(projectedRecords, record)
+		parentState, parentPlan = checkpoint.State, checkpoint.Plan
+		selection.CurrentDepth = checkpoint.Depth + 1
+		selection.ParentState, selection.ParentPlan = parentState, parentPlan
 	}
-	selectionEvents := eventsByID(append(append([]StoryEventRecord(nil), lines...), projectedRecords...))
-	selectionPath, _ := eventPath(projectedHead, selectionEvents)
-	selection.CurrentState = stateFromPath(selectionPath)
-	selection.CurrentTurnID = nearestTurnAncestor(projectedHead, selectionEvents)
-	if checkpoint, checkpointErr := s.checkpointAtTurnLocked(storyID, versionTurnID); checkpointErr == nil {
-		selection.CurrentPlan = cloneBranchPlan(checkpoint.Plan)
-	}
-	for _, record := range selectionPath {
-		if record.Envelope.Type == StoryEventTypeTurn {
-			selection.CurrentDepth++
-		}
+	selection.CurrentState, selection.CurrentPlan, err = projectSelectedTurnVersion(handle, target, parentState, parentPlan, projectedEvents)
+	if err != nil {
+		return err
 	}
 	newEvents = append(newEvents, selection)
 
@@ -119,6 +125,79 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 		return err
 	}
 	return s.syncStorySummaryLocked(storyID)
+}
+
+// projectSelectedTurnVersion applies only the selected turn and its suffix to
+// the common parent. Inactive versions can have state and plan edits outside
+// the recent view, so read their side records from the journal.
+func projectSelectedTurnVersion(handle *storyJournalHandle, selected StoryEventRecord, parentState map[string]any, parentPlan *BranchPlan, suffix []any) (map[string]any, *BranchPlan, error) {
+	var turn TurnEvent
+	if err := mapToStruct(selected.Raw, &turn); err != nil {
+		return nil, nil, err
+	}
+	node := handle.projection.ModelNodes[turn.ID]
+	if node.Cursor == 0 {
+		return nil, nil, fmt.Errorf("missing journal locator for turn version %s", turn.ID)
+	}
+	plan := cloneBranchPlan(parentPlan)
+	err := handle.journal.VisitRange(context.Background(), conversationjournal.Range{After: node.Cursor - 1}, func(record conversationjournal.Record) error {
+		var header struct {
+			Type     string `json:"type"`
+			BranchID string `json:"branch_id"`
+			TurnID   string `json:"turn_id"`
+		}
+		if err := json.Unmarshal(record.Payload, &header); err != nil {
+			return err
+		}
+		if header.BranchID != turn.BranchID || header.TurnID != turn.ID {
+			return nil
+		}
+		switch header.Type {
+		case StoryEventTypeTurnStateRevised:
+			var revision TurnStateRevisedEvent
+			if err := json.Unmarshal(record.Payload, &revision); err != nil {
+				return err
+			}
+			if revision.ClearStateDelta {
+				turn.StateDelta = nil
+			} else if revision.StateDelta != nil {
+				turn.StateDelta = revision.StateDelta
+			}
+		case StoryEventTypeBranchPlanUpdated:
+			var update BranchPlanUpdatedEvent
+			if err := json.Unmarshal(record.Payload, &update); err != nil {
+				return err
+			}
+			plan = &BranchPlan{Markdown: update.Markdown, UpdatedTurnID: update.TurnID, UpdatedAt: update.Ts, Revision: update.ID}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	state := cloneStoryState(parentState)
+	applyTurnState(state, turn)
+	for _, raw := range suffix {
+		record, err := storyEventRecordForWrite(raw)
+		if err != nil {
+			return nil, nil, err
+		}
+		switch record.Envelope.Type {
+		case StoryEventTypeStateDelta:
+			var delta StateDeltaEvent
+			if err := mapToStruct(record.Raw, &delta); err != nil {
+				return nil, nil, err
+			}
+			applyStateDeltaToProjection(state, StateDelta{SchemaVersion: delta.SchemaVersion, Ops: delta.Ops, ActorOps: delta.ActorOps})
+		case StoryEventTypeBranchPlanRevised:
+			var update BranchPlanUpdatedEvent
+			if err := mapToStruct(record.Raw, &update); err != nil {
+				return nil, nil, err
+			}
+			plan = &BranchPlan{Markdown: update.Markdown, UpdatedTurnID: turn.ID, UpdatedAt: update.Ts, Revision: update.ID}
+		}
+	}
+	return state, plan, nil
 }
 
 func turnRecordOnPath(path []StoryEventRecord, turnID string) (int, *StoryEventRecord) {
@@ -144,6 +223,9 @@ func projectTurnVersionSuffix(
 		clonedRaw, projection, err := cloneTurnVersionPathEvent(record, parentID, selectionID)
 		if err != nil {
 			return "", nil, nil, err
+		}
+		if record.Envelope.Type == StoryEventTypeBranchPlanRevised {
+			clonedRaw["turn_id"] = selectedTurnID
 		}
 		parentID = projection.ProjectedID
 		projected = append(projected, clonedRaw)

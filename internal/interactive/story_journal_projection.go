@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// Version 20 adds Turn timestamps to the canonical branch locators.
-	storyProjectionVersion      = 20
+	// Version 21 rebuilds turn-version selections with their shared parent state.
+	storyProjectionVersion      = 21
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -390,15 +390,27 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if err := mapToStruct(record.Raw, &event); err != nil {
 			return err
 		}
+		parentID := projection.ModelNodes[event.CurrentTurnID].Parent
+		samePosition := branch.LatestTurnID == event.ReplacedTurnID && branch.LatestTurnParentID == parentID
+		if event.ParentState != nil {
+			branch.StateBeforeLatest = cloneStoryState(event.ParentState)
+			branch.PlanBeforeLatest = cloneBranchPlan(event.ParentPlan)
+			branch.Depth = event.CurrentDepth
+		} else if !samePosition {
+			branch.StateBeforeLatest = nil
+			branch.PlanBeforeLatest = nil
+			branch.Depth = event.CurrentDepth
+		}
+		// A same-parent selection changes the latest turn's effects. Its input
+		// state and depth are still valid, including for released selection rows
+		// whose saved CurrentDepth described only a recent page of turns.
 		branch.Head = event.ProjectedHeadID
 		branch.LatestTurnID = event.CurrentTurnID
-		branch.Depth = event.CurrentDepth
+		branch.LatestTurnParentID = parentID
 		if event.CurrentState != nil {
 			branch.State = cloneStoryState(event.CurrentState)
 		}
-		branch.StateBeforeLatest = nil
 		branch.Plan = cloneBranchPlan(event.CurrentPlan)
-		branch.PlanBeforeLatest = nil
 	case StoryEventTypeTurnDraft:
 		var event TurnDraftEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
