@@ -97,6 +97,32 @@ func TestTurnStartCarriesSelectedReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestMCPStartupFailureDoesNotAbortCodexTurn(t *testing.T) {
+	fixture := newProtocolFixture(t)
+	host := &testHost{}
+	done := startFixtureTurn(t, t.Context(), fixture, host)
+	fixture.send(t, "", "mcpServer/startupStatus/updated", map[string]any{
+		"threadId": "thread", "name": "optional-server", "status": "failed", "error": "MCP handshake failed",
+	})
+	fixture.send(t, "", "item/agentMessage/delta", map[string]string{
+		"threadId": "thread", "turnId": "turn", "itemId": "message", "delta": "The turn continued.",
+	})
+	fixture.send(t, "", "turn/completed", map[string]any{
+		"threadId": "thread", "turn": map[string]string{"id": "turn", "status": "completed"},
+	})
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if !result.result.Settled || result.result.Text != "The turn continued." || host.output.String() != result.result.Text {
+			t.Fatalf("MCP startup failure disrupted the agent response: %+v, streamed %q", result.result, host.output.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("turn did not settle")
+	}
+}
+
 func TestReportedUsageReplacesCumulativeTotalsAndSurvivesFailure(t *testing.T) {
 	for _, status := range []string{"completed", "failed"} {
 		t.Run(status, func(t *testing.T) {

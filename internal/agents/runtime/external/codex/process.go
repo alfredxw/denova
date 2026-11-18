@@ -57,6 +57,10 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	if err := os.MkdirAll(options.Home, 0o700); err != nil {
 		return nil, err
 	}
+	selectedHome, err := os.Stat(options.Home)
+	if err != nil {
+		return nil, fmt.Errorf("read selected Codex home: %w", err)
+	}
 	cwd, err := os.MkdirTemp("", "denova-engine-")
 	if err != nil {
 		return nil, err
@@ -66,8 +70,8 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 	args := []string{"app-server", "-c", "project_doc_max_bytes=0", "-c", "skills.include_instructions=false"}
 	// General tools and configured browser/MCP integrations belong to the engine.
 	// Product commits, child-session ownership and scheduled goals remain host-owned.
-	// Use the native foreground shell. Detached PTY output lacks a complete
-	// item lifecycle in supported App Server versions and cannot be journalled.
+	// Prefer the native foreground shell when the App Server supports the
+	// switch. PTY tool results may arrive without command lifecycle items.
 	for _, feature := range []string{"unified_exec", "apply_patch_freeform", "multi_agent", "hooks", "goals", "memories", "image_generation"} {
 		args = append(args, "-c", "features."+feature+"=false")
 	}
@@ -127,7 +131,12 @@ func Connect(ctx context.Context, options ProcessOptions) (*Client, error) {
 		_ = c.Close()
 		return nil, err
 	}
-	if filepath.Clean(initialized.CodexHome) != filepath.Clean(options.Home) {
+	// App Server can canonicalize an alias such as /var on macOS.
+	var reportedHome os.FileInfo
+	if filepath.IsAbs(initialized.CodexHome) {
+		reportedHome, _ = os.Stat(initialized.CodexHome)
+	}
+	if reportedHome == nil || !os.SameFile(selectedHome, reportedHome) {
 		_ = c.Close()
 		return nil, errors.New("App Server did not use the selected Codex home")
 	}

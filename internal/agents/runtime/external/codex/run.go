@@ -29,11 +29,13 @@ type threadReply struct {
 func (c *Client) Version() string { return c.version }
 
 type turnState struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Error  *struct {
-		Message string `json:"message"`
-	} `json:"error"`
+	ID     string     `json:"id"`
+	Status string     `json:"status"`
+	Error  *turnError `json:"error"`
+}
+
+type turnError struct {
+	Message string `json:"message"`
 }
 
 // Run resumes aligned threads and forks read-only evaluations. Model and question waits
@@ -386,7 +388,6 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 				CallID    string          `json:"callId"`
 				Tool      string          `json:"tool"`
 				Arguments json.RawMessage `json:"arguments"`
-				WillRetry bool            `json:"willRetry"`
 				Plan      []struct {
 					Step   string `json:"step"`
 					Status string `json:"status"`
@@ -400,12 +401,9 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 						Total     int `json:"totalTokens"`
 					} `json:"total"`
 				} `json:"tokenUsage"`
-				Error struct {
-					Message string `json:"message"`
-				} `json:"error"`
 			}
 			if err := json.Unmarshal(msg.Params, &event); err != nil {
-				return external.Result{}, err
+				return external.Result{}, fmt.Errorf("decode App Server %s event: %w", msg.Method, err)
 			}
 			if turnID == "" && msg.Method == "turn/started" {
 				turnID = event.Turn.ID
@@ -555,8 +553,16 @@ func (c *Client) runTurn(ctx context.Context, sub *subscription, threadID, turnI
 					return external.Result{}, fmt.Errorf("unknown App Server terminal status %q", event.Turn.Status)
 				}
 			case "error":
-				if !event.WillRetry {
-					return external.Result{}, fmt.Errorf("App Server turn error: %s", event.Error.Message)
+				// An MCP startup notification can report a string at the same key.
+				var notification struct {
+					Error     turnError `json:"error"`
+					WillRetry bool      `json:"willRetry"`
+				}
+				if err := json.Unmarshal(msg.Params, &notification); err != nil {
+					return external.Result{}, fmt.Errorf("decode App Server turn error: %w", err)
+				}
+				if !notification.WillRetry {
+					return external.Result{}, fmt.Errorf("App Server turn error: %s", notification.Error.Message)
 				}
 			case "thread/tokenUsage/updated":
 				if event.TokenUsage != nil {

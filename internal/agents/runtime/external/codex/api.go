@@ -1,7 +1,7 @@
 package codex
 
 import (
-	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -38,9 +38,11 @@ func apiLaunch(args, environment []string, model config.ResolvedModelSettings) (
 		headers[name] = variable
 		env = append(env, variable+"="+model.Headers[name])
 	}
-	// Codex recursively merges provider tables with user configuration. A fresh
-	// identity prevents inherited headers, auth helpers and query parameters.
-	providerID := "denova-" + rand.Text()
+	// Codex records the provider ID in the thread and requires it on resume.
+	// A namespaced profile and endpoint identity keeps it stable across processes
+	// and separate from ordinary providers in the shared config.
+	providerHash := sha256.Sum256(fmt.Appendf(nil, "%q %q", model.ProfileID, model.BaseURL))
+	providerID := fmt.Sprintf("denova-%x", providerHash[:16])
 	var fields []string
 	quote := func(value string) string { encoded, _ := json.Marshal(value); return string(encoded) }
 	for _, key := range []string{"name", "base_url", "wire_api", "env_key"} {

@@ -66,6 +66,7 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 			}
 			var mu sync.Mutex
 			var requests []json.RawMessage
+			var shellTool string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/v1/responses" {
 					http.NotFound(w, r)
@@ -92,8 +93,26 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 				mu.Unlock()
 				var item map[string]any
 				if ordinal == 1 && scenario == "native_shell" {
-					args, _ := json.Marshal(map[string]any{"command": "cat " + guard + "; printf changed > " + guard})
-					item = map[string]any{"type": "function_call", "id": "native_shell", "call_id": "native_shell", "name": "shell_command", "arguments": string(args), "status": "completed"}
+					var request struct {
+						Tools []struct {
+							Name string `json:"name"`
+						} `json:"tools"`
+					}
+					if err := json.Unmarshal(body, &request); err != nil {
+						t.Error(err)
+					}
+					name, commandKey := "shell_command", "command"
+					for _, tool := range request.Tools {
+						if tool.Name == "exec_command" {
+							name, commandKey = tool.Name, "cmd"
+							break
+						}
+					}
+					mu.Lock()
+					shellTool = name
+					mu.Unlock()
+					args, _ := json.Marshal(map[string]string{commandKey: "cat " + guard + "; printf changed > " + guard})
+					item = map[string]any{"type": "function_call", "id": "native_shell", "call_id": "native_shell", "name": name, "arguments": string(args), "status": "completed"}
 				} else if ordinal == 1 && scenario == "plan" {
 					item = map[string]any{"type": "function_call", "id": "fc_plan", "call_id": "call_plan", "name": "update_plan", "arguments": `{"plan":[{"step":"Confirm tone","status":"in_progress"}]}`, "status": "completed"}
 				} else if (ordinal == 1 && scenario == "patch") || (ordinal == 3 && scenario == "evaluation_patch") {
@@ -128,6 +147,9 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			configuration := fmt.Sprintf("model = \"gpt-5.5\"\nmodel_provider = \"fixture\"\nmodel_context_window = 128000\n[model_providers.fixture]\nname = \"Local fixture\"\nbase_url = %q\nwire_api = \"responses\"\nenv_key = \"DENOVA_FIXTURE_CODEX_KEY\"\n[features]\nenable_request_compression = false\nunified_exec = false\n", server.URL+"/v1")
+			if scenario == "plan" {
+				configuration += "[tools.update_plan]\nenabled = true\n"
+			}
 			if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(configuration), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -323,15 +345,15 @@ func TestInstalledAppServerHostBoundary(t *testing.T) {
 				if err != nil || string(content) != "Original content.\n" {
 					t.Fatalf("built-in patch escaped host boundary: %q, %v", content, err)
 				}
-				if scenario == "native_shell" && (!strings.Contains(string(requests[len(requests)-1]), "Original content.") || len(host.native) != 2 || host.native[1].Status != "error") {
-					var request struct {
-						Tools []struct {
-							Name string `json:"name"`
-						} `json:"tools"`
-						Input []map[string]any `json:"input"`
+				if scenario == "native_shell" {
+					if !bytes.Contains(requests[len(requests)-1], []byte("Original content.")) {
+						t.Fatalf("%s output did not reach the model", shellTool)
 					}
-					_ = json.Unmarshal(requests[len(requests)-1], &request)
-					t.Fatalf("native shell observation missing: %+v tools=%+v last=%+v", host.native, request.Tools, request.Input[len(request.Input)-1])
+					// The foreground shell emits command lifecycle items. PTY
+					// execution can report the result to the model alone.
+					if shellTool == "shell_command" && (len(host.native) != 2 || host.native[1].Status != "error") {
+						t.Fatalf("foreground shell lifecycle missing: %+v", host.native)
+					}
 				}
 			} else if !strings.Contains(string(requests[len(requests)-1]), "Restrained") {
 				t.Fatal("saved host answer was not returned to the model")

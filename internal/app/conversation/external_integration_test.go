@@ -95,6 +95,10 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 				switch ordinal {
 				case 1:
 					item = map[string]any{"type": "function_call", "id": "fc_question", "call_id": "call_question", "name": "ask", "arguments": `{"questions":[{"id":"tone","prompt":"Which tone?"}]}`, "status": "completed"}
+					if engine == config.RuntimeCodex {
+						item["name"] = "request_user_input"
+						item["arguments"] = `{"questions":[{"id":"tone","header":"Tone","question":"Which tone?","options":[{"label":"Restrained","description":"Understated"},{"label":"Dramatic","description":"Heightened"}]}]}`
+					}
 				case 2:
 					item = map[string]any{"type": "function_call", "id": "fc_write", "call_id": "call_write", "name": "write", "arguments": `{"path":"draft.md","content":"The harbor was still.\n"}`, "status": "completed"}
 				default:
@@ -218,9 +222,12 @@ func testInstalledProductExecution(t *testing.T, engine config.RuntimeID, execut
 				}
 				data, _ := json.Marshal(event.Data)
 				var pending session.AskInteraction
-				_ = json.Unmarshal(data, &pending)
-				id := pending.ID
-				_, _, err := engines.Operations.ResolveAsk(ctx, runtime.ProjectID, runtime.Session, id, session.AskAnswered, []agentconversation.HostAskAnswer{{QuestionID: "tone", CustomInput: "Restrained"}}, "")
+				if err := json.Unmarshal(data, &pending); err != nil || len(pending.Questions) != 1 {
+					eventError = fmt.Errorf("expected one pending question, got %d: %v", len(pending.Questions), err)
+					cancel()
+					return
+				}
+				_, _, err := engines.Operations.ResolveAsk(ctx, runtime.ProjectID, runtime.Session, pending.ID, session.AskAnswered, []agentconversation.HostAskAnswer{{QuestionID: pending.Questions[0].ID, CustomInput: "Restrained"}}, "")
 				answered, eventError = err == nil, err
 				if err != nil {
 					cancel()
