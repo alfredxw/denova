@@ -87,7 +87,7 @@ Lore, Creative Setups, Skills, and version management are shared between the two
 
 | System | Download |
 | --- | --- |
-| macOS Apple Silicon | [Download DMG](https://github.com/alfredxw/denova/releases/download/v0.8.0/denova-desktop-v0.8.0-macos-arm64.dmg) |
+| macOS Apple Silicon | [Download notarized DMG](https://github.com/alfredxw/denova/releases/download/macos-notarized-v0.8.0/denova-desktop-v0.8.0-macos-arm64.dmg) |
 | Windows x64 | [Download EXE installer](https://github.com/alfredxw/denova/releases/download/v0.8.0/denova-desktop-v0.8.0-windows-x64-setup.exe) |
 
 macOS: open the DMG and drag Denova into Applications. Windows: run the installer. Desktop does not provide macOS Intel or Linux builds. See the [desktop build guide](docs/desktop-distribution.md) to package from source.
@@ -96,7 +96,7 @@ macOS requires version 13 or later. Windows 11 and most Windows 10 devices alrea
 
 Desktop v0.7.0 and v0.7.1 need one manual installation of this version to switch update feeds; v0.7.2 can update automatically. If an older version cannot start, install this version and select your existing data folder. WebUI v0.7.1 and later can still update automatically.
 
-The current desktop Beta has no Apple Developer ID signing, notarization, or Windows code signing. Your system may require permission on first launch. Desktop updates still verify update package signatures.
+The macOS DMG linked above is signed with Apple Developer ID and notarized by Apple. The Windows installer is unsigned and may show a security prompt on first launch. Desktop auto-updates still verify their own package signatures.
 
 <details>
 <summary>Denova WebUI · Browser interface</summary>

@@ -87,7 +87,7 @@ Denova 把小说写作、互动故事、结构化资料库、AI Agent、图像�
 
 | 系统 | 下载 |
 | --- | --- |
-| macOS Apple Silicon | [下载 DMG](https://github.com/alfredxw/denova/releases/download/v0.8.0/denova-desktop-v0.8.0-macos-arm64.dmg) |
+| macOS Apple Silicon | [下载已公证的 DMG](https://github.com/alfredxw/denova/releases/download/macos-notarized-v0.8.0/denova-desktop-v0.8.0-macos-arm64.dmg) |
 | Windows x64 | [下载 EXE 安装器](https://github.com/alfredxw/denova/releases/download/v0.8.0/denova-desktop-v0.8.0-windows-x64-setup.exe) |
 
 macOS 打开 DMG，将 Denova 拖入 Applications；Windows 运行安装器。桌面版不提供 macOS Intel 或 Linux 包。[桌面构建说明](docs/desktop-distribution.md)介绍源码打包。
@@ -96,7 +96,7 @@ macOS 需要 13 或更新版本。Windows 11 和绝大多数 Windows 10 已有 W
 
 v0.7.0、v0.7.1 桌面版需手动安装本版一次，以切换自动更新通道；v0.7.2 可自动升级。如果旧版无法启动，直接安装本版并选择原数据目录即可。v0.7.1 及之后的 WebUI 可继续自动升级。
 
-当前桌面 Beta 未做 Apple Developer ID 签名、公证或 Windows 代码签名，首次打开可能需要在系统安全设置中允许运行；桌面自动更新仍校验更新包签名。
+上方链接的 macOS DMG 已用 Apple Developer ID 签名并通过 Apple 公证。Windows 安装器未做代码签名，首次运行可能出现系统安全提示。桌面自动更新仍单独校验更新包签名。
 
 <details>
 <summary>Denova WebUI · 浏览器版</summary>

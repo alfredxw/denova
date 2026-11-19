@@ -80,7 +80,7 @@ Windows PowerShell 在仓库根目录运行：
 
 使用 MyGo 官方 CLI 和 `plugins/updater`，不另建下载、签名校验、解包或安装状态机。设置页保留检查入口及自动检查、自动下载开关；检查、进度、重启由官方更新窗口处理。第一次启动从现有用户配置导入更新偏好，之后由官方插件持久化。自动下载开启时，官方插件安装更新并在下一次启动生效；主动重启仍经过 Denova 退出检查和后端收尾。
 
-正式构建设置 `DENOVA_DESKTOP_RELEASE=true`，必须具备更新公钥和私钥，用于验证更新包来源与完整性。平台代码签名与 macOS 公证可选；未配置平台证书时仍生成安装包，首次打开可能出现系统安全提示。当前桌面 Beta 不做 Apple Developer ID 签名、公证或 Windows 代码签名。缺少更新公钥的本地构建仍可运行，官方更新窗口提示未配置更新。
+正式构建设置 `DENOVA_DESKTOP_RELEASE=true`，必须具备更新公钥和私钥，用于验证更新包来源与完整性。平台代码签名与 macOS 公证可选；未配置平台证书时仍生成安装包，首次打开可能出现系统安全提示。v0.8.0 的 macOS Apple Silicon 手动安装包另行发布，已用 Apple Developer ID 签名并通过 Apple 公证。请从[补充 Release](https://github.com/alfredxw/denova/releases/tag/macos-notarized-v0.8.0)下载 DMG 并使用该页面的 `checksums.txt` 校验。原始 v0.8.0 DMG、桌面自动更新包和 Windows 安装器未被替换。缺少更新公钥的本地构建仍可运行，官方更新窗口提示未配置更新。
 
 更新密钥可用 `go run github.com/egoist/mygo/cmd/mygo@v0.7.4 keygen -o <private-directory>` 免费生成。将公钥内容配置为 GitHub variable、私钥内容配置为 secret，并在仓库外保留安全备份。后续版本必须沿用同一密钥对，已安装版本只接受对应私钥签署的更新。
 
