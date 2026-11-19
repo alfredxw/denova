@@ -238,3 +238,48 @@ func TestSearchBoundsCancellationAndIncompleteSetup(t *testing.T) {
 		t.Fatalf("legacy invalid endpoint fallback changed: %+v %v", response, err)
 	}
 }
+
+func TestKeenableSearchKeylessAndKeyed(t *testing.T) {
+	for _, test := range []struct {
+		name, key, path string
+	}{
+		{"keyless", "", "/v1/search/public"},
+		{"keyed", " test-secret ", "/v1/search"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			requests := make(chan map[string]any, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				wantKey := strings.TrimSpace(test.key)
+				if r.Host != "api.keenable.ai" || r.Method != "POST" || r.URL.Path != test.path || r.Header.Get("X-Keenable-Title") != "Denova" || r.Header.Get("X-API-Key") != wantKey || r.Header.Get("Authorization") != "" {
+					t.Errorf("unexpected request: %s %s%s key=%q", r.Method, r.Host, r.URL.Path, r.Header.Get("X-API-Key"))
+				}
+				var payload map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Error(err)
+				}
+				requests <- payload
+				io.WriteString(w, `{"results":[{"title":" Source ","url":"https://example.com/source","description":"Page description","snippet":"Matched passage","published_at":"2026-10-18T09:00:00Z","acquired_at":"2026-11-01T00:00:00Z"},{"title":"Other","url":"https://example.com/other","description":"Only a description"}]}`)
+			}))
+			defer server.Close()
+			value := searchTestConfig(ProviderKeenable)
+			if test.key != "" {
+				value.Keenable = &config.SearchServiceSettings{APIKey: test.key}
+			}
+			client, err := newClient(value, dependencies{searchHTTPClient: searchTestHTTPClient(server)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := client.Search(context.Background(), SearchRequest{Query: "creative tools", TimeRange: "week", MaxResults: 2})
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload := <-requests
+			if expected := map[string]any{"query": "creative tools", "max_results": float64(2), "published_after": "7d"}; !reflect.DeepEqual(payload, expected) {
+				t.Fatalf("payload = %#v, want %#v", payload, expected)
+			}
+			if response.Provider != ProviderKeenable || len(response.Results) != 2 || response.Results[0] != (SearchResult{Title: "Source", URL: "https://example.com/source", Summary: "Matched passage", Provider: ProviderKeenable, PublishedAt: "2026-10-18T09:00:00Z"}) || response.Results[1].Summary != "Only a description" {
+				t.Fatalf("unexpected normalized response: %+v", response)
+			}
+		})
+	}
+}

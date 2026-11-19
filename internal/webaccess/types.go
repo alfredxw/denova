@@ -18,6 +18,7 @@ const (
 	ProviderDeepSeek   = "deepseek"
 	ProviderPerplexity = "perplexity"
 	ProviderTavily     = "tavily"
+	ProviderKeenable   = "keenable"
 	ProviderDuckDuckGo = "duckduckgo"
 	ProviderBing       = "bing"
 	ProviderSearXNG    = "searxng"
@@ -63,6 +64,7 @@ type Config struct {
 	DeepSeek              *config.SearchServiceSettings
 	Perplexity            *config.SearchServiceSettings
 	Tavily                *config.SearchServiceSettings
+	Keenable              *config.SearchServiceSettings
 	SearXNGBaseURL        string
 	SearchMaxResults      int
 	SearchProviderTimeout time.Duration
@@ -302,6 +304,9 @@ func newClient(config Config, deps dependencies) (*Client, error) {
 			} else {
 				client.primaryProvider = newAPISearchProvider(client.config.SearchProvider, service, searchClient)
 			}
+		case ProviderKeenable:
+			// The key is optional: without one, requests use the keyless endpoint.
+			client.primaryProvider = newAPISearchProvider(ProviderKeenable, client.config.Keenable, searchClient)
 		}
 	}
 	return client, nil
