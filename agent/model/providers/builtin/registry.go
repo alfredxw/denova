@@ -227,6 +227,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		{ID: "synthetic", Name: "Synthetic", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.synthetic.new/openai/v1")},
 		{ID: "baseten", Name: "Baseten", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://inference.baseten.co/v1")},
 		{ID: "nanogpt", Name: "NanoGPT", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://nano-gpt.com/api/v1")},
+		{ID: "runcrate", Name: "Runcrate", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.runcrate.ai/v1")},
 		{ID: "ollama", Name: "Ollama", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("http://127.0.0.1:11434/v1")},
 		{ID: "lm-studio", Name: "LM Studio", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("http://127.0.0.1:1234/v1")},
 		{ID: "litellm", Name: "LiteLLM", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("http://127.0.0.1:4000/v1")},

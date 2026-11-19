@@ -33,3 +33,27 @@ func TestOpenAIResponsesPresetEnablesStatelessAllTurnReasoning(t *testing.T) {
 	}
 	t.Fatal("OpenAI provider preset is missing")
 }
+
+func TestRuncratePresetUsesChatCompletions(t *testing.T) {
+	presets, err := providerPresets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, preset := range presets {
+		if preset.ID != "runcrate" {
+			continue
+		}
+		if preset.DefaultProtocol != providers.ProtocolOpenAIChatCompletions {
+			t.Fatalf("Runcrate default protocol = %q", preset.DefaultProtocol)
+		}
+		endpoint, ok := preset.Endpoints[providers.ProtocolOpenAIChatCompletions]
+		if !ok {
+			t.Fatal("Runcrate preset has no Chat Completions endpoint")
+		}
+		if endpoint.BaseURL != "https://api.runcrate.ai/v1" {
+			t.Fatalf("Runcrate base URL = %q", endpoint.BaseURL)
+		}
+		return
+	}
+	t.Fatal("Runcrate provider preset is missing")
+}
