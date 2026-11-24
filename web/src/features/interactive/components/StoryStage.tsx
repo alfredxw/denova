@@ -21,7 +21,10 @@ import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageLi
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { useToolNavigation } from '@/components/Chat/tool-navigation'
 import type { ComposerTokenInputHandle, ComposerTokenSpec, ComposerTrigger } from '@/components/Chat/composer-token-input'
-import type { ContextAnalysis } from '@/lib/api'
+import type { ContextAnalysis, LoreItem } from '@/lib/api'
+import { createLoreEntityMatcher, LoreLensContext } from '@/features/lore/lore-entity-matcher'
+import { useLoreLensPreferences } from '@/features/lore/lore-lens-preferences'
+import { LoreLensOverlay } from '@/features/lore/LoreLensOverlay'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentMessageDisplayText, createAgentDataMessage } from '@/lib/agent-ui-message'
 import { agentSubAgentSessionKey, agentViewContent, agentViewAskID, agentViewAskInteraction, type AgentMessageView } from '@/lib/agent-message-view'
@@ -40,7 +43,7 @@ import { TurnNavigator } from './TurnNavigator'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 import { StoryStateLedger } from './story-state/StoryStateLedger'
 import { StateDetailsDialog } from './story-state/StateDetailsDialog'
-import { buildStoryStateModel } from './story-state/model'
+import { actorFieldEntries, actorName, actorTemplate, buildStoryStateModel, humanizeStateKey } from './story-state/model'
 import { useStagePreferences } from './story-stage/use-stage-preferences'
 import { parseInlineStyleScenes, storyStageSnapshotKey } from './story-stage/utils'
 import { useLiveMessageAccumulator } from './story-stage/use-live-message-accumulator'
@@ -79,6 +82,33 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
   const approvalReady = conversationConfig.initialized && !conversationConfig.saving
   const isMobile = useIsMobile()
   const storyStateModel = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
+  const stageNarrativeRef = useRef<HTMLElement>(null)
+  const { preferences: loreLensPreferences } = useLoreLensPreferences()
+  const loreMatcher = useMemo(
+    () => createLoreEntityMatcher(loreItems, {
+      enabled: loreLensPreferences.loreLensEnabled,
+      matchKeywords: loreLensPreferences.loreLensMatchKeywords,
+    }),
+    [loreItems, loreLensPreferences.loreLensEnabled, loreLensPreferences.loreLensMatchKeywords],
+  )
+  const getLoreActorSummary = useCallback((item: LoreItem): string | null => {
+    if (item.type !== 'character' || storyStateModel.actors.length === 0) return null
+    const targetName = item.name.trim().toLowerCase()
+    const protagonistLoreId = story?.protagonist?.mode === 'lore' ? story.protagonist.source_lore_item_id : undefined
+    const matched = storyStateModel.actors.find(([actorId, actor]) => {
+      if (actorId === 'protagonist' && protagonistLoreId) return protagonistLoreId === item.id
+      return actorName(actorId, actor).trim().toLowerCase() === targetName
+    })
+    if (!matched) return null
+    const [, actor] = matched
+    const schemaFields = actorTemplate(actor, snapshot?.actor_state_schema)?.fields
+    const entries = actorFieldEntries(actor, schemaFields)
+      .filter(({ value }) => typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+      .map(({ field, value }) => `${humanizeStateKey(field.name)}: ${String(value).trim()}`)
+      .filter((part) => !part.endsWith(': '))
+      .slice(0, 3)
+    return entries.length > 0 ? entries.join(' · ') : null
+  }, [snapshot?.actor_state_schema, story?.protagonist, storyStateModel.actors])
   const draftKey = projectId && conversationBinding ? JSON.stringify(['game', projectId, storyId, conversationBinding.branch_id]) : undefined
   const draft = useComposerDraft(draftKey, Boolean(draftKey))
   const [styleSelection, setStyleSelection] = useState<{ stageKey: string; scenes: string[] }>()
@@ -723,7 +753,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
 
         <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden" data-setup={storySetupVisible || undefined} data-artwork={hasStageArtwork ? 'true' : undefined} data-text-outline={stagePreferences.textOutline || undefined} style={{ visibility: artworkOnly ? 'hidden' : undefined }} inert={artworkOnly} aria-hidden={artworkOnly || undefined}>
           {!isMobile && <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} earlierCount={displaySnapshot?.turn_start || 0} loadingEarlier={historyLoading} onSelectEarlier={loadHistoryThroughTurn} />}
-          <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <section ref={stageNarrativeRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {historyWindow.stageKey === stageKey && !historyWindow.followLatest ? (
               <Button type="button" variant="secondary" size="sm" className="absolute right-4 top-3 z-30 shadow-md lg:top-12" onClick={resetHistoryToLatest}>
                 {t('storyStage.history.backToLatest')}
@@ -772,6 +802,7 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                 className="h-full min-h-0 flex-1 bg-[var(--nova-surface-2)]"
               />
             ) : (
+              <LoreLensContext.Provider value={loreMatcher}>
               <MessageList
                 projectId={projectId}
                 attachmentScope={storyId ? { kind: 'story', id: storyId } : undefined}
@@ -844,7 +875,19 @@ export function StoryStage({ active = true, projectId, workspace, styleSceneSugg
                 activeRunId={stageRun.runtime.operationId}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
               />
+              </LoreLensContext.Provider>
             )}
+            {loreLensPreferences.loreLensEnabled && !storySetupVisible && loreItems.length > 0 ? (
+              <LoreLensOverlay
+                containerRef={stageNarrativeRef}
+                projectId={projectId}
+                items={loreItems}
+                enabled={loreLensPreferences.loreLensEnabled && !storySetupVisible}
+                editable={false}
+                onOpenItem={navigation ? (id) => navigation.open({ kind: 'lore_item', id }) : undefined}
+                getActorSummary={getLoreActorSummary}
+              />
+            ) : null}
             {activeSubAgentSessionKey && (
               <div className="absolute inset-y-0 right-0 z-30 w-[min(420px,92vw)] border-l border-[var(--nova-border)] shadow-[var(--nova-shadow)]">
                 <AgentSubAgentSessionPanel

@@ -13,6 +13,12 @@ import {
 } from 'streamdown'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
+import {
+  LORE_LENS_ATTR,
+  LORE_LENS_CLASS,
+  useLoreLensMatcher,
+  type LoreEntityMatcher,
+} from '@/features/lore/lore-entity-matcher'
 import { projectFileAssetURL, type ThinkingChatMessage } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
@@ -89,10 +95,14 @@ export const MarkdownContent = memo(function MarkdownContent({
   animateWords = true,
 }: MarkdownContentProps) {
   const { t } = useTranslation()
+  const contextLoreMatcher = useLoreLensMatcher()
+  const loreMatcher = !streaming && contextLoreMatcher?.hasTerms ? contextLoreMatcher : null
   const components = useMemo(() => ({
-    ...(highlightDialogue ? dialogueMarkdownComponents : markdownComponents),
+    ...(highlightDialogue || loreMatcher
+      ? buildProseMarkdownComponents(highlightDialogue, loreMatcher)
+      : markdownComponents),
     img: (props: ChatMarkdownImageProps) => <ChatMarkdownImage {...props} projectId={projectId} />,
-  }) as StreamdownComponents, [highlightDialogue, projectId])
+  }) as StreamdownComponents, [highlightDialogue, loreMatcher, projectId])
   const translations = useMemo<Partial<StreamdownTranslations>>(() => ({
     copied: t('chat.action.copyMessageDone'),
     copyCode: t('chat.markdown.copyCode'),
@@ -107,6 +117,7 @@ export const MarkdownContent = memo(function MarkdownContent({
   // retain Streamdown's horizontal overflow behavior.
   return (
     <Streamdown
+      key={loreMatcher ? `lore:${loreMatcher.signature}` : 'plain'}
       animated={animateWords}
       className="nova-streamdown min-w-0 space-y-2"
       components={components}
@@ -129,17 +140,20 @@ const markdownComponents = {
   img: ChatMarkdownImage,
 }
 
-const dialogueMarkdownComponents = {
-  ...markdownComponents,
-  p: ({ children }: { children?: ReactNode }) => <p>{highlightDialogueNodes(children)}</p>,
-  li: ({ children }: { children?: ReactNode }) => <li>{highlightDialogueNodes(children)}</li>,
-  h1: ({ children }: { children?: ReactNode }) => <h1>{highlightDialogueNodes(children)}</h1>,
-  h2: ({ children }: { children?: ReactNode }) => <h2>{highlightDialogueNodes(children)}</h2>,
-  h3: ({ children }: { children?: ReactNode }) => <h3>{highlightDialogueNodes(children)}</h3>,
-  h4: ({ children }: { children?: ReactNode }) => <h4>{highlightDialogueNodes(children)}</h4>,
-  h5: ({ children }: { children?: ReactNode }) => <h5>{highlightDialogueNodes(children)}</h5>,
-  h6: ({ children }: { children?: ReactNode }) => <h6>{highlightDialogueNodes(children)}</h6>,
-  blockquote: ({ children }: { children?: ReactNode }) => <blockquote>{highlightDialogueNodes(children)}</blockquote>,
+function buildProseMarkdownComponents(highlightDialogue: boolean, loreMatcher: LoreEntityMatcher | null) {
+  const decorate = (children: ReactNode) => decorateProseBlock(children, highlightDialogue, loreMatcher)
+  return {
+    ...markdownComponents,
+    p: ({ children }: { children?: ReactNode }) => <p>{decorate(children)}</p>,
+    li: ({ children }: { children?: ReactNode }) => <li>{decorate(children)}</li>,
+    h1: ({ children }: { children?: ReactNode }) => <h1>{decorate(children)}</h1>,
+    h2: ({ children }: { children?: ReactNode }) => <h2>{decorate(children)}</h2>,
+    h3: ({ children }: { children?: ReactNode }) => <h3>{decorate(children)}</h3>,
+    h4: ({ children }: { children?: ReactNode }) => <h4>{decorate(children)}</h4>,
+    h5: ({ children }: { children?: ReactNode }) => <h5>{decorate(children)}</h5>,
+    h6: ({ children }: { children?: ReactNode }) => <h6>{decorate(children)}</h6>,
+    blockquote: ({ children }: { children?: ReactNode }) => <blockquote>{decorate(children)}</blockquote>,
+  }
 }
 
 function ChatMarkdownLink({ href, children }: { href?: string; title?: string; children?: ReactNode }) {
@@ -195,35 +209,111 @@ function shouldShowImagePath(src: string) {
   return Boolean(trimmed && !/^(data:|blob:)/i.test(trimmed))
 }
 
-function highlightDialogueNodes(children: ReactNode): ReactNode {
+function decorateProseBlock(
+  children: ReactNode,
+  highlightDialogue: boolean,
+  loreMatcher: LoreEntityMatcher | null,
+): ReactNode {
+  const seenItemIds = loreMatcher ? new Set<string>() : undefined
+  return decorateProseNodes(children, highlightDialogue, loreMatcher, seenItemIds)
+}
+
+function decorateProseNodes(
+  children: ReactNode,
+  highlightDialogue: boolean,
+  loreMatcher: LoreEntityMatcher | null,
+  seenItemIds: Set<string> | undefined,
+): ReactNode {
   return Children.map(children, (child, index) => {
-    if (typeof child === 'string') return highlightDialogueText(child, true, `md-${index}`)
+    if (typeof child === 'string') {
+      return decorateProseText(child, highlightDialogue, loreMatcher, seenItemIds, `md-${index}`)
+    }
     if (!isValidElement(child)) return child
+    if (child.type === 'code' || child.type === 'pre' || child.type === 'a' || child.type === ChatMarkdownLink || child.type === ChatMarkdownImage) {
+      return child
+    }
     const props = child.props as { children?: ReactNode }
     if (props.children === undefined) return child
-    return cloneElement(child, undefined, highlightDialogueNodes(props.children))
+    return cloneElement(child, undefined, decorateProseNodes(props.children, highlightDialogue, loreMatcher, seenItemIds))
   })
 }
 
-function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string): ReactNode {
-  if (!enabled || !text) return text
-  const nodes: ReactNode[] = []
+function decorateProseText(
+  text: string,
+  highlightDialogue: boolean,
+  loreMatcher: LoreEntityMatcher | null,
+  seenItemIds: Set<string> | undefined,
+  keyPrefix: string,
+): ReactNode {
+  if (!text) return text
+  if (!highlightDialogue) {
+    const nodes: ReactNode[] = []
+    appendLoreTextNodes(nodes, text, loreMatcher, seenItemIds, keyPrefix)
+    if (nodes.length === 1 && typeof nodes[0] === 'string') return nodes[0]
+    return <Fragment key={`${keyPrefix}-lore-frag`}>{nodes}</Fragment>
+  }
   const ranges = findDialogueHighlightRanges(text)
+  if (ranges.length === 0) {
+    const nodes: ReactNode[] = []
+    appendLoreTextNodes(nodes, text, loreMatcher, seenItemIds, keyPrefix)
+    if (nodes.length === 1 && typeof nodes[0] === 'string') return nodes[0]
+    return <Fragment key={`${keyPrefix}-lore-frag`}>{nodes}</Fragment>
+  }
+  const nodes: ReactNode[] = []
   let lastIndex = 0
 
   ranges.forEach((range, index) => {
-    if (range.from > lastIndex) nodes.push(text.slice(lastIndex, range.from))
+    if (range.from > lastIndex) {
+      appendLoreTextNodes(nodes, text.slice(lastIndex, range.from), loreMatcher, seenItemIds, `${keyPrefix}-nar-${index}`)
+    }
+    const dialogueChildren: ReactNode[] = []
+    appendLoreTextNodes(dialogueChildren, text.slice(range.from, range.to), loreMatcher, seenItemIds, `${keyPrefix}-dlg-${index}`)
     nodes.push(
       <span key={`${keyPrefix}-dialogue-${index}`} className="nova-dialogue-highlight">
-        {text.slice(range.from, range.to)}
+        {dialogueChildren}
       </span>,
     )
     lastIndex = range.to
   })
 
-  if (lastIndex < text.length) nodes.push(text.slice(lastIndex))
-  if (nodes.length === 0) return text
-  return <Fragment>{nodes}</Fragment>
+  if (lastIndex < text.length) {
+    appendLoreTextNodes(nodes, text.slice(lastIndex), loreMatcher, seenItemIds, `${keyPrefix}-tail`)
+  }
+  return <Fragment key={`${keyPrefix}-prose-frag`}>{nodes}</Fragment>
+}
+
+function appendLoreTextNodes(
+  target: ReactNode[],
+  text: string,
+  loreMatcher: LoreEntityMatcher | null,
+  seenItemIds: Set<string> | undefined,
+  keyPrefix: string,
+) {
+  if (!text) return
+  if (!loreMatcher) {
+    target.push(text)
+    return
+  }
+  const matches = loreMatcher.findMatches(text, seenItemIds)
+  if (matches.length === 0) {
+    target.push(text)
+    return
+  }
+  let lastIndex = 0
+  matches.forEach((match, index) => {
+    if (match.from > lastIndex) target.push(text.slice(lastIndex, match.from))
+    target.push(
+      <span
+        key={`${keyPrefix}-lore-${index}`}
+        className={LORE_LENS_CLASS}
+        {...{ [LORE_LENS_ATTR]: match.itemId }}
+      >
+        {text.slice(match.from, match.to)}
+      </span>,
+    )
+    lastIndex = match.to
+  })
+  if (lastIndex < text.length) target.push(text.slice(lastIndex))
 }
 
 /** Manual choices override the user's default streaming presentation. */

@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Field, FieldTitle } from '@/components/ui/field'
 import { patchProjectSettings, patchSettings, type SettingsPatch } from '@/features/settings/api'
+import { useLoreLensPreferences } from '@/features/lore/lore-lens-preferences'
 import { toast } from '@/lib/toast'
 import { visibleStoryPresentation } from '../../presentation'
 import { StoryMaterialSelect } from './StoryMaterialSelect'
@@ -27,6 +28,7 @@ interface StoryPresentationControlsProps {
 export function StoryPresentationControls({ projectId, value, disabled, onChange, currentTurn, onPresentationChange, presentationDisabled = false }: StoryPresentationControlsProps) {
   const { t } = useTranslation()
   const { theme, scrimOpacity, textOutline, textMaxWidth, lineHeight, characterLayout, characterSize } = useStagePreferences(projectId || '')
+  const { preferences: loreLensPreferences, update: updateLoreLens } = useLoreLensPreferences()
   const [savingDisplayPreference, setSavingDisplayPreference] = useState(false)
   const saveDisplayPreference = async (changes: SettingsPatch) => {
     setSavingDisplayPreference(true)
@@ -103,6 +105,10 @@ export function StoryPresentationControls({ projectId, value, disabled, onChange
       <TuningRow title={t('storyStage.presentation.textOutline')}>
         <Switch aria-label={t('storyStage.presentation.textOutline')} checked={textOutline} disabled={savingDisplayPreference}
           onCheckedChange={checked => void saveDisplayPreference({ interactive_stage_text_outline: checked })} />
+      </TuningRow>
+      <TuningRow title={t('storyStage.presentation.loreLens')}>
+        <Switch aria-label={t('storyStage.presentation.loreLens')} checked={loreLensPreferences.loreLensEnabled}
+          onCheckedChange={loreLensEnabled => updateLoreLens({ loreLensEnabled })} />
       </TuningRow>
       <StageDisplaySlider projectId={projectId} setting="interactive_stage_scrim_opacity" label={t('storyStage.presentation.scrim')} value={scrimOpacity} min={0} />
     </ControlSection>

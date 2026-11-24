@@ -51,6 +51,7 @@ const storyStage = {
   'storyStage.presentation.theme': '舞台主题',
   'storyStage.presentation.followAppTheme': '跟随应用',
   'storyStage.presentation.textOutline': '文字描边',
+  'storyStage.presentation.loreLens': '资料实体透视',
   'storyStage.presentation.hideText': '隐藏文字，欣赏舞台',
   'storyStage.presentation.showText': '显示文字（Esc）',
   'storyStage.presentation.saveFailed': '保存舞台显示设置失败',

@@ -51,6 +51,7 @@ const storyStage = {
   'storyStage.presentation.theme': 'Stage theme',
   'storyStage.presentation.followAppTheme': 'Follow app',
   'storyStage.presentation.textOutline': 'Text outline',
+  'storyStage.presentation.loreLens': 'Lore entity lens',
   'storyStage.presentation.hideText': 'Hide text to view the stage',
   'storyStage.presentation.showText': 'Show text (Esc)',
   'storyStage.presentation.saveFailed': 'Could not save stage display settings',
