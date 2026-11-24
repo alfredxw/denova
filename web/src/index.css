@@ -2590,6 +2590,20 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   color: var(--nova-editor-dialogue-highlight, var(--nova-dialogue-highlight));
 }
 
+.nova-lore-lens-mention {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 42%, transparent);
+  cursor: pointer;
+  transition: text-decoration-color 140ms ease;
+}
+
+.nova-lore-lens-mention:hover {
+  text-decoration-color: color-mix(in srgb, currentColor 82%, transparent);
+}
+
 [data-sonner-toast][data-styled='true'] {
   padding-right: 2.35rem;
 }
