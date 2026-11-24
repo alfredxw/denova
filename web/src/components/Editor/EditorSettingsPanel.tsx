@@ -1,10 +1,14 @@
 import { useCallback, useId, useMemo, useRef } from 'react'
 import type { PointerEvent } from 'react'
-import { Check, Quote, Type } from 'lucide-react'
+import { BookMarked, Check, Quote, Type } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AutosaveStatusIndicator, type AutosaveStatus } from '@/components/forms/autosave-status'
 import { Field, FieldContent, FieldDescription, FieldLabel, FieldTitle } from '@/components/ui/field'
 import { Switch } from '@/components/ui/switch'
+import {
+  DEFAULT_LORE_LENS_PREFERENCES,
+  EDITOR_SETTINGS_STORAGE_KEY,
+} from '@/features/lore/lore-lens-preferences'
 import { FontPicker } from '@/features/settings/FontPicker'
 import { TextSizeControl } from '@/features/settings/TextSizeControl'
 import { DEFAULT_READING_FONT_SIZE, READING_FONT_SIZE_STEPS } from '@/features/settings/font-size-steps'
@@ -16,6 +20,8 @@ export interface EditorSettings {
   firstLineIndent: boolean
   theme: EditorTheme
   dialogueHighlightColor: string
+  loreLensEnabled: boolean
+  loreLensMatchKeywords: boolean
 }
 
 export interface ReadingTypographySettings {
@@ -62,6 +68,7 @@ const DEFAULT_SETTINGS: EditorSettings = {
   firstLineIndent: true,
   theme: 'ide',
   dialogueHighlightColor: DEFAULT_DIALOGUE_HIGHLIGHT_COLOR,
+  ...DEFAULT_LORE_LENS_PREFERENCES,
 }
 
 export function EditorSettingsPanel({
@@ -164,6 +171,32 @@ export function EditorSettingsPanel({
           </Field>
         </FieldLabel>
 
+        <div className="nova-editor-control space-y-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
+              <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+              <span className="truncate">{t('editor.loreLens')}</span>
+            </span>
+            <Switch
+              checked={settings.loreLensEnabled}
+              onCheckedChange={(loreLensEnabled) => patch({ loreLensEnabled })}
+              aria-label={t('editor.loreLens')}
+            />
+          </div>
+          {settings.loreLensEnabled ? (
+            <div className="flex items-center justify-between gap-3 border-t border-[var(--nova-border-soft)] pt-2">
+              <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">
+                {t('editor.loreLensMatchKeywords')}
+              </span>
+              <Switch
+                checked={settings.loreLensMatchKeywords}
+                onCheckedChange={(loreLensMatchKeywords) => patch({ loreLensMatchKeywords })}
+                aria-label={t('editor.loreLensMatchKeywords')}
+              />
+            </div>
+          ) : null}
+        </div>
+
         <div className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
           <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
@@ -220,7 +253,7 @@ export function EditorSettingsPanel({
 
 export function loadEditorSettings(): EditorSettings {
   try {
-    const raw = localStorage.getItem('nova.editor.settings')
+    const raw = localStorage.getItem(EDITOR_SETTINGS_STORAGE_KEY)
     if (!raw) return DEFAULT_SETTINGS
     const parsed = JSON.parse(raw) as Partial<EditorSettings>
     return {
@@ -228,6 +261,8 @@ export function loadEditorSettings(): EditorSettings {
       firstLineIndent: parsed.firstLineIndent ?? DEFAULT_SETTINGS.firstLineIndent,
       theme: parsed.theme && parsed.theme in THEME_STYLES ? parsed.theme : DEFAULT_SETTINGS.theme,
       dialogueHighlightColor: normalizeColorValue(parsed.dialogueHighlightColor) ?? DEFAULT_SETTINGS.dialogueHighlightColor,
+      loreLensEnabled: typeof parsed.loreLensEnabled === 'boolean' ? parsed.loreLensEnabled : DEFAULT_SETTINGS.loreLensEnabled,
+      loreLensMatchKeywords: typeof parsed.loreLensMatchKeywords === 'boolean' ? parsed.loreLensMatchKeywords : DEFAULT_SETTINGS.loreLensMatchKeywords,
     }
   } catch {
     return DEFAULT_SETTINGS

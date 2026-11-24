@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
 import { MessageCirclePlus, Quote } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
+export interface SelectionToolbarExtraAction {
+  label: string
+  icon: ReactNode
+  onClick: () => void
+}
 
 /**
  * 选区浮动工具条，定位在光标（选区 head 端）旁边。
@@ -10,7 +16,17 @@ import { useTranslation } from 'react-i18next'
  * 当前可见、可操作的选区。工具条自身阻止 pointerdown 抢走焦点，确保点击操作仍能
  * 使用原选区。
  */
-export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor: Editor; mode?: 'quote' | 'comment'; onAction: () => void }) {
+export function SelectionToolbar({
+  editor,
+  mode = 'quote',
+  onAction,
+  secondaryAction,
+}: {
+  editor: Editor
+  mode?: 'quote' | 'comment'
+  onAction?: () => void
+  secondaryAction?: SelectionToolbarExtraAction | null
+}) {
   const { t } = useTranslation()
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -60,7 +76,7 @@ export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor:
     }
   }, [editor])
 
-  if (!coords) return null
+  if (!coords || (!onAction && !secondaryAction)) return null
 
   return (
     <div
@@ -69,14 +85,29 @@ export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor:
       style={{ top: coords.top, left: coords.left }}
       onPointerDown={(event) => event.preventDefault()}
     >
-      <button
-        type="button"
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-menu-item-hover-bg)] hover:text-[var(--nova-text)]"
-        onClick={onAction}
-      >
-        {mode === 'comment' ? <MessageCirclePlus className="h-3.5 w-3.5" /> : <Quote className="h-3.5 w-3.5" />}
-        <span>{t(mode === 'comment' ? 'editor.review.addComment' : 'editor.quoteSelection')}</span>
-      </button>
+      {onAction ? (
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-menu-item-hover-bg)] hover:text-[var(--nova-text)]"
+          onClick={onAction}
+        >
+          {mode === 'comment' ? <MessageCirclePlus className="h-3.5 w-3.5" /> : <Quote className="h-3.5 w-3.5" />}
+          <span>{t(mode === 'comment' ? 'editor.review.addComment' : 'editor.quoteSelection')}</span>
+        </button>
+      ) : null}
+      {onAction && secondaryAction ? (
+        <span aria-hidden="true" className="h-3.5 w-px bg-[var(--nova-border-soft)]" />
+      ) : null}
+      {secondaryAction ? (
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-menu-item-hover-bg)] hover:text-[var(--nova-text)]"
+          onClick={secondaryAction.onClick}
+        >
+          {secondaryAction.icon}
+          <span>{secondaryAction.label}</span>
+        </button>
+      ) : null}
     </div>
   )
 }

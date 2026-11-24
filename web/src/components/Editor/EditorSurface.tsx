@@ -4,7 +4,7 @@ import { EditorContent } from '@tiptap/react'
 
 import { EditorSearchBar } from './EditorSearchBar'
 import type { EditorSettings } from './EditorSettingsPanel'
-import { SelectionToolbar } from './SelectionToolbar'
+import { SelectionToolbar, type SelectionToolbarExtraAction } from './SelectionToolbar'
 
 interface EditorSurfaceProps {
   containerRef: RefObject<HTMLDivElement | null>
@@ -37,8 +37,10 @@ interface EditorSurfaceProps {
   }
   showSelectionToolbar: boolean
   selectionToolbarMode?: 'quote' | 'comment'
-  onSelectionAction: () => void
+  onSelectionAction?: () => void
+  selectionSecondaryAction?: SelectionToolbarExtraAction | null
   reviewAnnotations?: ReactNode
+  loreLensOverlay?: ReactNode
 }
 
 /** Pure presentation surface; WritingDocumentEditor owns synchronization and persistence. */
@@ -52,7 +54,9 @@ export function EditorSurface({
   showSelectionToolbar,
   selectionToolbarMode = 'quote',
   onSelectionAction,
+  selectionSecondaryAction,
   reviewAnnotations,
+  loreLensOverlay,
 }: EditorSurfaceProps) {
   return (
     <div
@@ -91,8 +95,14 @@ export function EditorSurface({
         className={`editor-content editor-theme-${settings.theme}`}
       />
       {reviewAnnotations}
+      {loreLensOverlay}
       {editor && showSelectionToolbar && (
-        <SelectionToolbar editor={editor} mode={selectionToolbarMode} onAction={onSelectionAction} />
+        <SelectionToolbar
+          editor={editor}
+          mode={selectionToolbarMode}
+          onAction={onSelectionAction}
+          secondaryAction={selectionSecondaryAction}
+        />
       )}
     </div>
   )

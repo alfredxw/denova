@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { BookPlus } from 'lucide-react'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -8,7 +9,21 @@ import { Markdown } from '@tiptap/markdown'
 import { toast } from '@/lib/toast'
 import { useTranslation } from 'react-i18next'
 
-import type { ChapterIllustration, TextSelection as QuoteSelection } from '@/lib/api'
+import { useToolNavigation } from '@/components/Chat/tool-navigation'
+import {
+  canQuickCreateLoreName,
+  createLoreEntityMatcher,
+  type LoreEntityMatcher,
+} from '@/features/lore/lore-entity-matcher'
+import {
+  EDITOR_SETTINGS_STORAGE_KEY,
+  EDITOR_SETTINGS_UPDATED_EVENT,
+  notifyEditorSettingsUpdated,
+  useProjectLoreItems,
+} from '@/features/lore/lore-lens-preferences'
+import { LoreLensOverlay } from '@/features/lore/LoreLensOverlay'
+import { QuickCreateLoreDialog } from '@/features/lore/QuickCreateLoreDialog'
+import type { ChapterIllustration, LoreItem, TextSelection as QuoteSelection } from '@/lib/api'
 import type { ChapterSummary } from '@/lib/api'
 import { isEditableTarget } from '@/lib/keyboard'
 import { THEME_STYLES, loadEditorSettings } from './EditorSettingsPanel'
@@ -36,8 +51,10 @@ import {
 import {
   clampIndex,
   createDialogueHighlightExtension,
+  createLoreLensExtension,
   createSearchHighlightExtension,
   findSearchMatches,
+  loreLensPluginKey,
   replaceAllSearchMatches,
   replaceCurrentSearchMatch,
   searchPluginKey,
@@ -85,6 +102,8 @@ export interface WritingDocumentEditorProps {
   readingTypography?: ReadingTypographySettings
   /** Opens a collapsed writing outline without coupling the editor to a layout implementation. */
   onOpenOutline?: () => void
+  /** Optional pre-loaded Lore items; falls back to the shared project Lore cache when omitted. */
+  loreItems?: readonly LoreItem[]
 }
 
 interface EditorSearchIntent {
@@ -117,14 +136,19 @@ export function WritingDocumentEditor({
   documentReviewNavigationIntent,
   readingTypography,
   onOpenOutline,
+  loreItems: providedLoreItems,
 }: WritingDocumentEditorProps) {
   const { t } = useTranslation()
+  const navigation = useToolNavigation()
+  const loreItems = useProjectLoreItems(projectId, providedLoreItems)
   const [editorMode, setEditorMode] = useState<WritingEditorMode>('document')
   const [sourceWordWrap, setSourceWordWrap] = useState(() => readProjectFileEditorPreferences().wordWrap)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
   const [nativeIndent, setNativeIndent] = useState(false)
   const [selectedCharacters, setSelectedCharacters] = useState(0)
+  const [selectedText, setSelectedText] = useState('')
+  const [quickCreateLoreName, setQuickCreateLoreName] = useState<string | null>(null)
   const [documentCharacters, setDocumentCharacters] = useState(chapterSummary?.words ?? 0)
   const [currentLine, setCurrentLine] = useState(1)
   const [editorFocused, setEditorFocused] = useState(false)
@@ -147,6 +171,17 @@ export function WritingDocumentEditor({
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
+  const loreMatcher = useMemo(
+    () => createLoreEntityMatcher(loreItems, {
+      enabled: settings.loreLensEnabled,
+      matchKeywords: settings.loreLensMatchKeywords,
+    }),
+    [loreItems, settings.loreLensEnabled, settings.loreLensMatchKeywords],
+  )
+  const loreMatcherRef = useRef<LoreEntityMatcher | null>(loreMatcher)
+  loreMatcherRef.current = loreMatcher
+  const loreLensExtension = useMemo(() => createLoreLensExtension(loreMatcherRef), [])
+  const loreMatcherSignature = loreMatcher?.signature ?? ''
   const resourceScope = projectId
   const workspaceImageExtension = useMemo(
     () => createWorkspaceImageExtension((path) => projectFileAssetURL(projectId, path)),
@@ -176,6 +211,7 @@ export function WritingDocumentEditor({
       createIndentedHardBreakExtension(),
       searchExtension,
       dialogueHighlightExtension,
+      loreLensExtension,
       workspaceImageExtension,
       reviewExtension,
       TableKit.configure({
@@ -398,12 +434,19 @@ export function WritingDocumentEditor({
   useEffect(() => {
     if (!editor) return
 
+    const readShortSelectionText = () => {
+      const { from, to } = editor.state.selection
+      if (from === to || to - from > 64) return ''
+      return editor.state.doc.textBetween(from, to, '\n')
+    }
     const updateDocumentStats = () => {
       updateCharacterStats(editor, setSelectedCharacters, setDocumentCharacters)
+      setSelectedText(readShortSelectionText())
       setCurrentLine(getLineNumber(editor.state.doc, editor.state.selection.head))
     }
     const updateSelectionStats = () => {
       updateCharacterStats(editor, setSelectedCharacters)
+      setSelectedText(readShortSelectionText())
       setCurrentLine(getLineNumber(editor.state.doc, editor.state.selection.head))
     }
     const handleFocus = () => setEditorFocused(true)
@@ -421,10 +464,46 @@ export function WritingDocumentEditor({
     }
   }, [editor])
 
-  // 保存编辑器设置
+  const handleSettingsChange = useCallback((next: EditorSettings) => {
+    setSettings(next)
+    try {
+      localStorage.setItem(EDITOR_SETTINGS_STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      // Ignore storage failures in restricted browser environments.
+    }
+    notifyEditorSettingsUpdated()
+  }, [])
+
+  // Sync Lore Lens toggles modified in Game or another open Writing tab.
   useEffect(() => {
-    localStorage.setItem('nova.editor.settings', JSON.stringify(settings))
-  }, [settings])
+    const syncExternalSettings = () => {
+      const latest = loadEditorSettings()
+      setSettings((current) => (
+        current.loreLensEnabled === latest.loreLensEnabled
+        && current.loreLensMatchKeywords === latest.loreLensMatchKeywords
+        && current.lineHeight === latest.lineHeight
+        && current.firstLineIndent === latest.firstLineIndent
+        && current.theme === latest.theme
+        && current.dialogueHighlightColor === latest.dialogueHighlightColor
+          ? current
+          : latest
+      ))
+    }
+    window.addEventListener(EDITOR_SETTINGS_UPDATED_EVENT, syncExternalSettings)
+    return () => window.removeEventListener(EDITOR_SETTINGS_UPDATED_EVENT, syncExternalSettings)
+  }, [])
+
+  // Rebuild ProseMirror Lore Lens decorations when Lore items or matcher preferences change.
+  const previousLoreSignatureRef = useRef(loreMatcherSignature)
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    if (previousLoreSignatureRef.current === loreMatcherSignature) return
+    previousLoreSignatureRef.current = loreMatcherSignature
+    if (!editor.view || typeof editor.state.tr?.setMeta !== 'function') return
+    const tr = editor.state.tr.setMeta(loreLensPluginKey, { rebuild: true })
+    if (tr && typeof tr.setMeta === 'function') tr.setMeta('addToHistory', false)
+    editor.view.dispatch(tr ?? editor.state.tr)
+  }, [editor, loreMatcherSignature])
 
   useEffect(() => {
     if (searchOpen) {
@@ -539,6 +618,19 @@ export function WritingDocumentEditor({
   }, [])
 
   const documentCommentsAvailable = Boolean(documentReview && fileName && isMarkdownFile(fileName))
+  const quickCreateCandidate = useMemo(() => {
+    if (!projectId || !selectedText || !canQuickCreateLoreName(selectedText, loreItems)) return ''
+    return selectedText.trim()
+  }, [loreItems, projectId, selectedText])
+  const selectionSecondaryAction = useMemo(() => quickCreateCandidate ? ({
+    label: t('editor.saveAsLore'),
+    icon: <BookPlus className="h-3.5 w-3.5" />,
+    onClick: () => setQuickCreateLoreName(quickCreateCandidate),
+  }) : null, [quickCreateCandidate, t])
+  const openLoreItem = useMemo(
+    () => (navigation ? (id: string) => navigation.open({ kind: 'lore_item', id }) : undefined),
+    [navigation],
+  )
 
   // Cmd+Shift+L：正文支持评论时创建评论，其他文件保留原有的选区引用能力。
   useEffect(() => {
@@ -655,7 +747,7 @@ export function WritingDocumentEditor({
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         settings={settings}
-        onSettingsChange={setSettings}
+        onSettingsChange={handleSettingsChange}
         readingTypography={readingTypography}
         onOpenOutline={onOpenOutline}
         onGenerateIllustration={onGenerateIllustration}
@@ -713,9 +805,20 @@ export function WritingDocumentEditor({
             onReplace: handleReplace,
             onReplaceAll: handleReplaceAll,
           }}
-          showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection))}
+          showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection) || Boolean(selectionSecondaryAction))}
           selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}
-          onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : quoteCurrentSelection}
+          onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : (onQuoteSelection ? quoteCurrentSelection : undefined)}
+          selectionSecondaryAction={selectionSecondaryAction}
+          loreLensOverlay={settings.loreLensEnabled && loreItems.length > 0 ? (
+            <LoreLensOverlay
+              containerRef={editorContainerRef}
+              projectId={projectId}
+              items={loreItems}
+              enabled={settings.loreLensEnabled && editorMode === 'document'}
+              editable
+              onOpenItem={openLoreItem}
+            />
+          ) : null}
           reviewAnnotations={editor && fileName && documentReview && documentReviewTarget && documentCommentsAvailable ? (
             <DocumentReviewAnnotations
               ref={reviewAnnotationsRef}
@@ -734,6 +837,15 @@ export function WritingDocumentEditor({
           ) : null}
         />
       )}
+      {quickCreateLoreName !== null ? (
+        <QuickCreateLoreDialog
+          open
+          projectId={projectId}
+          initialName={quickCreateLoreName}
+          items={loreItems}
+          onOpenChange={(open) => { if (!open) setQuickCreateLoreName(null) }}
+        />
+      ) : null}
     </div>
   )
 }

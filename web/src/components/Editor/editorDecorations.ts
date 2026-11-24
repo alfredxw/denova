@@ -5,6 +5,10 @@ import { Plugin, PluginKey, TextSelection as PmTextSelection } from '@tiptap/pm/
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
 import { createDialogueHighlightPlugin } from './editorDialogueDecorations'
+import { createLoreLensPlugin, loreLensPluginKey } from './editorLoreLensDecorations'
+import type { LoreEntityMatcher } from '@/features/lore/lore-entity-matcher'
+
+export { loreLensPluginKey }
 
 export interface SearchState {
   query: string
@@ -54,6 +58,19 @@ export function createDialogueHighlightExtension() {
     addProseMirrorPlugins() {
       return [
         createDialogueHighlightPlugin(),
+      ]
+    },
+  })
+}
+
+/** 创建正文资料库实体透视扩展，仅在装饰层标注已启用资料，绝不修改 Markdown 正文。 */
+export function createLoreLensExtension(matcherRef: { current: LoreEntityMatcher | null }) {
+  return Extension.create({
+    name: 'novaEditorLoreLens',
+
+    addProseMirrorPlugins() {
+      return [
+        createLoreLensPlugin(matcherRef),
       ]
     },
   })
