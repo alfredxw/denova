@@ -50,11 +50,15 @@ for (const theme of ['dark', 'light'] as const) {
       await releaseDelayedRequest(request, marker)
       await page.reload()
       await expect(page.getByRole('button', { name: '继续任务', exact: true })).toBeVisible()
+      await expect(composer).toBeVisible()
       await expect(opening).toContainText(openingText)
       await expect(opening).toHaveCount(1)
       await page.getByRole('button', { name: '取消任务', exact: true }).click()
       await expect(page.getByRole('button', { name: '继续任务', exact: true })).toBeHidden()
-      await expect(composer).toBeVisible()
+      // Aborting a reloaded 0-turn opening settles back into the saved setup form.
+      await expect(page.getByRole('button', { name: '开始故事', exact: true })).toBeVisible()
+      await expect(page.getByRole('textbox', { name: '角色名称', exact: true })).toHaveValue(name)
+      await expect(page.getByPlaceholder('可选。写下必须保留的场景、人物处境或第一事件；留空则自动生成。')).toHaveValue(openingText)
     } finally {
       await releaseDelayedRequest(request, marker)
     }
