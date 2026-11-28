@@ -37,10 +37,12 @@ interface EditorSurfaceProps {
   }
   showSelectionToolbar: boolean
   selectionToolbarMode?: 'quote' | 'comment'
+  selectionLeadingAction?: SelectionToolbarExtraAction | null
   onSelectionAction?: () => void
   selectionSecondaryAction?: SelectionToolbarExtraAction | null
   reviewAnnotations?: ReactNode
   loreLensOverlay?: ReactNode
+  inlineEditOverlay?: ReactNode
 }
 
 /** Pure presentation surface; WritingDocumentEditor owns synchronization and persistence. */
@@ -53,10 +55,12 @@ export function EditorSurface({
   search,
   showSelectionToolbar,
   selectionToolbarMode = 'quote',
+  selectionLeadingAction,
   onSelectionAction,
   selectionSecondaryAction,
   reviewAnnotations,
   loreLensOverlay,
+  inlineEditOverlay,
 }: EditorSurfaceProps) {
   return (
     <div
@@ -96,10 +100,12 @@ export function EditorSurface({
       />
       {reviewAnnotations}
       {loreLensOverlay}
+      {inlineEditOverlay}
       {editor && showSelectionToolbar && (
         <SelectionToolbar
           editor={editor}
           mode={selectionToolbarMode}
+          leadingAction={selectionLeadingAction}
           onAction={onSelectionAction}
           secondaryAction={selectionSecondaryAction}
         />

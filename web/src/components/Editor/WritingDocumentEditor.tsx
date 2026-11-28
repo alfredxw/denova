@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
-import { BookPlus } from 'lucide-react'
+import { BookPlus, Sparkles } from 'lucide-react'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -69,6 +69,9 @@ import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from 
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { EditorPersistenceNotices } from './EditorPersistenceNotices'
+import { createInlineEditDecorationExtension } from './inline-edit/editorInlineEditDecorations'
+import { InlineEditPopover } from './inline-edit/InlineEditPopover'
+import { useTipTapInlineEdit } from './inline-edit/useTipTapInlineEdit'
 import { ProjectTextEditor, type ProjectTextEditorHandle } from '@/features/files/ProjectSourceEditor'
 import { persistProjectFileEditorPreferences, readProjectFileEditorPreferences } from '@/features/files/preferences'
 
@@ -181,6 +184,7 @@ export function WritingDocumentEditor({
   const loreMatcherRef = useRef<LoreEntityMatcher | null>(loreMatcher)
   loreMatcherRef.current = loreMatcher
   const loreLensExtension = useMemo(() => createLoreLensExtension(loreMatcherRef), [])
+  const inlineEditExtension = useMemo(() => createInlineEditDecorationExtension(), [])
   const loreMatcherSignature = loreMatcher?.signature ?? ''
   const resourceScope = projectId
   const workspaceImageExtension = useMemo(
@@ -212,6 +216,7 @@ export function WritingDocumentEditor({
       searchExtension,
       dialogueHighlightExtension,
       loreLensExtension,
+      inlineEditExtension,
       workspaceImageExtension,
       reviewExtension,
       TableKit.configure({
@@ -327,11 +332,26 @@ export function WritingDocumentEditor({
     updateSearch(searchStateRef.current.query, 0)
   }, [editor, resourceScope, updateSearch])
 
+  const inlineEditEnabled = active && editorMode === 'document' && Boolean(projectId) && Boolean(fileName)
+  const inlineEdit = useTipTapInlineEdit({
+    editor,
+    containerRef: editorContainerRef,
+    enabled: inlineEditEnabled,
+    isMarkdown: !isTxtFile(fileName),
+    resetKey: `${resourceScope}:${fileName ?? ''}:${editorMode}`,
+    loreItems,
+  })
+  const cancelInlineEditRef = useRef(inlineEdit.cancelSilently)
+  cancelInlineEditRef.current = inlineEdit.cancelSilently
+
   const applyExternalContent = useCallback((
     nextFile: string | null,
     nextContent: string,
     options: { resetHistory: boolean; preserveSelection: boolean },
   ) => {
+    if (nextContent !== draftContentRef.current) {
+      cancelInlineEditRef.current()
+    }
     draftContentRef.current = nextContent
     if (editorModeRef.current === 'source') {
       sourceEditorRef.current?.replaceValue(nextContent)
@@ -618,6 +638,11 @@ export function WritingDocumentEditor({
   }, [])
 
   const documentCommentsAvailable = Boolean(documentReview && fileName && isMarkdownFile(fileName))
+  const selectionLeadingAction = useMemo(() => inlineEditEnabled ? ({
+    label: t('editor.inlineEdit.action'),
+    icon: <Sparkles className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />,
+    onClick: () => { inlineEdit.openFromCurrentSelection() },
+  }) : null, [inlineEdit.openFromCurrentSelection, inlineEditEnabled, t])
   const quickCreateCandidate = useMemo(() => {
     if (!projectId || !selectedText || !canQuickCreateLoreName(selectedText, loreItems)) return ''
     return selectedText.trim()
@@ -632,16 +657,21 @@ export function WritingDocumentEditor({
     [navigation],
   )
 
-  // Cmd+Shift+L：正文支持评论时创建评论，其他文件保留原有的选区引用能力。
+  // Cmd+Shift+L：正文支持评论时创建评论，其他文件保留原有的选区引用能力；Cmd+J 打开原位 AI 改写/插写。
   useEffect(() => {
     if (!active || editorMode !== 'document') return
     const handler = (e: KeyboardEvent) => {
-      if (editorContainerRef.current?.closest('[hidden], [inert]')) return
+      if (e.isComposing || editorContainerRef.current?.closest('[hidden], [inert]')) return
       const inCurrentEditor = Boolean(
         editor && !editor.isDestroyed && e.target instanceof globalThis.Node && editor.view.dom.contains(e.target),
       )
       if (isEditableTarget(e.target) && !inCurrentEditor) return
 
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j' && inlineEditEnabled) {
+        e.preventDefault()
+        inlineEdit.openFromCurrentSelection()
+        return
+      }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
         e.preventDefault()
         if (documentCommentsAvailable) commentCurrentSelection()
@@ -650,7 +680,7 @@ export function WritingDocumentEditor({
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [active, commentCurrentSelection, documentCommentsAvailable, editor, editorMode, quoteCurrentSelection])
+  }, [active, commentCurrentSelection, documentCommentsAvailable, editor, editorMode, inlineEdit.openFromCurrentSelection, inlineEditEnabled, quoteCurrentSelection])
 
   /** 跳转到下一处搜索结果。 */
   const goToSearchMatch = useCallback((direction: 1 | -1) => {
@@ -805,10 +835,39 @@ export function WritingDocumentEditor({
             onReplace: handleReplace,
             onReplaceAll: handleReplaceAll,
           }}
-          showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection) || Boolean(selectionSecondaryAction))}
+          showSelectionToolbar={!inlineEdit.isOpen && selectedCharacters > 0 && (Boolean(selectionLeadingAction) || documentCommentsAvailable || Boolean(onQuoteSelection) || Boolean(selectionSecondaryAction))}
           selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}
+          selectionLeadingAction={selectionLeadingAction}
           onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : (onQuoteSelection ? quoteCurrentSelection : undefined)}
           selectionSecondaryAction={selectionSecondaryAction}
+          inlineEditOverlay={inlineEdit.session && projectId ? (
+            <InlineEditPopover
+              projectId={projectId}
+              mode="writing"
+              selection={inlineEdit.session.selection}
+              before={inlineEdit.session.before}
+              after={inlineEdit.session.after}
+              matchedLoreIds={inlineEdit.session.matchedLoreIds}
+              anchor={inlineEdit.session.anchor}
+              containerRef={editorContainerRef}
+              onApply={inlineEdit.apply}
+              onClose={inlineEdit.close}
+              onHandOffToChat={onQuoteSelection && fileName && inlineEdit.session.selection.trim()
+                ? () => {
+                    if (!editor || editor.isDestroyed || !inlineEdit.session) return
+                    const { from, to } = inlineEdit.session.range
+                    const startLine = getLineNumber(editor.state.doc, from)
+                    const endLine = getLineNumber(editor.state.doc, to)
+                    onQuoteSelection({
+                      fileName,
+                      startLine,
+                      endLine,
+                      content: inlineEdit.session.selection,
+                    })
+                  }
+                : undefined}
+            />
+          ) : null}
           loreLensOverlay={settings.loreLensEnabled && loreItems.length > 0 ? (
             <LoreLensOverlay
               containerRef={editorContainerRef}

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Sparkles } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { TableKit } from '@tiptap/extension-table'
@@ -18,6 +20,11 @@ import {
 } from './editorDecorations'
 import type { SearchState } from './editorDecorations'
 import { SelectionToolbar } from './SelectionToolbar'
+import { createInlineEditDecorationExtension } from './inline-edit/editorInlineEditDecorations'
+import { InlineEditPopover } from './inline-edit/InlineEditPopover'
+import { useTipTapInlineEdit } from './inline-edit/useTipTapInlineEdit'
+import type { InlineEditMode } from '@/lib/api-client/inline-edit'
+import type { LoreItem } from '@/lib/api'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { richMarkdownReviewAdapter, sourceMarkdownReviewAdapter } from './documentReviewAdapter'
@@ -48,6 +55,11 @@ export interface MarkdownContentEditorReview {
   navigationIntent?: DocumentReviewNavigationIntent | null
 }
 
+export interface MarkdownContentEditorInlineEdit {
+  mode: InlineEditMode
+  loreItems?: readonly LoreItem[]
+}
+
 export interface MarkdownContentEditorProps {
   /** Stable owner for relative assets embedded in the Markdown. */
   projectId: string
@@ -60,6 +72,7 @@ export interface MarkdownContentEditorProps {
   onSaveShortcut?: () => void
   autoFocus?: boolean
   review?: MarkdownContentEditorReview
+  inlineEdit?: MarkdownContentEditorInlineEdit
   /** Domain extensions must stay stable for the lifetime of this editor. */
   extensions?: Extensions
   readOnly?: boolean
@@ -81,11 +94,13 @@ export function MarkdownContentEditor({
   onSaveShortcut,
   autoFocus = false,
   review,
+  inlineEdit: inlineEditConfig,
   extensions = [],
   readOnly = false,
   className,
   'aria-label': ariaLabel,
 }: MarkdownContentEditorProps) {
+  const { t } = useTranslation()
   const initialModeRef = useRef(mode)
   const renderedModeRef = useRef(mode)
   const modeRef = useRef(mode)
@@ -120,6 +135,8 @@ export function MarkdownContentEditor({
     () => createDocumentReviewExtension(reviewDecorationStateRef, updateReviewPortalTargets),
     [updateReviewPortalTargets],
   )
+  const inlineEditExtension = useMemo(() => createInlineEditDecorationExtension(), [])
+  const openInlineEditRef = useRef<() => boolean>(() => false)
 
   const editor = useEditor({
     editable: !readOnly,
@@ -129,6 +146,7 @@ export function MarkdownContentEditor({
       RawMarkdown.configure({ isSourceMode: () => modeRef.current === 'source' }),
       createIndentedHardBreakExtension(),
       searchExtension,
+      inlineEditExtension,
       workspaceImageExtension,
       reviewExtension,
       TableKit.configure({ table: { resizable: false } }),
@@ -149,6 +167,13 @@ export function MarkdownContentEditor({
         modeRef.current === 'rich' && insertPastedWorkspaceMarkdownImage(view, event)
       ),
       handleKeyDown: (_view, event) => {
+        if (!event.isComposing && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'j') {
+          if (openInlineEditRef.current()) {
+            event.preventDefault()
+            event.stopPropagation()
+            return true
+          }
+        }
         if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'l' && reviewRef.current) {
           event.preventDefault()
           event.stopPropagation()
@@ -215,6 +240,23 @@ export function MarkdownContentEditor({
     if (matches.length > 0) selectSearchMatch(editor, matches[0])
   }, [editor, highlightQuery, mode])
 
+  const inlineEditEnabled = Boolean(inlineEditConfig && projectId && !readOnly && mode === 'rich')
+  const inlineEdit = useTipTapInlineEdit({
+    editor,
+    containerRef,
+    enabled: inlineEditEnabled,
+    isMarkdown: true,
+    resetKey: `${projectId}:${mode}:${String(readOnly)}`,
+    loreItems: inlineEditConfig?.loreItems ?? [],
+  })
+  openInlineEditRef.current = inlineEdit.openFromCurrentSelection
+
+  const selectionLeadingAction = useMemo(() => inlineEditEnabled ? ({
+    label: t('editor.inlineEdit.action'),
+    icon: <Sparkles className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />,
+    onClick: () => { inlineEdit.openFromCurrentSelection() },
+  }) : null, [inlineEdit.openFromCurrentSelection, inlineEditEnabled, t])
+
   const reviewComments = review
     ? review.controller.comments.filter((comment) => sameDocumentReviewTarget(comment.target, review.target))
     : []
@@ -245,11 +287,26 @@ export function MarkdownContentEditor({
           onDelete={review.controller.onDelete}
         />
       ) : null}
-      {editor && review ? (
+      {editor && inlineEdit.session && inlineEditConfig ? (
+        <InlineEditPopover
+          projectId={projectId}
+          mode={inlineEditConfig.mode}
+          selection={inlineEdit.session.selection}
+          before={inlineEdit.session.before}
+          after={inlineEdit.session.after}
+          matchedLoreIds={inlineEdit.session.matchedLoreIds}
+          anchor={inlineEdit.session.anchor}
+          containerRef={containerRef}
+          onApply={inlineEdit.apply}
+          onClose={inlineEdit.close}
+        />
+      ) : null}
+      {editor && !inlineEdit.isOpen && (review || selectionLeadingAction) ? (
         <SelectionToolbar
           editor={editor}
           mode="comment"
-          onAction={() => reviewAnnotationsRef.current?.startSelectionComment()}
+          leadingAction={selectionLeadingAction}
+          onAction={review ? () => reviewAnnotationsRef.current?.startSelectionComment() : undefined}
         />
       ) : null}
     </div>

@@ -19,11 +19,13 @@ export interface SelectionToolbarExtraAction {
 export function SelectionToolbar({
   editor,
   mode = 'quote',
+  leadingAction,
   onAction,
   secondaryAction,
 }: {
   editor: Editor
   mode?: 'quote' | 'comment'
+  leadingAction?: SelectionToolbarExtraAction | null
   onAction?: () => void
   secondaryAction?: SelectionToolbarExtraAction | null
 }) {
@@ -76,7 +78,7 @@ export function SelectionToolbar({
     }
   }, [editor])
 
-  if (!coords || (!onAction && !secondaryAction)) return null
+  if (!coords || (!leadingAction && !onAction && !secondaryAction)) return null
 
   return (
     <div
@@ -85,6 +87,19 @@ export function SelectionToolbar({
       style={{ top: coords.top, left: coords.left }}
       onPointerDown={(event) => event.preventDefault()}
     >
+      {leadingAction ? (
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-[var(--nova-text)] hover:bg-[var(--nova-menu-item-hover-bg)]"
+          onClick={leadingAction.onClick}
+        >
+          {leadingAction.icon}
+          <span>{leadingAction.label}</span>
+        </button>
+      ) : null}
+      {leadingAction && (onAction || secondaryAction) ? (
+        <span aria-hidden="true" className="h-3.5 w-px bg-[var(--nova-border-soft)]" />
+      ) : null}
       {onAction ? (
         <button
           type="button"

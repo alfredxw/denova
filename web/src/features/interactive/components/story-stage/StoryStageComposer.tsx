@@ -339,7 +339,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
         </div>
         <ContextAnalysisDialog open={contextAnalysisOpen} loading={contextAnalysisLoading} error={contextAnalysisError} analysis={contextAnalysis} onOpenChange={setContextAnalysisOpen} onRemoveCompaction={removeContextCompaction} />
         <TokenUsageDialog projectId={projectId} open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
-        {replyEditTarget ? <EditInteractiveReplyDialog key={replyEditTarget.turnId} turnId={replyEditTarget.turnId} initialContent={replyEditTarget.initialContent} onClose={closeReplyEditor} onSave={saveReply} /> : null}
+        {replyEditTarget ? <EditInteractiveReplyDialog key={replyEditTarget.turnId} turnId={replyEditTarget.turnId} projectId={projectId} storyId={storyId} initialContent={replyEditTarget.initialContent} onClose={closeReplyEditor} onSave={saveReply} /> : null}
       </div>
     </div>
   )
