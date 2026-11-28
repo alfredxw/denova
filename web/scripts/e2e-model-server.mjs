@@ -708,6 +708,32 @@ const server = createServer(async (request, response) => {
     writeChatCompletion(response, textCompletionFrames(content))
     return
   }
+  if (requestIncludesMarker(body, 'E2E_INLINE_WRITING_REFINE')) {
+    const content = requestIncludesMarker(body, '<previous_draft>')
+      ? '温照野站在栈桥尽头，冷声道：“潮汐要涨了。”'
+      : 'Missing previous draft.'
+    writeChatCompletion(response, textCompletionFrames(content))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_INLINE_WRITING_REWRITE')) {
+    const content = requestIncludesMarker(body, '港城巡夜司执事')
+      ? '温照野站在栈桥尽头，按住剑柄说：“潮汐要涨了。”'
+      : 'Missing matched lore context.'
+    writeChatCompletion(response, textCompletionFrames(content))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_INLINE_WRITING_INSERT')) {
+    writeChatCompletion(response, textCompletionFrames('海雾顺着石阶漫上来，灯火在湿气里发白。'))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_INLINE_LORE_REWRITE')) {
+    writeChatCompletion(response, textCompletionFrames('常驻港城旧码头，暗中掌管巡夜司潮汐渡口。'))
+    return
+  }
+  if (requestIncludesMarker(body, 'E2E_INLINE_GAME_REWRITE')) {
+    writeChatCompletion(response, textCompletionFrames('温照野提灯踏上湿滑栈桥，压低声音道：“潮声变了。”'))
+    return
+  }
   writeChatCompletion(response, textCompletionFrames('Deterministic E2E response completed.'))
 })
 
