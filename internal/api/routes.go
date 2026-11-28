@@ -119,6 +119,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		projects.GET("/agent-runs/:id", apiHandlers.HandleAgentRunTrace)
 		projects.GET("/workspace/search", apiHandlers.HandleWorkspaceSearch)
 		projects.POST("/workspace/replace", apiHandlers.HandleWorkspaceReplace)
+		projects.POST("/inline-edit/stream", apiHandlers.HandleProjectInlineEditStream)
 		projects.GET("/versions/status", apiHandlers.HandleVersionStatus)
 		projects.GET("/versions", apiHandlers.HandleVersionHistory)
 		projects.POST("/versions", apiHandlers.HandleVersionCreate)
