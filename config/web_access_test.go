@@ -56,6 +56,16 @@ func TestWebSearchSettingsUpgradeRoundTripAndRemoval(t *testing.T) {
 			t.Fatalf("invalid routing accepted: %s", patch)
 		}
 	}
+	keenable, err := ApplySettingsMergePatch(restored, json.RawMessage(`{"web_access":{"search_provider":"keenable","keenable":{}}}`))
+	if err != nil {
+		t.Fatalf("keyless Keenable rejected: %v", err)
+	}
+	if runtime := ResolveWebAccessSettings(Merge(DefaultSettings(), keenable).WebAccess); runtime.SearchProvider != "keenable" {
+		t.Fatalf("keenable selection lost: %+v", runtime)
+	}
+	if _, err := ApplySettingsMergePatch(restored, json.RawMessage(`{"web_access":{"keenable":{"mode":"advanced"}}}`)); err == nil {
+		t.Fatal("keenable accepted a search mode")
+	}
 	if err := ValidateWorkspaceSettingsPatch(json.RawMessage(`{"web_access":{"search_provider":"deepseek"}}`)); err == nil {
 		t.Fatal("workspace accepted global search configuration")
 	}

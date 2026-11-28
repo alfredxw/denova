@@ -25,6 +25,9 @@ type apiSearchProvider struct {
 func newAPISearchProvider(name string, settings *config.SearchServiceSettings, client *http.Client) *apiSearchProvider {
 	secured := *client
 	secured.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if settings == nil {
+		settings = &config.SearchServiceSettings{}
+	}
 	provider := &apiSearchProvider{name: name, apiKey: strings.TrimSpace(settings.APIKey), mode: settings.Mode, client: &secured}
 	switch name {
 	case ProviderDeepSeek:
@@ -38,6 +41,14 @@ func newAPISearchProvider(name string, settings *config.SearchServiceSettings, c
 		provider.endpoint = "https://api.tavily.com/search"
 		if provider.mode == "" {
 			provider.mode = "basic"
+		}
+	case ProviderKeenable:
+		// Without a key, Keenable serves a keyless endpoint rate limited per IP
+		// (1,000 requests per hour, 10 per second) that logs the query and IP.
+		// See https://docs.keenable.ai/rate-limits.
+		provider.endpoint = "https://api.keenable.ai/v1/search/public"
+		if provider.apiKey != "" {
+			provider.endpoint = "https://api.keenable.ai/v1/search"
 		}
 	}
 	return provider
@@ -82,6 +93,11 @@ func (provider *apiSearchProvider) Search(ctx context.Context, request providerS
 		if request.TimeRange != "" {
 			payload["time_range"] = request.TimeRange
 		}
+	case ProviderKeenable:
+		payload["max_results"] = request.MaxResults
+		if after, ok := map[string]string{"day": "1d", "week": "7d", "month": "1mo", "year": "1y"}[request.TimeRange]; ok {
+			payload["published_after"] = after
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -91,7 +107,15 @@ func (provider *apiSearchProvider) Search(ctx context.Context, request providerS
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+provider.apiKey)
+	switch provider.name {
+	case ProviderKeenable:
+		req.Header.Set("X-Keenable-Title", "Denova")
+		if provider.apiKey != "" {
+			req.Header.Set("X-API-Key", provider.apiKey)
+		}
+	default:
+		req.Header.Set("Authorization", "Bearer "+provider.apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	response, err := provider.client.Do(req)
@@ -121,6 +145,8 @@ func (provider *apiSearchProvider) Search(ctx context.Context, request providerS
 			Content       string `json:"content"`
 			Date          string `json:"date"`
 			PublishedDate string `json:"published_date"`
+			PublishedAt   string `json:"published_at"`
+			Description   string `json:"description"`
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil || decoded.Results == nil {
@@ -137,6 +163,11 @@ func (provider *apiSearchProvider) Search(ctx context.Context, request providerS
 		case ProviderPerplexity:
 		case ProviderTavily:
 			summary, date = item.Content, item.PublishedDate
+		case ProviderKeenable:
+			date = item.PublishedAt
+			if strings.TrimSpace(summary) == "" {
+				summary = item.Description
+			}
 		}
 		results = append(results, SearchResult{Title: item.Title, URL: item.URL, Summary: summary, PublishedAt: date, Provider: provider.name})
 	}

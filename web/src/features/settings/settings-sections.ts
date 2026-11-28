@@ -36,7 +36,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'terminal', group: 'tools', titleKey: 'settings.section.terminal', icon: Terminal,
     fieldKeys: ['settings.terminal.enabled', 'settings.terminal.shell', 'settings.terminal.commandName', 'settings.terminal.launchCommand', 'settings.terminal.maxSessions', 'settings.terminal.scrollbackKB', 'settings.agent.shellEnvironmentMode', 'settings.agent.shellEnvironmentShell', 'settings.agent.bashPath'] },
   { id: 'web-access', group: 'tools', titleKey: 'settings.section.webAccess', icon: Globe,
-    fieldKeys: ['settings.webAccess.defaultService', 'settings.webAccess.deepseekKey', 'settings.webAccess.perplexityKey', 'settings.webAccess.tavilyKey', 'settings.webAccess.mode', 'settings.webAccess.testTitle', 'settings.webAccess.fallback', 'settings.webAccess.searxngBaseUrl', 'settings.webAccess.searchMaxResults', 'settings.webAccess.searchProviderTimeoutSeconds', 'settings.webAccess.fetchMaxResponseKB', 'settings.webAccess.fetchMaxContentChars'] },
+    fieldKeys: ['settings.webAccess.defaultService', 'settings.webAccess.deepseekKey', 'settings.webAccess.perplexityKey', 'settings.webAccess.tavilyKey', 'settings.webAccess.keenableKey', 'settings.webAccess.mode', 'settings.webAccess.testTitle', 'settings.webAccess.fallback', 'settings.webAccess.searxngBaseUrl', 'settings.webAccess.searchMaxResults', 'settings.webAccess.searchProviderTimeoutSeconds', 'settings.webAccess.fetchMaxResponseKB', 'settings.webAccess.fetchMaxContentChars'] },
   { id: 'market', group: 'tools', titleKey: 'settings.section.market', icon: Store,
     fieldKeys: ['settings.market.registryURL', 'settings.market.githubToken'] },
   { id: 'paths', group: 'system', titleKey: 'settings.section.paths', icon: Folder,

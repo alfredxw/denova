@@ -24,6 +24,7 @@ type WebAccessSettings struct {
 	DeepSeek                     *SearchServiceSettings `toml:"deepseek,omitempty" json:"deepseek,omitempty"`
 	Perplexity                   *SearchServiceSettings `toml:"perplexity,omitempty" json:"perplexity,omitempty"`
 	Tavily                       *SearchServiceSettings `toml:"tavily,omitempty" json:"tavily,omitempty"`
+	Keenable                     *SearchServiceSettings `toml:"keenable,omitempty" json:"keenable,omitempty"`
 	SearXNGBaseURL               string                 `toml:"searxng_base_url,omitempty" json:"searxng_base_url,omitempty"`
 	SearchMaxResults             *int                   `toml:"search_max_results,omitempty" json:"search_max_results,omitempty"`
 	SearchProviderTimeoutSeconds *int                   `toml:"search_provider_timeout_seconds,omitempty" json:"search_provider_timeout_seconds,omitempty"`
@@ -40,6 +41,7 @@ type WebAccessConfig struct {
 	DeepSeek                     *SearchServiceSettings `toml:"deepseek,omitempty" json:"deepseek,omitempty"`
 	Perplexity                   *SearchServiceSettings `toml:"perplexity,omitempty" json:"perplexity,omitempty"`
 	Tavily                       *SearchServiceSettings `toml:"tavily,omitempty" json:"tavily,omitempty"`
+	Keenable                     *SearchServiceSettings `toml:"keenable,omitempty" json:"keenable,omitempty"`
 	SearXNGBaseURL               string                 `toml:"searxng_base_url" json:"searxng_base_url"`
 	SearchMaxResults             int                    `toml:"search_max_results" json:"search_max_results"`
 	SearchProviderTimeoutSeconds int                    `toml:"search_provider_timeout_seconds" json:"search_provider_timeout_seconds"`
@@ -48,7 +50,8 @@ type WebAccessConfig struct {
 }
 
 // SearchServiceSettings stores one account per hosted search service. Mode is
-// service-specific: Perplexity web/fast, Tavily basic/advanced; DeepSeek has none.
+// service-specific: Perplexity web/fast, Tavily basic/advanced; DeepSeek and
+// Keenable have none. Keenable's API key is optional (keyless endpoint).
 // Presence represents a saved service, including an unfinished configuration.
 type SearchServiceSettings struct {
 	APIKey string `toml:"api_key,omitempty" json:"api_key,omitempty"`
@@ -59,7 +62,7 @@ type SearchServiceSettings struct {
 // billing modes. An unfinished service must never prevent Agent/Fetch startup.
 func (settings WebAccessSettings) Validate() error {
 	switch settings.SearchProvider {
-	case "", "builtin", "searxng", "deepseek", "perplexity", "tavily":
+	case "", "builtin", "searxng", "deepseek", "perplexity", "tavily", "keenable":
 	default:
 		return fmt.Errorf("unsupported search provider %q", settings.SearchProvider)
 	}
@@ -76,6 +79,7 @@ func (settings WebAccessSettings) Validate() error {
 		{"deepseek", settings.DeepSeek, []string{""}},
 		{"perplexity", settings.Perplexity, []string{"", "web", "fast"}},
 		{"tavily", settings.Tavily, []string{"", "basic", "advanced"}},
+		{"keenable", settings.Keenable, []string{""}},
 	} {
 		if service.settings == nil {
 			continue
@@ -127,6 +131,9 @@ func MergeWebAccessSettings(parent, child WebAccessSettings) WebAccessSettings {
 	if child.Tavily != nil {
 		out.Tavily = child.Tavily
 	}
+	if child.Keenable != nil {
+		out.Keenable = child.Keenable
+	}
 	if strings.TrimSpace(child.SearXNGBaseURL) != "" {
 		out.SearXNGBaseURL = child.SearXNGBaseURL
 	}
@@ -150,7 +157,7 @@ func ResolveWebAccessSettings(settings WebAccessSettings) WebAccessConfig {
 	defaults := DefaultWebAccessConfig()
 	return WebAccessConfig{
 		SearchProvider: settings.SearchProvider, SearchFallback: settings.SearchFallback,
-		DeepSeek: settings.DeepSeek, Perplexity: settings.Perplexity, Tavily: settings.Tavily,
+		DeepSeek: settings.DeepSeek, Perplexity: settings.Perplexity, Tavily: settings.Tavily, Keenable: settings.Keenable,
 		SearXNGBaseURL:               settings.SearXNGBaseURL,
 		SearchMaxResults:             boundedSettingsInt(settings.SearchMaxResults, defaults.SearchMaxResults, 1, MaxWebSearchMaxResults),
 		SearchProviderTimeoutSeconds: settingsNonNegativeInt(settings.SearchProviderTimeoutSeconds, defaults.SearchProviderTimeoutSeconds),
@@ -169,7 +176,7 @@ func settingsFromWebAccessConfig(runtime WebAccessConfig) WebAccessSettings {
 	settings := WebAccessSettings{
 		SearXNGBaseURL: strings.TrimSpace(runtime.SearXNGBaseURL),
 		SearchProvider: runtime.SearchProvider, SearchFallback: runtime.SearchFallback,
-		DeepSeek: runtime.DeepSeek, Perplexity: runtime.Perplexity, Tavily: runtime.Tavily,
+		DeepSeek: runtime.DeepSeek, Perplexity: runtime.Perplexity, Tavily: runtime.Tavily, Keenable: runtime.Keenable,
 	}
 	if runtime.SearchMaxResults > 0 {
 		settings.SearchMaxResults = intPtr(runtime.SearchMaxResults)
@@ -189,7 +196,7 @@ func settingsFromWebAccessConfig(runtime WebAccessConfig) WebAccessSettings {
 func sanitizeWebAccessSettings(settings WebAccessSettings) WebAccessSettings {
 	settings.SearchProvider = strings.TrimSpace(settings.SearchProvider)
 	settings.SearchFallback = strings.TrimSpace(settings.SearchFallback)
-	for _, service := range []**SearchServiceSettings{&settings.DeepSeek, &settings.Perplexity, &settings.Tavily} {
+	for _, service := range []**SearchServiceSettings{&settings.DeepSeek, &settings.Perplexity, &settings.Tavily, &settings.Keenable} {
 		if *service != nil {
 			copy := **service
 			copy.APIKey = strings.TrimSpace(copy.APIKey)

@@ -21,8 +21,11 @@ const SERVICES = [
   { id: 'deepseek', name: 'DeepSeek', host: 'api.deepseek.com', docs: 'https://api-docs.deepseek.com/guides/search/' },
   { id: 'perplexity', name: 'Perplexity', host: 'api.perplexity.ai', docs: 'https://docs.perplexity.ai/docs/search/quickstart' },
   { id: 'tavily', name: 'Tavily', host: 'api.tavily.com', docs: 'https://docs.tavily.com/documentation/quickstart' },
+  { id: 'keenable', name: 'Keenable', host: 'api.keenable.ai', docs: 'https://docs.keenable.ai/' },
   { id: 'searxng', name: 'SearXNG', host: '', docs: 'https://docs.searxng.org/' },
 ] as const
+
+type HostedService = 'deepseek' | 'perplexity' | 'tavily' | 'keenable'
 
 const EMPTY_SETTINGS: WebAccessSettings = {}
 const ADVANCED_FIELDS = ['searchMaxResults', 'searchProviderTimeoutSeconds', 'fallback', 'fetchMaxResponseKB', 'fetchMaxContentChars']
@@ -66,7 +69,7 @@ export function WebAccessSettingsEditor({ value = EMPTY_SETTINGS, inherited = EM
   }, [fingerprint, query, visible, i18n.language])
 
   const change = <K extends keyof WebAccessSettings>(key: K, next: WebAccessSettings[K]) => onChange({ ...value, [key]: next })
-  const changeService = (service: 'deepseek' | 'perplexity' | 'tavily', patch: SearchServiceSettings) =>
+  const changeService = (service: HostedService, patch: SearchServiceSettings) =>
     change(service, { ...settings[service], ...patch })
   const add = (service: typeof SERVICES[number]['id']) => {
     if (service === 'searxng') setAddingSearXNG(true)
@@ -123,7 +126,8 @@ export function WebAccessSettingsEditor({ value = EMPTY_SETTINGS, inherited = EM
         </div>
         {!added.length && <p className="px-1 text-xs leading-5 text-muted-foreground">{t('settings.webAccess.emptyServices')}</p>}
         {added.map(service => {
-          const configured = Boolean(service.id === 'searxng' ? settings.searxng_base_url?.trim() : settings[service.id]?.api_key?.trim())
+          // Keenable works without a key (keyless endpoint), so it is usable as soon as it is added.
+          const configured = service.id === 'keenable' || Boolean(service.id === 'searxng' ? settings.searxng_base_url?.trim() : settings[service.id]?.api_key?.trim())
           const serviceField = `settings.webAccess.${service.id}Key`
           const reveal = fieldRequest && (fieldKey === serviceField || (service.id === 'searxng' && fieldKey.endsWith('.searxngBaseUrl')) || (service.id !== 'searxng' && fieldKey.endsWith('.mode')))
           return (
@@ -137,8 +141,8 @@ export function WebAccessSettingsEditor({ value = EMPTY_SETTINGS, inherited = EM
                 {service.id === 'searxng' ? <Text label={t('settings.webAccess.searxngBaseUrl')} value={value.searxng_base_url}
                   placeholder="https://search.example.com" onChange={url => change('searxng_base_url', url)} /> : <>
                   <Field><FieldLabel>{t(serviceField)}</FieldLabel><ApiKeyInput label={t(serviceField)} value={settings[service.id]?.api_key || ''}
-                    placeholder={t('settings.webAccess.keyPlaceholder')} onChange={api_key => changeService(service.id as 'deepseek' | 'perplexity' | 'tavily', { api_key })} /></Field>
-                  {service.id === 'deepseek' ? <FieldDescription>{t('settings.webAccess.deepseekHint')}</FieldDescription> : <SearchSelect
+                    placeholder={t(service.id === 'keenable' ? 'settings.webAccess.optionalKeyPlaceholder' : 'settings.webAccess.keyPlaceholder')} onChange={api_key => changeService(service.id as HostedService, { api_key })} /></Field>
+                  {service.id === 'deepseek' || service.id === 'keenable' ? <FieldDescription>{t(`settings.webAccess.${service.id}Hint`)}</FieldDescription> : <SearchSelect
                     label={t('settings.webAccess.mode')} value={settings[service.id]?.mode || (service.id === 'perplexity' ? 'web' : 'basic')}
                     description={t(service.id === 'perplexity' ? 'settings.webAccess.perplexityHint' : 'settings.webAccess.tavilyHint')}
                     options={(service.id === 'perplexity' ? ['web', 'fast'] : ['basic', 'advanced']).map(mode => ({ value: mode, label: t(`settings.webAccess.mode.${mode}`) }))}

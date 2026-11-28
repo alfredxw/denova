@@ -14,7 +14,7 @@ import (
 func ConfigFromSettings(value config.WebAccessConfig) Config {
 	return Config{
 		SearchProvider: value.SearchProvider, SearchFallback: value.SearchFallback,
-		DeepSeek: value.DeepSeek, Perplexity: value.Perplexity, Tavily: value.Tavily,
+		DeepSeek: value.DeepSeek, Perplexity: value.Perplexity, Tavily: value.Tavily, Keenable: value.Keenable,
 		SearXNGBaseURL:        value.SearXNGBaseURL,
 		SearchMaxResults:      value.SearchMaxResults,
 		SearchProviderTimeout: time.Duration(value.SearchProviderTimeoutSeconds) * time.Second,
@@ -56,7 +56,7 @@ func canFallbackAfter(err error) bool {
 func (client *Client) configureSearch() {
 	settings := config.WebAccessSettings{
 		SearchProvider: client.config.SearchProvider, SearchFallback: client.config.SearchFallback,
-		DeepSeek: client.config.DeepSeek, Perplexity: client.config.Perplexity, Tavily: client.config.Tavily,
+		DeepSeek: client.config.DeepSeek, Perplexity: client.config.Perplexity, Tavily: client.config.Tavily, Keenable: client.config.Keenable,
 	}
 	if err := settings.Validate(); err != nil {
 		client.searchConfigError = searchError("configuration", "Invalid search service configuration. Check the selected service and mode.")
@@ -87,6 +87,8 @@ func (client *Client) selectedService() *config.SearchServiceSettings {
 		return client.config.Perplexity
 	case ProviderTavily:
 		return client.config.Tavily
+	case ProviderKeenable:
+		return client.config.Keenable
 	default:
 		return nil
 	}
