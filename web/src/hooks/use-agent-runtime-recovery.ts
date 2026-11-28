@@ -25,7 +25,7 @@ interface WritingAgentRuntimeRecoveryOptions {
   onDisplayTerminalRestored: (request: WritingDisplayRehydrateRequest) => void
   onSettled: () => void
   runtimeRecoverySignal: number
-  resumeStream: () => Promise<void>
+  resumeStream: () => Promise<boolean | void>
   transport: AgentChatTransport
   transportError?: Error
   transportStatus: 'ready' | 'submitted' | 'streaming' | 'error'
@@ -170,13 +170,14 @@ export function useWritingAgentRuntimeRecovery({
           if (!current()) return false
           if (displayOmissionActiveRef.current) onDisplayRehydrated()
           beforeResume?.()
-          await Promise.resolve(resumeStream())
+          const resumed = await Promise.resolve(resumeStream())
           if (!current()) return false
-          // The display connection resolves resumeStream on an HTTP/reconnect failure and reports
-          // the failure through ChatStatus. Preserve the durable projection and
-          // wait for an explicit retry opportunity instead of spinning here.
-          if (transportStatusRef.current !== 'error') return true
-          if (statusAtStart === 'error' && transportErrorRef.current === errorAtStart) return false
+          // Check both the direct attachment outcome (which settles before the
+          // next React render updates transportStatusRef) and transportStatusRef
+          // (for test stubs returning void).
+          const failed = resumed === false || transportStatusRef.current === 'error'
+          if (!failed) return true
+          if (resumed !== false && statusAtStart === 'error' && transportErrorRef.current === errorAtStart) return false
           recordRecoveryFailure()
           markRecoveryRetry(true, projectionAtStart)
           return false

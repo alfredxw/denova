@@ -43,6 +43,7 @@ export default {
   'statistics.requests': '原生调用',
   'statistics.latency': '平均响应耗时',
   'statistics.uncached': '未缓存输入',
+  'statistics.cacheWrite': '缓存写入',
   'statistics.cached': '缓存读取',
   'statistics.output': '输出',
   'statistics.otherTokens': '未分类 Token',

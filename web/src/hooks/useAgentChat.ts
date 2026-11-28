@@ -915,6 +915,7 @@ export function useAgentChat(options: ChatOptions = {}) {
 function writingTaskStatus(value: unknown): WritingTaskStatus | undefined {
   switch (value) {
     case 'running':
+    case 'suspended':
     case 'done':
     case 'aborted':
     case 'error':

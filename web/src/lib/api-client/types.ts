@@ -141,6 +141,7 @@ export interface TokenUsageChatMessage extends ChatMessageBase {
   role: 'token_usage'
   prompt_tokens?: number
   cached_prompt_tokens?: number
+  cache_write_prompt_tokens?: number
   uncached_prompt_tokens?: number
   cache_hit_rate?: number
   completion_tokens?: number
@@ -350,6 +351,7 @@ export interface TokenUsageCall {
   after_tools?: string[]
   prompt_tokens?: number
   cached_prompt_tokens?: number
+  cache_write_prompt_tokens?: number
   uncached_prompt_tokens?: number
   cache_hit_rate?: number
   completion_tokens?: number

@@ -486,17 +486,18 @@ function agentUIPartDedupeIdentity(
 
   if ((type === 'text' || type === 'reasoning') && runID) {
     const segmentID = firstNonEmpty(metadata.display_segment_id || '', readString(raw.id))
+    const text = readString(raw.text).trim()
+    const fingerprint = text
+      ? type === 'reasoning'
+        ? contentPrefixFingerprint(text)
+        : textFingerprint(text)
+      : ''
+    const legacyContentKey = fingerprint ? `run:${runID}:content:${type}:${fingerprint}` : undefined
     if (segmentID) {
       const stableContentKey = `run:${runID}:content:${type}:id:${segmentID}`
-      if (type !== 'reasoning') return { primaryKey: stableContentKey, stableContentKey }
-      const text = readString(raw.text).trim()
-      const legacyContentKey = text ? `run:${runID}:content:${type}:${contentPrefixFingerprint(text)}` : undefined
       return { primaryKey: stableContentKey, legacyContentKey, stableContentKey }
     }
-    const text = readString(raw.text).trim()
-    if (!text) return { primaryKey: '' }
-    const fingerprint = type === 'reasoning' ? contentPrefixFingerprint(text) : textFingerprint(text)
-    const legacyContentKey = `run:${runID}:content:${type}:${fingerprint}`
+    if (!legacyContentKey) return { primaryKey: '' }
     return {
       primaryKey: legacyContentKey,
       legacyContentKey,

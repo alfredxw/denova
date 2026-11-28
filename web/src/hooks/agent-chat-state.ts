@@ -191,7 +191,7 @@ export function markPlanUIMessageAction(
     parts: message.parts.map((part, index) => {
       const raw = part as Record<string, unknown>
       const type = typeof raw.type === 'string' ? raw.type : ''
-      if (!type.startsWith('data-agent-plan-')) return part
+      if (type !== 'data-agent-proposed-plan' && !type.startsWith('data-agent-plan-')) return part
       const data = 'data' in part && part.data && typeof part.data === 'object' && !Array.isArray(part.data)
         ? part.data as Record<string, unknown>
         : {}

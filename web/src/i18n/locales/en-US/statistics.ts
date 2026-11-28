@@ -43,6 +43,7 @@ export default {
   'statistics.requests': 'Native calls',
   'statistics.latency': 'Mean response time',
   'statistics.uncached': 'Uncached input',
+  'statistics.cacheWrite': 'Cache writes',
   'statistics.cached': 'Cache reads',
   'statistics.output': 'Output',
   'statistics.otherTokens': 'Unclassified tokens',

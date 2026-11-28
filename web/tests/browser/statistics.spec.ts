@@ -65,7 +65,7 @@ test('statistics records saved manuscript changes and stays a shared destination
 
 })
 
-const totals: UsageTotals = { requests: 140, external_turns: 8, failed_requests: 2, unknown_usage: 3, prompt: 1_200_000, cached: 900_000, output: 300_000, tokens: 1_500_000, duration_ms: 840_000, ttft_ms: 16_000, ttft_requests: 100, latency_p50_ms: 3000, latency_p95_ms: 20000 }
+const totals: UsageTotals = { requests: 140, external_turns: 8, failed_requests: 2, unknown_usage: 3, prompt: 1_200_000, cached: 900_000, cache_write: 100_000, output: 300_000, tokens: 1_500_000, duration_ms: 840_000, ttft_ms: 16_000, ttft_requests: 100, latency_p50_ms: 3000, latency_p95_ms: 20000 }
 const emptyTotals: UsageTotals = { requests: 0, external_turns: 0, failed_requests: 0, unknown_usage: 0, prompt: 0, cached: 0, output: 0, tokens: 0, duration_ms: 0, ttft_ms: 0, ttft_requests: 0, latency_p50_ms: null, latency_p95_ms: null }
 
 for (const theme of ['dark', 'light'] as const) {
@@ -148,6 +148,7 @@ for (const theme of ['dark', 'light'] as const) {
     await page.setViewportSize({ width: 1440, height: 1100 })
     await page.getByRole('tab', { name: '模型调用', exact: true }).click()
     await expect(panel.getByText('75.0%', { exact: true })).toBeVisible()
+    await expect(panel.getByText('缓存写入', { exact: true })).toBeVisible()
     await page.getByRole('radio', { name: '平均响应耗时', exact: true }).click()
     await expect(panel.locator('.recharts-surface')).toHaveCount(1)
     const models = panel.getByRole('table', { name: '模型对比' })
@@ -177,6 +178,7 @@ for (const theme of ['dark', 'light'] as const) {
       expect((await request.patch('/api/settings', { data: { layer: 'user', base_revision: current.revisions.user, changes: { language: 'en-US' } } })).ok()).toBe(true)
       await page.reload()
       await page.getByRole('tab', { name: 'Model usage', exact: true }).click()
+      await expect(panel.getByText('Cache writes', { exact: true })).toBeVisible()
       await expect(panel.getByRole('table', { name: 'Model comparison' })).toBeVisible()
       await expect(panel.getByRole('term').filter({ hasText: /^Unsuccessful calls$/ })).toBeVisible()
       await expect.poll(async () => panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)

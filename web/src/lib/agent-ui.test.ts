@@ -930,6 +930,34 @@ describe('agent-ui', () => {
       'segment-text-2',
     ])
   })
+
+  it('merges a keyed live text segment with an unkeyed canonical assistant message in the same run', () => {
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'canonical-1',
+        role: 'assistant',
+        metadata: { run_id: 'run-1', display_phase: 'final' },
+        parts: [
+          { type: 'reasoning', text: 'Final reasoning', state: 'done' },
+          { type: 'text', text: 'Final answer.', state: 'done' },
+        ],
+      },
+      {
+        id: 'live-1',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          { type: 'reasoning', text: 'Final reasoning', providerMetadata: { agent: { run_id: 'run-1', display_segment_id: 'run-1-display-001-thinking' } } },
+          { type: 'text', text: 'Final answer.', providerMetadata: { agent: { run_id: 'run-1', display_segment_id: 'run-1-display-002-assistant' } } },
+        ],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0].parts).toHaveLength(2)
+    expect(messages[0].parts[0]).toMatchObject({ type: 'reasoning', text: 'Final reasoning' })
+    expect(messages[0].parts[1]).toMatchObject({ type: 'text', text: 'Final answer.' })
+  })
 })
 
 async function readStream<T>(stream: ReadableStream<T>): Promise<T[]> {

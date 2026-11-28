@@ -34,8 +34,10 @@ export function ModelStatistics({ data }: { data: StatisticsReport['usage'] }) {
   }
   const days = data.days.map(item => ({ ...item, value: metricValue(item) }))
   const labels = { tokens: t('statistics.tokens'), requests: t('statistics.requests'), latency: t('statistics.latency') }
+  const cacheWrite = total.cache_write ?? 0
   const tokenParts = [
-    { name: t('statistics.uncached'), value: Math.max(0, total.prompt - total.cached), color: 'var(--foreground)' },
+    { name: t('statistics.uncached'), value: Math.max(0, total.prompt - total.cached - cacheWrite), color: 'var(--foreground)' },
+    { name: t('statistics.cacheWrite'), value: cacheWrite, color: 'var(--nova-warning)' },
     { name: t('statistics.cached'), value: total.cached, color: 'var(--nova-success)' },
     { name: t('statistics.output'), value: total.output, color: 'var(--chart-2)' },
     { name: t('statistics.otherTokens'), value: Math.max(0, total.tokens - total.prompt - total.output), color: 'var(--chart-3)' },

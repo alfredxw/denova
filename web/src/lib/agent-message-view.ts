@@ -60,6 +60,7 @@ export interface AgentTokenUsageRecord {
   created_at?: string
   prompt_tokens?: number
   cached_prompt_tokens?: number
+  cache_write_prompt_tokens?: number
   uncached_prompt_tokens?: number
   cache_hit_rate?: number
   completion_tokens?: number
@@ -703,6 +704,7 @@ function tokenUsageFields(data: Record<string, unknown>): Partial<ChatMessage> {
     agent_kind: readString(data.agent_kind),
     prompt_tokens: readNumber(data.prompt_tokens),
     cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
+    cache_write_prompt_tokens: readNumber(data.cache_write_prompt_tokens),
     uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
     cache_hit_rate: readNumber(data.cache_hit_rate),
     completion_tokens: readNumber(data.completion_tokens),
@@ -869,6 +871,7 @@ function agentTokenUsageRecordFromView(view: AgentMessageView): AgentTokenUsageR
     created_at: readString(data.created_at) || view.metadata.created_at,
     prompt_tokens: readNumber(data.prompt_tokens),
     cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
+    cache_write_prompt_tokens: readNumber(data.cache_write_prompt_tokens),
     uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
     cache_hit_rate: readNumber(data.cache_hit_rate),
     completion_tokens: readNumber(data.completion_tokens),
@@ -983,6 +986,7 @@ function readUsageCalls(value: unknown): TokenUsageCall[] | undefined {
         after_tools: readStringArray(data.after_tools),
         prompt_tokens: readNumber(data.prompt_tokens),
         cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
+        cache_write_prompt_tokens: readNumber(data.cache_write_prompt_tokens),
         uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
         cache_hit_rate: readNumber(data.cache_hit_rate),
         completion_tokens: readNumber(data.completion_tokens),

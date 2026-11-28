@@ -64,7 +64,7 @@ export function useAgentStream(options: StreamOptions) {
     setStatus('ready')
   }, [disconnect])
 
-  const connect = useCallback(async (mode: 'submit' | 'resume', request: (active: Connection) => Promise<ReadableStream<UIMessageChunk> | null>) => {
+  const connect = useCallback(async (mode: 'submit' | 'resume', request: (active: Connection) => Promise<ReadableStream<UIMessageChunk> | null>): Promise<boolean> => {
     disconnect()
     const active: Connection = { controller: new AbortController(), projection: new AgentStreamProjection() }
     connection.current = active
@@ -79,9 +79,9 @@ export function useAgentStream(options: StreamOptions) {
       const stream = await request(active)
       if (connection.current !== active) {
         await stream?.cancel()
-        return
+        return true
       }
-      if (!stream) { setStatus('ready'); return }
+      if (!stream) { setStatus('ready'); return true }
       active.reader = stream.getReader()
       if (mode === 'resume') {
         setCompletion(null)
@@ -102,13 +102,15 @@ export function useAgentStream(options: StreamOptions) {
         setCompletion(completion)
         setStatus('ready')
       }
+      return true
     } catch (cause) {
-      if (connection.current !== active || active.controller.signal.aborted) return
+      if (connection.current !== active || active.controller.signal.aborted) return true
       const failure = cause instanceof Error ? cause : new Error(String(cause))
       console.warn('[use-agent-stream.ts] Agent display stream failed', failure)
       setError(failure)
       setStatus('error')
       callbacks.current.onError(failure)
+      return false
     } finally {
       if (connection.current === active) {
         active.projection.finish()

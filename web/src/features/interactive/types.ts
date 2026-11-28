@@ -479,6 +479,7 @@ export interface TokenUsageEvent {
   agent_kind?: string
   prompt_tokens?: number
   cached_prompt_tokens?: number
+  cache_write_prompt_tokens?: number
   uncached_prompt_tokens?: number
   cache_hit_rate?: number
   completion_tokens?: number
@@ -497,6 +498,7 @@ interface TokenUsageCall {
   after_tools?: string[]
   prompt_tokens?: number
   cached_prompt_tokens?: number
+  cache_write_prompt_tokens?: number
   uncached_prompt_tokens?: number
   cache_hit_rate?: number
   completion_tokens?: number

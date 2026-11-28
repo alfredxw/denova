@@ -7,6 +7,7 @@ export interface UsageTotals {
   unknown_usage: number
   prompt: number
   cached: number
+  cache_write?: number
   output: number
   tokens: number
   duration_ms: number

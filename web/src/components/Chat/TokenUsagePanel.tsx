@@ -15,6 +15,7 @@ type TokenUsageSummary = {
   recent: TokenUsageRecord[]
   promptTokens: number
   cachedPromptTokens: number
+  cacheWritePromptTokens: number
   uncachedPromptTokens: number
   completionTokens: number
   reasoningTokens: number
@@ -35,6 +36,7 @@ type TokenUsageRow = {
   callIndex: number
   promptTokens: number
   cachedPromptTokens: number
+  cacheWritePromptTokens: number
   uncachedPromptTokens: number
   cacheHitRate: number
   completionTokens: number
@@ -168,6 +170,9 @@ function TokenUsageSummaryGrid({ stats }: { stats: TokenUsageSummary }) {
     { label: t('chat.tokenUsage.modelCalls'), value: stats.modelCalls === undefined ? t('chat.tokenUsage.unavailable') : formatNumber(stats.modelCalls) },
     { label: t('chat.tokenUsage.summary.prompt'), value: formatNumber(stats.promptTokens) },
     { label: t('chat.tokenUsage.summary.cached'), value: formatNumber(stats.cachedPromptTokens) },
+    ...(stats.cacheWritePromptTokens > 0
+      ? [{ label: t('chat.tokenUsage.summary.cacheWrite'), value: formatNumber(stats.cacheWritePromptTokens) }]
+      : []),
     { label: t('chat.tokenUsage.summary.uncached'), value: formatNumber(stats.uncachedPromptTokens) },
     { label: t('chat.tokenUsage.summary.output'), value: formatNumber(stats.completionTokens) },
     { label: t('chat.tokenUsage.summary.reasoning'), value: formatNumber(stats.reasoningTokens) },
@@ -283,6 +288,9 @@ function TokenBreakdown({ row }: { row: TokenUsageRow }) {
       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">
         <span>{t('chat.tokenUsage.columns.prompt')}: <span className="font-mono">{formatNumber(row.promptTokens)}</span></span>
         <span>{t('chat.tokenUsage.columns.cached')}: <span className="font-mono">{formatNumber(row.cachedPromptTokens)}</span></span>
+        {row.cacheWritePromptTokens > 0 ? (
+          <span>{t('chat.tokenUsage.columns.cacheWrite')}: <span className="font-mono">{formatNumber(row.cacheWritePromptTokens)}</span></span>
+        ) : null}
         <span>{t('chat.tokenUsage.columns.uncached')}: <span className="font-mono">{formatNumber(row.uncachedPromptTokens)}</span></span>
         <span>{t('chat.tokenUsage.columns.completion')}: <span className="font-mono">{formatNumber(row.completionTokens)}</span></span>
         <span>{t('chat.tokenUsage.columns.reasoning')}: <span className="font-mono">{formatNumber(row.reasoningTokens)}</span></span>
@@ -297,6 +305,7 @@ function summarizeTokenUsage(messages: TokenUsageRecord[]): TokenUsageSummary {
     acc.count += 1
     acc.promptTokens += numberOrZero(message.prompt_tokens)
     acc.cachedPromptTokens += numberOrZero(message.cached_prompt_tokens)
+    acc.cacheWritePromptTokens += numberOrZero(message.cache_write_prompt_tokens)
     acc.uncachedPromptTokens += messageUncachedPromptTokens(message)
     acc.completionTokens += numberOrZero(message.completion_tokens)
     acc.reasoningTokens += numberOrZero(message.reasoning_tokens)
@@ -308,6 +317,7 @@ function summarizeTokenUsage(messages: TokenUsageRecord[]): TokenUsageSummary {
     recent: usageMessages.slice(-5).reverse(),
     promptTokens: 0,
     cachedPromptTokens: 0,
+    cacheWritePromptTokens: 0,
     uncachedPromptTokens: 0,
     completionTokens: 0,
     reasoningTokens: 0,
@@ -350,6 +360,7 @@ function buildTokenUsageGroups(messages: TokenUsageRecord[]): TokenUsageGroup[] 
           callIndex: message.model_calls === 1 ? 1 : 0,
           promptTokens: numberOrZero(message.prompt_tokens),
           cachedPromptTokens: numberOrZero(message.cached_prompt_tokens),
+          cacheWritePromptTokens: numberOrZero(message.cache_write_prompt_tokens),
           uncachedPromptTokens: messageUncachedPromptTokens(message),
           cacheHitRate: numberOrZero(message.cache_hit_rate),
           completionTokens: numberOrZero(message.completion_tokens),
@@ -380,6 +391,7 @@ function buildTokenUsageGroups(messages: TokenUsageRecord[]): TokenUsageGroup[] 
         callIndex: numberOrZero(call.index) || index + 1,
         promptTokens: numberOrZero(call.prompt_tokens),
         cachedPromptTokens: numberOrZero(call.cached_prompt_tokens),
+        cacheWritePromptTokens: numberOrZero(call.cache_write_prompt_tokens),
         uncachedPromptTokens: callUncachedPromptTokens(call),
         cacheHitRate: numberOrZero(call.cache_hit_rate),
         completionTokens: numberOrZero(call.completion_tokens),

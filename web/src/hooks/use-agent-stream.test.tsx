@@ -23,7 +23,7 @@ describe('Agent display connection', () => {
       const active = connection()
       const transport = { sendMessages: vi.fn().mockResolvedValue(active.stream), reconnectToStream: vi.fn() }
       const { result, options } = setup(transport)
-      let completed!: Promise<void>
+      let completed!: Promise<boolean>
       await act(async () => { completed = result.current.sendMessage({ role: 'user', parts: [{ type: 'text', text: 'Continue' }] }) })
       await act(async () => {
         active.controller.enqueue({ type: 'text-start', id: 'answer' })
@@ -49,7 +49,7 @@ describe('Agent display connection', () => {
     const { result, options } = setup(transport)
     const history: AgentUIMessage = { id: 'earlier', role: 'assistant', parts: [{ type: 'text', text: 'Earlier answer.' }] }
     act(() => result.current.setMessages([history]))
-    let completed!: Promise<void>
+    let completed!: Promise<boolean>
     await act(async () => { completed = result.current.sendMessage({ role: 'user', parts: [{ type: 'text', text: 'Continue' }] }, { body: { command_id: 'command' } }) })
     expect(result.current.status).toBe('submitted')
     expect(transport.sendMessages.mock.calls[0][0]).toMatchObject({ body: { command_id: 'command' }, messages: [{ role: 'user' }] })
@@ -75,7 +75,7 @@ describe('Agent display connection', () => {
     const first = connection()
     const second = connection()
     const { result, options } = setup({ sendMessages: vi.fn().mockResolvedValue(first.stream), reconnectToStream: vi.fn().mockResolvedValue(second.stream) })
-    let sending!: Promise<void>
+    let sending!: Promise<boolean>
     await act(async () => { sending = result.current.sendMessage({ role: 'user', parts: [] }) })
     await act(async () => {
       first.controller.enqueue({ type: 'text-start', id: 'partial' })
@@ -85,7 +85,7 @@ describe('Agent display connection', () => {
     const partial = result.current.messages.at(-1)
     expect(partial?.parts[0]).toMatchObject({ text: 'Before stop', state: 'done' })
     expect(first.cancel).toHaveBeenCalledOnce()
-    let resumed!: Promise<void>
+    let resumed!: Promise<boolean>
     await act(async () => { resumed = result.current.resumeStream() })
     await act(async () => {
       second.controller.enqueue({ type: 'text-start', id: 'continued' })
@@ -103,7 +103,7 @@ describe('Agent display connection', () => {
     let resolve!: (stream: ReadableStream<UIMessageChunk>) => void
     const pending = new Promise<ReadableStream<UIMessageChunk>>(done => { resolve = done })
     const { result, unmount, options } = setup({ sendMessages: vi.fn(), reconnectToStream: vi.fn().mockReturnValue(pending) })
-    let resumed!: Promise<void>
+    let resumed!: Promise<boolean>
     act(() => { resumed = result.current.resumeStream() })
     unmount()
     await act(async () => { resolve(active.stream); await resumed })
@@ -117,7 +117,7 @@ describe('Agent display connection', () => {
     let resolve!: (stream: ReadableStream<UIMessageChunk>) => void
     const pending = new Promise<ReadableStream<UIMessageChunk>>(done => { resolve = done })
     const { result, options } = setup({ sendMessages: vi.fn(), reconnectToStream: vi.fn().mockReturnValue(pending) })
-    let resumed!: Promise<void>
+    let resumed!: Promise<boolean>
     await act(async () => { resumed = result.current.resumeStream() })
     expect(result.current.status).toBe('ready')
     await act(async () => { resolve(active.stream) })
@@ -130,7 +130,9 @@ describe('Agent display connection', () => {
   it('reports a failed reconnect without finishing a response that never attached', async () => {
     const failure = Object.assign(new Error('Refresh the active projection'), { code: 'agent_runtime.rehydrate_required', status: 409 })
     const { result, options } = setup({ sendMessages: vi.fn(), reconnectToStream: vi.fn().mockRejectedValue(failure) })
-    await act(async () => { await result.current.resumeStream() })
+    let attached = true
+    await act(async () => { attached = await result.current.resumeStream() })
+    expect(attached).toBe(false)
     expect(result.current.status).toBe('error')
     expect(result.current.error).toBe(failure)
     expect(options.onError).toHaveBeenCalledExactlyOnceWith(failure)
@@ -143,7 +145,7 @@ describe('Agent display connection', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       const { result, options } = setup({ sendMessages: vi.fn().mockResolvedValue(active.stream), reconnectToStream: vi.fn() })
-      let sending!: Promise<void>
+      let sending!: Promise<boolean>
       await act(async () => { sending = result.current.sendMessage({ role: 'user', parts: [] }) })
       await act(async () => {
         active.controller.enqueue({ type: 'data-agent-error', transient: true, data: { terminal: true, code: 'agent_runtime.model_request_too_large' } })
