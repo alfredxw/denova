@@ -42,9 +42,10 @@ type Run struct {
 	cancel        context.CancelFunc
 	controls      chan agentengine.Control
 	ownership     runSessionOwnership
-	eventMu       sync.Mutex
-	eventDrops    eventDropState
-	eventsEnd     bool
+	eventMu         sync.Mutex
+	eventDrops      eventDropState
+	lastEventCursor agentevent.Cursor
+	eventsEnd       bool
 	endOnce       sync.Once
 	finishMu      sync.Mutex
 
@@ -117,6 +118,17 @@ func (run *Run) Events() <-chan agentevent.Event {
 		return closed
 	}
 	return run.events
+}
+
+// EventCursor returns the latest live event cursor published for this Run.
+// Hosts can use it to drain in-process observers up to a synchronous boundary.
+func (run *Run) EventCursor() agentevent.Cursor {
+	if run == nil {
+		return 0
+	}
+	run.eventMu.Lock()
+	defer run.eventMu.Unlock()
+	return run.lastEventCursor
 }
 
 func (run *Run) Steer(ctx context.Context, input agentschema.Input) (agentevent.CommandReceipt, error) {

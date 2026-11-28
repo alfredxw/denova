@@ -88,7 +88,8 @@ func responseUsage(usage anthropic.Usage) *agentschema.TokenUsage {
 		CompletionTokens: int(usage.OutputTokens),
 		TotalTokens:      int(promptTokens + usage.OutputTokens),
 		PromptTokenDetails: agentschema.PromptTokenDetails{
-			CachedTokens: int(usage.CacheReadInputTokens),
+			CachedTokens:     int(usage.CacheReadInputTokens),
+			CacheWriteTokens: int(usage.CacheCreationInputTokens),
 		},
 		CompletionTokensDetails: agentschema.CompletionTokensDetails{
 			ReasoningTokens: int(usage.OutputTokensDetails.ThinkingTokens),

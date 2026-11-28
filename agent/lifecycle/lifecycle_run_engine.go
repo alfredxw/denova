@@ -282,9 +282,12 @@ func (run *Run) handleEngineEvent(event agentengine.Event) error {
 			ResponseOrdinal: value.ResponseOrdinal, OutputState: agentretry.ModelOutputState(value.OutputState), Delay: value.Delay, Reason: value.Reason})
 	case agentengine.ModelCompleted:
 		run.publish(agentevent.ModelCompleted{Usage: agentschema.TokenUsage{
-			PromptTokens:       value.Usage.PromptTokens,
-			PromptTokenDetails: agentschema.PromptTokenDetails{CachedTokens: value.Usage.CachedPromptTokens},
-			CompletionTokens:   value.Usage.CompletionTokens, TotalTokens: value.Usage.TotalTokens,
+			PromptTokens: value.Usage.PromptTokens,
+			PromptTokenDetails: agentschema.PromptTokenDetails{
+				CachedTokens:     value.Usage.CachedPromptTokens,
+				CacheWriteTokens: value.Usage.CacheWritePromptTokens,
+			},
+			CompletionTokens: value.Usage.CompletionTokens, TotalTokens: value.Usage.TotalTokens,
 			CompletionTokensDetails: agentschema.CompletionTokensDetails{ReasoningTokens: value.Usage.ReasoningTokens},
 		}, FinishReason: value.FinishReason, RequestedTools: append([]string(nil), value.RequestedTools...), Source: publicEventSource(value.Source)})
 	case agentengine.TranscriptUpdated:

@@ -28,6 +28,11 @@ type Options struct {
 	// SessionKey is the stable, provider-neutral cache-routing identity for
 	// this conversation. Protocol adapters map it to provider wire fields.
 	SessionKey string
+	// CachePrefixMessages marks the number of leading input messages that remain
+	// byte-identical across turns (system, leading context, and committed
+	// history before any transient active turn message). Protocol adapters that
+	// use explicit cache breakpoints can place a cross-turn breakpoint here.
+	CachePrefixMessages int
 }
 
 // ModelOption immutably describes one per-call model setting.
@@ -81,6 +86,18 @@ func WithSessionKey(sessionKey string) ModelOption {
 	sessionKey = strings.TrimSpace(sessionKey)
 	return ModelOption{apply: func(options *Options) {
 		options.SessionKey = sessionKey
+	}}
+}
+
+// WithCachePrefixMessages marks the leading message count that stays stable
+// across turns so explicit prompt-caching protocols can place a cross-turn
+// cache breakpoint before transient turn context.
+func WithCachePrefixMessages(count int) ModelOption {
+	if count < 0 {
+		count = 0
+	}
+	return ModelOption{apply: func(options *Options) {
+		options.CachePrefixMessages = count
 	}}
 }
 

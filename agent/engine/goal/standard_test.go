@@ -136,9 +136,10 @@ func TestStandardGoalEvaluatorForksExactFinalRequestAndCompletes(t *testing.T) {
 		t.Fatalf("middleware options were not captured: %#v", primary.options)
 	}
 	if evaluator.options.MaxTokens == nil || *evaluator.options.MaxTokens != 512 ||
-		len(evaluator.options.Tools) != 0 || evaluator.options.ToolChoice != nil ||
-		evaluator.options.SessionKey != primary.options.SessionKey {
-		t.Fatalf("evaluator did not preserve cache routing with a bounded tool-free output: %#v", evaluator.options)
+		!reflect.DeepEqual(evaluator.options.Tools, primary.options.Tools) ||
+		evaluator.options.SessionKey != primary.options.SessionKey ||
+		evaluator.options.CachePrefixMessages != primary.options.CachePrefixMessages {
+		t.Fatalf("evaluator did not preserve primary tools and cache routing with bounded output: %#v", evaluator.options)
 	}
 	if len(evaluator.messages) != len(primary.messages)+2 ||
 		!reflect.DeepEqual(evaluator.messages[:len(primary.messages)], primary.messages) {

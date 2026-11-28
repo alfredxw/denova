@@ -20,9 +20,9 @@ func TestRequestMessagesSendsAttachedImagesNatively(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, messages, err := requestMessages([]*agentschema.Message{agentschema.UserMessageWithAttachments("inspect", []agentschema.Attachment{{
+	_, messages, _, err := requestMessages([]*agentschema.Message{agentschema.UserMessageWithAttachments("inspect", []agentschema.Attachment{{
 		Name: "image.png", MediaType: "image/png", Path: path, Size: int64(len(data)), SHA256: fmt.Sprintf("%x", sha256.Sum256(data)),
-	}})}, providers.ModelConfig{})
+	}})}, providers.ModelConfig{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,17 +19,26 @@ const (
 	ThinkingModeBudget   ThinkingMode = "budget"
 )
 
+type PromptCacheMode string
+
+const (
+	PromptCacheModeEphemeral PromptCacheMode = "ephemeral"
+	PromptCacheModeDisabled  PromptCacheMode = "disabled"
+)
+
 // Compatibility describes endpoint traits that are not part of Denova's
 // provider-neutral model contract.
 type Compatibility struct {
-	ThinkingMode           ThinkingMode      `json:"thinking_mode,omitempty"`
-	SupportsEffort         *bool             `json:"supports_effort,omitempty"`
-	EffortMap              map[string]string `json:"effort_map,omitempty"`
-	ThinkingBudgets        map[string]int64  `json:"thinking_budgets,omitempty"`
-	DefaultThinkingBudget  int64             `json:"default_thinking_budget,omitempty"`
-	DefaultMaxOutputTokens int64             `json:"default_max_output_tokens,omitempty"`
-	SupportsToolChoice     *bool             `json:"supports_tool_choice,omitempty"`
-	ExtraBody              map[string]any    `json:"extra_body,omitempty"`
+	ThinkingMode                ThinkingMode      `json:"thinking_mode,omitempty"`
+	SupportsEffort              *bool             `json:"supports_effort,omitempty"`
+	EffortMap                   map[string]string `json:"effort_map,omitempty"`
+	ThinkingBudgets             map[string]int64  `json:"thinking_budgets,omitempty"`
+	DefaultThinkingBudget       int64             `json:"default_thinking_budget,omitempty"`
+	DefaultMaxOutputTokens      int64             `json:"default_max_output_tokens,omitempty"`
+	SupportsToolChoice          *bool             `json:"supports_tool_choice,omitempty"`
+	PromptCacheMode             PromptCacheMode   `json:"prompt_cache_mode,omitempty"`
+	SupportsCacheControlOnTools *bool             `json:"supports_cache_control_on_tools,omitempty"`
+	ExtraBody                   map[string]any    `json:"extra_body,omitempty"`
 }
 
 func resolveCompatibility(config providers.ModelConfig) (Compatibility, error) {
@@ -45,11 +54,22 @@ func resolveCompatibility(config providers.ModelConfig) (Compatibility, error) {
 	default:
 		return Compatibility{}, fmt.Errorf("anthropic messages compatibility: unsupported thinking mode %q", compatibility.ThinkingMode)
 	}
+	if compatibility.PromptCacheMode == "" {
+		compatibility.PromptCacheMode = PromptCacheModeEphemeral
+	}
+	switch compatibility.PromptCacheMode {
+	case PromptCacheModeEphemeral, PromptCacheModeDisabled:
+	default:
+		return Compatibility{}, fmt.Errorf("anthropic messages compatibility: unsupported prompt cache mode %q", compatibility.PromptCacheMode)
+	}
 	if compatibility.SupportsEffort == nil {
 		compatibility.SupportsEffort = boolPointer(true)
 	}
 	if compatibility.SupportsToolChoice == nil {
 		compatibility.SupportsToolChoice = boolPointer(true)
+	}
+	if compatibility.SupportsCacheControlOnTools == nil {
+		compatibility.SupportsCacheControlOnTools = boolPointer(true)
 	}
 	if compatibility.DefaultMaxOutputTokens == 0 {
 		compatibility.DefaultMaxOutputTokens = defaultMaxOutputTokens

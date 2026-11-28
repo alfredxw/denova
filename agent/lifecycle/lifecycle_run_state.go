@@ -107,6 +107,7 @@ func (run *Run) publish(payload agentevent.EventPayload) {
 	run.session.publishLocked(event)
 	event.Cursor = run.session.cursor
 	run.session.mu.Unlock()
+	run.lastEventCursor = event.Cursor
 	if !run.eventsEnd {
 		publishLatestEvent(run.events, event, &run.eventDrops)
 	}

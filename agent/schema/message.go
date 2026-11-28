@@ -57,7 +57,8 @@ type LogProbs struct {
 
 // PromptTokenDetails contains the provider's prompt-token breakdown.
 type PromptTokenDetails struct {
-	CachedTokens int `json:"cached_tokens"`
+	CachedTokens     int `json:"cached_tokens"`
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 }
 
 // CompletionTokensDetails contains the provider's completion-token breakdown.
@@ -636,6 +637,10 @@ func mergeUsage(target, incoming *TokenUsage) {
 	target.PromptTokenDetails.CachedTokens = max(
 		target.PromptTokenDetails.CachedTokens,
 		incoming.PromptTokenDetails.CachedTokens,
+	)
+	target.PromptTokenDetails.CacheWriteTokens = max(
+		target.PromptTokenDetails.CacheWriteTokens,
+		incoming.PromptTokenDetails.CacheWriteTokens,
 	)
 	target.CompletionTokensDetails.ReasoningTokens = max(
 		target.CompletionTokensDetails.ReasoningTokens,

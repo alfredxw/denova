@@ -311,6 +311,10 @@ type loopInput struct {
 	// assembled accountable Context fragments and the active checkpoint. It is
 	// intentionally not part of the public low-level modelToolLoop input surface.
 	stablePrefixMessages int
+	// activeUserMessage is the transient user message assembled for the current
+	// turn. Messages strictly before it remain byte-identical across turns and
+	// define the cross-turn prompt-cache prefix boundary.
+	activeUserMessage *agentschema.Message
 }
 
 // loopEventFromMessage builds a model or tool message event.

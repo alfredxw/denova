@@ -47,8 +47,10 @@ func (manager *standardManager) AfterRun(ctx context.Context, request GoalAfterR
 	if request.ModelRequest == nil || request.Final == nil || request.Final.Role != agentschema.Assistant || len(request.Final.ToolCalls) != 0 {
 		return GoalAfterRunDecision{}, errors.New("Goal evaluation requires the exact final model request and canonical assistant result")
 	}
+	// Preserve the primary request's tool schemas so provider prompt-cache
+	// prefixes remain intact (tools precede system and messages). Read-only
+	// enforcement is guaranteed by rejecting any returned tool calls below.
 	fork := request.ModelRequest.Append(request.Final.Clone(), agentschema.UserMessage(goalEvaluationPrompt)).WithOptions(
-		agentmodel.WithoutTools(),
 		agentmodel.WithMaxTokens(maxGoalEvaluationOutputTokens),
 	)
 	response, err := executeEvaluationFork(ctx, fork)

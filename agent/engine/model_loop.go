@@ -225,8 +225,10 @@ func (agent *modelToolLoop) prepareRetryCall(
 ) (*preparedModelCall, error) {
 	entryCtx := ctx
 	modelContext := &modelStepContext{
-		ModelContext:     agentmiddleware.ModelContext{Tools: agentschema.CloneToolInfos(initial.Tools), Iteration: initial.Iteration, Attempt: attempt},
-		stablePrefixSeed: agentschema.CloneMessages(initial.stablePrefixSeed), instruction: initial.instruction,
+		ModelContext:      agentmiddleware.ModelContext{Tools: agentschema.CloneToolInfos(initial.Tools), Iteration: initial.Iteration, Attempt: attempt},
+		stablePrefixSeed:  agentschema.CloneMessages(initial.stablePrefixSeed),
+		activeUserMessage: agentschema.CloneMessage(initial.activeUserMessage),
+		instruction:       initial.instruction,
 	}
 	options := append([]agentmodel.ModelOption(nil), current.Options...)
 	options = append(options, agentmodel.WithTools(modelContext.Tools))
@@ -254,6 +256,9 @@ func (agent *modelToolLoop) prepareRetryCall(
 	}
 	call.Messages = cleaned
 	call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
+	call.Options = append(call.Options, agentmodel.WithCachePrefixMessages(
+		resolvedCachePrefixMessages(call.Messages, call.stablePrefixMessages, modelContext.activeUserMessage),
+	))
 	modelContext.prepareCompaction = func(messages []*agentschema.Message, prefix int) (*preparedModelCall, error) {
 		if modelContext.instruction != "" {
 			messages = append([]*agentschema.Message{agentschema.SystemMessage(modelContext.instruction)}, messages...)

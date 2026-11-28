@@ -14,11 +14,11 @@ import (
 )
 
 func (model *ChatModel) request(input []*agentschema.Message, opts ...agentmodel.ModelOption) (anthropic.MessageNewParams, []option.RequestOption, error) {
-	system, messages, err := requestMessages(input, model.config)
+	common := agentmodel.GetCommonOptions(model.options, opts...)
+	system, messages, prefixMessageIndex, err := requestMessages(input, model.config, common.CachePrefixMessages)
 	if err != nil {
 		return anthropic.MessageNewParams{}, nil, err
 	}
-	common := agentmodel.GetCommonOptions(model.options, opts...)
 	tools := common.Tools
 	if common.ToolChoice != nil && len(common.AllowedToolNames) != 0 {
 		tools = filterTools(tools, common.AllowedToolNames)
@@ -55,21 +55,26 @@ func (model *ChatModel) request(input []*agentschema.Message, opts ...agentmodel
 	if err := applyOutputFormat(&params, model.config.OutputFormat); err != nil {
 		return anthropic.MessageNewParams{}, nil, err
 	}
+	applyPromptCacheControl(&params, model.compatibility, prefixMessageIndex)
 	return params, requestOptions(model.compatibility.ExtraBody, model.config.SessionKeyMapping, common.SessionKey), nil
 }
 
-func requestMessages(input []*agentschema.Message, config providers.ModelConfig) ([]anthropic.TextBlockParam, []anthropic.MessageParam, error) {
+func requestMessages(input []*agentschema.Message, config providers.ModelConfig, cachePrefixMessages int) ([]anthropic.TextBlockParam, []anthropic.MessageParam, int, error) {
 	system := make([]anthropic.TextBlockParam, 0)
 	messages := make([]anthropic.MessageParam, 0, len(input))
 	imageCount := providers.NativeImageCount(input)
+	prefixMessageIndex := -1
+	previousWasTool := false
 	for index, message := range input {
 		if message == nil {
-			return nil, nil, fmt.Errorf("anthropic messages input %d: nil message", index)
+			return nil, nil, -1, fmt.Errorf("anthropic messages input %d: nil message", index)
 		}
 		switch message.Role {
 		case agentschema.System:
+			previousWasTool = false
 			system = append(system, anthropic.TextBlockParam{Text: message.Content})
 		case agentschema.User:
+			previousWasTool = false
 			blocks := []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(agentschema.ModelUserContent(message))}
 			for _, attachment := range message.Attachments {
 				if !agentschema.IsNativeImageMediaType(attachment.MediaType) {
@@ -77,37 +82,119 @@ func requestMessages(input []*agentschema.Message, config providers.ModelConfig)
 				}
 				prepared, err := config.PrepareImage(attachment, imageCount)
 				if err != nil {
-					return nil, nil, fmt.Errorf("anthropic messages input %d: %w", index, err)
+					return nil, nil, -1, fmt.Errorf("anthropic messages input %d: %w", index, err)
 				}
 				blocks = append(blocks, anthropic.NewImageBlockBase64(prepared.MediaType, prepared.Base64))
 			}
 			messages = append(messages, anthropic.NewUserMessage(blocks...))
+			if index < cachePrefixMessages {
+				prefixMessageIndex = len(messages) - 1
+			}
 		case agentschema.Assistant:
+			previousWasTool = false
 			blocks, err := assistantBlocks(message, config)
 			if err != nil {
-				return nil, nil, fmt.Errorf("anthropic messages input %d: %w", index, err)
+				return nil, nil, -1, fmt.Errorf("anthropic messages input %d: %w", index, err)
 			}
 			messages = append(messages, anthropic.NewAssistantMessage(blocks...))
+			if index < cachePrefixMessages {
+				prefixMessageIndex = len(messages) - 1
+			}
 		case agentschema.ToolRole:
 			if strings.TrimSpace(message.ToolCallID) == "" {
-				return nil, nil, fmt.Errorf("anthropic messages input %d: tool result requires tool call id", index)
+				return nil, nil, -1, fmt.Errorf("anthropic messages input %d: tool result requires tool call id", index)
 			}
 			isError := message.ToolResult != nil && message.ToolResult.Status == agentschema.ToolResultError
 			result := anthropic.NewToolResultBlock(message.ToolCallID, message.Content, isError)
 			for _, attachment := range message.Attachments {
 				prepared, err := config.PrepareImage(attachment, imageCount)
 				if err != nil {
-					return nil, nil, fmt.Errorf("anthropic messages input %d: %w", index, err)
+					return nil, nil, -1, fmt.Errorf("anthropic messages input %d: %w", index, err)
 				}
 				image := anthropic.NewImageBlockBase64(prepared.MediaType, prepared.Base64)
 				result.OfToolResult.Content = append(result.OfToolResult.Content, anthropic.ToolResultBlockParamContentUnion{OfImage: image.OfImage})
 			}
-			messages = append(messages, anthropic.NewUserMessage(result))
+			if previousWasTool && len(messages) > 0 {
+				messages[len(messages)-1].Content = append(messages[len(messages)-1].Content, result)
+			} else {
+				messages = append(messages, anthropic.NewUserMessage(result))
+			}
+			previousWasTool = true
+			if index < cachePrefixMessages {
+				prefixMessageIndex = len(messages) - 1
+			}
 		default:
-			return nil, nil, fmt.Errorf("anthropic messages input %d: unsupported role %q", index, message.Role)
+			return nil, nil, -1, fmt.Errorf("anthropic messages input %d: unsupported role %q", index, message.Role)
 		}
 	}
-	return system, messages, nil
+	return system, messages, prefixMessageIndex, nil
+}
+
+// applyPromptCacheControl places at most four ephemeral cache breakpoints
+// (tools, system, committed cross-turn history tail, and the final cacheable
+// message block) in Anthropic's tools -> system -> messages evaluation order.
+func applyPromptCacheControl(params *anthropic.MessageNewParams, compatibility Compatibility, prefixMessageIndex int) {
+	if params == nil || compatibility.PromptCacheMode == PromptCacheModeDisabled {
+		return
+	}
+	ephemeral := anthropic.NewCacheControlEphemeralParam()
+	if len(params.Tools) > 0 && compatibility.SupportsCacheControlOnTools != nil && *compatibility.SupportsCacheControlOnTools {
+		if lastTool := params.Tools[len(params.Tools)-1].OfTool; lastTool != nil {
+			lastTool.CacheControl = ephemeral
+		}
+	}
+	if len(params.System) > 0 {
+		for index := len(params.System) - 1; index >= 0; index-- {
+			if params.System[index].Text != "" {
+				params.System[index].CacheControl = ephemeral
+				break
+			}
+		}
+	}
+	lastMarked := applyMessageCacheControl(params.Messages, len(params.Messages)-1, ephemeral)
+	if prefixMessageIndex >= 0 && prefixMessageIndex < lastMarked {
+		applyMessageCacheControl(params.Messages, prefixMessageIndex, ephemeral)
+	}
+}
+
+func applyMessageCacheControl(messages []anthropic.MessageParam, maxIndex int, cacheControl anthropic.CacheControlEphemeralParam) int {
+	for msgIdx := min(maxIndex, len(messages)-1); msgIdx >= 0; msgIdx-- {
+		content := messages[msgIdx].Content
+		for blockIdx := len(content) - 1; blockIdx >= 0; blockIdx-- {
+			if setBlockCacheControl(&content[blockIdx], cacheControl) {
+				return msgIdx
+			}
+		}
+	}
+	return -1
+}
+
+func setBlockCacheControl(block *anthropic.ContentBlockParamUnion, cacheControl anthropic.CacheControlEphemeralParam) bool {
+	switch {
+	case block.OfText != nil:
+		if block.OfText.Text == "" {
+			return false
+		}
+		block.OfText.CacheControl = cacheControl
+		return true
+	case block.OfImage != nil:
+		block.OfImage.CacheControl = cacheControl
+		return true
+	case block.OfDocument != nil:
+		block.OfDocument.CacheControl = cacheControl
+		return true
+	case block.OfSearchResult != nil:
+		block.OfSearchResult.CacheControl = cacheControl
+		return true
+	case block.OfToolUse != nil:
+		block.OfToolUse.CacheControl = cacheControl
+		return true
+	case block.OfToolResult != nil:
+		block.OfToolResult.CacheControl = cacheControl
+		return true
+	default:
+		return false
+	}
 }
 
 func assistantBlocks(message *agentschema.Message, config providers.ModelConfig) ([]anthropic.ContentBlockParamUnion, error) {

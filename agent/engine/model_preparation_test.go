@@ -9,6 +9,7 @@ import (
 
 	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
 	agentmodel "github.com/alfredxw/denova/agent/model"
+	agentstream "github.com/alfredxw/denova/agent/model/stream"
 	agentschema "github.com/alfredxw/denova/agent/schema"
 )
 
@@ -119,4 +120,83 @@ func TestModelPreparationPreservesMiddlewareErrorWithoutCallingProvider(t *testi
 	if len(model.capturedInputs()) != 0 {
 		t.Fatal("rejected request reached the provider")
 	}
+}
+
+type stripHistoricalToolMiddleware struct {
+	agentmiddleware.BaseMiddleware
+}
+
+func (stripHistoricalToolMiddleware) BeforeModelCall(ctx context.Context, call *agentmodel.ModelCall, _ *agentmiddleware.ModelContext) (context.Context, *agentmodel.ModelCall, error) {
+	filtered := make([]*agentschema.Message, 0, len(call.Messages))
+	for _, msg := range call.Messages {
+		if msg != nil && msg.Role == agentschema.ToolRole {
+			continue
+		}
+		filtered = append(filtered, msg)
+	}
+	next := *call
+	next.Messages = filtered
+	return ctx, &next, nil
+}
+
+func TestModelPreparationSetsCachePrefixBeforeActiveUserAfterMiddleware(t *testing.T) {
+	var seenCachePrefix int
+	model := &capturingOptionsModel{
+		reply: agentschema.AssistantMessage("ok", nil),
+		onCall: func(opts *agentmodel.Options) {
+			seenCachePrefix = opts.CachePrefixMessages
+		},
+	}
+	activeUser := agentschema.UserMessage("turn 2 wrapped with runtime snapshot")
+	messages := []*agentschema.Message{
+		agentschema.UserMessage("leading lore"),
+		agentschema.UserMessage("turn 1"),
+		agentschema.AssistantMessage("call tool", []agentschema.ToolCall{{ID: "t1", Type: "function", Function: agentschema.FunctionCall{Name: "read", Arguments: `{}`}}}),
+		agentschema.ToolMessage(agentschema.TextToolResult("old result"), "t1"),
+		agentschema.AssistantMessage("turn 1 final", nil),
+		activeUser,
+	}
+	loop, err := newModelToolLoop(t.Context(), loopConfig{
+		Model:       model,
+		Instruction: "system",
+		Middlewares: []agentmiddleware.Middleware{&stripHistoricalToolMiddleware{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	iterator := loop.Run(t.Context(), &loopInput{
+		Messages:             messages,
+		stablePrefixMessages: 1,
+		activeUserMessage:    activeUser,
+	})
+	for {
+		event, ok := iterator.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+	}
+	// Post-middleware messages: [system, leading lore, turn 1, call tool, turn 1 final, activeUser].
+	// activeUser is at index 5, so CachePrefixMessages must be 5 (not 6 from pre-middleware).
+	if seenCachePrefix != 5 {
+		t.Fatalf("CachePrefixMessages = %d, want 5", seenCachePrefix)
+	}
+}
+
+type capturingOptionsModel struct {
+	reply  *agentschema.Message
+	onCall func(*agentmodel.Options)
+}
+
+func (m *capturingOptionsModel) Generate(_ context.Context, _ []*agentschema.Message, opts ...agentmodel.ModelOption) (*agentschema.Message, error) {
+	if m.onCall != nil {
+		m.onCall(agentmodel.GetCommonOptions(nil, opts...))
+	}
+	return m.reply.Clone(), nil
+}
+
+func (m *capturingOptionsModel) Stream(context.Context, []*agentschema.Message, ...agentmodel.ModelOption) (*agentstream.StreamReader[*agentschema.Message], error) {
+	return nil, errors.New("unexpected stream call")
 }

@@ -21,7 +21,7 @@ func TestRequestMessagesPreservesToolImage(t *testing.T) {
 	}
 	message := agentschema.ToolMessage(agentschema.TextToolResult("Image read."), "read-image")
 	message.Attachments = []agentschema.Attachment{{Name: "image.png", MediaType: "image/png", Path: path, Size: int64(len(data)), SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}}
-	_, items, err := requestMessages([]*agentschema.Message{message}, providers.ModelConfig{})
+	_, items, _, err := requestMessages([]*agentschema.Message{message}, providers.ModelConfig{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

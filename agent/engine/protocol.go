@@ -133,11 +133,12 @@ func (NestedEvent) engineEvent() {}
 // ModelUsage is provider-neutral accounting for one completed model response.
 // It is a live display/trace projection and never changes the Runner transcript.
 type ModelUsage struct {
-	PromptTokens       int
-	CachedPromptTokens int
-	CompletionTokens   int
-	ReasoningTokens    int
-	TotalTokens        int
+	PromptTokens           int
+	CachedPromptTokens     int
+	CacheWritePromptTokens int
+	CompletionTokens       int
+	ReasoningTokens        int
+	TotalTokens            int
 }
 
 type ModelCompleted struct {

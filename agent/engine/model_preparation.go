@@ -22,7 +22,8 @@ type modelStepContext struct {
 	// stablePrefixSeed is lifecycle-owned provenance. It is deliberately kept
 	// outside Message.Extra so model output and caller middleware cannot label
 	// arbitrary body messages as cache-stable context.
-	stablePrefixSeed []*agentschema.Message
+	stablePrefixSeed  []*agentschema.Message
+	activeUserMessage *agentschema.Message
 }
 
 // Maintenance can call a summary model before primary model I/O begins.
@@ -77,8 +78,10 @@ func (agent *modelToolLoop) prepareModelStep(ctx context.Context, state *agentmi
 			stable++
 		}
 		nextContext := &modelStepContext{
-			ModelContext:     agentmiddleware.ModelContext{Tools: agentschema.CloneToolInfos(entryTools), Iteration: modelContext.Iteration},
-			stablePrefixSeed: agentschema.CloneMessages(messages[:min(stable, len(messages))]), instruction: modelContext.instruction,
+			ModelContext:      agentmiddleware.ModelContext{Tools: agentschema.CloneToolInfos(entryTools), Iteration: modelContext.Iteration},
+			stablePrefixSeed:  agentschema.CloneMessages(messages[:min(stable, len(messages))]),
+			activeUserMessage: agentschema.CloneMessage(modelContext.activeUserMessage),
+			instruction:       modelContext.instruction,
 		}
 		next, err := agent.prepareModelStep(agentmiddleware.ContextWithMaintenanceCommitted(entryCtx), &agentmiddleware.RunState{
 			Messages: agentschema.CloneMessages(messages), ToolInfos: agentschema.CloneToolInfos(entryTools), Extra: agentschema.CloneStringAnyMap(entryExtra),
@@ -117,7 +120,31 @@ func (agent *modelToolLoop) beforeModelCall(ctx context.Context, call *modelCall
 		call.inputEstimator = model.InputEstimator()
 	}
 	call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
+	cachePrefix := resolvedCachePrefixMessages(call.Messages, call.stablePrefixMessages, modelContext.activeUserMessage)
+	call.Options = append(call.Options, agentmodel.WithCachePrefixMessages(cachePrefix))
 	return ctx, call, nil
+}
+
+// resolvedCachePrefixMessages returns the leading message count that stays
+// byte-identical across turns. Messages strictly before the transient active
+// user message (system, leading context, and committed prior turns) remain
+// stable even after the active turn's wrapper is replaced with raw user text
+// on the next turn.
+func resolvedCachePrefixMessages(messages []*agentschema.Message, stablePrefix int, activeUser *agentschema.Message) int {
+	prefix := min(max(0, stablePrefix), len(messages))
+	if activeUser == nil {
+		return prefix
+	}
+	for index := len(messages) - 1; index >= prefix; index-- {
+		message := messages[index]
+		if message == nil || message.Role != agentschema.User {
+			continue
+		}
+		if equal, err := canonicalMessagesEqual(message, activeUser); err == nil && equal {
+			return index
+		}
+	}
+	return prefix
 }
 
 func (agent *modelToolLoop) freezeCompactionCall(step *preparedModelCall) (*preparedModelCall, error) {

@@ -19,18 +19,36 @@ func publishLatestEvent(output chan agentevent.Event, event agentevent.Event, dr
 		drops = &eventDropState{}
 	}
 	needed := 1
-	for {
+	if drops.count > 0 && cap(output) >= 2 {
+		needed = 2
+	}
+	if len(output)+needed > cap(output) {
+		queued := make([]agentevent.Event, 0, len(output))
+		for {
+			select {
+			case existing := <-output:
+				queued = append(queued, existing)
+			default:
+				goto drained
+			}
+		}
+	drained:
 		if drops.count > 0 && cap(output) >= 2 {
 			needed = 2
 		}
-		if len(output)+needed <= cap(output) {
-			break
+		for len(queued)+needed > cap(output) && len(queued) > 0 {
+			evictIndex := oldestStreamingDeltaIndex(queued)
+			if evictIndex < 0 {
+				evictIndex = 0
+			}
+			recordDroppedEvent(drops, queued[evictIndex])
+			queued = append(queued[:evictIndex], queued[evictIndex+1:]...)
+			if drops.count > 0 && cap(output) >= 2 {
+				needed = 2
+			}
 		}
-		select {
-		case evicted := <-output:
-			recordDroppedEvent(drops, evicted)
-		default:
-			// The consumer freed capacity between len and receive.
+		for _, item := range queued {
+			output <- item
 		}
 	}
 	if drops.count > 0 && cap(output) >= 2 {
@@ -41,6 +59,26 @@ func publishLatestEvent(output chan agentevent.Event, event agentevent.Event, dr
 		drops.count, drops.after = 0, 0
 	}
 	output <- event
+}
+
+func oldestStreamingDeltaIndex(events []agentevent.Event) int {
+	for index, item := range events {
+		if isStreamingDeltaPayload(item.Payload) {
+			return index
+		}
+	}
+	return -1
+}
+
+func isStreamingDeltaPayload(payload agentevent.EventPayload) bool {
+	switch value := payload.(type) {
+	case agentevent.AssistantDelta, agentevent.ThinkingDelta, agentevent.ToolInputDelta:
+		return true
+	case agentevent.NestedEvent:
+		return isStreamingDeltaPayload(value.Child.Payload)
+	default:
+		return false
+	}
 }
 
 func recordDroppedEvent(drops *eventDropState, event agentevent.Event) {

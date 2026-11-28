@@ -282,6 +282,7 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 		stablePrefixMessages++
 	}
 	stablePrefixSeed := agentschema.CloneMessages(state.Messages[:stablePrefixMessages])
+	activeUserMessage := agentschema.CloneMessage(input.activeUserMessage)
 	for iteration := 0; ; iteration++ {
 		if err := agent.contextError(ctx, options.cancel); err != nil {
 			events.Send(agent.errorEvent(err))
@@ -297,8 +298,10 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 		}
 
 		modelContext := &modelStepContext{
-			ModelContext:     agentmiddleware.ModelContext{Tools: agentschema.CloneToolInfos(state.ToolInfos), Iteration: iteration},
-			stablePrefixSeed: agentschema.CloneMessages(stablePrefixSeed), instruction: runContext.Instruction,
+			ModelContext:      agentmiddleware.ModelContext{Tools: agentschema.CloneToolInfos(state.ToolInfos), Iteration: iteration},
+			stablePrefixSeed:  agentschema.CloneMessages(stablePrefixSeed),
+			activeUserMessage: agentschema.CloneMessage(activeUserMessage),
+			instruction:       runContext.Instruction,
 		}
 		step, err := agent.prepareModelStep(ctx, state, modelContext, input.EnableStreaming)
 		if err != nil {

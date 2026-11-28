@@ -650,6 +650,7 @@ func (engine *Engine) Run(
 	iterator := loop.Run(loopCtx, &loopInput{
 		Messages: modelMessages, EnableStreaming: true,
 		stablePrefixMessages: stablePrefixMessages,
+		activeUserMessage:    activeModelUser,
 	}, runOption)
 	defer func() {
 		// Even when journal/event delivery fails, all concrete tool producers
@@ -897,7 +898,8 @@ func (engine *Engine) Run(
 					if value := message.ResponseMeta.Usage; value != nil {
 						usage = ModelUsage{
 							PromptTokens: value.PromptTokens, CachedPromptTokens: value.PromptTokenDetails.CachedTokens,
-							CompletionTokens: value.CompletionTokens, ReasoningTokens: value.CompletionTokensDetails.ReasoningTokens,
+							CacheWritePromptTokens: value.PromptTokenDetails.CacheWriteTokens,
+							CompletionTokens:       value.CompletionTokens, ReasoningTokens: value.CompletionTokensDetails.ReasoningTokens,
 							TotalTokens: value.TotalTokens,
 						}
 					}
@@ -1091,7 +1093,8 @@ func (engine *Engine) evaluateGoal(
 		if emitErr := emit(ModelCompleted{
 			Usage: ModelUsage{
 				PromptTokens: usage.PromptTokens, CachedPromptTokens: usage.PromptTokenDetails.CachedTokens,
-				CompletionTokens: usage.CompletionTokens, ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens,
+				CacheWritePromptTokens: usage.PromptTokenDetails.CacheWriteTokens,
+				CompletionTokens:       usage.CompletionTokens, ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens,
 				TotalTokens: usage.TotalTokens,
 			},
 			FinishReason: decision.FinishReason,
