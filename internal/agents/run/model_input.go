@@ -108,6 +108,7 @@ type modelInputLogCacheResultRecord struct {
 	RunID                 string  `json:"run_id,omitempty"`
 	PromptTokens          int     `json:"prompt_tokens"`
 	CacheReadTokens       int     `json:"cache_read_tokens"`
+	CacheWriteTokens      int     `json:"cache_write_tokens,omitempty"`
 	UncachedPromptTokens  int     `json:"uncached_prompt_tokens"`
 	CacheReadRatio        float64 `json:"cache_read_ratio"`
 	CacheWriteTokensKnown bool    `json:"cache_write_tokens_known"`

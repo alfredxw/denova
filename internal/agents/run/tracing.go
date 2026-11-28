@@ -396,7 +396,13 @@ func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName s
 			}
 			if msg != nil && msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
 				u := msg.ResponseMeta.Usage
-				call.Usage = &statistics.Usage{Prompt: int64(u.PromptTokens), Cached: int64(u.PromptTokenDetails.CachedTokens), Output: int64(u.CompletionTokens), Total: int64(u.TotalTokens)}
+				call.Usage = &statistics.Usage{
+					Prompt:     int64(u.PromptTokens),
+					Cached:     int64(u.PromptTokenDetails.CachedTokens),
+					CacheWrite: int64(u.PromptTokenDetails.CacheWriteTokens),
+					Output:     int64(u.CompletionTokens),
+					Total:      int64(u.TotalTokens),
+				}
 			}
 			statistics.RecordCall(span.statisticsRoot, call)
 		})
@@ -416,7 +422,7 @@ func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName s
 			outcome.FinishReason = strings.TrimSpace(msg.ResponseMeta.FinishReason)
 			attrs["finish_reason"] = outcome.FinishReason
 			addTokenUsageAttrs(attrs, msg.ResponseMeta.Usage)
-			logModelInputCacheResult(callID, runID, msg.ResponseMeta.Usage)
+			logModelInputCacheResult(callID, runID, msg, msg.ResponseMeta.Usage)
 		}
 		if tools := toolNamesFromCalls(msg.ToolCalls); len(tools) > 0 {
 			attrs["requested_tools"] = tools
@@ -456,6 +462,9 @@ func addTokenUsageAttrs(attrs map[string]any, usage *agentschema.TokenUsage) {
 	if usage.PromptTokens > 0 {
 		attrs["prompt_tokens"] = usage.PromptTokens
 		attrs["cached_prompt_tokens"] = usage.PromptTokenDetails.CachedTokens
+		if usage.PromptTokenDetails.CacheWriteTokens > 0 {
+			attrs["cache_write_prompt_tokens"] = usage.PromptTokenDetails.CacheWriteTokens
+		}
 		attrs["uncached_prompt_tokens"] = uncachedPromptTokens(usage.PromptTokens, usage.PromptTokenDetails.CachedTokens)
 	}
 	if usage.CompletionTokens > 0 {

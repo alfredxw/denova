@@ -412,9 +412,10 @@ type TokenUsageEvent struct {
 	CreatedAt            string           `json:"created_at"`
 	RunID                string           `json:"run_id,omitempty"`
 	AgentKind            string           `json:"agent_kind,omitempty"`
-	PromptTokens         int              `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
+	PromptTokens           int              `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens     int              `json:"cached_prompt_tokens,omitempty"`
+	CacheWritePromptTokens int              `json:"cache_write_prompt_tokens,omitempty"`
+	UncachedPromptTokens   int              `json:"uncached_prompt_tokens,omitempty"`
 	CacheHitRate         float64          `json:"cache_hit_rate,omitempty"`
 	CompletionTokens     int              `json:"completion_tokens,omitempty"`
 	ReasoningTokens      int              `json:"reasoning_tokens,omitempty"`
@@ -430,9 +431,10 @@ type TokenUsageCall struct {
 	FinishReason         string   `json:"finish_reason,omitempty"`
 	RequestedTools       []string `json:"requested_tools,omitempty"`
 	AfterTools           []string `json:"after_tools,omitempty"`
-	PromptTokens         int      `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int      `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int      `json:"uncached_prompt_tokens,omitempty"`
+	PromptTokens           int      `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens     int      `json:"cached_prompt_tokens,omitempty"`
+	CacheWritePromptTokens int      `json:"cache_write_prompt_tokens,omitempty"`
+	UncachedPromptTokens   int      `json:"uncached_prompt_tokens,omitempty"`
 	CacheHitRate         float64  `json:"cache_hit_rate,omitempty"`
 	CompletionTokens     int      `json:"completion_tokens,omitempty"`
 	ReasoningTokens      int      `json:"reasoning_tokens,omitempty"`

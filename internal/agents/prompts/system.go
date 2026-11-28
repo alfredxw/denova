@@ -86,7 +86,7 @@ type SystemInstructionInput struct {
 	StoryTellerDescription string
 	// StoryTellerPrompt contains reusable director system and turn-context rules.
 	StoryTellerPrompt string
-	// StyleRules contains director style references already filtered for this turn and size limit.
+	// StyleRules contains the director's stable style reference index.
 	StyleRules []StyleRule
 	// ChapterFilenameFormat is the chapter filename template, such as ch{order:05}-{chapter}-{title}.md.
 	ChapterFilenameFormat string

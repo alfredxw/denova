@@ -294,22 +294,33 @@ func firstToolFingerprintDivergence(previous, current []modelInputLogToolFingerp
 	return common
 }
 
-func logModelInputCacheResult(callID, runID string, usage *agentschema.TokenUsage) {
+func logModelInputCacheResult(callID, runID string, msg *agentschema.Message, usage *agentschema.TokenUsage) {
 	if !modelInputLogEnabled.Load() || strings.TrimSpace(callID) == "" || usage == nil || usage.PromptTokens <= 0 {
 		return
 	}
 	cached := max(0, min(usage.PromptTokenDetails.CachedTokens, usage.PromptTokens))
+	cacheWrite := max(0, min(usage.PromptTokenDetails.CacheWriteTokens, usage.PromptTokens))
+	cacheWriteKnown := cacheWrite > 0 || messageProtocol(msg) == string(providers.ProtocolAnthropicMessages)
 	record := &modelInputLogCacheResultRecord{
 		Type: "llm_cache_result", Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		CallID: strings.TrimSpace(callID), RunID: strings.TrimSpace(runID),
 		PromptTokens: usage.PromptTokens, CacheReadTokens: cached,
+		CacheWriteTokens:      cacheWrite,
 		UncachedPromptTokens:  usage.PromptTokens - cached,
 		CacheReadRatio:        float64(cached) / float64(usage.PromptTokens),
-		CacheWriteTokensKnown: false,
+		CacheWriteTokensKnown: cacheWriteKnown,
 	}
 	if !enqueueModelInputLogJob(modelInputLogJob{cacheResult: record}) {
 		slog.InfoContext(context.Background(), fmt.Sprintf("[llm-input-log] cache result dropped call_id=%s reason=queue_full", callID))
 	}
+}
+
+func messageProtocol(msg *agentschema.Message) string {
+	if msg == nil || msg.Extra == nil {
+		return ""
+	}
+	protocol, _ := msg.Extra["protocol"].(string)
+	return strings.TrimSpace(protocol)
 }
 
 func modelInputLogSystemMessages(messages []*agentschema.Message) []*agentschema.Message {

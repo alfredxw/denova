@@ -53,7 +53,13 @@ func (adapter *statisticsAdapter) Run(ctx context.Context, input external.Input,
 		call := statistics.Call{ID: rand.Text(), At: started, Kind: statistics.RuntimeTurn, Model: adapter.model,
 			Runtime: adapter.runtime, DurationMS: time.Since(started).Milliseconds(), Failed: err != nil || !finished}
 		if usage := result.Usage; usage != nil {
-			call.Usage = &statistics.Usage{Prompt: int64(usage.PromptTokens), Cached: int64(usage.PromptTokenDetails.CachedTokens), Output: int64(usage.CompletionTokens), Total: int64(usage.TotalTokens)}
+			call.Usage = &statistics.Usage{
+				Prompt:     int64(usage.PromptTokens),
+				Cached:     int64(usage.PromptTokenDetails.CachedTokens),
+				CacheWrite: int64(usage.PromptTokenDetails.CacheWriteTokens),
+				Output:     int64(usage.CompletionTokens),
+				Total:      int64(usage.TotalTokens),
+			}
 		}
 		statistics.RecordCall(adapter.root, call)
 	}()

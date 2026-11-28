@@ -94,7 +94,7 @@ func prepareWriting(ctx context.Context, runtime Runtime, request agentchat.Chat
 		request.TellerID = runtime.Config.IDEStoryTellerID
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] load ide narrative style id=%s workspace=%s", runtime.Config.IDEStoryTellerID, runtime.Workspace))
 		if len(teller.StyleRefs) > 0 || len(teller.StyleRules) > 0 {
-			converted := appagentruntime.StyleRules(dataDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
+			converted := appagentruntime.StyleRules(dataDir, teller.StyleRefs, teller.StyleRules)
 			request.StyleRules = converted
 			slog.InfoContext(ctx, fmt.Sprintf("[agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, request.StyleScenes, len(converted), appagentruntime.StyleRuleNames(converted)))
 		}

@@ -143,7 +143,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 
 	teller := interactiveapp.LoadStoryTeller(cycle.novaDir, storyContext.Meta)
 	cycle.runtimeCfg.InteractiveReplyTargetChars = storyContext.Meta.ReplyTargetChars
-	styleRules := appagentruntime.StyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
+	styleRules := appagentruntime.StyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules)
 	cycle.tellerInput = interactiveapp.StoryTellerSystemInput(teller, styleRules)
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
 	storyRuntime := interactiveapp.LoadStoryRuntimeForMeta(cycle.novaDir, storyContext.Meta)

@@ -9,6 +9,7 @@ type Totals struct {
 	UnknownUsage   int64 `json:"unknown_usage"`
 	Prompt         int64 `json:"prompt"`
 	Cached         int64 `json:"cached"`
+	CacheWrite     int64 `json:"cache_write,omitempty"`
 	Output         int64 `json:"output"`
 	Tokens         int64 `json:"tokens"`
 	DurationMS     int64 `json:"duration_ms"`
@@ -36,6 +37,7 @@ func (totals *Totals) Add(call Call) {
 	}
 	totals.Prompt += call.Usage.Prompt
 	totals.Cached += call.Usage.Cached
+	totals.CacheWrite += call.Usage.CacheWrite
 	totals.Output += call.Usage.Output
 	tokens := call.Usage.Total
 	if tokens == 0 {

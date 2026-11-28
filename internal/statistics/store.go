@@ -13,13 +13,14 @@ import (
 	"time"
 )
 
-// Usage follows the SDK convention: cached input is a subset of prompt tokens,
-// and reasoning is already included in output. Nil Usage means unreported.
+// Usage follows the SDK convention: cached input and cache-write input are
+// subsets of prompt tokens, and reasoning is already included in output. Nil Usage means unreported.
 type Usage struct {
-	Prompt int64 `json:"prompt"`
-	Cached int64 `json:"cached"`
-	Output int64 `json:"output"`
-	Total  int64 `json:"total"`
+	Prompt     int64 `json:"prompt"`
+	Cached     int64 `json:"cached"`
+	CacheWrite int64 `json:"cache_write,omitempty"`
+	Output     int64 `json:"output"`
+	Total      int64 `json:"total"`
 }
 
 type CallKind string

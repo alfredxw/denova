@@ -9,12 +9,11 @@ import (
 	"denova/internal/style"
 )
 
-// StyleRules resolves one shared prompt projection for Writing and Game. Both
-// modes therefore apply global references, scene filtering, and missing-file
-// diagnostics identically.
-func StyleRules(dataDir string, globalRefs []string, rules []teller.StyleRule, scenes []string) []prompts.StyleRule {
+// StyleRules resolves one shared stable prompt projection for Writing and Game.
+// Always emit the full style index for the active director so per-turn #scene
+// selections stay in the turn message instead of mutating the system prompt.
+func StyleRules(dataDir string, globalRefs []string, rules []teller.StyleRule) []prompts.StyleRule {
 	converted := make([]prompts.StyleRule, 0, len(rules)+1)
-	allowed := styleSceneSet(scenes)
 	styleRefs := style.NewLibrary(dataDir)
 	if len(globalRefs) > 0 {
 		converted = append(converted, prompts.StyleRule{
@@ -32,9 +31,6 @@ func StyleRules(dataDir string, globalRefs []string, rules []teller.StyleRule, s
 				Global: true, StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(rule.StyleRefs)),
 				StyleContents: rule.StyleContents,
 			})
-			continue
-		}
-		if len(allowed) > 0 && !allowed[scene] {
 			continue
 		}
 		converted = append(converted, prompts.StyleRule{
@@ -71,17 +67,4 @@ func styleReferencesForPrompt(refs []style.Reference) []prompts.StyleReference {
 		})
 	}
 	return result
-}
-
-func styleSceneSet(scenes []string) map[string]bool {
-	if len(scenes) == 0 {
-		return nil
-	}
-	set := make(map[string]bool, len(scenes))
-	for _, scene := range scenes {
-		if scene = strings.TrimSpace(scene); scene != "" {
-			set[scene] = true
-		}
-	}
-	return set
 }
