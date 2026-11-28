@@ -61,9 +61,13 @@ type ConversationBoundaryConfig struct {
 	CanonicalIdentity agentschema.CapabilityIdentity
 	Committer         ConversationCommitter
 	OnPrepared        func(agentchat.AgentContextPreparation)
+	// BeforeCommitOutput optionally drains in-process display projections up to
+	// the synchronous output boundary so intermediate step cards always precede
+	// the canonical final message in the journal.
+	BeforeCommitOutput func(context.Context) error
 	// ProjectOutput may replace the provider-neutral final message while the
 	// Boundary preserves the original Agent hash as the idempotency identity.
-	ProjectOutput func(*agentschema.Message) (*agentschema.Message, *agentcanonical.OutputProjection)
+	ProjectOutput func(agentcanonical.OutputCommitRequest) (*agentschema.Message, *agentcanonical.OutputProjection)
 }
 
 type ConversationBoundary struct {
@@ -200,12 +204,17 @@ func (boundary *ConversationBoundary) commitOutput(ctx context.Context, request 
 	}
 	var transcript *agentcanonical.OutputProjection
 	if boundary.config.ProjectOutput != nil {
-		message, projectedTranscript := boundary.config.ProjectOutput(&request.Message)
+		message, projectedTranscript := boundary.config.ProjectOutput(request)
 		if message == nil {
 			return agentcanonical.OutputCommitReceipt{}, errors.New("Denova Conversation Boundary output projector returned no canonical message")
 		}
 		request.Message = *message
 		transcript = projectedTranscript
+	}
+	if boundary.config.BeforeCommitOutput != nil {
+		if err := boundary.config.BeforeCommitOutput(ctx); err != nil {
+			return agentcanonical.OutputCommitReceipt{}, err
+		}
 	}
 	receipt, err := boundary.config.Committer.CommitOutput(ctx, prepared, request)
 	if err != nil {

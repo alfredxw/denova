@@ -153,6 +153,19 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 		if uncachedTokens < 0 {
 			uncachedTokens = 0
 		}
+		attrs := map[string]any{
+			"source":                 payload.Source.Name,
+			"finish_reason":          payload.FinishReason,
+			"prompt_tokens":          payload.Usage.PromptTokens,
+			"cached_prompt_tokens":   cachedTokens,
+			"uncached_prompt_tokens": uncachedTokens,
+			"completion_tokens":      payload.Usage.CompletionTokens,
+			"reasoning_tokens":       payload.Usage.CompletionTokensDetails.ReasoningTokens,
+			"total_tokens":           payload.Usage.TotalTokens,
+		}
+		if payload.Usage.PromptTokenDetails.CacheWriteTokens > 0 {
+			attrs["cache_write_prompt_tokens"] = payload.Usage.PromptTokenDetails.CacheWriteTokens
+		}
 		return trace.ledger.RecordTraceSpan(agentrun.TraceSpanRecord{
 			TraceID:   trace.runID,
 			SpanID:    fmt.Sprintf("model-%d", trace.modelCallCount),
@@ -160,16 +173,7 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 			Status:    "success",
 			StartedAt: now,
 			EndedAt:   now,
-			Attrs: map[string]any{
-				"source":                 payload.Source.Name,
-				"finish_reason":          payload.FinishReason,
-				"prompt_tokens":          payload.Usage.PromptTokens,
-				"cached_prompt_tokens":   cachedTokens,
-				"uncached_prompt_tokens": uncachedTokens,
-				"completion_tokens":      payload.Usage.CompletionTokens,
-				"reasoning_tokens":       payload.Usage.CompletionTokensDetails.ReasoningTokens,
-				"total_tokens":           payload.Usage.TotalTokens,
-			},
+			Attrs:     attrs,
 		})
 	case agentevent.ToolStarted:
 		if trace.observer != nil && trace.observer.HasToolDecision(payload.CallID, payload.Name) {

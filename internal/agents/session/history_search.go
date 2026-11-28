@@ -40,6 +40,9 @@ func (s *Store) SearchHistoryContent(ctx context.Context, id, query string) (str
 		return "", err
 	}
 	path := s.sessionPath(id)
+	if err := ensureSessionJournalV3(path); err != nil {
+		return "", fmt.Errorf("migrate searchable history: %w", err)
+	}
 	stamp, err := currentSessionFileStamp(path)
 	if err != nil {
 		return "", err

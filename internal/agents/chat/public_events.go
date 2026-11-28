@@ -21,7 +21,6 @@ import (
 	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
 	agentmodel "github.com/alfredxw/denova/agent/model"
 	agentschema "github.com/alfredxw/denova/agent/schema"
-	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
@@ -60,7 +59,7 @@ type publicToolInput struct {
 	name           string
 	index          int
 	descriptor     *agenttool.ToolDescriptor
-	arguments      string
+	arguments      *strings.Builder
 	targetEmitted  bool
 }
 
@@ -200,7 +199,7 @@ func (projector *PublicEventProjector) projectLocked(event agentevent.Event, inh
 	case agentevent.ModelCompleted:
 		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		projector.finishInteractiveResponseLocked(payload.RequestedTools)
-		projector.recorder.flushSource(meta)
+		projector.recorder.completeModelStep(meta, len(payload.RequestedTools) > 0)
 		delete(projector.previews, meta.SubAgentSessionID)
 		if projector.usage == nil {
 			projector.usage = newRunTokenUsageCollector(event.RunID, projector.options.AgentKind)
@@ -239,6 +238,7 @@ func (projector *PublicEventProjector) projectLocked(event agentevent.Event, inh
 		projector.toolInputs[payload.CallID] = publicToolInput{
 			providerCallID: providerCallID, parentCallID: payload.ParentCallID,
 			name: payload.Name, index: payload.Index, descriptor: payload.Descriptor,
+			arguments: &strings.Builder{},
 		}
 		data := meta.appendTo(map[string]any{
 			"id": payload.CallID, "provider_call_id": providerCallID, "name": payload.Name,
@@ -260,7 +260,7 @@ func (projector *PublicEventProjector) projectLocked(event agentevent.Event, inh
 			if providerCallID == "" {
 				providerCallID = payload.CallID
 			}
-			input = publicToolInput{providerCallID: providerCallID, name: payload.Name}
+			input = publicToolInput{providerCallID: providerCallID, name: payload.Name, arguments: &strings.Builder{}}
 			projector.emitEvent(agentrun.Event{Type: "tool_call", Data: meta.appendTo(map[string]any{
 				"id": payload.CallID, "provider_call_id": providerCallID, "name": payload.Name, "args": "",
 			})})
@@ -271,10 +271,13 @@ func (projector *PublicEventProjector) projectLocked(event agentevent.Event, inh
 		if payload.Name != "" {
 			input.name = payload.Name
 		}
-		input.arguments += payload.Delta
+		if input.arguments == nil {
+			input.arguments = &strings.Builder{}
+		}
+		input.arguments.WriteString(payload.Delta)
 		projector.toolInputs[payload.CallID] = input
 		if !input.targetEmitted {
-			if target := toolresult.TargetFromArguments(input.arguments); target != "" {
+			if target := toolresult.TargetFromArguments(input.arguments.String()); target != "" {
 				input.targetEmitted = true
 				projector.toolInputs[payload.CallID] = input
 				projector.emitEvent(agentrun.Event{Type: "tool_target", Data: meta.appendTo(map[string]any{
@@ -325,8 +328,11 @@ func (projector *PublicEventProjector) projectLocked(event agentevent.Event, inh
 			input.descriptor = payload.Descriptor
 		}
 		input.index = payload.Index
-		if input.arguments == "" {
-			input.arguments = arguments
+		if input.arguments == nil {
+			input.arguments = &strings.Builder{}
+		}
+		if input.arguments.Len() == 0 && arguments != "" {
+			input.arguments.WriteString(arguments)
 		}
 		projector.toolInputs[payload.CallID] = input
 		if streamed && !input.targetEmitted {
@@ -842,6 +848,7 @@ func (projector *PublicEventProjector) Flush() {
 	}
 	projector.mu.Lock()
 	defer projector.mu.Unlock()
+	projector.recorder.finalizeCycle(agentschema.ResultCompleted)
 	projector.flushLocked()
 }
 
@@ -853,6 +860,7 @@ func (projector *PublicEventProjector) SummarizeRun(status agent.ResultStatus) {
 	}
 	projector.mu.Lock()
 	defer projector.mu.Unlock()
+	projector.recorder.finalizeCycle(status)
 	projector.flushLocked()
 	projector.emitExecutionSummaryLocked(status)
 }
@@ -865,6 +873,7 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 	}
 	projector.mu.Lock()
 	defer projector.mu.Unlock()
+	projector.recorder.finalizeCycle(status)
 	projector.flushLocked()
 	if projector.terminal {
 		return
@@ -945,44 +954,6 @@ func (projector *PublicEventProjector) TerminalProjected() bool {
 	return projector.terminal
 }
 
-// ProjectCanonicalOutput turns the raw final Agent message into the output
-// already approved by Denova's public projection. Plan protocol tags stay
-// display-only, while Game commits the narrative accumulated across model and
-// tool steps instead of trusting only the final provider message.
-func (projector *PublicEventProjector) ProjectCanonicalOutput(message *agentschema.Message) (*agentschema.Message, *agentcanonical.OutputProjection) {
-	if projector == nil || message == nil {
-		return nil, nil
-	}
-	projector.mu.Lock()
-	defer projector.mu.Unlock()
-	projected := message.Clone()
-	if projector.request.PlanMode {
-		parser := agentplan.NewParser(projector.rootMetadata().planMetadata(), nil)
-		visible := parser.Push(projected.Content) + parser.Flush()
-		if !parser.HasSuccessfulBlock() {
-			projected.Content = visible
-			return projected, nil
-		}
-		projected.Content = ""
-		projected.ReasoningContent = ""
-		projected.ToolCalls = nil
-		return projected, &agentcanonical.OutputProjection{}
-	}
-	if projector.options.AgentKind != agentrun.AgentKindInteractiveStory {
-		return projected, nil
-	}
-	projector.finishInteractiveResponseLocked(nil)
-	content := projector.content.String()
-	if content == "" {
-		return projected, nil
-	}
-	thinking := projector.thinking.String()
-	projected.Content = content
-	projected.ReasoningContent = thinking
-	projected.ToolCalls = nil
-	return projected, &agentcanonical.OutputProjection{Content: content, Thinking: thinking}
-}
-
 func (projector *PublicEventProjector) emitEvent(event agentrun.Event) {
 	meta := eventMetadataFromData(event.Data)
 	if preview := projector.previews[meta.SubAgentSessionID]; preview != nil && preview.ordinal > 0 {
@@ -1030,6 +1001,9 @@ func (projector *PublicEventProjector) metadata(runID string, source agentevent.
 		RunID:     firstNonEmpty(strings.TrimSpace(runID), projector.options.TaskID),
 		AgentKind: projector.options.AgentKind, AgentName: name, RootAgentName: root,
 		RunPath: path, SubAgent: subAgent, ParentCallID: strings.TrimSpace(parentCallID),
+	}
+	if projector.recorder != nil && projector.recorder.cycle > 0 && meta.RunID == projector.runID {
+		meta.AgentCycle = projector.recorder.cycle
 	}
 	if subAgent {
 		meta.SubAgentSessionID = strings.TrimSpace(source.InvocationID)

@@ -295,9 +295,63 @@ func (backend *publicBackend) trackRun(
 			if projector != nil {
 				projector.Project(event)
 			}
+			handle.markProcessed(event.Cursor)
 		}
 	}()
 	return handle
+}
+
+func (handle *publicRunHandle) markProcessed(cursor agentevent.Cursor) {
+	if handle == nil || cursor == 0 {
+		return
+	}
+	handle.progressMu.Lock()
+	if cursor > handle.processedCursor {
+		handle.processedCursor = cursor
+		if handle.progressChanged != nil {
+			close(handle.progressChanged)
+			handle.progressChanged = nil
+		}
+	}
+	handle.progressMu.Unlock()
+}
+
+func (handle *publicRunHandle) waitProcessed(ctx context.Context, target agentevent.Cursor) error {
+	if handle == nil || target == 0 {
+		return nil
+	}
+	for {
+		handle.progressMu.Lock()
+		if handle.processedCursor >= target {
+			handle.progressMu.Unlock()
+			return nil
+		}
+		if handle.progressChanged == nil {
+			handle.progressChanged = make(chan struct{})
+		}
+		waitCh := handle.progressChanged
+		handle.progressMu.Unlock()
+		select {
+		case <-waitCh:
+		case <-handle.done:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (backend *publicBackend) waitRunProjection(ctx context.Context, runID string) error {
+	if backend == nil || runID == "" {
+		return nil
+	}
+	backend.mu.RLock()
+	handle := backend.runs[runID]
+	backend.mu.RUnlock()
+	if handle == nil || handle.run == nil {
+		return nil
+	}
+	return handle.waitProcessed(ctx, handle.run.EventCursor())
 }
 
 func (backend *publicBackend) bindStartedCycleRegistration(

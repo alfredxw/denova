@@ -230,6 +230,35 @@ func TestBuildInterruptedResumeMessageIncludesInterruptedContext(t *testing.T) {
 	assertContains(t, got, "runner error")
 }
 
+func TestProjectTurnContextEmitsDeduplicatedStyleScenesWithoutMutatingSystemPrompt(t *testing.T) {
+	withScenes := projectTurnContextFragments(turnContextProjectionInput{
+		Request: ChatRequest{
+			Message:     "续写这一场",
+			StyleScenes: []string{" 激烈打斗 ", "悬疑推理", "激烈打斗", ""},
+		},
+	})
+	var found string
+	for _, fragment := range withScenes {
+		if fragment.ID == "turn_style_scenes" {
+			found = fragment.Content
+			break
+		}
+	}
+	if found == "" {
+		t.Fatalf("expected turn_style_scenes fragment, got %#v", withScenes)
+	}
+	assertContains(t, found, "激烈打斗, 悬疑推理")
+
+	withoutScenes := projectTurnContextFragments(turnContextProjectionInput{
+		Request: ChatRequest{Message: "续写这一场"},
+	})
+	for _, fragment := range withoutScenes {
+		if fragment.ID == "turn_style_scenes" {
+			t.Fatalf("unexpected turn_style_scenes fragment when StyleScenes is empty: %#v", fragment)
+		}
+	}
+}
+
 func TestShouldResumeInterruptedRequestOnlyMatchesExplicitContinue(t *testing.T) {
 	if !shouldResumeInterruptedRequest("继续") {
 		t.Fatal("明确的继续请求应触发异常恢复")

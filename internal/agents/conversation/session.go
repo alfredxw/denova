@@ -417,59 +417,6 @@ func (c *SessionConversation) RecordDisplayAsk(event session.DisplayEvent) error
 	return c.session.RecordDisplayAsk(event)
 }
 
-func (c *SessionConversation) UpdateDisplayToolStatus(id, name, status string) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	return c.session.UpdateDisplayToolStatus(id, name, status)
-}
-
-func (c *SessionConversation) AppendDisplayToolArgs(id, name, delta string) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	return c.session.AppendDisplayToolArgs(id, name, delta)
-}
-
-func (c *SessionConversation) AppendDisplayEventContent(id, role, delta string) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	return c.session.AppendDisplayEventContent(id, role, delta)
-}
-
-func (c *SessionConversation) FlushDisplayEventContent(id, role string) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	return c.session.FlushDisplayEventContent(id, role)
-}
-
-func (c *SessionConversation) FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase string) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	return c.session.FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase)
-}
-
-func (c *SessionConversation) DiscardDisplayEvents(ids []string) error {
-	return c.session.DiscardDisplayEvents(ids)
-}
-
-func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result string, presentation *agenttool.ToolPresentation) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	return c.session.UpdateDisplayToolResult(id, name, status, result, presentation)
-}
-
-func (c *SessionConversation) UpdateDisplayToolIllustration(id, name string, illustration *session.ChapterIllustration) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	return c.session.UpdateDisplayToolIllustration(id, name, illustration)
-}
-
 func (c *SessionConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")

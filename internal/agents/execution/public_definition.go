@@ -13,7 +13,9 @@ import (
 	agentcontext "github.com/alfredxw/denova/agent/context"
 	agentexecution "github.com/alfredxw/denova/agent/engine/execution"
 	agentmiddleware "github.com/alfredxw/denova/agent/engine/middleware"
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agentsession "github.com/alfredxw/denova/agent/session"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 	agenttool "github.com/alfredxw/denova/agent/tool"
 	publictools "github.com/alfredxw/denova/agent/tool/builtin"
 )
@@ -78,7 +80,12 @@ func (backend *publicBackend) bindDefinition(
 		OnPrepared: func(prepared agentchat.AgentContextPreparation) {
 			projector.ProjectPreparedContext(request.Run, prepared)
 		},
-		ProjectOutput: projector.ProjectCanonicalOutput,
+		BeforeCommitOutput: func(commitCtx context.Context) error {
+			return backend.waitRunProjection(commitCtx, request.Run.ID)
+		},
+		ProjectOutput: func(output agentcanonical.OutputCommitRequest) (*agentschema.Message, *agentcanonical.OutputProjection) {
+			return agentchat.ProjectCanonicalOutput(cycle.Request, options, output)
+		},
 	})
 	if err != nil {
 		return agent.Definition{}, err

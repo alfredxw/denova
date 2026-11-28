@@ -24,6 +24,13 @@ func loadSession(filePath string) (*Session, error) {
 	if !stat.Mode().IsRegular() {
 		return nil, fmt.Errorf("会话 journal 不是普通文件: %s", filePath)
 	}
+	if err := ensureSessionJournalV3(filePath); err != nil {
+		return nil, fmt.Errorf("迁移会话 journal 失败 %s: %w", filePath, err)
+	}
+	stat, err = os.Stat(filePath)
+	if err != nil {
+		return nil, err
+	}
 
 	id := strings.TrimSuffix(filepath.Base(filePath), ".jsonl")
 	generation, err := readSessionJournalIncarnation(filePath)

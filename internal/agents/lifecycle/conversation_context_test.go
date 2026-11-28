@@ -189,11 +189,11 @@ func TestConversationBoundaryCommitsProductProjectedOutputWithRawAgentHash(t *te
 		ContextIdentity:   agentschema.CapabilityIdentity{Kind: "context.output-projection-test", Version: 1},
 		CanonicalIdentity: agentschema.CapabilityIdentity{Kind: "canonical.output-projection-test", Version: 1},
 		Committer:         committer,
-		ProjectOutput: func(message *agentschema.Message) (*agentschema.Message, *agentcanonical.OutputProjection) {
-			if message == nil || message.Content != "" {
-				t.Fatalf("raw Agent output = %#v", message)
+		ProjectOutput: func(output agentcanonical.OutputCommitRequest) (*agentschema.Message, *agentcanonical.OutputProjection) {
+			if output.Message.Content != "" {
+				t.Fatalf("raw Agent output = %#v", output.Message)
 			}
-			projected := message.Clone()
+			projected := output.Message.Clone()
 			projected.Content = "durable story narrative"
 			return projected, &agentcanonical.OutputProjection{Content: projected.Content}
 		},

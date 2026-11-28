@@ -94,6 +94,7 @@ func projectTurnContextFragments(input turnContextProjectionInput) []agentcontex
 			writingSkillLoadHintContent(skillName), 0,
 		))
 	}
+	appendFragment(styleScenesFragment(req.StyleScenes))
 	for _, fragment := range explicitSkillFragments(input.ExplicitSkills) {
 		appendFragment(fragment)
 	}
@@ -161,6 +162,35 @@ func turnFragment(id, source, title, purpose, content string, limit int) agentco
 		Content: content, Placement: agentcontext.PlacementFinalUserPrefix,
 		Limit: limit, Included: true,
 	}
+}
+
+func styleScenesFragment(scenes []string) agentcontext.Fragment {
+	cleaned := make([]string, 0, len(scenes))
+	seen := make(map[string]struct{}, len(scenes))
+	for _, scene := range scenes {
+		scene = strings.TrimSpace(scene)
+		if scene == "" {
+			continue
+		}
+		if _, exists := seen[scene]; exists {
+			continue
+		}
+		seen[scene] = struct{}{}
+		cleaned = append(cleaned, scene)
+	}
+	if len(cleaned) == 0 {
+		return agentcontext.Fragment{}
+	}
+	content := fmt.Sprintf(
+		"The user explicitly selected the following prose-style scene(s) for this turn: %s.\n"+
+			"Prioritize matching scene entries from the Prose Style References index in the system prompt, read their files before drafting prose, and ignore non-selected scene-specific references for this turn.",
+		strings.Join(cleaned, ", "),
+	)
+	return turnFragment(
+		"turn_style_scenes", "turn.style.scenes", "Selected Prose-Style Scenes for This Turn",
+		"guide scene-specific prose style selection without modifying the stable system prompt",
+		content, 0,
+	)
 }
 
 func projectReferenceFragments(bookService *book.Service, references []string, budget agentcontext.Budget) []agentcontext.Fragment {

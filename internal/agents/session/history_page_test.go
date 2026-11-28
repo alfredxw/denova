@@ -216,7 +216,7 @@ func TestHistoryPageKeepsSegmentedRunsWholeAcrossSparseAnchors(t *testing.T) {
 		if group[0].Role != "user" || group[0].Content != "user-"+runID {
 			t.Fatalf("run %s user row changed: %#v", runID, group[0])
 		}
-		for displayIndex, entry := range group[1:] {
+		for displayIndex, entry := range group[1 : len(group)-1] {
 			wantRole := "thinking"
 			if displayIndex%2 == 1 {
 				wantRole = "assistant"
@@ -225,103 +225,59 @@ func TestHistoryPageKeepsSegmentedRunsWholeAcrossSparseAnchors(t *testing.T) {
 				t.Fatalf("run %s display %d changed: %#v", runID, displayIndex, entry)
 			}
 		}
+		finalEntry := group[len(group)-1]
+		if finalEntry.Role != "assistant" || finalEntry.DisplayPhase != DisplayPhaseFinal {
+			t.Fatalf("run %s canonical final changed: %#v", runID, finalEntry)
+		}
 	}
 }
 
 // appendSegmentedHistoryRun keeps each logical run in one physical journal
-// transaction. The production runtime already commits a completed run in
-// batches; this fixture should exercise sparse history anchors, not hundreds
-// of unrelated fsync calls.
+// transaction. Under v3 single-write semantics, intermediate thinking and
+// progress assistant segments are persisted as immutable displays and the final
+// reply is persisted once as the canonical assistant message.
 func appendSegmentedHistoryRun(t *testing.T, sess *Session, runID string, displaysPerRun int, contextRevision *uint64) {
 	t.Helper()
 	now := time.Now().UTC()
 	*contextRevision++
 	user := agentschema.UserMessage("user-" + runID)
-	records := make([]any, 0, displaysPerRun+2)
+	intermediateCount := displaysPerRun - 1
+	if intermediateCount < 0 {
+		intermediateCount = 0
+	}
+	records := make([]any, 0, intermediateCount+2)
 	records = append(records, messageRecord{
 		Type: historyTypeMessage, CreatedAt: now, Message: *user,
 		MessageMetadata: MessageMetadata{RunID: runID, ContextRevision: *contextRevision},
 	})
-	var canonical strings.Builder
-	for displayIndex := 0; displayIndex < displaysPerRun; displayIndex++ {
+	for displayIndex := 0; displayIndex < intermediateCount; displayIndex++ {
 		role := "thinking"
 		content := fmt.Sprintf("think-%02d-%s", displayIndex, runID)
+		phase := ""
 		if displayIndex%2 == 1 {
 			role = "assistant"
 			content = fmt.Sprintf("answer-%02d-%s", displayIndex, runID)
-			canonical.WriteString(content)
+			phase = DisplayPhaseProgress
 		}
 		records = append(records, displayRecord{
 			Type: historyTypeDisplay, RecordID: newDisplayRecordID(),
 			DisplayEvent: DisplayEvent{
 				ID: fmt.Sprintf("%s-display-%02d", runID, displayIndex), Role: role,
-				Content: content, RunID: runID, CreatedAt: now,
+				DisplayPhase: phase, Content: content, RunID: runID, CreatedAt: now,
 			},
 		})
 	}
 	*contextRevision++
-	assistant := agentschema.AssistantMessage(canonical.String(), nil)
+	assistant := agentschema.AssistantMessage(fmt.Sprintf("final-answer-%s", runID), nil)
+	assistant.ReasoningContent = fmt.Sprintf("final-think-%s", runID)
 	records = append(records, messageRecord{
 		Type: historyTypeMessage, CreatedAt: now, Message: *assistant,
-		MessageMetadata: MessageMetadata{RunID: runID, ContextRevision: *contextRevision},
+		MessageMetadata: MessageMetadata{RunID: runID, DisplayPhase: DisplayPhaseFinal, ContextRevision: *contextRevision},
 	})
 	if err := sess.withCanonicalMutation(context.Background(), "append segmented history fixture", func() error {
 		_, err := sess.appendJournalRecordsLocked(records...)
 		return err
 	}); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestProjectionCheckpointResumesAssistantDigestWithoutLeakingContent(t *testing.T) {
-	directory := t.TempDir()
-	store, err := NewStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("digest-checkpoint")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.Append(agentschema.UserMessage("继续")); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "answer-1", Role: "assistant", Content: "第一段秘密正文", RunID: "run-checkpoint"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	indexBytes, err := os.ReadFile(conversationjournal.SidecarPath(filepath.Join(directory, "digest-checkpoint.jsonl")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(indexBytes), "第一段秘密正文") {
-		t.Fatal("assistant prose leaked into the projection checkpoint")
-	}
-
-	reopenedStore, err := NewStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := reopenedStore.Get("digest-checkpoint")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := reopened.AppendDisplayEvent(DisplayEvent{ID: "answer-2", Role: "assistant", Content: "第二段秘密正文", RunID: "run-checkpoint"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := reopened.AppendWithMetadata(agentschema.AssistantMessage("第一段秘密正文第二段秘密正文", nil), MessageMetadata{RunID: "run-checkpoint"}); err != nil {
-		t.Fatal(err)
-	}
-	page, err := reopened.ReadHistoryPage(context.Background(), -1, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.Total != 3 || len(page.Entries) != 3 {
-		t.Fatalf("checkpointed segmented run produced duplicate canonical prose: %#v", page)
-	}
-	if page.Entries[0].Role != "user" || page.Entries[1].DisplaySegmentID == "" || page.Entries[2].DisplaySegmentID == "" {
-		t.Fatalf("unexpected resumed run projection: %#v", page.Entries)
 	}
 }

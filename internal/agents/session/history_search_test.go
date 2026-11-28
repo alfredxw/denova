@@ -47,14 +47,10 @@ func TestHistorySearchCacheTracksExternalMutationsWithoutOpeningSessions(t *test
 		t.Fatal(err)
 	}
 	search("new beacon", true)
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "preview", Role: "assistant", Content: "discardable preview"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "preview", Role: "assistant", Content: "progress preview", DisplayPhase: DisplayPhaseProgress}); err != nil {
 		t.Fatal(err)
 	}
-	search("discardable preview", true)
-	if err := sess.DiscardDisplayEvents([]string{"preview"}); err != nil {
-		t.Fatal(err)
-	}
-	search("discardable preview", false)
+	search("progress preview", true)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}

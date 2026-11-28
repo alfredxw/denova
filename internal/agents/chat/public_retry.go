@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"log/slog"
 	"sort"
 	"strings"
 
@@ -45,7 +44,7 @@ func (projector *PublicEventProjector) projectRetry(meta agentEventMetadata, ret
 			if tool || retry.OutputState != agentmodel.ModelOutputComplete {
 				discard = append(discard, id)
 				delete(projector.toolInputs, id)
-				delete(projector.recorder.pendingToolIDs, id)
+				delete(projector.recorder.pendingTools, id)
 			}
 		}
 		if retry.OutputState != agentmodel.ModelOutputComplete {
@@ -64,12 +63,7 @@ func (projector *PublicEventProjector) projectRetry(meta agentEventMetadata, ret
 			projector.finishInteractiveResponseLocked(nil)
 		}
 	}
-	projector.recorder.flushSource(meta)
-	if appender, ok := projector.conversation.(interface{ DiscardDisplayEvents([]string) error }); ok && len(discard) > 0 {
-		if err := appender.DiscardDisplayEvents(discard); err != nil {
-			slog.Error("discard failed model display preview", "run_id", meta.RunID, "error", err)
-		}
-	}
+	projector.recorder.discardPreview(meta, discard, retry.OutputState != agentmodel.ModelOutputComplete)
 	delete(projector.previews, meta.SubAgentSessionID)
 	sort.Strings(discard)
 	projector.emitEvent(agentrun.Event{Type: "model_retry", Data: meta.appendTo(map[string]any{

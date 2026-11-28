@@ -517,3 +517,88 @@ func TestNewRegisteredTaskPublishesBeforeRun(t *testing.T) {
 		t.Fatal("registered a different task")
 	}
 }
+
+func TestTaskDisplayCheckpointRetractsModelRetryDiscardedSegments(t *testing.T) {
+	task, err := NewDeferred(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.retainedEventLimit = 5
+	task.retainedByteLimit = 1 << 20
+	task.Emit(agentrun.Event{Type: "agent_cycle_started", Data: map[string]any{
+		"command_id": "command-1", "delivery": "start_turn", "message": "go", "operation_id": "op-1", "cycle": 1,
+	}})
+	task.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{
+		"content": "accepted progress", "run_id": "run-1", "display_segment_id": "seg-accepted",
+	}})
+	task.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{
+		"content": "broken ", "run_id": "run-1", "display_segment_id": "seg-broken",
+	}})
+	task.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{
+		"content": "draft", "run_id": "run-1", "display_segment_id": "seg-broken",
+	}})
+	task.Emit(agentrun.Event{Type: "tool_call", Data: map[string]any{
+		"id": "tool-broken", "name": "write", "args": `{"partial":`, "run_id": "run-1",
+	}})
+	task.Emit(agentrun.Event{Type: "model_retry", Data: map[string]any{
+		"run_id": "run-1", "attempt": 1, "max_attempts": 3, "discard_ids": []string{"seg-broken", "tool-broken"},
+	}})
+	task.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{
+		"content": "recovered answer", "run_id": "run-1", "display_segment_id": "seg-recovered",
+	}})
+
+	replay, subscription, err := task.SubscribeDisplayAfter(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay.Checkpoint == nil || !replay.Checkpoint.Complete {
+		t.Fatalf("checkpoint = %#v, want complete checkpoint", replay.Checkpoint)
+	}
+	for _, ev := range replay.Checkpoint.Events {
+		data, _ := taskDisplayDataMap(ev.Data)
+		if data["display_segment_id"] == "seg-broken" || data["id"] == "tool-broken" {
+			t.Fatalf("retracted retry item remained in checkpoint: %#v", ev)
+		}
+	}
+	if len(replay.Checkpoint.Events) != 4 {
+		t.Fatalf("checkpoint events = %#v, want cycle + accepted + model_retry + recovered", replay.Checkpoint.Events)
+	}
+	task.RejectStart(errors.New("test complete"))
+	for range subscription.Events() {
+	}
+}
+
+func TestTaskDisplayCheckpointScalesLinearlyWithStreamingDeltas(t *testing.T) {
+	task, err := NewDeferred(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.retainedEventLimit = 4
+	task.retainedByteLimit = 4 << 20
+	task.Emit(agentrun.Event{Type: "agent_cycle_started", Data: map[string]any{"command_id": "c1", "cycle": 1}})
+	for i := 0; i < 4000; i++ {
+		task.Emit(agentrun.Event{Type: "chunk", Data: map[string]any{"content": "ab", "run_id": "run-1", "display_segment_id": "seg-1"}})
+	}
+	task.Emit(agentrun.Event{Type: "tool_call", Data: map[string]any{"id": "call-1", "name": "write", "args": "", "run_id": "run-1"}})
+	for i := 0; i < 2000; i++ {
+		task.Emit(agentrun.Event{Type: "tool_args_delta", Data: map[string]any{"id": "call-1", "delta": "cd", "run_id": "run-1"}})
+	}
+	replay, subscription, err := task.SubscribeDisplayAfter(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay.Checkpoint == nil || len(replay.Checkpoint.Events) != 3 {
+		t.Fatalf("checkpoint = %#v", replay.Checkpoint)
+	}
+	chunkData, _ := taskDisplayDataMap(replay.Checkpoint.Events[1].Data)
+	toolData, _ := taskDisplayDataMap(replay.Checkpoint.Events[2].Data)
+	if got := len(chunkData["content"].(string)); got != 8000 {
+		t.Fatalf("chunk content len = %d, want 8000", got)
+	}
+	if got := len(toolData["args"].(string)); got != 4000 {
+		t.Fatalf("tool args len = %d, want 4000", got)
+	}
+	task.RejectStart(errors.New("test complete"))
+	for range subscription.Events() {
+	}
+}

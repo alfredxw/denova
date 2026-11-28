@@ -12,33 +12,35 @@ import (
 )
 
 type runTokenUsage struct {
-	RunID                string              `json:"run_id,omitempty"`
-	AgentKind            string              `json:"agent_kind,omitempty"`
-	PromptTokens         int                 `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int                 `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int                 `json:"uncached_prompt_tokens,omitempty"`
-	CacheHitRate         float64             `json:"cache_hit_rate,omitempty"`
-	CompletionTokens     int                 `json:"completion_tokens,omitempty"`
-	ReasoningTokens      int                 `json:"reasoning_tokens,omitempty"`
-	TotalTokens          int                 `json:"total_tokens,omitempty"`
-	ModelCalls           int                 `json:"model_calls,omitempty"`
-	GeneratedBytes       int                 `json:"generated_bytes,omitempty"`
-	Calls                []runTokenUsageCall `json:"usage_calls,omitempty"`
+	RunID                  string              `json:"run_id,omitempty"`
+	AgentKind              string              `json:"agent_kind,omitempty"`
+	PromptTokens           int                 `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens     int                 `json:"cached_prompt_tokens,omitempty"`
+	CacheWritePromptTokens int                 `json:"cache_write_prompt_tokens,omitempty"`
+	UncachedPromptTokens   int                 `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate           float64             `json:"cache_hit_rate,omitempty"`
+	CompletionTokens       int                 `json:"completion_tokens,omitempty"`
+	ReasoningTokens        int                 `json:"reasoning_tokens,omitempty"`
+	TotalTokens            int                 `json:"total_tokens,omitempty"`
+	ModelCalls             int                 `json:"model_calls,omitempty"`
+	GeneratedBytes         int                 `json:"generated_bytes,omitempty"`
+	Calls                  []runTokenUsageCall `json:"usage_calls,omitempty"`
 }
 
 type runTokenUsageCall struct {
-	Index                int      `json:"index,omitempty"`
-	CreatedAt            string   `json:"created_at,omitempty"`
-	FinishReason         string   `json:"finish_reason,omitempty"`
-	RequestedTools       []string `json:"requested_tools,omitempty"`
-	AfterTools           []string `json:"after_tools,omitempty"`
-	PromptTokens         int      `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int      `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int      `json:"uncached_prompt_tokens,omitempty"`
-	CacheHitRate         float64  `json:"cache_hit_rate,omitempty"`
-	CompletionTokens     int      `json:"completion_tokens,omitempty"`
-	ReasoningTokens      int      `json:"reasoning_tokens,omitempty"`
-	TotalTokens          int      `json:"total_tokens,omitempty"`
+	Index                  int      `json:"index,omitempty"`
+	CreatedAt              string   `json:"created_at,omitempty"`
+	FinishReason           string   `json:"finish_reason,omitempty"`
+	RequestedTools         []string `json:"requested_tools,omitempty"`
+	AfterTools             []string `json:"after_tools,omitempty"`
+	PromptTokens           int      `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens     int      `json:"cached_prompt_tokens,omitempty"`
+	CacheWritePromptTokens int      `json:"cache_write_prompt_tokens,omitempty"`
+	UncachedPromptTokens   int      `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate           float64  `json:"cache_hit_rate,omitempty"`
+	CompletionTokens       int      `json:"completion_tokens,omitempty"`
+	ReasoningTokens        int      `json:"reasoning_tokens,omitempty"`
+	TotalTokens            int      `json:"total_tokens,omitempty"`
 }
 
 type runTokenUsageCollector struct {
@@ -69,17 +71,18 @@ func (c *runTokenUsageCollector) AddMessage(msg *agentschema.Message) {
 	}
 	c.stats.ModelCalls++
 	call := runTokenUsageCall{
-		Index:                c.stats.ModelCalls,
-		CreatedAt:            time.Now().UTC().Format(time.RFC3339Nano),
-		FinishReason:         strings.TrimSpace(msg.ResponseMeta.FinishReason),
-		RequestedTools:       toolNamesFromCalls(msg.ToolCalls),
-		AfterTools:           append([]string(nil), c.afterTools...),
-		PromptTokens:         usage.PromptTokens,
-		CachedPromptTokens:   usage.PromptTokenDetails.CachedTokens,
-		UncachedPromptTokens: uncachedPromptTokens(usage.PromptTokens, usage.PromptTokenDetails.CachedTokens),
-		CompletionTokens:     usage.CompletionTokens,
-		ReasoningTokens:      usage.CompletionTokensDetails.ReasoningTokens,
-		TotalTokens:          usage.TotalTokens,
+		Index:                  c.stats.ModelCalls,
+		CreatedAt:              time.Now().UTC().Format(time.RFC3339Nano),
+		FinishReason:           strings.TrimSpace(msg.ResponseMeta.FinishReason),
+		RequestedTools:         toolNamesFromCalls(msg.ToolCalls),
+		AfterTools:             append([]string(nil), c.afterTools...),
+		PromptTokens:           usage.PromptTokens,
+		CachedPromptTokens:     usage.PromptTokenDetails.CachedTokens,
+		CacheWritePromptTokens: usage.PromptTokenDetails.CacheWriteTokens,
+		UncachedPromptTokens:   uncachedPromptTokens(usage.PromptTokens, usage.PromptTokenDetails.CachedTokens),
+		CompletionTokens:       usage.CompletionTokens,
+		ReasoningTokens:        usage.CompletionTokensDetails.ReasoningTokens,
+		TotalTokens:            usage.TotalTokens,
 	}
 	c.afterTools = nil
 	if call.PromptTokens > 0 {
@@ -88,6 +91,7 @@ func (c *runTokenUsageCollector) AddMessage(msg *agentschema.Message) {
 	c.stats.Calls = append(c.stats.Calls, call)
 	c.stats.PromptTokens += usage.PromptTokens
 	c.stats.CachedPromptTokens += usage.PromptTokenDetails.CachedTokens
+	c.stats.CacheWritePromptTokens += usage.PromptTokenDetails.CacheWriteTokens
 	c.stats.UncachedPromptTokens += call.UncachedPromptTokens
 	c.stats.CompletionTokens += usage.CompletionTokens
 	c.stats.ReasoningTokens += usage.CompletionTokensDetails.ReasoningTokens
@@ -136,6 +140,9 @@ func (c *runTokenUsageCollector) EmitIfAny(emit func(agentrun.Event), generatedB
 		"model_calls":            stats.ModelCalls,
 		"generated_bytes":        stats.GeneratedBytes,
 		"usage_calls":            stats.Calls,
+	}
+	if stats.CacheWritePromptTokens > 0 {
+		data["cache_write_prompt_tokens"] = stats.CacheWritePromptTokens
 	}
 	emit(agentrun.Event{Type: "token_usage", Data: data})
 }

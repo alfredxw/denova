@@ -13,6 +13,7 @@ import (
 	"denova/internal/agents/session"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 
+	agentschema "github.com/alfredxw/denova/agent/schema"
 	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
@@ -43,35 +44,10 @@ func PersistAgentAssistant(conversation Conversation, content, thinking string, 
 
 type displayEventAppender interface {
 	AppendDisplayEvent(event session.DisplayEvent) error
-	UpdateDisplayToolStatus(id, name, status string) error
-}
-
-type displayToolArgsAppender interface {
-	AppendDisplayToolArgs(id, name, delta string) error
-}
-
-type displayToolResultUpdater interface {
-	UpdateDisplayToolResult(id, name, status, result string, presentation *agenttool.ToolPresentation) error
-}
-
-type displayToolIllustrationUpdater interface {
-	UpdateDisplayToolIllustration(id, name string, illustration *session.ChapterIllustration) error
 }
 
 type displayAskRecorder interface {
 	RecordDisplayAsk(event session.DisplayEvent) error
-}
-
-type displayEventContentAppender interface {
-	AppendDisplayEventContent(id, role, delta string) error
-}
-
-type displayEventContentFlusher interface {
-	FlushDisplayEventContent(id, role string) error
-}
-
-type displayAssistantRunFinalizer interface {
-	FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase string) error
 }
 
 type displayEventSourceKey struct {
@@ -85,14 +61,29 @@ type displayEventSourceKey struct {
 
 type displayTextSegment struct {
 	strings.Builder
-	id        string
-	meta      agentEventMetadata
-	persisted bool
+	id   string
+	meta agentEventMetadata
+}
+
+type displayPendingTool struct {
+	id           string
+	name         string
+	args         strings.Builder
+	meta         agentEventMetadata
+	presentation *agenttool.ToolPresentation
+}
+
+type displaySealedSegment struct {
+	role    string
+	segment displayTextSegment
 }
 
 type displaySourceRecorder struct {
-	thinking  displayTextSegment
-	assistant displayTextSegment
+	sealed                []displaySealedSegment
+	thinking              displayTextSegment
+	assistant             displayTextSegment
+	pendingFinalThinking  displayTextSegment
+	pendingFinalAssistant displayTextSegment
 }
 
 type displayEventRecorder struct {
@@ -101,9 +92,8 @@ type displayEventRecorder struct {
 	sourceOrder                   []displayEventSourceKey
 	segmentSeq                    int
 	cycle                         int
-	rootRunID                     string
-	rootAssistantSegmentIDs       []string
-	pendingToolIDs                map[string]string
+	pendingTools                  map[string]*displayPendingTool
+	pendingToolOrder              []string
 	suppressRootAssistantSegments bool
 }
 
@@ -118,7 +108,7 @@ func newDisplayEventRecorder(conversation Conversation, options displayEventReco
 	return &displayEventRecorder{
 		appender:                      appender,
 		sources:                       make(map[displayEventSourceKey]*displaySourceRecorder),
-		pendingToolIDs:                make(map[string]string),
+		pendingTools:                  make(map[string]*displayPendingTool),
 		suppressRootAssistantSegments: options.SuppressRootAssistantSegments,
 	}
 }
@@ -131,7 +121,8 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 	case "thinking", interactiveContentReclassifiedEvent:
 		meta := eventMetadataFromData(ev.Data)
 		source := r.source(meta)
-		r.flushAssistant(source)
+		r.promotePendingFinal(source)
+		sealAssistant(source)
 		content := eventDataString(ev.Data, "content")
 		if content == "" {
 			return
@@ -142,38 +133,19 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		setEventDataString(ev.Data, displaySegmentIDEventKey, source.thinking.id)
 		source.thinking.meta = meta
 		source.thinking.WriteString(content)
-		if strings.TrimSpace(source.thinking.String()) == "" {
-			return
-		}
-		contentAppender, ok := r.appender.(displayEventContentAppender)
-		if !ok {
-			return
-		}
-		if !source.thinking.persisted {
-			if err := r.appender.AppendDisplayEvent(r.thinkingDisplayEvent(source, source.thinking.String())); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist initial display thinking segment failed bytes=%d err=%v", source.thinking.Len(), err))
-				return
-			}
-			source.thinking.persisted = true
-			return
-		}
-		if err := contentAppender.AppendDisplayEventContent(source.thinking.id, "thinking", content); err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] append display thinking segment failed id=%s bytes=%d err=%v", source.thinking.id, len(content), err))
-		}
 	case "chunk":
 		meta := eventMetadataFromData(ev.Data)
 		source := r.source(meta)
-		r.flushThinking(source)
+		r.promotePendingFinal(source)
+		if meta.SubAgent {
+			sealThinking(source)
+		}
 		content := eventDataString(ev.Data, "content")
 		if content == "" {
 			return
 		}
 		if source.assistant.Len() == 0 {
 			source.assistant.id = r.nextTextSegmentID(meta, "assistant")
-			if !meta.SubAgent {
-				r.rootRunID = meta.RunID
-				r.rootAssistantSegmentIDs = append(r.rootAssistantSegmentIDs, source.assistant.id)
-			}
 		}
 		setEventDataString(ev.Data, displaySegmentIDEventKey, source.assistant.id)
 		if !meta.SubAgent {
@@ -181,30 +153,15 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		}
 		source.assistant.meta = meta
 		source.assistant.WriteString(content)
-		if r.suppressRootAssistantSegments && !meta.SubAgent {
-			return
-		}
-		contentAppender, ok := r.appender.(displayEventContentAppender)
-		if !ok {
-			return
-		}
-		if !source.assistant.persisted {
-			if strings.TrimSpace(source.assistant.String()) == "" {
-				return
-			}
-			if err := r.appender.AppendDisplayEvent(r.assistantDisplayEvent(source, source.assistant.String())); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist initial display assistant segment failed bytes=%d err=%v", source.assistant.Len(), err))
-				return
-			}
-			source.assistant.persisted = true
-			return
-		}
-		if err := contentAppender.AppendDisplayEventContent(source.assistant.id, "assistant", content); err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] append display assistant segment failed id=%s bytes=%d err=%v", source.assistant.id, len(content), err))
-		}
 	case "tool_call":
 		meta := eventMetadataFromData(ev.Data)
-		r.flushSource(meta)
+		source := r.source(meta)
+		r.promotePendingFinal(source)
+		// Seal open text in memory instead of flushing to disk: ToolInputStarted
+		// arrives while the model response is still streaming and may still be
+		// retracted by ModelRetry before ModelCompleted accepts the step.
+		sealThinking(source)
+		sealAssistant(source)
 		id := eventDataString(ev.Data, "id")
 		name := eventDataString(ev.Data, "name")
 		args := eventDataString(ev.Data, "args")
@@ -216,47 +173,40 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		if strings.TrimSpace(name) == "" {
 			name = "unknown_tool"
 		}
-		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
-			ID:                id,
-			Role:              "tool_call",
-			Content:           name,
-			Name:              name,
-			Args:              args,
-			Status:            "running",
-			ToolPresentation:  eventDataToolPresentation(ev.Data),
-			RunID:             meta.RunID,
-			AgentCycle:        meta.AgentCycle,
-			AgentKind:         meta.AgentKind,
-			AgentName:         meta.AgentName,
-			RootAgentName:     meta.RootAgentName,
-			RunPath:           append([]string(nil), meta.RunPath...),
-			SubAgent:          meta.SubAgent,
-			SubAgentSessionID: meta.SubAgentSessionID,
-			SubAgentType:      meta.SubAgentType,
-		}); err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_call failed name=%s id=%s err=%v", name, id, err))
-			return
+		pending := &displayPendingTool{
+			id:           id,
+			name:         name,
+			meta:         meta,
+			presentation: eventDataToolPresentation(ev.Data),
+		}
+		if args != "" {
+			pending.args.WriteString(args)
 		}
 		if id != "" {
-			r.pendingToolIDs[id] = name
+			if _, exists := r.pendingTools[id]; !exists {
+				r.pendingToolOrder = append(r.pendingToolOrder, id)
+			}
+			r.pendingTools[id] = pending
 		}
 	case "tool_args_delta":
 		id := eventDataString(ev.Data, "id")
 		name := eventDataString(ev.Data, "name")
 		delta := eventDataString(ev.Data, "delta")
-		if agentplan.IsToolName(name) {
+		if agentplan.IsToolName(name) || delta == "" || id == "" {
 			return
 		}
-		argsAppender, ok := r.appender.(displayToolArgsAppender)
-		if !ok {
-			return
-		}
-		if err := argsAppender.AppendDisplayToolArgs(id, name, delta); err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_args_delta failed name=%s id=%s err=%v", name, id, err))
+		if pending := r.pendingTools[id]; pending != nil {
+			pending.args.WriteString(delta)
 		}
 	case "tool_result":
 		meta := eventMetadataFromData(ev.Data)
-		r.flushSource(meta)
+		source := r.source(meta)
+		r.promotePendingFinal(source)
+		phase := session.DisplayPhaseProgress
+		if meta.SubAgent {
+			phase = ""
+		}
+		r.flushSourceSegments(source, phase)
 		id := eventDataString(ev.Data, "id")
 		name := eventDataString(ev.Data, "name")
 		result := eventDataString(ev.Data, "content")
@@ -267,26 +217,54 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		if agentplan.IsToolName(name) {
 			return
 		}
-		if resultUpdater, ok := r.appender.(displayToolResultUpdater); ok {
-			if err := resultUpdater.UpdateDisplayToolResult(id, name, status, result, eventDataToolPresentation(ev.Data)); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err))
-			}
-		} else if err := r.appender.UpdateDisplayToolStatus(id, name, status); err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_result status failed name=%s id=%s err=%v", name, id, err))
-		}
-		if illustration := eventDataChapterIllustration(ev.Data, "illustration"); illustration != nil {
-			if updater, ok := r.appender.(displayToolIllustrationUpdater); ok {
-				if err := updater.UpdateDisplayToolIllustration(id, name, illustration); err != nil {
-					slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display illustration failed name=%s id=%s err=%v", name, id, err))
-				}
-			}
-		}
+		var args string
+		presentation := eventDataToolPresentation(ev.Data)
 		if id != "" {
-			delete(r.pendingToolIDs, id)
+			if pending := r.pendingTools[id]; pending != nil {
+				args = pending.args.String()
+				if strings.TrimSpace(name) == "" {
+					name = pending.name
+				}
+				if presentation == nil {
+					presentation = pending.presentation
+				}
+				delete(r.pendingTools, id)
+			}
+		}
+		if strings.TrimSpace(name) == "" {
+			name = "unknown_tool"
+		}
+		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+			ID:                id,
+			Role:              "tool_call",
+			Content:           name,
+			Name:              name,
+			Args:              args,
+			Status:            status,
+			Result:            result,
+			ToolPresentation:  presentation,
+			Illustration:      eventDataChapterIllustration(ev.Data, "illustration"),
+			RunID:             meta.RunID,
+			AgentCycle:        meta.AgentCycle,
+			AgentKind:         meta.AgentKind,
+			AgentName:         meta.AgentName,
+			RootAgentName:     meta.RootAgentName,
+			RunPath:           append([]string(nil), meta.RunPath...),
+			SubAgent:          meta.SubAgent,
+			SubAgentSessionID: meta.SubAgentSessionID,
+			SubAgentType:      meta.SubAgentType,
+		}); err != nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err))
 		}
 	case "ask_pending", "ask_resolved":
 		meta := eventMetadataFromData(ev.Data)
-		r.flushSource(meta)
+		source := r.source(meta)
+		r.promotePendingFinal(source)
+		phase := session.DisplayPhaseProgress
+		if meta.SubAgent {
+			phase = ""
+		}
+		r.flushSourceSegments(source, phase)
 		ask := eventDataAskInteraction(ev.Data)
 		if ask == nil {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] ignore invalid display Ask event type=%s", ev.Type))
@@ -315,69 +293,97 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display Ask failed id=%s status=%s err=%v", ask.ID, ask.Status, err))
 		}
 	case "subagent_settled":
-		r.flushSource(eventMetadataFromData(ev.Data))
+		r.flushSubAgentSource(eventMetadataFromData(ev.Data))
 	case "context_compaction":
-		if !eventDataBool(ev.Data, "runtime_managed") {
-			return
-		}
 		status := eventDataString(ev.Data, "status")
 		if status != "completed" && status != "failed" {
 			return
 		}
-		r.flushAllText()
-		if status == "completed" {
-			status = "success"
-		} else {
-			status = "error"
+		r.flushAllIntermediateText()
+		displayStatus := "success"
+		if status != "completed" {
+			displayStatus = "error"
 		}
 		meta := eventMetadataFromData(ev.Data)
+		tokensBefore := eventDataInt(ev.Data, "tokens_before")
+		if tokensBefore == 0 {
+			tokensBefore = eventDataInt(ev.Data, "observed_prompt_tokens")
+		}
+		if tokensBefore == 0 {
+			tokensBefore = eventDataInt(ev.Data, "estimated_tokens_before")
+		}
+		tokensAfter := eventDataInt(ev.Data, "tokens_after")
+		if tokensAfter == 0 {
+			tokensAfter = eventDataInt(ev.Data, "estimated_tokens_after")
+		}
 		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
-			ID: eventDataString(ev.Data, "id"), Role: "context_compaction", Status: status,
-			Phase: eventDataString(ev.Data, "phase"), RuntimeManaged: true,
-			Content: eventDataString(ev.Data, "summary"), RunID: meta.RunID,
-			AgentKind: meta.AgentKind, AgentCycle: meta.AgentCycle,
+			ID:                       eventDataString(ev.Data, "id"),
+			Role:                     "context_compaction",
+			Status:                   displayStatus,
+			Phase:                    eventDataString(ev.Data, "phase"),
+			RuntimeManaged:           eventDataBool(ev.Data, "runtime_managed"),
+			Content:                  eventDataString(ev.Data, "summary"),
+			RunID:                    meta.RunID,
+			AgentKind:                meta.AgentKind,
+			AgentCycle:               meta.AgentCycle,
+			TokensBefore:             tokensBefore,
+			TokensAfter:              tokensAfter,
+			ProjectedTokensBefore:    eventDataInt(ev.Data, "projected_tokens_before"),
+			ProjectedTokensAfter:     eventDataInt(ev.Data, "projected_tokens_after"),
+			ReservedCompletionTokens: eventDataInt(ev.Data, "reserved_completion_tokens"),
+			ReservedToolResultTokens: eventDataInt(ev.Data, "reserved_tool_result_tokens"),
+			ContextWindowTokens:      eventDataInt(ev.Data, "context_window_tokens"),
+			Threshold:                eventDataFloat(ev.Data, "threshold"),
+			TargetRatio:              eventDataFloat(ev.Data, "target_ratio"),
+			CompactionRevision:       eventDataInt(ev.Data, "revision"),
+			SourceMessageCount:       eventDataInt(ev.Data, "source_message_count"),
+			MessageCountBefore:       eventDataInt(ev.Data, "message_count_before"),
+			MessageCountAfter:        eventDataInt(ev.Data, "message_count_after"),
+			CompactionReason:         eventDataString(ev.Data, "reason"),
 		}); err != nil {
-			slog.ErrorContext(context.Background(), "Persist runtime compaction display failed", "error", err)
+			slog.ErrorContext(context.Background(), "Persist compaction display failed", "error", err)
 		}
 	case "token_usage":
-		r.flushAllText()
+		r.flushActiveTextWithoutPromotingFinal()
 		stats := runTokenUsage{
-			RunID:                eventDataString(ev.Data, "run_id"),
-			AgentKind:            eventDataString(ev.Data, "agent_kind"),
-			PromptTokens:         eventDataInt(ev.Data, "prompt_tokens"),
-			CachedPromptTokens:   eventDataInt(ev.Data, "cached_prompt_tokens"),
-			UncachedPromptTokens: eventDataInt(ev.Data, "uncached_prompt_tokens"),
-			CacheHitRate:         eventDataFloat(ev.Data, "cache_hit_rate"),
-			CompletionTokens:     eventDataInt(ev.Data, "completion_tokens"),
-			ReasoningTokens:      eventDataInt(ev.Data, "reasoning_tokens"),
-			TotalTokens:          eventDataInt(ev.Data, "total_tokens"),
-			ModelCalls:           eventDataInt(ev.Data, "model_calls"),
-			GeneratedBytes:       eventDataInt(ev.Data, "generated_bytes"),
-			Calls:                eventDataUsageCalls(ev.Data, "usage_calls"),
+			RunID:                  eventDataString(ev.Data, "run_id"),
+			AgentKind:              eventDataString(ev.Data, "agent_kind"),
+			PromptTokens:           eventDataInt(ev.Data, "prompt_tokens"),
+			CachedPromptTokens:     eventDataInt(ev.Data, "cached_prompt_tokens"),
+			CacheWritePromptTokens: eventDataInt(ev.Data, "cache_write_prompt_tokens"),
+			UncachedPromptTokens:   eventDataInt(ev.Data, "uncached_prompt_tokens"),
+			CacheHitRate:           eventDataFloat(ev.Data, "cache_hit_rate"),
+			CompletionTokens:       eventDataInt(ev.Data, "completion_tokens"),
+			ReasoningTokens:        eventDataInt(ev.Data, "reasoning_tokens"),
+			TotalTokens:            eventDataInt(ev.Data, "total_tokens"),
+			ModelCalls:             eventDataInt(ev.Data, "model_calls"),
+			GeneratedBytes:         eventDataInt(ev.Data, "generated_bytes"),
+			Calls:                  eventDataUsageCalls(ev.Data, "usage_calls"),
 		}
 		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
-			ID:                   stats.RunID,
-			Role:                 "token_usage",
-			Content:              tokenUsageContent(stats),
-			Name:                 "token_usage",
-			CreatedAt:            eventDataTime(ev.Data, "created_at"),
-			RunID:                stats.RunID,
-			AgentKind:            stats.AgentKind,
-			PromptTokens:         stats.PromptTokens,
-			CachedPromptTokens:   stats.CachedPromptTokens,
-			UncachedPromptTokens: stats.UncachedPromptTokens,
-			CacheHitRate:         stats.CacheHitRate,
-			CompletionTokens:     stats.CompletionTokens,
-			ReasoningTokens:      stats.ReasoningTokens,
-			TotalTokens:          stats.TotalTokens,
-			ModelCalls:           stats.ModelCalls,
-			GeneratedBytes:       stats.GeneratedBytes,
-			UsageCalls:           usageCallsForSession(stats.Calls),
+			ID:                     stats.RunID,
+			Role:                   "token_usage",
+			Content:                tokenUsageContent(stats),
+			Name:                   "token_usage",
+			CreatedAt:              eventDataTime(ev.Data, "created_at"),
+			RunID:                  stats.RunID,
+			AgentKind:              stats.AgentKind,
+			PromptTokens:           stats.PromptTokens,
+			CachedPromptTokens:     stats.CachedPromptTokens,
+			CacheWritePromptTokens: stats.CacheWritePromptTokens,
+			UncachedPromptTokens:   stats.UncachedPromptTokens,
+			CacheHitRate:           stats.CacheHitRate,
+			CompletionTokens:       stats.CompletionTokens,
+			ReasoningTokens:        stats.ReasoningTokens,
+			TotalTokens:            stats.TotalTokens,
+			ModelCalls:             stats.ModelCalls,
+			GeneratedBytes:         stats.GeneratedBytes,
+			UsageCalls:             usageCallsForSession(stats.Calls),
 		}); err != nil {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist token_usage failed run_id=%s err=%v", stats.RunID, err))
 		}
 	case "execution_summary":
-		r.flushAllText()
+		r.flushActiveTextWithoutPromotingFinal()
 		meta := eventMetadataFromData(ev.Data)
 		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
 			ID:            eventDataString(ev.Data, "run_id"),
@@ -393,7 +399,10 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		}
 	case "proposed_plan":
 		meta := eventMetadataFromData(ev.Data)
-		r.flushSource(meta)
+		source := r.source(meta)
+		r.promotePendingFinal(source)
+		r.flushSealedSegments(source, session.DisplayPhaseProgress)
+		r.flushThinking(source)
 		content := eventDataString(ev.Data, "content")
 		if strings.TrimSpace(content) == "" {
 			return
@@ -415,33 +424,97 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		}); err != nil {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display plan event failed role=%s bytes=%d err=%v", ev.Type, len(content), err))
 		}
-	case "error", "aborted":
-		r.flushAllText()
-		r.finalizeRootAssistantSegments(session.DisplayPhasePartial)
+	case "error", "aborted", "suspended":
+		r.flushAllPartialText()
 		status := "error"
 		if ev.Type == "aborted" && ev.DataString("reason") == agentrun.AbortReasonUserRequested {
 			status = "cancelled"
 		}
-		for id, name := range r.pendingToolIDs {
-			if err := r.appender.UpdateDisplayToolStatus(id, name, status); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool terminal status failed name=%s id=%s status=%s err=%v", name, id, status, err))
-			}
-		}
-		r.pendingToolIDs = make(map[string]string)
+		r.flushPendingTools(status)
 	case "done":
-		r.flushAllText()
-		r.finalizeRootAssistantSegments(session.DisplayPhaseFinal)
-		for id, name := range r.pendingToolIDs {
-			if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_done failed name=%s id=%s err=%v", name, id, err))
-			}
-		}
-		r.pendingToolIDs = make(map[string]string)
+		r.discardRootPendingFinal()
+		r.flushActiveTextWithoutPromotingFinal()
+		r.flushPendingTools("success")
 	}
 }
 
+func (r *displayEventRecorder) completeModelStep(meta agentEventMetadata, hasTools bool) {
+	if r == nil || r.appender == nil {
+		return
+	}
+	source := r.sources[r.sourceKey(meta)]
+	if source == nil {
+		return
+	}
+	if meta.SubAgent {
+		r.flushSourceSegments(source, "")
+		return
+	}
+	if meta.AgentKind == agentrun.AgentKindInteractiveStory {
+		// Interactive stories store chronological display events around the
+		// narrative anchor instead of a Writing Session canonical messageRecord.
+		// Flush thinking at step completion so post-narrative reasoning stays
+		// anchored after submit_interactive_turn instead of falling back above
+		// the narrative.
+		r.promotePendingFinal(source)
+		r.flushSealedSegments(source, "")
+		r.flushThinking(source)
+		source.assistant = displayTextSegment{}
+		return
+	}
+	if hasTools {
+		r.promotePendingFinal(source)
+		r.flushSourceSegments(source, session.DisplayPhaseProgress)
+		return
+	}
+	if len(source.sealed) == 0 && source.thinking.Len() == 0 && source.assistant.Len() == 0 {
+		// Usage-only ModelCompleted (e.g. Goal evaluation) carries no new assistant
+		// output and must not disturb pendingFinal from the actual response.
+		return
+	}
+	// Terminal step without tool calls: Engine.Run commits canonical
+	// messageRecord (with both ReasoningContent and Content) synchronously.
+	// Hold this step in memory only in case the run aborts before CommitOutput
+	// or enters a continuation step.
+	r.promotePendingFinal(source)
+	r.flushSealedSegments(source, session.DisplayPhaseProgress)
+	source.pendingFinalThinking = source.thinking
+	source.thinking = displayTextSegment{}
+	source.pendingFinalAssistant = source.assistant
+	source.assistant = displayTextSegment{}
+}
+
+func (r *displayEventRecorder) discardPreview(meta agentEventMetadata, discardIDs []string, discardProse bool) {
+	if r == nil {
+		return
+	}
+	for _, id := range discardIDs {
+		delete(r.pendingTools, id)
+	}
+	if !discardProse {
+		return
+	}
+	if source := r.sources[r.sourceKey(meta)]; source != nil {
+		source.sealed = nil
+		source.thinking = displayTextSegment{}
+		source.assistant = displayTextSegment{}
+	}
+}
+
+func (r *displayEventRecorder) finalizeCycle(status agentschema.ResultStatus) {
+	if r == nil || r.appender == nil {
+		return
+	}
+	if status == agentschema.ResultCompleted {
+		r.discardRootFinalText()
+		r.flushSubAgentText()
+		return
+	}
+	r.flushAllPartialText()
+}
+
 func (r *displayEventRecorder) source(meta agentEventMetadata) *displaySourceRecorder {
-	key := displaySourceKey(meta)
+	key := r.sourceKey(meta)
 	if source := r.sources[key]; source != nil {
 		return source
 	}
@@ -451,135 +524,296 @@ func (r *displayEventRecorder) source(meta agentEventMetadata) *displaySourceRec
 	return source
 }
 
-func (r *displayEventRecorder) flushSource(meta agentEventMetadata) {
+func (r *displayEventRecorder) flushSubAgentSource(meta agentEventMetadata) {
 	if r == nil {
 		return
 	}
-	source := r.sources[displaySourceKey(meta)]
-	r.flushThinking(source)
-	r.flushAssistant(source)
+	source := r.sources[r.sourceKey(meta)]
+	r.flushSourceSegments(source, "")
 }
 
-func displaySourceKey(meta agentEventMetadata) displayEventSourceKey {
+func (r *displayEventRecorder) sourceKey(meta agentEventMetadata) displayEventSourceKey {
+	cycle := meta.AgentCycle
+	if cycle == 0 && r != nil && r.cycle > 0 {
+		cycle = r.cycle
+	}
 	return displayEventSourceKey{
-		runID: meta.RunID, cycle: meta.AgentCycle, agentName: meta.AgentName,
+		runID: meta.RunID, cycle: cycle, agentName: meta.AgentName,
 		runPath: strings.Join(meta.RunPath, "\x00"), subAgent: meta.SubAgent, subAgentSessionID: meta.SubAgentSessionID,
 	}
 }
 
-func (r *displayEventRecorder) flushAllText() {
+func sealThinking(source *displaySourceRecorder) {
+	if source == nil || source.thinking.Len() == 0 {
+		return
+	}
+	source.sealed = append(source.sealed, displaySealedSegment{role: "thinking", segment: source.thinking})
+	source.thinking = displayTextSegment{}
+}
+
+func sealAssistant(source *displaySourceRecorder) {
+	if source == nil || source.assistant.Len() == 0 {
+		return
+	}
+	source.sealed = append(source.sealed, displaySealedSegment{role: "assistant", segment: source.assistant})
+	source.assistant = displayTextSegment{}
+}
+
+func (r *displayEventRecorder) flushSealedSegments(source *displaySourceRecorder, assistantPhase string) {
+	if r == nil || source == nil || len(source.sealed) == 0 {
+		return
+	}
+	sealed := source.sealed
+	source.sealed = nil
+	for _, item := range sealed {
+		if item.role == "thinking" {
+			r.persistThinkingSegment(item.segment)
+		} else {
+			r.persistAssistantSegment(item.segment, assistantPhase)
+		}
+	}
+}
+
+func (r *displayEventRecorder) flushSourceSegments(source *displaySourceRecorder, assistantPhase string) {
+	if r == nil || source == nil {
+		return
+	}
+	r.flushSealedSegments(source, assistantPhase)
+	r.flushThinking(source)
+	r.flushAssistantWithPhase(source, assistantPhase)
+}
+
+func (r *displayEventRecorder) promotePendingFinal(source *displaySourceRecorder) {
+	if r == nil || source == nil {
+		return
+	}
+	if source.pendingFinalThinking.Len() > 0 {
+		segment := source.pendingFinalThinking
+		source.pendingFinalThinking = displayTextSegment{}
+		r.persistThinkingSegment(segment)
+	}
+	if source.pendingFinalAssistant.Len() > 0 {
+		segment := source.pendingFinalAssistant
+		source.pendingFinalAssistant = displayTextSegment{}
+		r.persistAssistantSegment(segment, session.DisplayPhaseProgress)
+	}
+}
+
+func (r *displayEventRecorder) discardRootPendingFinal() {
+	if r == nil {
+		return
+	}
+	for _, key := range r.sourceOrder {
+		if key.subAgent {
+			continue
+		}
+		if source := r.sources[key]; source != nil {
+			source.pendingFinalThinking = displayTextSegment{}
+			source.pendingFinalAssistant = displayTextSegment{}
+		}
+	}
+}
+
+func (r *displayEventRecorder) discardRootFinalText() {
+	if r == nil {
+		return
+	}
+	for _, key := range r.sourceOrder {
+		if key.subAgent {
+			continue
+		}
+		if source := r.sources[key]; source != nil {
+			source.pendingFinalThinking = displayTextSegment{}
+			source.pendingFinalAssistant = displayTextSegment{}
+			source.sealed = nil
+			source.thinking = displayTextSegment{}
+			source.assistant = displayTextSegment{}
+		}
+	}
+}
+
+func (r *displayEventRecorder) flushSubAgentText() {
+	if r == nil {
+		return
+	}
+	for _, key := range r.sourceOrder {
+		if !key.subAgent {
+			continue
+		}
+		r.flushSourceSegments(r.sources[key], "")
+	}
+}
+
+func (r *displayEventRecorder) flushActiveTextWithoutPromotingFinal() {
+	if r == nil {
+		return
+	}
+	for _, key := range r.sourceOrder {
+		phase := session.DisplayPhaseProgress
+		if key.subAgent {
+			phase = ""
+		}
+		r.flushSourceSegments(r.sources[key], phase)
+	}
+}
+
+func (r *displayEventRecorder) flushAllIntermediateText() {
 	if r == nil {
 		return
 	}
 	for _, key := range r.sourceOrder {
 		source := r.sources[key]
-		r.flushThinking(source)
-		r.flushAssistant(source)
+		r.promotePendingFinal(source)
+		phase := session.DisplayPhaseProgress
+		if key.subAgent {
+			phase = ""
+		}
+		r.flushSourceSegments(source, phase)
 	}
+}
+
+func (r *displayEventRecorder) flushAllPartialText() {
+	if r == nil {
+		return
+	}
+	for _, key := range r.sourceOrder {
+		source := r.sources[key]
+		if source == nil {
+			continue
+		}
+		if source.pendingFinalThinking.Len() > 0 {
+			segment := source.pendingFinalThinking
+			source.pendingFinalThinking = displayTextSegment{}
+			r.persistThinkingSegment(segment)
+		}
+		if source.pendingFinalAssistant.Len() > 0 {
+			segment := source.pendingFinalAssistant
+			source.pendingFinalAssistant = displayTextSegment{}
+			if key.subAgent {
+				r.persistAssistantSegment(segment, "")
+			} else {
+				r.persistAssistantSegment(segment, session.DisplayPhasePartial)
+			}
+		}
+		phase := session.DisplayPhasePartial
+		if key.subAgent {
+			phase = ""
+		}
+		r.flushSourceSegments(source, phase)
+	}
+}
+
+func (r *displayEventRecorder) flushPendingTools(status string) {
+	if r == nil || r.appender == nil || len(r.pendingTools) == 0 {
+		return
+	}
+	for _, id := range r.pendingToolOrder {
+		pending, exists := r.pendingTools[id]
+		if !exists || pending == nil {
+			continue
+		}
+		delete(r.pendingTools, id)
+		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+			ID:                pending.id,
+			Role:              "tool_call",
+			Content:           pending.name,
+			Name:              pending.name,
+			Args:              pending.args.String(),
+			Status:            status,
+			ToolPresentation:  pending.presentation,
+			RunID:             pending.meta.RunID,
+			AgentCycle:        pending.meta.AgentCycle,
+			AgentKind:         pending.meta.AgentKind,
+			AgentName:         pending.meta.AgentName,
+			RootAgentName:     pending.meta.RootAgentName,
+			RunPath:           append([]string(nil), pending.meta.RunPath...),
+			SubAgent:          pending.meta.SubAgent,
+			SubAgentSessionID: pending.meta.SubAgentSessionID,
+			SubAgentType:      pending.meta.SubAgentType,
+		}); err != nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool terminal status failed name=%s id=%s status=%s err=%v", pending.name, pending.id, status, err))
+		}
+	}
+	r.pendingTools = make(map[string]*displayPendingTool)
+	r.pendingToolOrder = nil
 }
 
 func (r *displayEventRecorder) flushThinking(source *displaySourceRecorder) {
 	if r == nil || r.appender == nil || source == nil || source.thinking.Len() == 0 {
 		return
 	}
-	content := source.thinking.String()
-	defer func() { source.thinking = displayTextSegment{} }()
+	segment := source.thinking
+	source.thinking = displayTextSegment{}
+	r.persistThinkingSegment(segment)
+}
+
+func (r *displayEventRecorder) persistThinkingSegment(segment displayTextSegment) {
+	if r == nil || r.appender == nil || segment.Len() == 0 {
+		return
+	}
+	content := segment.String()
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	if source.thinking.persisted {
-		if flusher, ok := r.appender.(displayEventContentFlusher); ok {
-			if err := flusher.FlushDisplayEventContent(source.thinking.id, "thinking"); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] flush display thinking segment failed id=%s err=%v", source.thinking.id, err))
-			}
-		}
-		return
-	}
-	if err := r.appender.AppendDisplayEvent(r.thinkingDisplayEvent(source, content)); err != nil {
+	if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+		ID:                segment.id,
+		Role:              "thinking",
+		Content:           content,
+		RunID:             segment.meta.RunID,
+		AgentCycle:        segment.meta.AgentCycle,
+		AgentKind:         segment.meta.AgentKind,
+		AgentName:         segment.meta.AgentName,
+		RootAgentName:     segment.meta.RootAgentName,
+		RunPath:           append([]string(nil), segment.meta.RunPath...),
+		SubAgent:          segment.meta.SubAgent,
+		SubAgentSessionID: segment.meta.SubAgentSessionID,
+		SubAgentType:      segment.meta.SubAgentType,
+	}); err != nil {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err))
 	}
 }
 
-func (r *displayEventRecorder) thinkingDisplayEvent(source *displaySourceRecorder, content string) session.DisplayEvent {
-	return session.DisplayEvent{
-		ID:                source.thinking.id,
-		Role:              "thinking",
-		Content:           content,
-		RunID:             source.thinking.meta.RunID,
-		AgentCycle:        source.thinking.meta.AgentCycle,
-		AgentKind:         source.thinking.meta.AgentKind,
-		AgentName:         source.thinking.meta.AgentName,
-		RootAgentName:     source.thinking.meta.RootAgentName,
-		RunPath:           append([]string(nil), source.thinking.meta.RunPath...),
-		SubAgent:          source.thinking.meta.SubAgent,
-		SubAgentSessionID: source.thinking.meta.SubAgentSessionID,
-		SubAgentType:      source.thinking.meta.SubAgentType,
-	}
-}
-
-func (r *displayEventRecorder) flushAssistant(source *displaySourceRecorder) {
+func (r *displayEventRecorder) flushAssistantWithPhase(source *displaySourceRecorder, phase string) {
 	if r == nil || r.appender == nil || source == nil || source.assistant.Len() == 0 {
 		return
 	}
-	content := source.assistant.String()
-	defer resetAssistantSegment(source)
+	segment := source.assistant
+	source.assistant = displayTextSegment{}
+	r.persistAssistantSegment(segment, phase)
+}
+
+func (r *displayEventRecorder) persistAssistantSegment(segment displayTextSegment, phase string) {
+	if r == nil || r.appender == nil || segment.Len() == 0 {
+		return
+	}
+	content := segment.String()
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	if r.suppressRootAssistantSegments && !source.assistant.meta.SubAgent {
+	if r.suppressRootAssistantSegments && !segment.meta.SubAgent {
 		return
 	}
-	if source.assistant.persisted {
-		if flusher, ok := r.appender.(displayEventContentFlusher); ok {
-			if err := flusher.FlushDisplayEventContent(source.assistant.id, "assistant"); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] flush display assistant segment failed id=%s err=%v", source.assistant.id, err))
-			}
-		}
-		return
-	}
-	if err := r.appender.AppendDisplayEvent(r.assistantDisplayEvent(source, content)); err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display assistant segment failed bytes=%d err=%v", len(content), err))
-	}
-}
-
-func (r *displayEventRecorder) assistantDisplayEvent(source *displaySourceRecorder, content string) session.DisplayEvent {
 	displayPhase := ""
-	if !source.assistant.meta.SubAgent {
-		displayPhase = session.DisplayPhaseCandidate
+	if !segment.meta.SubAgent {
+		displayPhase = phase
 	}
-	return session.DisplayEvent{
-		ID:                source.assistant.id,
+	if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+		ID:                segment.id,
 		Role:              "assistant",
 		DisplayPhase:      displayPhase,
 		Content:           content,
-		RunID:             source.assistant.meta.RunID,
-		AgentCycle:        source.assistant.meta.AgentCycle,
-		AgentKind:         source.assistant.meta.AgentKind,
-		AgentName:         source.assistant.meta.AgentName,
-		RootAgentName:     source.assistant.meta.RootAgentName,
-		RunPath:           append([]string(nil), source.assistant.meta.RunPath...),
-		SubAgent:          source.assistant.meta.SubAgent,
-		SubAgentSessionID: source.assistant.meta.SubAgentSessionID,
-		SubAgentType:      source.assistant.meta.SubAgentType,
+		RunID:             segment.meta.RunID,
+		AgentCycle:        segment.meta.AgentCycle,
+		AgentKind:         segment.meta.AgentKind,
+		AgentName:         segment.meta.AgentName,
+		RootAgentName:     segment.meta.RootAgentName,
+		RunPath:           append([]string(nil), segment.meta.RunPath...),
+		SubAgent:          segment.meta.SubAgent,
+		SubAgentSessionID: segment.meta.SubAgentSessionID,
+		SubAgentType:      segment.meta.SubAgentType,
+	}); err != nil {
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display assistant segment failed bytes=%d err=%v", len(content), err))
 	}
-}
-
-func (r *displayEventRecorder) finalizeRootAssistantSegments(terminalPhase string) {
-	if r == nil || r.appender == nil || len(r.rootAssistantSegmentIDs) == 0 {
-		return
-	}
-	finalizer, ok := r.appender.(displayAssistantRunFinalizer)
-	if !ok {
-		return
-	}
-	finalSegmentID := r.rootAssistantSegmentIDs[len(r.rootAssistantSegmentIDs)-1]
-	if err := finalizer.FinalizeDisplayAssistantRun(r.rootRunID, finalSegmentID, terminalPhase); err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] finalize display assistant phases failed run_id=%s final_segment_id=%s phase=%s err=%v", r.rootRunID, finalSegmentID, terminalPhase, err))
-	}
-}
-
-func resetAssistantSegment(source *displaySourceRecorder) {
-	source.assistant = displayTextSegment{}
 }
 
 func (r *displayEventRecorder) nextTextSegmentID(meta agentEventMetadata, role string) string {
@@ -739,9 +973,10 @@ func eventDataUsageCalls(data interface{}, key string) []runTokenUsageCall {
 				FinishReason:         eventDataString(callMap, "finish_reason"),
 				RequestedTools:       agenttoolruntime.EventDataStringSlice(callMap, "requested_tools"),
 				AfterTools:           agenttoolruntime.EventDataStringSlice(callMap, "after_tools"),
-				PromptTokens:         eventDataInt(callMap, "prompt_tokens"),
-				CachedPromptTokens:   eventDataInt(callMap, "cached_prompt_tokens"),
-				UncachedPromptTokens: eventDataInt(callMap, "uncached_prompt_tokens"),
+				PromptTokens:           eventDataInt(callMap, "prompt_tokens"),
+				CachedPromptTokens:     eventDataInt(callMap, "cached_prompt_tokens"),
+				CacheWritePromptTokens: eventDataInt(callMap, "cache_write_prompt_tokens"),
+				UncachedPromptTokens:   eventDataInt(callMap, "uncached_prompt_tokens"),
 				CacheHitRate:         eventDataFloat(callMap, "cache_hit_rate"),
 				CompletionTokens:     eventDataInt(callMap, "completion_tokens"),
 				ReasoningTokens:      eventDataInt(callMap, "reasoning_tokens"),
@@ -835,9 +1070,10 @@ func usageCallsForSession(calls []runTokenUsageCall) []session.TokenUsageCall {
 			FinishReason:         call.FinishReason,
 			RequestedTools:       append([]string(nil), call.RequestedTools...),
 			AfterTools:           append([]string(nil), call.AfterTools...),
-			PromptTokens:         call.PromptTokens,
-			CachedPromptTokens:   call.CachedPromptTokens,
-			UncachedPromptTokens: call.UncachedPromptTokens,
+			PromptTokens:           call.PromptTokens,
+			CachedPromptTokens:     call.CachedPromptTokens,
+			CacheWritePromptTokens: call.CacheWritePromptTokens,
+			UncachedPromptTokens:   call.UncachedPromptTokens,
 			CacheHitRate:         call.CacheHitRate,
 			CompletionTokens:     call.CompletionTokens,
 			ReasoningTokens:      call.ReasoningTokens,

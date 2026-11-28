@@ -337,6 +337,52 @@ func TestStreamEncoderPreservesFailedAndIncompleteToolStates(t *testing.T) {
 	}
 }
 
+func TestStreamEncoderSettlesCancelledToolsWithoutError(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out, "")
+
+	if err := encoder.WriteEvent(agentrun.Event{Type: "tool_call", Data: map[string]any{
+		"id": "cancelled-result", "name": "read", "args": `{"path":"a.md"}`,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := encoder.WriteEvent(agentrun.Event{Type: "tool_result", Data: map[string]any{
+		"id": "cancelled-result", "name": "read", "status": "cancelled", "content": "",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := encoder.WriteEvent(agentrun.Event{Type: "tool_call", Data: map[string]any{
+		"id": "aborted-pending", "name": "write", "args": `{"path":"b.md"}`,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := encoder.WriteEvent(agentrun.Event{Type: "aborted", Data: map[string]any{
+		"reason": agentrun.AbortReasonUserRequested,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	chunks, done := parseUIStreamChunks(t, out.String())
+	if !done {
+		t.Fatal("stream did not finish")
+	}
+	cancelledIDs := map[string]bool{}
+	for _, chunk := range chunks {
+		if chunk["type"] == "tool-output-error" {
+			t.Fatalf("cancelled tool emitted tool-output-error: %#v", chunk)
+		}
+		if chunk["type"] == "tool-output-available" {
+			meta, _ := chunk["toolMetadata"].(map[string]any)
+			if meta["status"] == "cancelled" {
+				cancelledIDs[chunk["toolCallId"].(string)] = true
+			}
+		}
+	}
+	if !cancelledIDs["cancelled-result"] || !cancelledIDs["aborted-pending"] {
+		t.Fatalf("cancelled tools = %#v, want both cancelled-result and aborted-pending", cancelledIDs)
+	}
+}
+
 func parseUIStreamChunks(t *testing.T, raw string) ([]map[string]any, bool) {
 	t.Helper()
 	chunks := []map[string]any{}

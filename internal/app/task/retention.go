@@ -68,6 +68,9 @@ func (t *Task) replayAfterLocked(after uint64) ([]Event, error) {
 }
 
 func taskEventSize(item Event) int {
+	if size, ok := estimateEventDataSize(item.Event.Data); ok {
+		return len(item.Event.Type) + size + 16
+	}
 	data, err := json.Marshal(item.Event.Data)
 	if err != nil {
 		// The SSE encoder will surface the real serialization error. Keep a
@@ -76,4 +79,52 @@ func taskEventSize(item Event) int {
 		return len(item.Event.Type) + 256
 	}
 	return len(item.Event.Type) + len(data) + 16
+}
+
+func estimateEventDataSize(value any) (int, bool) {
+	switch typed := value.(type) {
+	case nil:
+		return 4, true
+	case string:
+		return len(typed) + 2, true
+	case map[string]string:
+		size := 2
+		for k, v := range typed {
+			size += len(k) + len(v) + 6
+		}
+		return size, true
+	case map[string]any:
+		size := 2
+		for k, v := range typed {
+			elemSize, ok := estimateScalarSize(v)
+			if !ok {
+				return 0, false
+			}
+			size += len(k) + elemSize + 4
+		}
+		return size, true
+	default:
+		return 0, false
+	}
+}
+
+func estimateScalarSize(value any) (int, bool) {
+	switch typed := value.(type) {
+	case nil:
+		return 4, true
+	case string:
+		return len(typed) + 2, true
+	case bool:
+		return 5, true
+	case int, int32, int64, uint, uint32, uint64, float32, float64:
+		return 16, true
+	case []string:
+		size := 2
+		for _, item := range typed {
+			size += len(item) + 3
+		}
+		return size, true
+	default:
+		return 0, false
+	}
 }

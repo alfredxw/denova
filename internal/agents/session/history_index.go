@@ -6,17 +6,8 @@ import (
 	"denova/internal/agents/conversationjournal"
 )
 
-// Sparse display anchors can start inside a long turn. Canonical assistant
-// copies already covered by display segments are recorded once in their block;
-// paging reuses that decision instead of replaying the turn's earlier prose.
-type hiddenHistoryRecord struct {
-	Cursor conversationjournal.Cursor `json:"cursor"`
-	Index  int                        `json:"index,omitempty"`
-}
-
 type historyAnchor struct {
 	Location conversationjournal.Location `json:"location"`
-	Hidden   []hiddenHistoryRecord        `json:"hidden,omitempty"`
 }
 
 func (projection *sessionJournalProjection) rememberHistoryRow(location conversationjournal.Location) {

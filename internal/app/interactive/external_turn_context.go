@@ -235,6 +235,7 @@ func (turn *ExternalTurn) recordUsage(usage *agentschema.TokenUsage) error {
 		return nil
 	}
 	return turn.config.Conversation.AppendDisplayEvent(session.DisplayEvent{Role: "token_usage", RunID: string(turn.identity.OperationID), AgentKind: config.AgentKindInteractiveStory,
-		PromptTokens: usage.PromptTokens, CachedPromptTokens: usage.PromptTokenDetails.CachedTokens, CompletionTokens: usage.CompletionTokens,
+		PromptTokens: usage.PromptTokens, CachedPromptTokens: usage.PromptTokenDetails.CachedTokens,
+		CacheWritePromptTokens: usage.PromptTokenDetails.CacheWriteTokens, CompletionTokens: usage.CompletionTokens,
 		ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens, TotalTokens: usage.TotalTokens, CreatedAt: time.Now().UTC()})
 }

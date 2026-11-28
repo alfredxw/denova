@@ -62,16 +62,19 @@ func TestModelRetryRetractsOnlyUnacceptedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	confirmed, discarded := false, 0
+	confirmed, acceptedProgress := false, false
 	for _, entry := range loaded.History() {
-		if entry.Status == "discarded" {
-			discarded++
+		if entry.Status == "discarded" || entry.ID == "unaccepted" || entry.Content == "Broken reasoning" || entry.Content == "Broken partial" {
+			t.Fatalf("retracted preview should never be persisted to the journal: %#v", entry)
 		}
 		if entry.ID == "confirmed" && entry.Status == "success" {
 			confirmed = true
 		}
+		if entry.Role == "assistant" && entry.Content == "Accepted progress. " && entry.DisplayPhase == session.DisplayPhaseProgress {
+			acceptedProgress = true
+		}
 	}
-	if !confirmed || discarded != 3 {
-		t.Fatalf("restored preview: confirmed=%v discarded=%d", confirmed, discarded)
+	if !confirmed || !acceptedProgress {
+		t.Fatalf("restored preview: confirmed=%v acceptedProgress=%v history=%#v", confirmed, acceptedProgress, loaded.History())
 	}
 }

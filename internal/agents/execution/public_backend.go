@@ -73,6 +73,10 @@ type publicRunHandle struct {
 	trace                  *publicAgentRunTrace
 	done                   chan struct{}
 	completedRegistrations []publicCycleRegistrationAt
+
+	progressMu      sync.Mutex
+	processedCursor agentevent.Cursor
+	progressChanged chan struct{}
 }
 
 // NewAgentRuntime constructs the Denova host on the public Agent -> Session ->

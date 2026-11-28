@@ -45,10 +45,19 @@ func TestPublicEventProjectorKeepsDisplayIdentityAcrossCyclesAndReload(t *testin
 			live[id] = displayContent{Content: event.DataString("content"), Cycle: cycle}
 		})
 		projector.ProjectRunStarted("same-run", cycle, "same-command", "follow_up", time.Now())
-		for _, source := range []agentevent.EventSource{{Name: "root"}, {Name: "child", InvocationID: "child-session", Path: []string{"root", "child"}}} {
-			projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.ThinkingDelta{Source: source, Delta: fmt.Sprintf("%s thinking %d", source.Name, cycle)}})
-			projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.AssistantDelta{Source: source, Delta: fmt.Sprintf("%s answer %d", source.Name, cycle)}})
-		}
+		rootSource := agentevent.EventSource{Name: "root"}
+		childSource := agentevent.EventSource{Name: "child", InvocationID: "child-session", Path: []string{"root", "child"}}
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.ThinkingDelta{Source: rootSource, Delta: fmt.Sprintf("root thinking %d", cycle)}})
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.AssistantDelta{Source: rootSource, Delta: fmt.Sprintf("root progress %d", cycle)}})
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.ModelCompleted{Source: rootSource, RequestedTools: []string{"read"}}})
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.ThinkingDelta{Source: childSource, Delta: fmt.Sprintf("child thinking %d", cycle)}})
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.AssistantDelta{Source: childSource, Delta: fmt.Sprintf("child answer %d", cycle)}})
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.ModelCompleted{Source: childSource}})
+		// Terminal root output is persisted via canonical messageRecord rather than
+		// duplicated as a display record on Finalize(ResultCompleted).
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.ThinkingDelta{Source: rootSource, Delta: fmt.Sprintf("root final thinking %d", cycle)}})
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.AssistantDelta{Source: rootSource, Delta: fmt.Sprintf("root final answer %d", cycle)}})
+		projector.Project(agentevent.Event{RunID: "same-run", Payload: agentevent.ModelCompleted{Source: rootSource}})
 		projector.Finalize(agentschema.ResultCompleted, "")
 	}
 	reloadedStore, err := session.NewStore(dir)
@@ -58,6 +67,14 @@ func TestPublicEventProjectorKeepsDisplayIdentityAcrossCyclesAndReload(t *testin
 	reloaded, err := reloadedStore.Get(sess.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	wantPersisted := map[string]displayContent{}
+	for id, item := range live {
+		if item.Content == "root final thinking 1" || item.Content == "root final answer 1" ||
+			item.Content == "root final thinking 2" || item.Content == "root final answer 2" {
+			continue
+		}
+		wantPersisted[id] = item
 	}
 	for _, history := range [][]session.HistoryEntry{sess.History(), reloaded.History()} {
 		persisted := map[string]displayContent{}
@@ -70,8 +87,8 @@ func TestPublicEventProjectorKeepsDisplayIdentityAcrossCyclesAndReload(t *testin
 			}
 			persisted[entry.ID] = displayContent{Content: entry.Content, Cycle: entry.AgentCycle}
 		}
-		if len(live) != 8 || !reflect.DeepEqual(persisted, live) {
-			t.Fatalf("persisted display = %#v, live = %#v", persisted, live)
+		if len(live) != 12 || !reflect.DeepEqual(persisted, wantPersisted) {
+			t.Fatalf("persisted display = %#v, want = %#v (live=%d)", persisted, wantPersisted, len(live))
 		}
 	}
 }

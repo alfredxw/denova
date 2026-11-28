@@ -62,7 +62,6 @@ func appendDisplayRecordLine(sess *Session, line []byte, lineNumber int) error {
 	}
 	sess.records = append(sess.records, historyRecord{
 		journalID: recordID, kind: historyTypeDisplay, display: &event, createdAt: event.CreatedAt,
-		displayArgsPersistedBytes: len(event.Args), displayContentPersistedBytes: len(event.Content),
 	})
 	advanceUpdatedAt(sess, event.CreatedAt)
 	return nil
@@ -130,16 +129,10 @@ func applyDisplayPatchLine(sess *Session, line []byte) error {
 		event.ToolPresentation = normalized
 	}
 	if patch.ArgsAppend != "" {
-		persistedBytes := min(max(record.displayArgsPersistedBytes, 0), len(event.Args))
-		pending := event.Args[persistedBytes:]
-		event.Args = event.Args[:persistedBytes] + patch.ArgsAppend + pending
-		record.displayArgsPersistedBytes = persistedBytes + len(patch.ArgsAppend)
+		event.Args += patch.ArgsAppend
 	}
 	if patch.ContentAppend != "" {
-		persistedBytes := min(max(record.displayContentPersistedBytes, 0), len(event.Content))
-		pending := event.Content[persistedBytes:]
-		event.Content = event.Content[:persistedBytes] + patch.ContentAppend + pending
-		record.displayContentPersistedBytes = persistedBytes + len(patch.ContentAppend)
+		event.Content += patch.ContentAppend
 	}
 	if patch.Illustration != nil {
 		event.Illustration = cloneChapterIllustration(patch.Illustration)

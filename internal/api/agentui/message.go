@@ -64,7 +64,7 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			"created_at": formatEntryTime(entry),
 		}), true
 	}
-	if entry.Content == "" && len(entry.Attachments) == 0 && entry.Role != "tool_call" && entry.Role != "ask" && entry.Role != "context_compaction" {
+	if entry.Content == "" && entry.ReasoningContent == "" && len(entry.Attachments) == 0 && entry.Role != "tool_call" && entry.Role != "ask" && entry.Role != "context_compaction" {
 		if entry.Role == "execution_summary" {
 			return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
 		}
@@ -87,11 +87,22 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			Parts:    []map[string]any{textPart(entry.Content, "done", nil)},
 		}, true
 	case "assistant":
+		parts := make([]map[string]any, 0, 2)
+		if entry.ReasoningContent != "" {
+			parts = append(parts, map[string]any{
+				"type":  "reasoning",
+				"text":  entry.ReasoningContent,
+				"state": "done",
+			})
+		}
+		if entry.Content != "" {
+			parts = append(parts, textPart(entry.Content, "done", nil))
+		}
 		return Message{
 			ID:       historyMessageID(entry, index),
 			Role:     "assistant",
 			Metadata: metadataFromHistoryEntry(entry),
-			Parts:    []map[string]any{textPart(entry.Content, "done", nil)},
+			Parts:    parts,
 		}, true
 	case "thinking":
 		part := map[string]any{
@@ -205,6 +216,48 @@ func entryPayload(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	}
 	if entry.Role == "context_compaction" {
 		payload["phase"], payload["runtime_managed"] = entry.Phase, entry.RuntimeManaged
+		if entry.TokensBefore > 0 {
+			payload["tokens_before"] = entry.TokensBefore
+		}
+		if entry.TokensAfter > 0 {
+			payload["tokens_after"] = entry.TokensAfter
+		}
+		if entry.ProjectedTokensBefore > 0 {
+			payload["projected_tokens_before"] = entry.ProjectedTokensBefore
+		}
+		if entry.ProjectedTokensAfter > 0 {
+			payload["projected_tokens_after"] = entry.ProjectedTokensAfter
+		}
+		if entry.ReservedCompletionTokens > 0 {
+			payload["reserved_completion_tokens"] = entry.ReservedCompletionTokens
+		}
+		if entry.ReservedToolResultTokens > 0 {
+			payload["reserved_tool_result_tokens"] = entry.ReservedToolResultTokens
+		}
+		if entry.ContextWindowTokens > 0 {
+			payload["context_window_tokens"] = entry.ContextWindowTokens
+		}
+		if entry.Threshold > 0 {
+			payload["threshold"] = entry.Threshold
+		}
+		if entry.TargetRatio > 0 {
+			payload["target_ratio"] = entry.TargetRatio
+		}
+		if entry.CompactionRevision > 0 {
+			payload["revision"] = entry.CompactionRevision
+		}
+		if entry.SourceMessageCount > 0 {
+			payload["source_message_count"] = entry.SourceMessageCount
+		}
+		if entry.MessageCountBefore > 0 {
+			payload["message_count_before"] = entry.MessageCountBefore
+		}
+		if entry.MessageCountAfter > 0 {
+			payload["message_count_after"] = entry.MessageCountAfter
+		}
+		if entry.CompactionReason != "" {
+			payload["reason"] = entry.CompactionReason
+		}
 	}
 	if entry.Role == "execution_summary" {
 		payload["run_started_at"] = entry.RunStartedAt
@@ -295,6 +348,9 @@ func addUsagePayload(target map[string]any, entry appsvc.AgentSessionHistoryEntr
 	}
 	if entry.CachedPromptTokens > 0 {
 		target["cached_prompt_tokens"] = entry.CachedPromptTokens
+	}
+	if entry.CacheWritePromptTokens > 0 {
+		target["cache_write_prompt_tokens"] = entry.CacheWritePromptTokens
 	}
 	if entry.UncachedPromptTokens > 0 {
 		target["uncached_prompt_tokens"] = entry.UncachedPromptTokens

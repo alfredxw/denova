@@ -28,7 +28,7 @@ type StreamEncoder struct {
 	reasonIDs     map[string]string
 	reasonSeq     int
 	toolSeq       int
-	toolInputs    map[string]string
+	toolInputs    map[string]*strings.Builder
 	startedTool   map[string]string
 	availableTool map[string]bool
 }
@@ -39,7 +39,7 @@ func NewStreamEncoder(w io.Writer, requestID string) *StreamEncoder {
 		requestID:     strings.TrimSpace(requestID),
 		textIDs:       make(map[string]string),
 		reasonIDs:     make(map[string]string),
-		toolInputs:    make(map[string]string),
+		toolInputs:    make(map[string]*strings.Builder),
 		startedTool:   make(map[string]string),
 		availableTool: make(map[string]bool),
 	}
@@ -141,6 +141,9 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		}
 		reason := firstNonEmpty(readString(data, "reason"), "user cancelled")
 		if reason == agentrun.AbortReasonUserRequested {
+			if err := e.settlePendingToolsCancelled(); err != nil {
+				return err
+			}
 			return e.Finish("stop")
 		}
 		return e.writeChunk(map[string]any{"type": "abort", "reason": reason})
@@ -338,7 +341,7 @@ func (e *StreamEncoder) writeToolCall(data map[string]any, providerMetadata map[
 	if args == "" {
 		return nil
 	}
-	e.toolInputs[toolID] += args
+	e.appendToolInput(toolID, args)
 	return e.writeChunk(map[string]any{
 		"type":           "tool-input-delta",
 		"toolCallId":     toolID,
@@ -352,12 +355,28 @@ func (e *StreamEncoder) writeToolArgsDelta(data map[string]any) error {
 	if delta == "" {
 		return nil
 	}
-	e.toolInputs[toolID] += delta
+	e.appendToolInput(toolID, delta)
 	return e.writeChunk(map[string]any{
 		"type":           "tool-input-delta",
 		"toolCallId":     toolID,
 		"inputTextDelta": delta,
 	})
+}
+
+func (e *StreamEncoder) appendToolInput(toolID, delta string) {
+	builder := e.toolInputs[toolID]
+	if builder == nil {
+		builder = &strings.Builder{}
+		e.toolInputs[toolID] = builder
+	}
+	builder.WriteString(delta)
+}
+
+func (e *StreamEncoder) toolInputText(toolID string) string {
+	if builder := e.toolInputs[toolID]; builder != nil {
+		return builder.String()
+	}
+	return ""
 }
 
 func (e *StreamEncoder) writeToolStarted(data map[string]any, providerMetadata map[string]any) error {
@@ -393,10 +412,15 @@ func (e *StreamEncoder) writeToolResult(data map[string]any, providerMetadata ma
 		"toolCallId": toolID,
 		"dynamic":    true,
 	}
+	toolMetadata := map[string]any{"input_text": e.toolInputText(toolID)}
 	switch status {
 	case "", "success":
 		chunk["type"] = "tool-output-available"
 		chunk["output"] = output
+	case "cancelled":
+		chunk["type"] = "tool-output-available"
+		chunk["output"] = output
+		toolMetadata["status"] = "cancelled"
 	case "error", "blocked", "skipped":
 		chunk["type"] = "tool-output-error"
 		chunk["errorText"] = firstNonEmpty(
@@ -414,7 +438,6 @@ func (e *StreamEncoder) writeToolResult(data map[string]any, providerMetadata ma
 	if len(providerMetadata) > 0 {
 		chunk["providerMetadata"] = providerMetadata
 	}
-	toolMetadata := map[string]any{"input_text": e.toolInputs[toolID]}
 	if truncated, ok := data["display_truncated"].(bool); ok {
 		toolMetadata["display_truncated"] = truncated
 	}
@@ -432,7 +455,7 @@ func (e *StreamEncoder) writeToolInputAvailable(toolID, toolName string, provide
 	if e.availableTool[toolID] {
 		return nil
 	}
-	inputRaw := e.toolInputs[toolID]
+	inputRaw := e.toolInputText(toolID)
 	chunk := map[string]any{
 		"type":         "tool-input-available",
 		"toolCallId":   toolID,
@@ -448,6 +471,27 @@ func (e *StreamEncoder) writeToolInputAvailable(toolID, toolName string, provide
 		return err
 	}
 	e.availableTool[toolID] = true
+	return nil
+}
+
+func (e *StreamEncoder) settlePendingToolsCancelled() error {
+	for toolID, toolName := range e.startedTool {
+		if err := e.writeToolInputAvailable(toolID, firstNonEmpty(toolName, "unknown_tool"), nil); err != nil {
+			return err
+		}
+		if err := e.writeChunk(map[string]any{
+			"type":         "tool-output-available",
+			"toolCallId":   toolID,
+			"output":       "",
+			"dynamic":      true,
+			"toolMetadata": map[string]any{"input_text": e.toolInputText(toolID), "status": "cancelled"},
+		}); err != nil {
+			return err
+		}
+		delete(e.toolInputs, toolID)
+		delete(e.startedTool, toolID)
+		delete(e.availableTool, toolID)
+	}
 	return nil
 }
 

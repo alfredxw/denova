@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -87,6 +86,7 @@ func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 	metadata.SubAgentSessionID = strings.TrimSpace(metadata.SubAgentSessionID)
 	metadata.SubAgentType = strings.TrimSpace(metadata.SubAgentType)
 	metadata.DisplayContent = truncateUTF8ByBytes(strings.TrimSpace(metadata.DisplayContent), maxDisplayContentBytes)
+	metadata.DisplayPhase = strings.TrimSpace(metadata.DisplayPhase)
 	if len(metadata.RunPath) > 0 {
 		out := make([]string, 0, len(metadata.RunPath))
 		for _, step := range metadata.RunPath {
@@ -108,6 +108,26 @@ const (
 	maxUserReferenceDetailBytes   = 2048
 	maxUserReferenceMetadataBytes = 128 * 1024
 )
+
+func truncateUTF8ByBytes(value string, maxBytes int) string {
+	if maxBytes <= 0 || value == "" {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+	lastBoundary := 0
+	for index := range value {
+		if index > maxBytes {
+			break
+		}
+		lastBoundary = index
+	}
+	if lastBoundary <= 0 {
+		return ""
+	}
+	return value[:lastBoundary]
+}
 
 func sanitizeUserMessageReferences(values []agentcontext.UserReference) []agentcontext.UserReference {
 	result := make([]agentcontext.UserReference, 0, min(len(values), maxUserMessageReferences))
@@ -213,29 +233,6 @@ func (s *Session) History() []HistoryEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Root assistant display segments preserve the exact interleaving of prose,
-	// reasoning, and tools. Suppress the canonical copy when either the terminal
-	// segment or the complete segment sequence already carries the same content.
-	type assistantDisplayCoverage struct {
-		combined strings.Builder
-		segments map[[sha256.Size]byte]struct{}
-	}
-	segmentedAssistantContentByRun := make(map[string]*assistantDisplayCoverage)
-	for _, record := range s.records {
-		if record.kind != historyTypeDisplay || record.display == nil || record.display.Status == "discarded" || record.display.Role != "assistant" || record.display.SubAgent {
-			continue
-		}
-		if runID := strings.TrimSpace(record.display.RunID); runID != "" {
-			coverage := segmentedAssistantContentByRun[runID]
-			if coverage == nil {
-				coverage = &assistantDisplayCoverage{segments: make(map[[sha256.Size]byte]struct{})}
-				segmentedAssistantContentByRun[runID] = coverage
-			}
-			coverage.combined.WriteString(record.display.Content)
-			coverage.segments[sha256.Sum256([]byte(record.display.Content))] = struct{}{}
-		}
-	}
-
 	result := make([]HistoryEntry, 0, len(s.records))
 	for _, record := range s.records {
 		switch record.kind {
@@ -245,14 +242,6 @@ func (s *Session) History() []HistoryEntry {
 			if record.message == nil {
 				continue
 			}
-			if record.message.Role == agentschema.Assistant {
-				if coverage := segmentedAssistantContentByRun[strings.TrimSpace(record.messageMetadata.RunID)]; coverage != nil {
-					_, segmentMatches := coverage.segments[sha256.Sum256([]byte(record.message.Content))]
-					if segmentMatches || coverage.combined.String() == record.message.Content {
-						continue
-					}
-				}
-			}
 			content := record.message.Content
 			if record.messageMetadata.DisplayContent != "" {
 				content = record.messageMetadata.DisplayContent
@@ -260,8 +249,10 @@ func (s *Session) History() []HistoryEntry {
 			result = append(result, HistoryEntry{
 				Type:              historyTypeMessage,
 				ID:                record.messageMetadata.MessageID,
+				DisplayPhase:      record.messageMetadata.DisplayPhase,
 				Role:              string(record.message.Role),
 				Content:           content,
+				ReasoningContent:  record.message.ReasoningContent,
 				Attachments:       append([]agentschema.Attachment(nil), record.message.Attachments...),
 				Message:           record.message,
 				CreatedAt:         record.createdAt,
@@ -284,45 +275,60 @@ func (s *Session) History() []HistoryEntry {
 				continue
 			}
 			result = append(result, HistoryEntry{
-				Type:                 historyTypeMessage,
-				ID:                   record.display.ID,
-				DisplaySegmentID:     record.display.ID,
-				DisplayPhase:         record.display.DisplayPhase,
-				Phase:                record.display.Phase,
-				RuntimeManaged:       record.display.RuntimeManaged,
-				AgentCycle:           record.display.AgentCycle,
-				Role:                 record.display.Role,
-				Content:              record.display.Content,
-				Name:                 record.display.Name,
-				Args:                 record.display.Args,
-				Status:               record.display.Status,
-				Result:               record.display.Result,
-				ToolPresentation:     cloneSessionToolPresentation(record.display.ToolPresentation),
-				Illustration:         cloneChapterIllustration(record.display.Illustration),
-				Ask:                  cloneAskInteraction(record.display.Ask),
-				CreatedAt:            record.display.CreatedAt,
-				RunID:                record.display.RunID,
-				AgentKind:            record.display.AgentKind,
-				AgentName:            record.display.AgentName,
-				RootAgentName:        record.display.RootAgentName,
-				RunPath:              append([]string(nil), record.display.RunPath...),
-				SubAgent:             record.display.SubAgent,
-				SubAgentSessionID:    record.display.SubAgentSessionID,
-				SubAgentType:         record.display.SubAgentType,
-				PromptTokens:         record.display.PromptTokens,
-				CachedPromptTokens:   record.display.CachedPromptTokens,
-				UncachedPromptTokens: record.display.UncachedPromptTokens,
-				CacheHitRate:         record.display.CacheHitRate,
-				CompletionTokens:     record.display.CompletionTokens,
-				ReasoningTokens:      record.display.ReasoningTokens,
-				TotalTokens:          record.display.TotalTokens,
-				ModelCalls:           record.display.ModelCalls,
-				GeneratedBytes:       record.display.GeneratedBytes,
-				UsageCalls:           cloneTokenUsageCalls(record.display.UsageCalls),
-				RunStartedAt:         record.display.RunStartedAt,
-				RunFinishedAt:        record.display.RunFinishedAt,
-				DurationMS:           record.display.DurationMS,
-				RunStatus:            record.display.RunStatus,
+				Type:                       historyTypeMessage,
+				ID:                         record.display.ID,
+				DisplaySegmentID:           record.display.ID,
+				DisplayPhase:               record.display.DisplayPhase,
+				Phase:                      record.display.Phase,
+				RuntimeManaged:             record.display.RuntimeManaged,
+				AgentCycle:                 record.display.AgentCycle,
+				Role:                       record.display.Role,
+				Content:                    record.display.Content,
+				Name:                       record.display.Name,
+				Args:                       record.display.Args,
+				Status:                     record.display.Status,
+				Result:                     record.display.Result,
+				ToolPresentation:           cloneSessionToolPresentation(record.display.ToolPresentation),
+				Illustration:               cloneChapterIllustration(record.display.Illustration),
+				Ask:                        cloneAskInteraction(record.display.Ask),
+				CreatedAt:                  record.display.CreatedAt,
+				RunID:                      record.display.RunID,
+				AgentKind:                  record.display.AgentKind,
+				AgentName:                  record.display.AgentName,
+				RootAgentName:              record.display.RootAgentName,
+				RunPath:                    append([]string(nil), record.display.RunPath...),
+				SubAgent:                   record.display.SubAgent,
+				SubAgentSessionID:          record.display.SubAgentSessionID,
+				SubAgentType:               record.display.SubAgentType,
+				PromptTokens:               record.display.PromptTokens,
+				CachedPromptTokens:         record.display.CachedPromptTokens,
+				CacheWritePromptTokens:     record.display.CacheWritePromptTokens,
+				UncachedPromptTokens:       record.display.UncachedPromptTokens,
+				CacheHitRate:               record.display.CacheHitRate,
+				CompletionTokens:           record.display.CompletionTokens,
+				ReasoningTokens:            record.display.ReasoningTokens,
+				TotalTokens:                record.display.TotalTokens,
+				ModelCalls:                 record.display.ModelCalls,
+				GeneratedBytes:             record.display.GeneratedBytes,
+				UsageCalls:                 cloneTokenUsageCalls(record.display.UsageCalls),
+				RunStartedAt:               record.display.RunStartedAt,
+				RunFinishedAt:              record.display.RunFinishedAt,
+				DurationMS:                 record.display.DurationMS,
+				RunStatus:                  record.display.RunStatus,
+				TokensBefore:               record.display.TokensBefore,
+				TokensAfter:                record.display.TokensAfter,
+				ProjectedTokensBefore:      record.display.ProjectedTokensBefore,
+				ProjectedTokensAfter:       record.display.ProjectedTokensAfter,
+				ReservedCompletionTokens:   record.display.ReservedCompletionTokens,
+				ReservedToolResultTokens:   record.display.ReservedToolResultTokens,
+				ContextWindowTokens:        record.display.ContextWindowTokens,
+				Threshold:                  record.display.Threshold,
+				TargetRatio:                record.display.TargetRatio,
+				CompactionRevision:         record.display.CompactionRevision,
+				SourceMessageCount:         record.display.SourceMessageCount,
+				MessageCountBefore:         record.display.MessageCountBefore,
+				MessageCountAfter:          record.display.MessageCountAfter,
+				CompactionReason:           record.display.CompactionReason,
 			})
 		}
 	}

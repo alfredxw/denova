@@ -77,8 +77,13 @@ func TestRefreshCanonicalAppliesDisplayPatchToIsolatedSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writer.AppendDisplayEvent(DisplayEvent{
-		ID: "call-1", Role: "tool_call", Name: "read", Status: "running",
+	pending := &AskInteraction{
+		Schema: "ask.pending.v1", ID: "ask-1", ToolCallID: "ask-1",
+		AgentKind: "ide", Status: AskPending,
+		Questions: []AskQuestion{{ID: "q1", Question: "Proceed?"}},
+	}
+	if err := writer.RecordDisplayAsk(DisplayEvent{
+		ID: "ask-1", Role: "ask", Status: AskPending, Ask: pending,
 		RunPath:    []string{"root", "researcher"},
 		UsageCalls: []TokenUsageCall{{RequestedTools: []string{"read"}}},
 	}); err != nil {
@@ -90,7 +95,12 @@ func TestRefreshCanonicalAppliesDisplayPatchToIsolatedSnapshot(t *testing.T) {
 	}
 	previousDisplay := reader.records[0].display
 
-	if err := writer.UpdateDisplayToolResult("call-1", "read", "success", "chapter", nil); err != nil {
+	resolved := cloneAskInteraction(pending)
+	resolved.Status = AskAnswered
+	resolved.Answers = []AskAnswerResult{{QuestionID: "q1", Question: "Proceed?", CustomInput: "yes"}}
+	if err := writer.RecordDisplayAsk(DisplayEvent{
+		ID: "ask-1", Role: "ask", Status: AskAnswered, Ask: resolved,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := reader.RefreshCanonical(context.Background()); err != nil {
@@ -101,8 +111,8 @@ func TestRefreshCanonicalAppliesDisplayPatchToIsolatedSnapshot(t *testing.T) {
 	if len(history) != 1 {
 		t.Fatalf("history length = %d, want 1", len(history))
 	}
-	if history[0].Status != "success" || history[0].Result != "chapter" {
-		t.Fatalf("display patch not applied: status=%q result=%q", history[0].Status, history[0].Result)
+	if history[0].Status != AskAnswered || history[0].Ask == nil || len(history[0].Ask.Answers) != 1 {
+		t.Fatalf("display patch not applied: status=%q ask=%#v", history[0].Status, history[0].Ask)
 	}
 
 	// The candidate replay must not retain nested slices from the prior

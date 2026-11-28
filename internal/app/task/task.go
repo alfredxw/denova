@@ -75,13 +75,13 @@ type Task struct {
 	retainedBytes      int
 	eventBaseCursor    uint64
 	nextCursor         uint64
-	retainedEventLimit int
-	retainedByteLimit  int
-	checkpointEvents   []agentrun.Event
-	checkpointBytes    []int
-	checkpointSize     int
-	checkpointCursor   uint64
-	checkpointComplete bool
+	retainedEventLimit  int
+	retainedByteLimit   int
+	checkpointEntries   []checkpointEntry
+	checkpointToolIndex map[string]int
+	checkpointSize      int
+	checkpointCursor    uint64
+	checkpointComplete  bool
 	// gameTurnPersistenceRequired is semantic Task state, not a projection
 	// detail. It must survive checkpoint event eviction so Game reconnects do not
 	// treat an unpersisted Agent cycle as a completed structural operation.

@@ -14,11 +14,10 @@ import (
 )
 
 const (
-	defaultSessionID               = "default"
-	defaultSessionTitle            = "新会话"
-	displayStreamPersistBatchBytes = 64 * 1024
-	maxTokenUsageDisplayEvents     = 10
-	historyTypeMessage             = "message"
+	defaultSessionID           = "default"
+	defaultSessionTitle        = "新会话"
+	maxTokenUsageDisplayEvents = 10
+	historyTypeMessage         = "message"
 	historyTypeContextMessage      = "context_message"
 	historyTypeDisplay             = "display"
 	historyTypeClear               = "clear"
@@ -57,6 +56,7 @@ type HistoryEntry struct {
 	RuntimeManaged   bool                        `json:"runtime_managed,omitempty"`
 	Role             string                      `json:"role,omitempty"`
 	Content          string                      `json:"content,omitempty"`
+	ReasoningContent string                      `json:"reasoning_content,omitempty"`
 	Attachments      []agentschema.Attachment    `json:"attachments,omitempty"`
 	Name             string                      `json:"name,omitempty"`
 	Args             string                      `json:"args,omitempty"`
@@ -76,9 +76,10 @@ type HistoryEntry struct {
 	SubAgent             bool                         `json:"subagent,omitempty"`
 	SubAgentSessionID    string                       `json:"subagent_session_id,omitempty"`
 	SubAgentType         string                       `json:"subagent_type,omitempty"`
-	PromptTokens         int                          `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int                          `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int                          `json:"uncached_prompt_tokens,omitempty"`
+	PromptTokens           int                          `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens     int                          `json:"cached_prompt_tokens,omitempty"`
+	CacheWritePromptTokens int                          `json:"cache_write_prompt_tokens,omitempty"`
+	UncachedPromptTokens   int                          `json:"uncached_prompt_tokens,omitempty"`
 	CacheHitRate         float64                      `json:"cache_hit_rate,omitempty"`
 	CompletionTokens     int                          `json:"completion_tokens,omitempty"`
 	ReasoningTokens      int                          `json:"reasoning_tokens,omitempty"`
@@ -90,6 +91,20 @@ type HistoryEntry struct {
 	RunFinishedAt        string                       `json:"run_finished_at,omitempty"`
 	DurationMS           int64                        `json:"duration_ms,omitempty"`
 	RunStatus            string                       `json:"run_status,omitempty"`
+	TokensBefore               int     `json:"tokens_before,omitempty"`
+	TokensAfter                int     `json:"tokens_after,omitempty"`
+	ProjectedTokensBefore      int     `json:"projected_tokens_before,omitempty"`
+	ProjectedTokensAfter       int     `json:"projected_tokens_after,omitempty"`
+	ReservedCompletionTokens   int     `json:"reserved_completion_tokens,omitempty"`
+	ReservedToolResultTokens   int     `json:"reserved_tool_result_tokens,omitempty"`
+	ContextWindowTokens        int     `json:"context_window_tokens,omitempty"`
+	Threshold                  float64 `json:"threshold,omitempty"`
+	TargetRatio                float64 `json:"target_ratio,omitempty"`
+	CompactionRevision         int     `json:"revision,omitempty"`
+	SourceMessageCount         int     `json:"source_message_count,omitempty"`
+	MessageCountBefore         int     `json:"message_count_before,omitempty"`
+	MessageCountAfter          int     `json:"message_count_after,omitempty"`
+	CompactionReason           string  `json:"reason,omitempty"`
 	UserReferences       []agentcontext.UserReference `json:"user_references,omitempty"`
 	AgentCommandID       string                       `json:"agent_command_id,omitempty"`
 	AgentOperationID     string                       `json:"agent_operation_id,omitempty"`
@@ -121,6 +136,9 @@ type MessageMetadata struct {
 	// DisplayContent overrides only the creator-facing transcript projection.
 	// The canonical Message content remains the model/recovery source of truth.
 	DisplayContent string `json:"display_content,omitempty"`
+	// DisplayPhase classifies canonical root assistant replies ("final") without
+	// writing a duplicate display record.
+	DisplayPhase string `json:"display_phase,omitempty"`
 	// ContextOnly keeps host-owned continuation instructions in model history
 	// without projecting them as user-authored chat messages.
 	ContextOnly bool `json:"context_only,omitempty"`
@@ -131,15 +149,13 @@ type MessageMetadata struct {
 }
 
 type historyRecord struct {
-	journalID                    string
-	kind                         string
-	message                      *agentschema.Message
-	messageMetadata              MessageMetadata
-	display                      *DisplayEvent
-	interruption                 *Interruption
-	createdAt                    time.Time
-	displayArgsPersistedBytes    int
-	displayContentPersistedBytes int
+	journalID       string
+	kind            string
+	message         *agentschema.Message
+	messageMetadata MessageMetadata
+	display         *DisplayEvent
+	interruption    *Interruption
+	createdAt       time.Time
 }
 
 type messageRecord struct {
@@ -175,9 +191,10 @@ type DisplayEvent struct {
 	SubAgent             bool             `json:"subagent,omitempty"`
 	SubAgentSessionID    string           `json:"subagent_session_id,omitempty"`
 	SubAgentType         string           `json:"subagent_type,omitempty"`
-	PromptTokens         int              `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
+	PromptTokens           int              `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens     int              `json:"cached_prompt_tokens,omitempty"`
+	CacheWritePromptTokens int              `json:"cache_write_prompt_tokens,omitempty"`
+	UncachedPromptTokens   int              `json:"uncached_prompt_tokens,omitempty"`
 	CacheHitRate         float64          `json:"cache_hit_rate,omitempty"`
 	CompletionTokens     int              `json:"completion_tokens,omitempty"`
 	ReasoningTokens      int              `json:"reasoning_tokens,omitempty"`
@@ -189,6 +206,20 @@ type DisplayEvent struct {
 	RunFinishedAt        string           `json:"run_finished_at,omitempty"`
 	DurationMS           int64            `json:"duration_ms,omitempty"`
 	RunStatus            string           `json:"run_status,omitempty"`
+	TokensBefore               int     `json:"tokens_before,omitempty"`
+	TokensAfter                int     `json:"tokens_after,omitempty"`
+	ProjectedTokensBefore      int     `json:"projected_tokens_before,omitempty"`
+	ProjectedTokensAfter       int     `json:"projected_tokens_after,omitempty"`
+	ReservedCompletionTokens   int     `json:"reserved_completion_tokens,omitempty"`
+	ReservedToolResultTokens   int     `json:"reserved_tool_result_tokens,omitempty"`
+	ContextWindowTokens        int     `json:"context_window_tokens,omitempty"`
+	Threshold                  float64 `json:"threshold,omitempty"`
+	TargetRatio                float64 `json:"target_ratio,omitempty"`
+	CompactionRevision         int     `json:"revision,omitempty"`
+	SourceMessageCount         int     `json:"source_message_count,omitempty"`
+	MessageCountBefore         int     `json:"message_count_before,omitempty"`
+	MessageCountAfter          int     `json:"message_count_after,omitempty"`
+	CompactionReason           string  `json:"reason,omitempty"`
 }
 
 type ChapterIllustration struct {
@@ -216,9 +247,10 @@ type TokenUsageCall struct {
 	FinishReason         string   `json:"finish_reason,omitempty"`
 	RequestedTools       []string `json:"requested_tools,omitempty"`
 	AfterTools           []string `json:"after_tools,omitempty"`
-	PromptTokens         int      `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int      `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int      `json:"uncached_prompt_tokens,omitempty"`
+	PromptTokens           int      `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens     int      `json:"cached_prompt_tokens,omitempty"`
+	CacheWritePromptTokens int      `json:"cache_write_prompt_tokens,omitempty"`
+	UncachedPromptTokens   int      `json:"uncached_prompt_tokens,omitempty"`
 	CacheHitRate         float64  `json:"cache_hit_rate,omitempty"`
 	CompletionTokens     int      `json:"completion_tokens,omitempty"`
 	ReasoningTokens      int      `json:"reasoning_tokens,omitempty"`

@@ -12,12 +12,10 @@ import (
 const historyPageMaxBytes = 8 << 20
 
 // historyPageProjection keeps only the requested display window while scanning
-// its sparse interval. The domain index already classified canonical/display
-// duplicates, including copies whose display prefix is outside this page.
+// its sparse interval.
 type historyPageProjection struct {
 	rows                *Session
 	position            int
-	hidden              map[hiddenHistoryRecord]bool
 	positions           []int
 	start, end, maxRows int
 }
@@ -34,7 +32,7 @@ func (p *historyPageProjection) apply(record conversationjournal.Record) error {
 	switch header.Type {
 	case historyTypeDisplay, historyTypeDisplayPatch, historyTypeMessage, historyTypeClear, "":
 		patch = header.Type == historyTypeDisplayPatch
-		if !patch && !p.hidden[hiddenHistoryRecord{Cursor: record.Location.Cursor, Index: record.Location.RecordIndex}] {
+		if !patch {
 			p.position++
 		}
 	case externaljournal.RecordType:

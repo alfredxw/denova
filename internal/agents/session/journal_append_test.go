@@ -102,55 +102,6 @@ func TestLegacyJournalAppendPreservesExistingBytesAndReloads(t *testing.T) {
 	}
 }
 
-func TestDisplayUpdateAppendsPatchAndReloadsMaterializedState(t *testing.T) {
-	dir := t.TempDir()
-	store, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{
-		ID: "call-1", Role: "tool_call", Name: "read", Status: "running",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "default.jsonl")
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容", nil); err != nil {
-		t.Fatal(err)
-	}
-	after, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.HasPrefix(after, before) {
-		t.Fatal("display update rewrote existing journal bytes")
-	}
-	if !bytes.Contains(after[len(before):], []byte(`"type":"display_patch"`)) {
-		t.Fatalf("display update must append an explicit patch record: %s", after[len(before):])
-	}
-
-	reloadedStore, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := reloadedStore.Get("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	history := reloaded.History()
-	if len(history) != 1 || history[0].Status != "success" || history[0].Result != "章节内容" {
-		t.Fatalf("display patch was not materialized after reload: %#v", history)
-	}
-}
-
 func TestDisplayAskResolutionAppendsPatchAndReloadsQuestionsAndAnswers(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)
@@ -207,64 +158,7 @@ func TestDisplayAskResolutionAppendsPatchAndReloadsQuestionsAndAnswers(t *testin
 	}
 }
 
-func TestStreamedDisplayContentPersistsInLargeBatchesAndFlushesAtBoundary(t *testing.T) {
-	dir := t.TempDir()
-	store, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("display-stream-batch")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "assistant-stream", Role: "assistant"}); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "display-stream-batch.jsonl")
-	before, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	content := strings.Repeat("x", displayStreamPersistBatchBytes-1)
-	if err := sess.AppendDisplayEventContent("assistant-stream", "assistant", content); err != nil {
-		t.Fatal(err)
-	}
-	buffered, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if buffered.Size() != before.Size() {
-		t.Fatalf("sub-threshold stream changed journal size: before=%d after=%d", before.Size(), buffered.Size())
-	}
-	if err := sess.AppendDisplayEventContent("assistant-stream", "assistant", "y"); err != nil {
-		t.Fatal(err)
-	}
-	persisted, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persisted.Size() <= buffered.Size() {
-		t.Fatal("display stream did not persist at the batch boundary")
-	}
-
-	reloadedStore, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := reloadedStore.Get("display-stream-batch")
-	if err != nil {
-		t.Fatal(err)
-	}
-	history := reloaded.History()
-	if len(history) != 1 {
-		t.Fatalf("reloaded streamed display history length = %d, want 1", len(history))
-	}
-	if history[0].Content != content+"y" {
-		t.Fatalf("reloaded streamed display content length = %d, want %d", len(history[0].Content), len(content)+1)
-	}
-}
-
-func TestFinalizeDisplayAssistantRunPersistsPresentationPhases(t *testing.T) {
+func TestDisplayPhasesPersistOnImmutableRecordsAndCanonicalMessages(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)
 	if err != nil {
@@ -274,16 +168,22 @@ func TestFinalizeDisplayAssistantRunPersistsPresentationPhases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, event := range []DisplayEvent{
-		{ID: "assistant-progress", Role: "assistant", Content: "正在排查。", RunID: "run-phases", DisplayPhase: DisplayPhaseCandidate},
-		{ID: "thinking-1", Role: "thinking", Content: "检查结果。", RunID: "run-phases"},
-		{ID: "assistant-final", Role: "assistant", Content: "问题已修复。", RunID: "run-phases", DisplayPhase: DisplayPhaseCandidate},
-	} {
-		if err := sess.AppendDisplayEvent(event); err != nil {
-			t.Fatal(err)
-		}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID: "assistant-progress", Role: "assistant", Content: "正在排查。", RunID: "run-phases", DisplayPhase: DisplayPhaseProgress,
+	}); err != nil {
+		t.Fatal(err)
 	}
-	if err := sess.FinalizeDisplayAssistantRun("run-phases", "assistant-final", DisplayPhaseFinal); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID: "thinking-1", Role: "thinking", Content: "检查结果。", RunID: "run-phases",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	finalMsg := agentschema.AssistantMessage("问题已修复。", nil)
+	finalMsg.ReasoningContent = "最终核对。"
+	if err := sess.AppendWithMetadata(finalMsg, MessageMetadata{
+		RunID:        "run-phases",
+		DisplayPhase: DisplayPhaseFinal,
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -296,51 +196,11 @@ func TestFinalizeDisplayAssistantRunPersistsPresentationPhases(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := reloaded.History()
-	if len(history) != 3 || history[0].DisplayPhase != DisplayPhaseProgress || history[2].DisplayPhase != DisplayPhaseFinal {
-		t.Fatalf("display phases were not restored from append-only patches: %#v", history)
-	}
-}
-
-func TestLegacyDisplayRecordCanBePatchedAndReloaded(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "legacy.jsonl")
-	legacy := []byte(strings.Join([]string{
-		`{"type":"session","id":"legacy","created_at":"2026-01-01T00:00:00Z"}`,
-		`{"type":"display","id":"call-1","role":"tool_call","name":"read","status":"running"}`,
-		"",
-	}, "\n"))
-	if err := os.WriteFile(path, legacy, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	store, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.Get("legacy")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "旧记录结果", nil); err != nil {
-		t.Fatal(err)
-	}
-	after, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.HasPrefix(after, legacy) {
-		t.Fatal("patching a legacy display record rewrote old bytes")
-	}
-
-	reloadedStore, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := reloadedStore.Get("legacy")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := reloaded.History(); len(got) != 1 || got[0].Status != "success" || got[0].Result != "旧记录结果" {
-		t.Fatalf("legacy display patch did not survive reload: %#v", got)
+	if len(history) != 3 ||
+		history[0].DisplayPhase != DisplayPhaseProgress ||
+		history[2].DisplayPhase != DisplayPhaseFinal ||
+		history[2].ReasoningContent != "最终核对。" {
+		t.Fatalf("display phases and reasoning were not restored: %#v", history)
 	}
 }
 
@@ -605,19 +465,29 @@ func TestFailedDisplayPatchDoesNotMutateSessionMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{
-		ID: "call-1", Role: "tool_call", Name: "write", Status: "running",
+	pending := &AskInteraction{
+		Schema: "ask.pending.v1", ID: "ask-1", ToolCallID: "ask-1",
+		AgentKind: "ide", Status: AskPending,
+		Questions: []AskQuestion{{ID: "q1", Question: "Proceed?"}},
+	}
+	if err := sess.RecordDisplayAsk(DisplayEvent{
+		ID: "ask-1", Role: "ask", Status: AskPending, Ask: pending,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	beforeUpdated := sess.UpdatedAt
 	restore := blockSessionJournal(t, filepath.Join(dir, "default.jsonl"))
-	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "不应进入内存", nil); err == nil {
+	resolved := cloneAskInteraction(pending)
+	resolved.Status = AskAnswered
+	resolved.Answers = []AskAnswerResult{{QuestionID: "q1", Question: "Proceed?", CustomInput: "yes"}}
+	if err := sess.RecordDisplayAsk(DisplayEvent{
+		ID: "ask-1", Role: "ask", Status: AskAnswered, Ask: resolved,
+	}); err == nil {
 		restore()
 		t.Fatal("display patch should fail while journal path is blocked")
 	}
 	history := sess.History()
-	if len(history) != 1 || history[0].Status != "running" || history[0].Result != "" {
+	if len(history) != 1 || history[0].Status != AskPending || history[0].Ask == nil || len(history[0].Ask.Answers) != 0 {
 		restore()
 		t.Fatalf("failed display patch polluted memory: %#v", history)
 	}

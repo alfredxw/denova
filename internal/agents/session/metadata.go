@@ -105,6 +105,9 @@ func (s *Session) metadataLocked(activeID string) SessionMeta {
 // unindexed canonical tail. It deliberately avoids ReadRange and therefore
 // does not decode the recent transcript window needed by an opened chat.
 func loadSessionMetadata(filePath, activeID string) (SessionMeta, error) {
+	if err := ensureSessionJournalV3(filePath); err != nil {
+		return SessionMeta{}, fmt.Errorf("迁移会话元数据 journal 失败 %s: %w", filePath, err)
+	}
 	id := strings.TrimSuffix(filepath.Base(filePath), ".jsonl")
 	generation, err := readSessionJournalIncarnation(filePath)
 	if err != nil {

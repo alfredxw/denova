@@ -46,8 +46,9 @@ type ChatRequest struct {
 	InputVisibility   agentrun.InputVisibility `json:"-"`
 	AttachedFiles     []agentschema.Attachment `json:"-"`
 
-	// StyleRules 由后端按当前导演配置注入（场景 → 共享文风参考索引）。
-	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。
+	// StyleRules holds the stable director style reference index injected into
+	// the system prompt. Per-turn #scene selections stay in StyleScenes and are
+	// projected into the turn context without mutating the system prompt.
 	StyleRules []prompts.StyleRule `json:"-"`
 
 	// ImagePreset is resolved by the app layer from ImagePresetID or workspace settings.

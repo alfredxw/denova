@@ -60,7 +60,6 @@ func (s *Session) readHistoryPageLocked(ctx context.Context, before, limit int) 
 	anchors := s.projection.HistoryAnchors
 	anchorIndex := requestedStart / sessionHistoryAnchorEvery
 	anchor := anchors[anchorIndex]
-	anchorEnd := (end-1)/sessionHistoryAnchorEvery + 1
 	temporary := &Session{
 		ID: s.ID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		title: s.title, journalIncarnation: s.journalIncarnation,
@@ -68,13 +67,8 @@ func (s *Session) readHistoryPageLocked(ctx context.Context, before, limit int) 
 		messages:               make([]*agentschema.Message, 0), records: make([]historyRecord, 0),
 	}
 	projection := historyPageProjection{
-		rows: temporary, position: anchorIndex * sessionHistoryAnchorEvery, hidden: make(map[hiddenHistoryRecord]bool),
+		rows: temporary, position: anchorIndex * sessionHistoryAnchorEvery,
 		start: requestedStart, end: end, maxRows: max(limit, 2*sessionHistoryAnchorEvery),
-	}
-	for _, block := range anchors[anchorIndex:anchorEnd] {
-		for _, hidden := range block.Hidden {
-			projection.hidden[hidden] = true
-		}
 	}
 	err := s.journal.VisitFrom(ctx, anchor.Location, s.journal.Head().Cursor, func(record conversationjournal.Record) error {
 		if err := projection.apply(record); err != nil {
@@ -99,9 +93,7 @@ func (s *Session) readHistoryPageLocked(ctx context.Context, before, limit int) 
 	if err := applyJournalAskAnswers(pageEntries, &s.projection.AgentSessions, s.journal); err != nil {
 		return HistoryPage{}, err
 	}
-	if err := s.applyExternalHistoryOutcomesLocked(ctx, pageEntries); err != nil {
-		return HistoryPage{}, err
-	}
+	s.hydrateExternalAskCommandIDsLocked(pageEntries)
 	return HistoryPage{Entries: pageEntries, NextBefore: start, HasMore: start > 0, Total: total}, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sort"
 
+	"denova/internal/agents/conversationjournal"
 	externaljournal "denova/internal/agents/runtime/external/journal"
 )
 
@@ -75,7 +76,8 @@ func ExternalUsageDisplay(record externaljournal.Record) (*DisplayEvent, error) 
 	u := closed.Usage
 	event := &DisplayEvent{ID: "external-usage:" + record.OperationID, Role: "token_usage", RunID: record.OperationID, AgentKind: closed.AgentKind, CreatedAt: record.CreatedAt,
 		PromptTokens: u.PromptTokens, CachedPromptTokens: u.PromptTokenDetails.CachedTokens,
-		UncachedPromptTokens: max(0, u.PromptTokens-u.PromptTokenDetails.CachedTokens), CompletionTokens: u.CompletionTokens,
+		CacheWritePromptTokens: u.PromptTokenDetails.CacheWriteTokens,
+		UncachedPromptTokens:   max(0, u.PromptTokens-u.PromptTokenDetails.CachedTokens), CompletionTokens: u.CompletionTokens,
 		ReasoningTokens: u.CompletionTokensDetails.ReasoningTokens, TotalTokens: u.TotalTokens}
 	if u.PromptTokens > 0 {
 		event.CacheHitRate = float64(event.CachedPromptTokens) / float64(u.PromptTokens)
@@ -128,13 +130,43 @@ func applyExternalFinished(ask *AskInteraction, finished externaljournal.Finishe
 	return result.Status, nil
 }
 
+func (s *Session) hydrateExternalAskCommandIDsLocked(entries []HistoryEntry) {
+	if s.projection == nil || len(s.projection.External.Operations) == 0 {
+		return
+	}
+	for index := range entries {
+		entry := &entries[index]
+		if entry.Ask == nil {
+			continue
+		}
+		if operation := s.projection.External.Operations[entry.RunID]; operation != nil {
+			entry.Ask.AgentCommandID = operation.CommandID
+		}
+	}
+}
+
 func (s *Session) applyExternalHistoryOutcomesLocked(ctx context.Context, entries []HistoryEntry) error {
 	if s.projection == nil || len(s.projection.External.Operations) == 0 {
 		return nil
 	}
-	var state *ExternalState
+	s.hydrateExternalAskCommandIDsLocked(entries)
+	if s.journal == nil {
+		return nil
+	}
+	type pendingOutcome struct {
+		entryIndex int
+		location   conversationjournal.Location
+	}
+	var pending []pendingOutcome
+	var locations []conversationjournal.Location
 	for index := range entries {
 		entry := &entries[index]
+		if entry.Role != "tool_call" && entry.Role != "ask" {
+			continue
+		}
+		if entry.Status != "running" && entry.Status != AskPending {
+			continue
+		}
 		operation := s.projection.External.Operations[entry.RunID]
 		if operation == nil {
 			continue
@@ -142,28 +174,46 @@ func (s *Session) applyExternalHistoryOutcomesLocked(ctx context.Context, entrie
 		executionID := entry.ID
 		if entry.Ask != nil {
 			executionID = entry.Ask.ToolCallID
-			entry.Ask.AgentCommandID = operation.CommandID
 		}
 		tool, ok := operation.Tools[executionID]
 		if !ok || tool.Finished == nil {
 			continue
 		}
-		if state == nil {
-			value, err := s.externalStateLocked(ctx)
-			if err != nil {
-				return err
-			}
-			state = &value
+		patchKey := "external-tool:" + entry.ID
+		locs := s.projection.DisplayPatches[patchKey]
+		if len(locs) == 0 {
+			continue
 		}
-		record, err := state.Read(*tool.Finished)
-		if err != nil {
+		loc := locs[len(locs)-1]
+		pending = append(pending, pendingOutcome{entryIndex: index, location: loc})
+		locations = append(locations, loc)
+	}
+	if len(locations) == 0 {
+		return nil
+	}
+	records, err := s.journal.ReadLocations(ctx, locations)
+	if err != nil {
+		return err
+	}
+	byLocation := make(map[conversationjournal.Location]conversationjournal.Record, len(records))
+	for _, rec := range records {
+		byLocation[rec.Location] = rec
+	}
+	for _, item := range pending {
+		rec, ok := byLocation[item.location]
+		if !ok {
+			continue
+		}
+		var ext externaljournal.Record
+		if err := json.Unmarshal(rec.Payload, &ext); err != nil {
 			return err
 		}
 		var finished externaljournal.FinishedTool
-		if err := json.Unmarshal(record.Data, &finished); err != nil {
+		if err := json.Unmarshal(ext.Data, &finished); err != nil {
 			return err
 		}
-		status, err := applyExternalFinished(entry.Ask, finished, record)
+		entry := &entries[item.entryIndex]
+		status, err := applyExternalFinished(entry.Ask, finished, ext)
 		if err != nil {
 			return err
 		}

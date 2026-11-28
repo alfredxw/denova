@@ -66,5 +66,6 @@ func CompactionDisplay(event agentrun.Event) (session.DisplayEvent, bool) {
 // UsageDisplay carries aggregate provider totals without inventing a call count.
 func UsageDisplay(usage *agentschema.TokenUsage) session.DisplayEvent {
 	return session.DisplayEvent{Role: "token_usage", PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens,
-		CachedPromptTokens: usage.PromptTokenDetails.CachedTokens, ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens, TotalTokens: usage.TotalTokens, CreatedAt: time.Now().UTC()}
+		CachedPromptTokens: usage.PromptTokenDetails.CachedTokens, CacheWritePromptTokens: usage.PromptTokenDetails.CacheWriteTokens,
+		ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens, TotalTokens: usage.TotalTokens, CreatedAt: time.Now().UTC()}
 }

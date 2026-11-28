@@ -1,13 +1,8 @@
 package session
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding"
 	"encoding/json"
 	"fmt"
-	"hash"
-	"sort"
 	"strings"
 	"time"
 
@@ -21,7 +16,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 29
+	sessionProjectionVersion      = 30
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -56,21 +51,6 @@ type releasedContextCompactionProjection struct {
 	Removal     *releasedContextCompactionRemovalRecord `json:"removal,omitempty"`
 }
 
-// assistantRunCheckpoint stores only a resumable SHA-256 state. It lets an
-// index checkpoint taken mid-stream determine whether the later canonical
-// assistant message is already represented by display segments, without ever
-// putting assistant prose in the sidecar.
-type assistantRunCheckpoint struct {
-	RunID string `json:"run_id"`
-	State []byte `json:"state"`
-}
-
-type assistantTargetCheckpoint struct {
-	RecordID string `json:"record_id"`
-	RunID    string `json:"run_id"`
-	State    []byte `json:"state"`
-}
-
 // sessionJournalProjection is the bounded, rebuildable domain section of the
 // conversation index. It deliberately stores locators and current state only;
 // the canonical JSONL remains the sole source of transcript and display text.
@@ -103,8 +83,6 @@ type sessionJournalProjection struct {
 	RecentContextBatches       []contextBatchLocator                          `json:"recent_context_batches,omitempty"`
 	PendingInterrupt           *Interruption                                  `json:"pending_interrupt,omitempty"`
 	PendingInterruptCursor     conversationjournal.Cursor                     `json:"pending_interrupt_cursor,omitempty"`
-	AssistantRuns              []assistantRunCheckpoint                       `json:"active_assistant_runs,omitempty"`
-	AssistantTargets           []assistantTargetCheckpoint                    `json:"active_assistant_targets,omitempty"`
 	AgentSessions              sessionjournal.Projection                      `json:"agent_sessions,omitempty"`
 	External                   externaljournal.Projection                     `json:"external_runtime,omitempty"`
 	ReleasedContextCompactions map[string]releasedContextCompactionProjection `json:"released_context_compactions,omitempty"`
@@ -112,9 +90,6 @@ type sessionJournalProjection struct {
 	expectedID         string
 	expectedGeneration string
 	lastCursor         conversationjournal.Cursor
-	assistantDigests   map[string]hash.Hash
-	assistantTargets   map[string]string
-	assistantSegments  map[string]hash.Hash
 }
 
 func newSessionJournalProjection(id, generation string) *sessionJournalProjection {
@@ -129,7 +104,6 @@ func (projection *sessionJournalProjection) Reset() error {
 	*projection = sessionJournalProjection{
 		Version: sessionProjectionVersion, SessionID: expectedID, Generation: expectedGeneration,
 		Title: defaultSessionTitle, expectedID: expectedID, expectedGeneration: expectedGeneration,
-		assistantDigests: make(map[string]hash.Hash), assistantTargets: make(map[string]string), assistantSegments: make(map[string]hash.Hash),
 		ReleasedContextCompactions: make(map[string]releasedContextCompactionProjection),
 	}
 	projection.AgentSessions.Reset()
@@ -157,9 +131,6 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 	if len(restored.RecentCursors) > 0 {
 		restored.lastCursor = restored.RecentCursors[len(restored.RecentCursors)-1]
 	}
-	if err := restored.restoreAssistantDigests(); err != nil {
-		return err
-	}
 	if err := restored.AgentSessions.Normalize(); err != nil {
 		return err
 	}
@@ -180,9 +151,6 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 
 func (projection *sessionJournalProjection) Checkpoint() (json.RawMessage, error) {
 	checkpoint := *projection
-	if err := checkpoint.captureAssistantDigests(); err != nil {
-		return nil, err
-	}
 	if projection.PendingInterrupt != nil {
 		pending := *projection.PendingInterrupt
 		pending.UserMessage = ""
@@ -268,7 +236,6 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		if err := json.Unmarshal(record.Payload, &marker); err != nil {
 			return err
 		}
-		projection.clearAssistantDigests()
 		projection.rememberHistoryRow(record.Location)
 		projection.ClearAfter = projection.MessageCount
 		projection.ClearCursor = record.Location.Cursor
@@ -289,7 +256,6 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 			return fmt.Errorf("display record role is empty")
 		}
 		projection.rememberHistoryRow(record.Location)
-		projection.rememberAssistantDisplay(display)
 		projection.advanceUpdatedAt(display.CreatedAt)
 		return nil
 	case historyTypeSessionPatch, historyTypeRuntimePatch:
@@ -358,7 +324,6 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 			return err
 		}
 		projection.rememberDisplayPatch(patch.TargetRecordID, record.Location)
-		projection.appendAssistantDisplayPatch(patch)
 		projection.advanceUpdatedAt(patch.CreatedAt)
 		return nil
 	case historyTypeInterrupt:
@@ -492,19 +457,7 @@ func (projection *sessionJournalProjection) applyMessage(record conversationjour
 	projection.rememberMessage(record.Location, message.Message.Role, metadata, commitHash)
 	if kind == historyTypeMessage {
 		projection.VisibleMessageCount++
-		visible := true
-		safeBoundary := message.Message.Role == agentschema.User
-		if safeBoundary {
-			projection.clearAssistantDigests()
-		} else if message.Message.Role == agentschema.Assistant && !metadata.SubAgent {
-			visible = !projection.consumeCompleteAssistantRun(metadata.RunID, message.Message.Content)
-		}
-		if visible {
-			projection.rememberHistoryRow(record.Location)
-		} else {
-			anchor := &projection.HistoryAnchors[len(projection.HistoryAnchors)-1]
-			anchor.Hidden = append(anchor.Hidden, hiddenHistoryRecord{Cursor: record.Location.Cursor, Index: record.Location.RecordIndex})
-		}
+		projection.rememberHistoryRow(record.Location)
 	}
 	if projection.Title == defaultSessionTitle && message.Message.Role == agentschema.User && strings.TrimSpace(message.Message.Content) != "" {
 		projection.Title = deriveTitle(message.Message.Content)
@@ -525,10 +478,6 @@ func (projection *sessionJournalProjection) applyLegacyMessage(record conversati
 	projection.rememberCanonicalMessage(&message, record.Location, 0)
 	projection.rememberMessage(record.Location, message.Role, MessageMetadata{}, "")
 	projection.VisibleMessageCount++
-	safeBoundary := message.Role == agentschema.User
-	if safeBoundary {
-		projection.clearAssistantDigests()
-	}
 	projection.rememberHistoryRow(record.Location)
 	if projection.Title == defaultSessionTitle && message.Role == agentschema.User && strings.TrimSpace(message.Content) != "" {
 		projection.Title = deriveTitle(message.Content)
@@ -571,165 +520,6 @@ func (projection *sessionJournalProjection) rememberMessage(location conversatio
 	if overflow := len(projection.RecentCommits) - sessionRecentCommitLimit; overflow > 0 {
 		projection.RecentCommits = append([]domainCommitLocator(nil), projection.RecentCommits[overflow:]...)
 	}
-}
-
-func (projection *sessionJournalProjection) rememberAssistantDisplay(display displayRecord) {
-	runID := strings.TrimSpace(display.RunID)
-	if display.Role != "assistant" || display.SubAgent || runID == "" {
-		return
-	}
-	digest := projection.assistantDigest(runID)
-	_, _ = digest.Write([]byte(display.Content))
-	if recordID := strings.TrimSpace(display.RecordID); recordID != "" {
-		projection.assistantTargets[recordID] = runID
-		segment := sha256.New()
-		_, _ = segment.Write([]byte(display.Content))
-		projection.assistantSegments[recordID] = segment
-	}
-}
-
-func (projection *sessionJournalProjection) appendAssistantDisplayPatch(patch displayPatchRecord) {
-	if patch.ContentAppend == "" {
-		return
-	}
-	runID := projection.assistantTargets[strings.TrimSpace(patch.TargetRecordID)]
-	if runID == "" {
-		return
-	}
-	_, _ = projection.assistantDigest(runID).Write([]byte(patch.ContentAppend))
-	if segment := projection.assistantSegments[strings.TrimSpace(patch.TargetRecordID)]; segment != nil {
-		_, _ = segment.Write([]byte(patch.ContentAppend))
-	}
-}
-
-func (projection *sessionJournalProjection) consumeCompleteAssistantRun(runID, content string) bool {
-	runID = strings.TrimSpace(runID)
-	digest := projection.assistantDigests[runID]
-	if runID == "" || digest == nil {
-		return false
-	}
-	want := sha256.Sum256([]byte(content))
-	complete := bytes.Equal(digest.Sum(nil), want[:])
-	if !complete {
-		for recordID, targetRunID := range projection.assistantTargets {
-			if targetRunID != runID {
-				continue
-			}
-			if segment := projection.assistantSegments[recordID]; segment != nil && bytes.Equal(segment.Sum(nil), want[:]) {
-				complete = true
-				break
-			}
-		}
-	}
-	delete(projection.assistantDigests, runID)
-	for recordID, targetRunID := range projection.assistantTargets {
-		if targetRunID == runID {
-			delete(projection.assistantTargets, recordID)
-			delete(projection.assistantSegments, recordID)
-		}
-	}
-	return complete
-}
-
-func (projection *sessionJournalProjection) assistantDigest(runID string) hash.Hash {
-	if projection.assistantDigests == nil {
-		projection.assistantDigests = make(map[string]hash.Hash)
-	}
-	if projection.assistantTargets == nil {
-		projection.assistantTargets = make(map[string]string)
-	}
-	if digest := projection.assistantDigests[runID]; digest != nil {
-		return digest
-	}
-	digest := sha256.New()
-	projection.assistantDigests[runID] = digest
-	return digest
-}
-
-func (projection *sessionJournalProjection) clearAssistantDigests() {
-	projection.assistantDigests = make(map[string]hash.Hash)
-	projection.assistantTargets = make(map[string]string)
-	projection.assistantSegments = make(map[string]hash.Hash)
-}
-
-func (projection *sessionJournalProjection) captureAssistantDigests() error {
-	projection.AssistantRuns = make([]assistantRunCheckpoint, 0, len(projection.assistantDigests))
-	runIDs := make([]string, 0, len(projection.assistantDigests))
-	for runID := range projection.assistantDigests {
-		runIDs = append(runIDs, runID)
-	}
-	sort.Strings(runIDs)
-	for _, runID := range runIDs {
-		marshaler, ok := projection.assistantDigests[runID].(encoding.BinaryMarshaler)
-		if !ok {
-			return fmt.Errorf("assistant digest for run %q cannot be checkpointed", runID)
-		}
-		state, err := marshaler.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("checkpoint assistant digest for run %q: %w", runID, err)
-		}
-		projection.AssistantRuns = append(projection.AssistantRuns, assistantRunCheckpoint{RunID: runID, State: state})
-	}
-	projection.AssistantTargets = make([]assistantTargetCheckpoint, 0, len(projection.assistantTargets))
-	recordIDs := make([]string, 0, len(projection.assistantTargets))
-	for recordID := range projection.assistantTargets {
-		recordIDs = append(recordIDs, recordID)
-	}
-	sort.Strings(recordIDs)
-	for _, recordID := range recordIDs {
-		segment := projection.assistantSegments[recordID]
-		marshaler, ok := segment.(encoding.BinaryMarshaler)
-		if !ok {
-			return fmt.Errorf("assistant segment digest for record %q cannot be checkpointed", recordID)
-		}
-		state, err := marshaler.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("checkpoint assistant segment digest for record %q: %w", recordID, err)
-		}
-		projection.AssistantTargets = append(projection.AssistantTargets, assistantTargetCheckpoint{
-			RecordID: recordID, RunID: projection.assistantTargets[recordID], State: state,
-		})
-	}
-	return nil
-}
-
-func (projection *sessionJournalProjection) restoreAssistantDigests() error {
-	projection.assistantDigests = make(map[string]hash.Hash, len(projection.AssistantRuns))
-	projection.assistantTargets = make(map[string]string, len(projection.AssistantTargets))
-	projection.assistantSegments = make(map[string]hash.Hash, len(projection.AssistantTargets))
-	for _, checkpoint := range projection.AssistantRuns {
-		runID := strings.TrimSpace(checkpoint.RunID)
-		if runID == "" {
-			return fmt.Errorf("assistant digest checkpoint has empty run id")
-		}
-		digest := sha256.New()
-		unmarshaler, ok := digest.(encoding.BinaryUnmarshaler)
-		if !ok {
-			return fmt.Errorf("assistant digest for run %q cannot be restored", runID)
-		}
-		if err := unmarshaler.UnmarshalBinary(checkpoint.State); err != nil {
-			return fmt.Errorf("restore assistant digest for run %q: %w", runID, err)
-		}
-		projection.assistantDigests[runID] = digest
-	}
-	for _, checkpoint := range projection.AssistantTargets {
-		recordID := strings.TrimSpace(checkpoint.RecordID)
-		runID := strings.TrimSpace(checkpoint.RunID)
-		if recordID == "" || projection.assistantDigests[runID] == nil {
-			return fmt.Errorf("assistant target checkpoint is inconsistent")
-		}
-		digest := sha256.New()
-		unmarshaler, ok := digest.(encoding.BinaryUnmarshaler)
-		if !ok {
-			return fmt.Errorf("assistant segment digest for record %q cannot be restored", recordID)
-		}
-		if err := unmarshaler.UnmarshalBinary(checkpoint.State); err != nil {
-			return fmt.Errorf("restore assistant segment digest for record %q: %w", recordID, err)
-		}
-		projection.assistantTargets[recordID] = runID
-		projection.assistantSegments[recordID] = digest
-	}
-	return nil
 }
 
 func (projection *sessionJournalProjection) advanceRevision(persisted uint64) {

@@ -178,6 +178,36 @@ func TestMessagesFromHistoryDoesNotTreatCanonicalMessageIDAsDisplaySegmentID(t *
 	}
 }
 
+func TestMessagesFromHistoryProjectsCanonicalReasoningAndCompactionMetrics(t *testing.T) {
+	messages := MessagesFromHistory([]session.HistoryEntry{
+		{
+			Type: "message", ID: "canonical-1", Role: "assistant",
+			ReasoningContent: "Checked chapter outline.", Content: "Chapter 2 is ready.",
+			DisplayPhase: session.DisplayPhaseFinal, RunID: "run-1",
+		},
+		{
+			ID: "compact-1", Role: "context_compaction", Phase: "agent", Status: "success",
+			Content: "Compacted earlier turns.", TokensBefore: 92000, TokensAfter: 18000,
+			ProjectedTokensBefore: 94000, ProjectedTokensAfter: 20000, ContextWindowTokens: 128000,
+			Threshold: 0.75, TargetRatio: 0.3, CompactionRevision: 2, SourceMessageCount: 24,
+			MessageCountBefore: 24, MessageCountAfter: 4, CompactionReason: "threshold",
+		},
+	})
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(messages))
+	}
+	if len(messages[0].Parts) != 2 ||
+		messages[0].Parts[0]["type"] != "reasoning" || messages[0].Parts[0]["text"] != "Checked chapter outline." ||
+		messages[0].Parts[1]["type"] != "text" || messages[0].Parts[1]["text"] != "Chapter 2 is ready." {
+		t.Fatalf("canonical assistant parts = %#v", messages[0].Parts)
+	}
+	compaction := messages[1].Parts[0]["data"].(map[string]any)
+	if compaction["tokens_before"] != 92000 || compaction["tokens_after"] != 18000 ||
+		compaction["context_window_tokens"] != 128000 || compaction["revision"] != 2 || compaction["reason"] != "threshold" {
+		t.Fatalf("compaction payload = %#v", compaction)
+	}
+}
+
 func assertMessagePartType(t *testing.T, message Message, role, partType string) {
 	t.Helper()
 	if message.Role != role {

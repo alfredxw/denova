@@ -134,6 +134,9 @@ func (committer *sessionConversationCommitter) CommitOutput(
 	if projection.Message == nil {
 		return agentcanonical.OutputCommitReceipt{}, errors.New("Denova Session output projector returned no canonical message")
 	}
+	if projection.Metadata.DisplayPhase == "" && projection.Message.Role == agentschema.Assistant && !projection.Metadata.SubAgent && projection.Message.Content != "" {
+		projection.Metadata.DisplayPhase = session.DisplayPhaseFinal
+	}
 	receipt, err := committer.config.Conversation.CommitAgentCanonicalOutput(
 		ctx, projection.Message, projection.Metadata, request.Checkpoint,
 	)

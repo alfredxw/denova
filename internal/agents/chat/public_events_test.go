@@ -18,6 +18,7 @@ import (
 	agentinteraction "github.com/alfredxw/denova/agent/lifecycle/interaction"
 	agentmodel "github.com/alfredxw/denova/agent/model"
 	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 	agenttool "github.com/alfredxw/denova/agent/tool"
 )
 
@@ -602,22 +603,45 @@ func TestPublicEventProjectorKeepsNextInteractiveResponseNarrativeAfterToolOnlyR
 	}
 }
 
-func TestPublicEventProjectorUsesAccumulatedInteractiveNarrativeAsCanonicalOutput(t *testing.T) {
-	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, TaskID: "task", RootAgentName: "game",
-	}, nil)
-	root := agentevent.EventSource{Name: "game", Path: []string{"game"}}
-	projector.Project(agentevent.Event{RunID: "run", Payload: agentevent.AssistantDelta{Source: root, Delta: "门后传来脚步声。"}})
-	projector.Project(agentevent.Event{RunID: "run", Payload: agentevent.ToolInputStarted{
-		Source: root, CallID: "submit-1", ProviderCallID: "provider-submit", Name: "submit_interactive_turn",
-	}})
-	projector.Project(agentevent.Event{RunID: "run", Payload: agentevent.ModelCompleted{Source: root, RequestedTools: []string{"submit_interactive_turn"}}})
-
-	message, transcript := projector.ProjectCanonicalOutput(agentschema.AssistantMessage("", nil))
-	if message == nil || message.Content != "门后传来脚步声。" || len(message.ToolCalls) != 0 {
+func TestProjectCanonicalOutputUsesSynchronousInteractiveTranscript(t *testing.T) {
+	turnMessages := []*agentschema.Message{
+		agentschema.UserMessage("推开门"),
+		{
+			Role:             agentschema.Assistant,
+			ReasoningContent: "先查设定。",
+			Content:          "需要读取资料。",
+			ToolCalls:        []agentschema.ToolCall{{ID: "call-1", Function: agentschema.FunctionCall{Name: "read_lore"}}},
+			AgentMeta:        &agentschema.AgentMessageMeta{ModelResponseOrdinal: 1},
+		},
+		agentschema.ToolMessage(agentschema.TextToolResult("lore"), "call-1"),
+		{
+			Role:      agentschema.Assistant,
+			Content:   "门后传来脚步声。",
+			ToolCalls: []agentschema.ToolCall{{ID: "call-2", Function: agentschema.FunctionCall{Name: "submit_interactive_turn"}}},
+			AgentMeta: &agentschema.AgentMessageMeta{ModelResponseOrdinal: 2},
+		},
+		agentschema.ToolMessage(agentschema.TextToolResult("ok"), "call-2"),
+		// Synthetic completionFinalAssistant clone appended by definition_engine
+		// when submit_interactive_turn requests early completion.
+		{
+			Role:      agentschema.Assistant,
+			Content:   "门后传来脚步声。",
+			AgentMeta: &agentschema.AgentMessageMeta{ModelResponseOrdinal: 2},
+		},
+	}
+	message, transcript := ProjectCanonicalOutput(
+		ChatRequest{},
+		agentrun.Options{AgentKind: agentrun.AgentKindInteractiveStory, TaskID: "task", RootAgentName: "game"},
+		agentcanonical.OutputCommitRequest{
+			Message:         *agentschema.AssistantMessage("", nil),
+			ContextMessages: turnMessages,
+			ActiveUserIndex: 0,
+		},
+	)
+	if message == nil || message.Content != "门后传来脚步声。" || message.ReasoningContent != "先查设定。需要读取资料。" || len(message.ToolCalls) != 0 {
 		t.Fatalf("canonical interactive message = %#v", message)
 	}
-	if transcript == nil || transcript.Content != message.Content {
+	if transcript == nil || transcript.Content != message.Content || transcript.Thinking != message.ReasoningContent {
 		t.Fatalf("canonical interactive transcript = %#v", transcript)
 	}
 }

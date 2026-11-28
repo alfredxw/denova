@@ -264,15 +264,12 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{Role: "thinking", Content: "先分析角色动机"}); err != nil {
 		t.Fatal(err)
 	}
-	presentation := agenttool.UniformToolPresentation(agenttool.ToolPresentationSearch)
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read", Content: "read", Status: "running", ToolPresentation: &presentation}); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayToolArgs("call-1", "read", `{"path":"chapters/1.md"}`); err != nil {
-		t.Fatal(err)
-	}
 	resultPresentation := agenttool.ToolPresentation{Call: agenttool.ToolPresentationSearch, Result: agenttool.ToolPresentationInteractiveMedia}
-	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容", &resultPresentation); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID: "call-1", Role: "tool_call", Name: "read", Content: "read",
+		Args: `{"path":"chapters/1.md"}`, Status: "success", Result: "章节内容",
+		ToolPresentation: &resultPresentation,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agentschema.AssistantMessage("规划完成", nil)); err != nil {
@@ -312,115 +309,6 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 	if history[2].Args != `{"path":"chapters/1.md"}` || history[2].Result != "章节内容" {
 		t.Fatalf("工具卡片参数和结果未恢复: %#v", history[2])
-	}
-}
-
-func TestOrderedAssistantDisplaySegmentsReplaceAggregatedAssistantInHistory(t *testing.T) {
-	dir := t.TempDir()
-	store, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("ordered-display")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.Append(agentschema.UserMessage("继续创作")); err != nil {
-		t.Fatal(err)
-	}
-	for _, event := range []DisplayEvent{
-		{ID: "run-order-thinking-1", Role: "thinking", Content: "先分析。", RunID: "run-order"},
-		{ID: "run-order-assistant-1", Role: "assistant", Content: "第一段正文。", RunID: "run-order"},
-		{ID: "run-order-thinking-2", Role: "thinking", Content: "再检查。", RunID: "run-order"},
-		{ID: "run-order-assistant-2", Role: "assistant", Content: "第二段正文。", RunID: "run-order"},
-	} {
-		if err := sess.AppendDisplayEvent(event); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := sess.AppendWithMetadata(agentschema.AssistantMessage("第一段正文。第二段正文。", nil), MessageMetadata{RunID: "run-order"}); err != nil {
-		t.Fatal(err)
-	}
-
-	reloadedStore, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := reloadedStore.Get("ordered-display")
-	if err != nil {
-		t.Fatal(err)
-	}
-	history := reloaded.History()
-	wantRoles := []string{"user", "thinking", "assistant", "thinking", "assistant"}
-	if len(history) != len(wantRoles) {
-		t.Fatalf("history = %#v, want roles %v", history, wantRoles)
-	}
-	for index, role := range wantRoles {
-		if history[index].Role != role {
-			t.Fatalf("history[%d] = %#v, want role %q", index, history[index], role)
-		}
-	}
-	for _, index := range []int{1, 2, 3, 4} {
-		if history[index].DisplaySegmentID == "" || history[index].DisplaySegmentID != history[index].ID {
-			t.Fatalf("history[%d] lost display segment identity: %#v", index, history[index])
-		}
-	}
-	if effective := reloaded.GetEffectiveMessages(); len(effective) != 2 || effective[1].Content != "第一段正文。第二段正文。" {
-		t.Fatalf("ordered display segments must not change model context: %#v", effective)
-	}
-}
-
-func TestTerminalAssistantDisplaySegmentReplacesCanonicalAssistantAfterProgress(t *testing.T) {
-	dir := t.TempDir()
-	store, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("terminal-display")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.Append(agentschema.UserMessage("删除 ideas.md")); err != nil {
-		t.Fatal(err)
-	}
-	for _, event := range []DisplayEvent{
-		{ID: "progress", Role: "assistant", DisplayPhase: DisplayPhaseProgress, Content: "我先确认文件位置。", RunID: "run-1"},
-		{ID: "final", Role: "assistant", DisplayPhase: DisplayPhaseFinal, Content: "已完成，ideas.md 已删除。", RunID: "run-1"},
-	} {
-		if err := sess.AppendDisplayEvent(event); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := sess.AppendWithMetadata(
-		agentschema.AssistantMessage("已完成，ideas.md 已删除。", nil),
-		MessageMetadata{RunID: "run-1"},
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	history := sess.History()
-	if len(history) != 3 || history[0].Role != "user" || history[1].DisplayPhase != DisplayPhaseProgress || history[2].DisplayPhase != DisplayPhaseFinal {
-		t.Fatalf("resident history kept duplicate canonical assistant: %#v", history)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	reopenedStore, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = reopenedStore.Close() })
-	reopened, err := reopenedStore.Get("terminal-display")
-	if err != nil {
-		t.Fatal(err)
-	}
-	page, err := reopened.ReadHistoryPage(context.Background(), -1, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.Total != 3 || len(page.Entries) != 3 || page.Entries[2].DisplayPhase != DisplayPhaseFinal {
-		t.Fatalf("paged history kept duplicate canonical assistant: %#v", page)
 	}
 }
 
@@ -567,7 +455,7 @@ func TestSubAgentAssistantDisplayChunksPersistOutsideEffectiveContext(t *testing
 	if err := sess.AppendDisplayEvent(DisplayEvent{
 		ID:                "run-1-subagent-01-researcher",
 		Role:              "assistant",
-		Content:           "第一段",
+		Content:           "第一段第二段",
 		RunID:             "run-1",
 		AgentName:         "researcher",
 		RootAgentName:     "DenovaAgent",
@@ -576,12 +464,6 @@ func TestSubAgentAssistantDisplayChunksPersistOutsideEffectiveContext(t *testing
 		SubAgentSessionID: "run-1-subagent-01-researcher",
 		SubAgentType:      "researcher",
 	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEventContent("run-1-subagent-01-researcher", "assistant", "第二段"); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.FlushDisplayEventContent("run-1-subagent-01-researcher", "assistant"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -608,56 +490,6 @@ func TestSubAgentAssistantDisplayChunksPersistOutsideEffectiveContext(t *testing
 	}
 }
 
-func TestDisplayToolArgsDeltasAreBatchedAndFlushedOnFinalResult(t *testing.T) {
-	dir := t.TempDir()
-	store, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write", Content: "write", Status: "running"}); err != nil {
-		t.Fatal(err)
-	}
-	smallArgs := `{"path":"chapters/ch01.md","content":"draft"}`
-	if err := sess.AppendDisplayToolArgs("call-1", "write", smallArgs); err != nil {
-		t.Fatal(err)
-	}
-	if history := sess.History(); len(history) != 1 || history[0].Args != smallArgs {
-		t.Fatalf("内存历史应实时累积工具参数: %#v", history)
-	}
-
-	reloadedBeforeResult, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	beforeResult, err := reloadedBeforeResult.Get("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if history := beforeResult.History(); len(history) != 1 || history[0].Args != "" {
-		t.Fatalf("小块流式参数应等待工具终态批量落盘: %#v", history)
-	}
-
-	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok", nil); err != nil {
-		t.Fatal(err)
-	}
-	reloadedAfterResult, err := NewStore(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	afterResult, err := reloadedAfterResult.Get("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	history := afterResult.History()
-	if len(history) != 1 || history[0].Args != smallArgs || history[0].Result != "ok" || history[0].Status != "success" {
-		t.Fatalf("工具结束时应落盘完整工具卡片状态: %#v", history)
-	}
-}
-
 func TestDisplayToolArgsArePersistedWithoutTruncation(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)
@@ -668,14 +500,11 @@ func TestDisplayToolArgsArePersistedWithoutTruncation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write", Content: "write", Status: "running"}); err != nil {
-		t.Fatal(err)
-	}
 	largeArgs := `{"path":"chapters/ch01.md","content":"` + strings.Repeat("长内容", 20*1024) + `工具输入尾部必须完整恢复"}`
-	if err := sess.AppendDisplayToolArgs("call-1", "write", largeArgs); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok", nil); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID: "call-1", Role: "tool_call", Name: "write", Content: "write",
+		Args: largeArgs, Status: "success", Result: "ok",
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -693,82 +522,6 @@ func TestDisplayToolArgsArePersistedWithoutTruncation(t *testing.T) {
 	}
 	if history[0].Args != largeArgs {
 		t.Fatalf("工具参数应完整持久化: got_bytes=%d want_bytes=%d", len(history[0].Args), len(largeArgs))
-	}
-}
-
-func TestUpdateDisplayToolResultFallsBackToNameWhenIDMissing(t *testing.T) {
-	store, err := NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.UpdateDisplayToolResult("", "bash", "success", "command done", nil); err != nil {
-		t.Fatal(err)
-	}
-
-	history := sess.History()
-	if len(history) != 1 {
-		t.Fatalf("历史应只包含工具展示事件: %#v", history)
-	}
-	if history[0].Status != "success" || history[0].Result != "command done" {
-		t.Fatalf("id 缺失时应按唯一工具名更新工具卡片: %#v", history[0])
-	}
-}
-
-func TestUpdateDisplayToolResultDoesNotFallbackWhenIDDiffers(t *testing.T) {
-	store, err := NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "stale result", nil); err != nil {
-		t.Fatal(err)
-	}
-
-	history := sess.History()
-	if len(history) != 1 {
-		t.Fatalf("历史应只包含工具展示事件: %#v", history)
-	}
-	if history[0].Result == "stale result" || history[0].Status != "running" {
-		t.Fatalf("id 不一致时不应按工具名更新工具卡片: %#v", history[0])
-	}
-}
-
-func TestUpdateDisplayToolResultDoesNotFallbackWhenNameIsAmbiguous(t *testing.T) {
-	store, err := NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-1", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "ambiguous result", nil); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, message := range sess.History() {
-		if message.Result == "ambiguous result" || message.Status != "running" {
-			t.Fatalf("同名工具调用存在歧义时不应按工具名误更新: %#v", message)
-		}
 	}
 }
 

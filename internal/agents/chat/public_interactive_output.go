@@ -4,8 +4,118 @@ import (
 	"strings"
 
 	agentinteractive "denova/internal/agents/interactive"
+	agentplan "denova/internal/agents/plan"
 	agentrun "denova/internal/agents/run"
+
+	agentschema "github.com/alfredxw/denova/agent/schema"
+	agentcanonical "github.com/alfredxw/denova/agent/session/canonical"
 )
+
+// ProjectCanonicalOutput deterministically derives the product-approved final
+// canonical message from the synchronous Agent turn transcript. It never reads
+// from the asynchronous display event stream, so consumer lag or delta drops
+// cannot truncate persisted story prose or plan output.
+func ProjectCanonicalOutput(
+	request ChatRequest,
+	options agentrun.Options,
+	output agentcanonical.OutputCommitRequest,
+) (*agentschema.Message, *agentcanonical.OutputProjection) {
+	projected := output.Message.Clone()
+	if projected == nil {
+		return nil, nil
+	}
+	if request.PlanMode {
+		meta := agentEventMetadata{
+			RunID:         output.Identity.RunID,
+			AgentCycle:    output.Identity.Cycle,
+			AgentKind:     options.AgentKind,
+			AgentName:     options.RootAgentName,
+			RootAgentName: options.RootAgentName,
+		}
+		if options.RootAgentName != "" {
+			meta.RunPath = []string{options.RootAgentName}
+		}
+		parser := agentplan.NewParser(meta.planMetadata(), nil)
+		visible := parser.Push(projected.Content) + parser.Flush()
+		if !parser.HasSuccessfulBlock() {
+			projected.Content = visible
+			return projected, nil
+		}
+		projected.Content = ""
+		projected.ReasoningContent = ""
+		projected.ToolCalls = nil
+		return projected, &agentcanonical.OutputProjection{}
+	}
+	if options.AgentKind != agentrun.AgentKindInteractiveStory {
+		return projected, nil
+	}
+	content, thinking := projectInteractiveTurnTranscript(output.ContextMessages, output.ActiveUserIndex, projected)
+	if content == "" {
+		return projected, nil
+	}
+	projected.Content = content
+	projected.ReasoningContent = thinking
+	projected.ToolCalls = nil
+	return projected, &agentcanonical.OutputProjection{Content: content, Thinking: thinking}
+}
+
+func projectInteractiveTurnTranscript(
+	messages []*agentschema.Message,
+	activeUserIndex int,
+	final *agentschema.Message,
+) (string, string) {
+	turnMessages := messages
+	if len(turnMessages) == 0 {
+		if final != nil {
+			turnMessages = []*agentschema.Message{final}
+		}
+	} else if activeUserIndex >= 0 && activeUserIndex < len(turnMessages) {
+		turnMessages = turnMessages[activeUserIndex+1:]
+	}
+	var narrative string
+	var thinking strings.Builder
+	seenOrdinals := make(map[int]bool, len(turnMessages))
+	for _, msg := range turnMessages {
+		if msg == nil || msg.Role != agentschema.Assistant {
+			continue
+		}
+		// When a submission tool requests early completion, definition_engine
+		// appends a synthetic final clone of the last assistant response with
+		// the same ModelResponseOrdinal and cleared ToolCalls. Skip that clone
+		// so its narrative and reasoning are not double-counted as thinking.
+		if msg.AgentMeta != nil && msg.AgentMeta.ModelResponseOrdinal > 0 {
+			if seenOrdinals[msg.AgentMeta.ModelResponseOrdinal] {
+				continue
+			}
+			seenOrdinals[msg.AgentMeta.ModelResponseOrdinal] = true
+		}
+		if msg.ReasoningContent != "" {
+			thinking.WriteString(msg.ReasoningContent)
+		}
+		if msg.Content == "" {
+			continue
+		}
+		if hasNonSubmissionInteractiveTool(msg.ToolCalls) {
+			thinking.WriteString(msg.Content)
+			continue
+		}
+		if narrative == "" {
+			narrative = msg.Content
+		} else {
+			thinking.WriteString(msg.Content)
+		}
+	}
+	return narrative, thinking.String()
+}
+
+func hasNonSubmissionInteractiveTool(calls []agentschema.ToolCall) bool {
+	for _, call := range calls {
+		if !agentinteractive.IsInteractiveTurnSubmissionTool(call.Function.Name) {
+			return true
+		}
+	}
+	return false
+}
 
 // interactiveContentReclassifiedEvent retracts provisional Game narrative
 // after a non-submission tool proves that the prose was reasoning. It is a

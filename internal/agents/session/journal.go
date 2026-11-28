@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	journalFormatVersion    = 2
+	journalFormatVersion    = 3
 	historyTypeSessionPatch = "session_patch"
 	// Released readers ignore unknown config fields. The explicit record type
 	// makes them reject an external selection instead of executing it as Native.
